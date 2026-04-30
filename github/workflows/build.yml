@@ -15,7 +15,7 @@ jobs:
   build:
     name: 360N7 ROM编译
     runs-on: ubuntu-22.04
-    timeout-minutes: 420
+    timeout-minutes: 360
     steps:
       - name: 检出仓库代码
         uses: actions/checkout@v4

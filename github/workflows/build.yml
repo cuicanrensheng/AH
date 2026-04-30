@@ -1,11 +1,11 @@
-name: Build LineageOS 18.1 For 360N7
+name: Build LineageOS 18.1 (360 N7)
 on:
   workflow_dispatch:
     inputs:
       build_type:
-        description: '编译类型'
+        description: Build Type
         required: true
-        default: 'userdebug'
+        default: userdebug
         type: choice
         options:
           - userdebug
@@ -13,52 +13,43 @@ on:
 
 jobs:
   build:
-    name: 360N7 ROM编译
     runs-on: ubuntu-22.04
     timeout-minutes: 360
     steps:
-      - name: 检出仓库代码
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: 配置编译环境
+      - name: Install Dependencies
         run: |
           sudo apt update -y
           sudo apt install -y git-core gnupg flex bison build-essential zip curl zlib1g-dev gcc-multilib g++-multilib libc6-dev-i386 lib32ncurses5-dev x11proto-core-dev libx11-dev lib32z1-dev libgl1-mesa-dev libxml2-utils xsltproc unzip fontconfig python3 python3-pip python-is-python3
           sudo pip3 install repo
-          git config --global user.name "GitHub Actions"
+          git config --global user.name "Actions"
           git config --global user.email "actions@github.com"
-          git config --global color.ui false
 
-      - name: 创建Swap分区（解决内存不足）
+      - name: Swap 24G
         run: |
           sudo fallocate -l 24G /swapfile
           sudo chmod 600 /swapfile
           sudo mkswap /swapfile
           sudo swapon /swapfile
 
-      - name: 同步LineageOS源码
+      - name: Sync Source
         run: |
-          mkdir -p ~/lineage
-          cd ~/lineage
+          mkdir -p ~/los && cd ~/los
           repo init -u https://github.com/LineageOS/android.git -b lineage-18.1 --depth=1
           mkdir -p .repo/local_manifests
           cp $GITHUB_WORKSPACE/.repo/local_manifests/n7.xml .repo/local_manifests/
           repo sync -c -j$(nproc) --force-sync --no-clone-bundle --no-tags
 
-      - name: 开始编译ROM
+      - name: Build
         run: |
-          cd ~/lineage
+          cd ~/los
           source build/envsetup.sh
           lunch lineage_n7-${{ github.event.inputs.build_type }}
           make bacon -j$(nproc)
 
-      - name: 上传编译产物
+      - name: Upload
         uses: actions/upload-artifact@v4
         with:
-          name: lineage-18.1-360n7
-          path: ~/lineage/out/target/product/n7/lineage-18.1-*.zip
-
-      - name: 编译失败清理
-        if: failure()
-        run: |
-          echo "编译失败，请检查设备树与源码依赖是否匹配"
+          name: lineage-18.1-n7
+          path: ~/los/out/target/product/n7/lineage-18.1-*.zip

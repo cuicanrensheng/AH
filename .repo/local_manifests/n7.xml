@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-<manifest<!-- 远程仓库配置 -->
+    <remote name="github" fetch="https://github.com"<!-- 360N7 专属设备树 -->
+    <project name="sdm660-devices/android_device_360_n7" path="device/360/n7" remote="github" revision="lineage-18.1<!-- 骁龙660通用设备<project name="sdm660-devices/android_device_360_sdm660-common" path="device/360/sdm660-common" remote="github" revision="lineage-18.1" />
+
+<!-- 360N7 专属内核源码<project name="sdm660-devices/android_kernel_360_sdm660" path="kernel/360/sdm660" remote="github" revision="lineage-18.1" /><!-- 360N7 厂商驱动<project name="sdm660-devices/android_vendor_360_n7" path="vendor/360/n7" remote="github" revision="lineage-18.1<!-- 骁龙660 公共依赖库 -->
+    <project name="LineageOS/android_hardware_qcom_display" path="hardware/qcom/display-sdm660" remote="github" revision="lineage-18.1"<project name="LineageOS/android_hardware_qcom_audio" path="hardware/qcom/audio-sdm660" remote="github" revision="lineage-18.1" /><project name="LineageOS/android_hardware_qcom_media" path="hardware/qcom/media-sdm660" remote="github" revision="lineage-18.1" />
+</manifest>

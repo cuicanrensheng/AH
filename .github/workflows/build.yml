@@ -38,7 +38,10 @@ jobs:
       - name: Sync Source
         run: |
           mkdir -p ~/los && cd ~/los
-          repo init -u https://github.com/LineageOS/android.git -b lineage-18.1--depth=1
+          repo init \
+            -u https://github.com/LineageOS/android.git \
+            -b lineage-18.1 \
+            --depth=1
           mkdir -p .repo/local_manifests
           cp $GITHUB_WORKSPACE/.repo/local_manifests/n7.xml .repo/local_manifests/
           repo sync -c -j$(nproc) --force-sync --no-clone-bundle --no-tags

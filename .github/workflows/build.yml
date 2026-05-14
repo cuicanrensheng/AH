@@ -17,14 +17,22 @@ jobs:
           distribution: temurin
           cache: gradle
 
-      - name: 授权Gradle脚本
+      # 关键步骤：自动生成完整的 Gradle Wrapper（含gradle-wrapper.jar）
+      - name: 自动生成Gradle Wrapper
+        run: |
+          # 安装Gradle
+          sudo apt update && sudo apt install -y gradle
+          # 强制生成Gradle 8.7的wrapper文件
+Gradle 包装器 --gradle-version 8.7
+
+      - 名称: 授权Gradle脚本
         run: chmod +x gradlew
 
-      - name: 编译Release版本
-        run: ./gradlew assembleRelease
+      - 名称: 编译Release版本
+运行: ./gradlew assembleRelease
 
-      - name: 上传编译好的APK
-        uses: actions/upload-artifact@v4
+      - 名称: 上传编译好的APK
+使用: actions/upload-artifact@v4
         with:
-          name: TV直播APP-Release
-          path: app/build/outputs/apk/release/app-release-unsigned.apk
+：电视直播APP-发布
+路径: app/build/outputs/apk/release/app-release-unsigned.apk

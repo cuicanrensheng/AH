@@ -68,12 +68,25 @@ jobs:
       - name: Grant execute permission
         run: chmod +x gradlew
 
-      # ========== 我已经帮你加好：无混淆、无资源压缩、跳过Lint、编译全组件Release包 ==========
-      - name: Clean & Build Release 无混淆无压缩 全组件
+      # 自动生成签名密钥
+      - name: Auto Generate Release Keystore
         run: |
-          ./gradlew clean \
-          assembleRelease \
-         
+          keytool -genkey -noprompt \
+          -keystore app/build/auto-release.jks \
+          -alias auto-key \
+          -keyalg RSA -keysize 2048 -validity 10000 \
+          -storepass 123456 \
+          -keypass 123456 \
+          -dname "CN=Auto,OU=Dev,O=Dev,L=City,S=State,C=CN"
+
+      # 编译并自动签名 无混淆无压缩
+      - name: Clean & Build Release Auto Sign
+        run: ./gradlew clean assembleRelease
+        env:
+          KS_FILE: build/auto-release.jks
+          KS_PASS: 123456
+          KS_ALIAS: auto-key
+          KEY_PASS: 123456
 
       - name: Upload Release APK
         uses: actions/upload-artifact@v4

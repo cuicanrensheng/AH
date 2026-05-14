@@ -18,7 +18,14 @@ jobs:
           distribution: temurin
           cache: gradle
 
-      - name: 授权Gradle
+      # 关键：自动安装并配置Gradle，自动下载wrapper文件
+      - name: 设置Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: 8.7
+          build-root-directory: .
+
+      - name: 授权Gradle脚本
         run: chmod +x gradlew
 
       - name: 编译Release版本

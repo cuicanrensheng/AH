@@ -5,13 +5,7 @@ pluginManagement {
         gradlePluginPortal()
     }
 }
-dependencyResolutionManagement {
-    repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
-    repositories {
-        google()
-        mavenCentral()
-        maven { url 'https://jitpack.io' }
-    }
-}
+
+// 去掉 dependencyResolutionManagement，改用兼容写法
 rootProject.name = "TVLive"
 include ':app'

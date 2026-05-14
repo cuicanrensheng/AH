@@ -1,38 +1,41 @@
-name: 电视直播APP云编译
-on:
-  push:
-  workflow_dispatch:
+plugins {
+    id 'com.android.application'
+    // 必须指定 Kotlin 插件版本，和 Gradle 兼容
+    id 'org.jetbrains.kotlin.android' version '1.9.0'
+}
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - name: 检出代码
-        uses: actions/checkout@v4
+android {
+    namespace "com.tv.live"
+    compileSdk 34
 
-      - name: 配置JDK17
-        uses: actions/setup-java@v4
-        with:
-          java-version: 17
-          distribution: temurin
-          cache: gradle
+    defaultConfig {
+        applicationId "com.tv.live.custom"
+        minSdk 21
+        targetSdk 34
+        versionCode 1
+        versionName "1.0"
+    }
 
-      # 关键步骤：自动生成完整的 Gradle Wrapper（含gradle-wrapper.jar）
-      - name: 自动生成Gradle Wrapper
-        run: |
-          # 安装Gradle
-          sudo apt update && sudo apt install -y gradle
-          # 强制生成Gradle 8.7的wrapper文件
-          gradle wrapper --gradle-version 8.7
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt')
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+}
 
-      - name: 授权Gradle脚本
-        run: chmod +x gradlew
-
-      - name: 编译Release版本
-        run: ./gradlew assembleRelease
-
-      - name: 上传编译好的APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: TV直播APP-Release
-          path: app/build/outputs/apk/release/app-release-unsigned.apk
+dependencies {
+    implementation 'androidx.core:core-ktx:1.12.0'
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'com.google.android.exoplayer2:exoplayer:2.19.1'
+    implementation 'com.google.android.exoplayer2:ui:2.19.1'
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+    implementation 'com.google.code.gson:gson:2.10.1'
+}

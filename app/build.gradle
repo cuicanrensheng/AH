@@ -15,28 +15,27 @@ android {
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         
-        // 只保留主流电视/手机架构，控制包体大小
         ndk {
             abiFilters 'armeabi-v7a', 'arm64-v8a'
         }
     }
 
+    // 自动适配 Actions 动态密钥，不用写死密码
     signingConfigs {
         release {
-            // 替换成你的签名文件信息
-            storeFile file("my-release-key.jks")
-            storePassword "你的keystore密码"
-            keyAlias "你的key别名"
-            keyPassword "你的key密码"
+            storeFile file(System.getenv("KS_FILE", "debug.keystore"))
+            storePassword System.getenv("KS_PASS", "android")
+            keyAlias System.getenv("KS_ALIAS", "androiddebugkey")
+            keyPassword System.getenv("KEY_PASS", "android")
         }
     }
 
     buildTypes {
         release {
-            // 关键：关闭混淆、关闭资源压缩，彻底解决闪退
+            // 关闭混淆、关闭资源压缩 防闪退
             minifyEnabled false
             shrinkResources false
-            debuggable true // 保留调试信息，方便排查问题
+            debuggable true
             signingConfig signingConfigs.release
         }
     }
@@ -48,10 +47,8 @@ android {
 }
 
 dependencies {
-    // AndroidX基础库
     implementation 'androidx.appcompat:appcompat:1.6.1'
-    
-    // ExoPlayer 全组件（核心+UI+扩展，满足所有播放需求）
+    // ExoPlayer 全组件
     implementation 'com.google.android.exoplayer:exoplayer:2.19.1'
     implementation 'com.google.android.exoplayer:exoplayer-ui:2.19.1'
     implementation 'com.google.android.exoplayer:exoplayer-extractor:2.19.1'

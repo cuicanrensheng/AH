@@ -1,4 +1,4 @@
-name: 电视直播APP云编译
+name: 电视直播APP云编译（修复版）
 on:
   push:
     branches: [ main ]
@@ -18,16 +18,17 @@ jobs:
           distribution: temurin
           cache: gradle
 
-      # 关键：自动安装并配置Gradle，自动下载wrapper文件
-      - name: 设置Gradle
-        uses: gradle/actions/setup-gradle@v3
-        with:
-          gradle-version: 8.7
-          build-root-directory: .
+      # 1. 强制生成/修复gradle-wrapper文件（自动补全缺失的jar）
+      - name: 强制生成Gradle Wrapper
+        run: |
+          # 用gradle命令自动生成wrapper，会自动下载gradle-wrapper.jar
+          gradle wrapper --gradle-version 8.7
 
+      # 2. 给脚本添加执行权限
       - name: 授权Gradle脚本
         run: chmod +x gradlew
 
+      # 3. 编译Release版本
       - name: 编译Release版本
         run: ./gradlew assembleRelease
 

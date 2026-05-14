@@ -28,8 +28,8 @@ android {
 
 dependencies {
     implementation 'androidx.appcompat:appcompat:1.6.1'
-    implementation 'com.google.android.exoplayer2:exoplayer:2.19.1'
-    implementation 'com.google.android.exoplayer2:ui:2.19.1'
+    implementation 'com.google.android.exoplayer2:exoplayer:1.0.2'
+    implementation 'com.google.android.exoplayer2:ui:1.0.2'
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
-    implementation 'com.google.code.gson:gson:2.10.1'
+    implementation 'com.google.code.gson:gson:1.0.2'
 }

@@ -1,0 +1,31 @@
+name: 电视直播APP云编译
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 配置JDK17
+        uses: actions/setup-java@v4
+        with:
+          java-version: 17
+          distribution: temurin
+          cache: gradle
+
+      - name: 授权Gradle
+        run: chmod +x gradlew
+
+      - name: 编译Release版本
+        run: ./gradlew assembleRelease
+
+      - name: 上传编译好的APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: TV直播APP-Release
+          path: app/build/outputs/apk/release/app-release-unsigned.apk

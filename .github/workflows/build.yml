@@ -73,7 +73,7 @@ jobs:
         run: |
           ./gradlew clean \
           assembleRelease \
-          -x lintVitalRelease
+         
 
       - name: Upload Release APK
         uses: actions/upload-artifact@v4

@@ -1,14 +1,16 @@
-package com.tv.live
-import android.content.BroadcastReceiver
-import android.content.Context
-import android.content.Intent
+package com.tv.live;
 
-class BootReceiver : BroadcastReceiver() {
-    override fun onReceive(context: Context?, intent: Intent?) {
-        if (Intent.ACTION_BOOT_COMPLETED == intent?.action) {
-            val appIntent = Intent(context, MainActivity::class.java)
-            appIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
-            context?.startActivity(appIntent)
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+
+public class BootReceiver extends BroadcastReceiver {
+    @Override
+    public void onReceive(Context context, Intent intent) {
+        if (Intent.ACTION_BOOT_COMPLETED.equals(intent.getAction())) {
+            Intent appIntent = new Intent(context, MainActivity.class);
+            appIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            context.startActivity(appIntent);
         }
     }
 }

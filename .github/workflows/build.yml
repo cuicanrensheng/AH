@@ -20,7 +20,7 @@ jobs:
           distribution: temurin
           cache: gradle
 
-      - name: 生成Gradle 8.4（和Kotlin完全兼容）
+      - name: 生成Gradle Wrapper
         run: |
           sudo apt update && sudo apt install -y gradle
           gradle wrapper --gradle-version 8.4

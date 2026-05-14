@@ -5,7 +5,5 @@ pluginManagement {
         gradlePluginPortal()
     }
 }
-
-// 去掉 dependencyResolutionManagement，改用兼容写法
 rootProject.name = "TVLive"
 include ':app'

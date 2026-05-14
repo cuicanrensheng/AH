@@ -5,5 +5,15 @@ pluginManagement {
         gradlePluginPortal()
     }
 }
+
+// 关键：添加依赖仓库配置
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
 rootProject.name = "TVLive"
 include ':app'

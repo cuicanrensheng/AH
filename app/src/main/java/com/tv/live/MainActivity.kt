@@ -42,10 +42,12 @@ public class MainActivity extends Activity {
             return true;
         }
         if (keyCode == KeyEvent.KEYCODE_ENTER || keyCode == KeyEvent.KEYCODE_DPAD_CENTER) {
-            if (player.isPlaying()) {
-                player.pause();
-            } else {
-                player.play();
+            if (player != null) { // 增加空指针保护
+                if (player.isPlaying()) {
+                    player.pause();
+                } else {
+                    player.play();
+                }
             }
             return true;
         }
@@ -61,8 +63,19 @@ public class MainActivity extends Activity {
     }
 
     @Override
+    protected void onPause() {
+        super.onPause();
+        if (player != null && player.isPlaying()) {
+            player.pause();
+        }
+    }
+
+    @Override
     protected void onDestroy() {
         super.onDestroy();
-        player.release();
+        if (player != null) { // 关键：增加空指针保护，避免崩溃
+            player.release();
+            player = null;
+        }
     }
 }

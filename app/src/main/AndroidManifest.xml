@@ -10,6 +10,7 @@
         android:label="电视直播"
         android:theme="@style/Theme.AppCompat.Light.NoActionBar">
 
+        <!-- 正确的Activity声明，没有中文标点 -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -21,6 +22,7 @@
             </intent-filter>
         </activity>
 
+        <!-- 正确的Receiver声明，没有中文标点 -->
         <receiver
             android:name=".BootReceiver"
             android:enabled="true"

@@ -4,7 +4,6 @@ on:
     branches:
       - main
       - master
-  pull_request:
   workflow_dispatch:
 
 jobs:
@@ -21,10 +20,10 @@ jobs:
           distribution: temurin
           cache: gradle
 
-      - name: 自动生成Gradle Wrapper（解决jar缺失问题）
+      - name: 生成Gradle 8.4（和Kotlin完全兼容）
         run: |
           sudo apt update && sudo apt install -y gradle
-          gradle wrapper --gradle-version 8.7
+          gradle wrapper --gradle-version 8.4
 
       - name: 授权Gradle脚本
         run: chmod +x gradlew
@@ -32,7 +31,7 @@ jobs:
       - name: 编译Release版本
         run: ./gradlew assembleRelease
 
-      - name: 上传编译好的APK
+      - name: 上传APK
         uses: actions/upload-artifact@v4
         with:
           name: TV-Live-App-Release

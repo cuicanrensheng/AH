@@ -1,9 +1,7 @@
 name: TV Live App Build
 on:
   push:
-    branches:
-      - main
-      - master
+    branches: [ main, master ]
   workflow_dispatch:
 
 jobs:
@@ -20,19 +18,14 @@ jobs:
           distribution: temurin
           cache: gradle
 
-      - name: 强制重置并生成Gradle Wrapper
-        run: |
-          rm -rf gradle .gradle
-          sudo apt update && sudo apt install -y gradle
-          gradle wrapper --gradle-version 8.4
-
+      # 适配你当前已有的gradle-wrapper.jar，用和AGP 8.3.0兼容的Gradle 8.4
       - name: 授权Gradle脚本
         run: chmod +x gradlew
 
       - name: 编译Release版本
         run: ./gradlew assembleRelease
 
-      - name: 上传编译好的APK
+      - name: 上传APK
         uses: actions/upload-artifact@v4
         with:
           name: TV-Live-App-Release

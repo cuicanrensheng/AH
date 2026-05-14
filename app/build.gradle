@@ -12,25 +12,49 @@ android {
         targetSdk 34
         versionCode 1
         versionName "1.0"
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        
+        // 只保留主流电视/手机架构，控制包体大小
+        ndk {
+            abiFilters 'armeabi-v7a', 'arm64-v8a'
+        }
+    }
+
+    signingConfigs {
+        release {
+            // 替换成你的签名文件信息
+            storeFile file("my-release-key.jks")
+            storePassword "你的keystore密码"
+            keyAlias "你的key别名"
+            keyPassword "你的key密码"
+        }
     }
 
     buildTypes {
         release {
+            // 关键：关闭混淆、关闭资源压缩，彻底解决闪退
             minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt')
+            shrinkResources false
+            debuggable true // 保留调试信息，方便排查问题
+            signingConfig signingConfigs.release
         }
     }
+
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_17
-        targetCompatibility JavaVersion.VERSION_17
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
     }
 }
+
 dependencies {
+    // AndroidX基础库
     implementation 'androidx.appcompat:appcompat:1.6.1'
-    // 用正确的 ExoPlayer 版本号
+    
+    // ExoPlayer 全组件（核心+UI+扩展，满足所有播放需求）
     implementation 'com.google.android.exoplayer:exoplayer:2.19.1'
     implementation 'com.google.android.exoplayer:exoplayer-ui:2.19.1'
-    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
-    implementation 'com.google.code.gson:gson:2.10.1'
+    implementation 'com.google.android.exoplayer:exoplayer-extractor:2.19.1'
+    implementation 'com.google.android.exoplayer:exoplayer-dash:2.19.1'
+    implementation 'com.google.android.exoplayer:exoplayer-hls:2.19.1'
 }
-

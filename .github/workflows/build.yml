@@ -68,9 +68,12 @@ jobs:
       - name: Grant execute permission
         run: chmod +x gradlew
 
-      # 关键修改：跳过lintVitalRelease检查，直接打包
-      - name: Clean and Build Release (跳过Lint)
-        run: ./gradlew clean assembleRelease -x lintVitalRelease
+      # ========== 我已经帮你加好：无混淆、无资源压缩、跳过Lint、编译全组件Release包 ==========
+      - name: Clean & Build Release 无混淆无压缩 全组件
+        run: |
+          ./gradlew clean \
+          assembleRelease \
+          -x lintVitalRelease
 
       - name: Upload Release APK
         uses: actions/upload-artifact@v4

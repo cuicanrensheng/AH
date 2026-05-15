@@ -2,27 +2,34 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.tv.live">
 
+    <!-- 网络、IPv6、Wi-Fi、后台服务 -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
         android:label="电视直播"
-        android:theme="@style/Theme.AppCompat.Light.NoActionBar">
+        android:theme="@style/Theme.AppCompat.Light.NoActionBar"
+        android:hardwareAccelerated="true">
 
-        <!-- 正确的Activity声明，没有中文标点 -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTask"
-            android:screenOrientation="landscape">
+            android:screenOrientation="landscape"
+            android:configChanges="keyboard|keyboardHidden|orientation|screenSize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
 
-        <!-- 正确的Receiver声明，没有中文标点 -->
+        <!-- 开机自启广播 -->
         <receiver
             android:name=".BootReceiver"
             android:enabled="true"
@@ -31,6 +38,12 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
+
+        <!-- 内置Web后台服务 -->
+        <service
+            android:name=".web.WebServerService"
+            android:exported="false"
+            android:foregroundServiceType="none" />
 
     </application>
 

@@ -19,8 +19,9 @@ android {
             abiFilters 'armeabi-v7a', 'arm64-v8a'
         }
 
-        // 开启全部资源打包，不精简
+        // 强制开启完整打包，不精简任何资源和依赖
         vectorDrawables.useSupportLibrary = true
+        multiDexEnabled true
     }
 
     signingConfigs {
@@ -34,7 +35,7 @@ android {
 
     buildTypes {
         release {
-            // 彻底关闭混淆、代码压缩、资源压缩
+            // 关闭所有压缩和混淆，强制保留全部代码和资源
             minifyEnabled false
             shrinkResources false
             debuggable false
@@ -48,25 +49,40 @@ android {
         coreLibraryDesugaringEnabled true
     }
 
-    // 强制打包全部assets、不压缩任何资源
+    // 强制打包所有 assets，不压缩
     aaptOptions {
-        noCompress 'html', 'js', 'css', 'json', 'm3u', 'xml', 'gz'
+        noCompress 'html', 'js', 'css', 'json', 'm3u', 'xml', 'gz', 'ts'
+    }
+
+    // 强制包含所有依赖，不裁剪
+    packagingOptions {
+        pickFirst 'META-INF/*'
+        exclude 'META-INF/*.SF'
+        exclude 'META-INF/*.DSA'
+        exclude 'META-INF/*.RSA'
     }
 }
 
 dependencies {
-    // 基础兼容
+    // 基础安卓依赖
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'androidx.core:core-ktx:1.12.0'
+    implementation 'com.google.android.material:material:1.11.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
 
-    // ExoPlayer 全套播放器
+    // ExoPlayer 全套（带解码器）
     implementation 'com.google.android.exoplayer:exoplayer:2.19.1'
     implementation 'com.google.android.exoplayer:exoplayer-ui:2.19.1'
     implementation 'com.google.android.exoplayer:exoplayer-extractor:2.19.1'
     implementation 'com.google.android.exoplayer:exoplayer-dash:2.19.1'
     implementation 'com.google.android.exoplayer:exoplayer-hls:2.19.1'
+    implementation 'com.google.android.exoplayer:exoplayer-core:2.19.1'
+    implementation 'com.google.android.exoplayer:exoplayer-rtmp:2.19.1'
 
-    // 内置Web服务 10481端口（修正为nanohttpd-webserver，避免和其他依赖冲突）
+    // 新增：VLC 播放器 SDK（体积大头，直接+30MB）
+    implementation 'de.mrmaffen:vlc-android-sdk:4.0.0'
+
+    // 内置Web服务 10481端口
     implementation 'org.nanohttpd:nanohttpd-webserver:2.3.1'
 
     // 网络请求、IPv6适配
@@ -78,7 +94,7 @@ dependencies {
     // 本地缓存、配置存储
     implementation 'androidx.datastore:datastore-preferences:1.0.0'
 
-    // 新增：Gson（JSON解析，导入导出数据必须）
+    // JSON解析，导入导出数据
     implementation 'com.google.code.gson:gson:2.10.1'
 
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'

@@ -2,18 +2,18 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.tv.live">
 
-    <!-- 网络、IPv6、Wi-Fi、后台服务 -->
+    <!-- 网络、后台服务权限 -->
     <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="ACCESS_NETWORK_STATE" />
-    <uses-permission android:name="ACCESS_WIFI_STATE" />
-    <uses-permission android:name="RECEIVE_BOOT_COMPLETED" />
-    <uses-permission android:name="FOREGROUND_SERVICE" />
-    <uses-permission android:name="WAKE_LOCK" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <application
         android:allowBackup="true"
-        android:icon="@mipmap/ic_launcher"
-        android:roundIcon="@mipmap/ic_launcher_round"
+        android:icon="@android:drawable/sym_def_app_icon"
+        android:roundIcon="@android:drawable/sym_def_app_icon"
         android:label="电视直播"
         android:theme="@style/Theme.AppCompat.Light.NoActionBar"
         android:hardwareAccelerated="true">
@@ -43,8 +43,7 @@
         <!-- 内置Web后台服务 -->
         <service
             android:name=".web.WebServerService"
-            android:exported="false"
-            android:foregroundServiceType="none" />
+            android:exported="false" />
 
     </application>
 

@@ -68,7 +68,11 @@ jobs:
       - name: Grant execute permission
         run: chmod +x gradlew
 
-      # 自动生成签名密钥
+      # 先创建 app/build 目录，防止 keytool 报错
+      - name: Prepare build dir
+        run: mkdir -p app/build
+
+      # 自动生成签名密钥 别名:auto-key 密码:123456
       - name: Auto Generate Release Keystore
         run: |
           keytool -genkey -noprompt \
@@ -79,11 +83,11 @@ jobs:
           -keypass 123456 \
           -dname "CN=Auto,OU=Dev,O=Dev,L=City,S=State,C=CN"
 
-      # 编译并自动签名 无混淆无压缩
+      # 编译环境变量 路径完全对齐
       - name: Clean & Build Release Auto Sign
         run: ./gradlew clean assembleRelease
         env:
-          KS_FILE: build/auto-release.jks
+          KS_FILE: app/build/auto-release.jks
           KS_PASS: 123456
           KS_ALIAS: auto-key
           KEY_PASS: 123456

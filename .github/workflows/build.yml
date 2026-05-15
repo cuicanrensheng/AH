@@ -1,4 +1,4 @@
-name: Android Build
+name: Android Release Build
 
 on:
   push:
@@ -22,7 +22,7 @@ jobs:
       - name: Install ImageMagick
         run: sudo apt-get install -y imagemagick
 
-      - name: Auto create default icon folders
+      - name: Create res folders
         run: |
           mkdir -p app/src/main/res/mipmap-mdpi
           mkdir -p app/src/main/res/mipmap-hdpi
@@ -32,7 +32,7 @@ jobs:
           mkdir -p app/src/main/res/mipmap-anydpi-v26
           mkdir -p app/src/main/res/values
 
-      - name: Auto generate default ic_launcher png
+      - name: Generate default icons
         run: |
           convert -size 48x48 xc:#cccccc app/src/main/res/mipmap-mdpi/ic_launcher.png
           convert -size 72x72 xc:#cccccc app/src/main/res/mipmap-hdpi/ic_launcher.png
@@ -40,7 +40,7 @@ jobs:
           convert -size 144x144 xc:#cccccc app/src/main/res/mipmap-xxhdpi/ic_launcher.png
           convert -size 192x192 xc:#cccccc app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
 
-      - name: Create adaptive icon xml
+      - name: Create adaptive icon
         run: |
           cat > app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml << 'EOF'
           <?xml version="1.0" encoding="utf-8"?>
@@ -48,7 +48,6 @@ jobs:
               <background android:drawable="@color/white"/>
           </adaptive-icon>
           EOF
-
           cat > app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml << 'EOF'
           <?xml version="1.0" encoding="utf-8"?>
           <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
@@ -68,12 +67,12 @@ jobs:
       - name: Grant execute permission
         run: chmod +x gradlew
 
-      # 直接编译调试包，不生成密钥、不处理签名
-      - name: Clean & Build Debug
-        run: ./gradlew clean assembleDebug
+      # 编译正式签名的Release包
+      - name: Clean & Build Release
+        run: ./gradlew clean assembleRelease
 
-      - name: Upload Debug APK
+      - name: Upload Release APK
         uses: actions/upload-artifact@v4
         with:
-          name: Debug-APK
-          path: app/build/outputs/apk/debug/*.apk
+          name: Release-APK
+          path: app/build/outputs/apk/release/*.apk

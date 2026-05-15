@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.os.Bundle;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
+
 import com.google.android.exoplayer2.ExoPlayer;
 import com.google.android.exoplayer2.MediaItem;
 import com.google.android.exoplayer2.ui.PlayerView;
@@ -42,7 +43,7 @@ public class MainActivity extends Activity {
             return true;
         }
         if (keyCode == KeyEvent.KEYCODE_ENTER || keyCode == KeyEvent.KEYCODE_DPAD_CENTER) {
-            if (player != null) { // 增加空指针保护
+            if (player != null) {
                 if (player.isPlaying()) {
                     player.pause();
                 } else {
@@ -73,7 +74,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        if (player != null) { // 关键：增加空指针保护，避免崩溃
+        if (player != null) {
             player.release();
             player = null;
         }

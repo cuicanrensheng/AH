@@ -20,27 +20,22 @@ android {
         }
     }
 
-    // 改用系统默认Debug签名，删掉所有jks和环境变量
+    // 启用你上传的 release.keystore 正式签名
     signingConfigs {
-        debug {
-            keyAlias "androiddebugkey"
-            keyPassword "android"
-            storePassword "android"
+        release {
+            storeFile file("release.keystore")
+            storePassword "admin123"
+            keyAlias "myreleasekey"
+            keyPassword "admin123"
         }
     }
 
     buildTypes {
-        debug {
-            minifyEnabled false
-            shrinkResources false
-            debuggable true
-        }
-        // release也复用debug签名，不用额外密钥
         release {
             minifyEnabled false
             shrinkResources false
-            debuggable true
-            signingConfig signingConfigs.debug
+            debuggable false
+            signingConfig signingConfigs.release
         }
     }
 

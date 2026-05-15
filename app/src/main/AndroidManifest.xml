@@ -30,6 +30,18 @@
             </intent-filter>
         </activity>
 
+        <!-- 新增：频道列表界面 -->
+        <activity
+            android:name=".ChannelListActivity"
+            android:screenOrientation="landscape"
+            android:configChanges="keyboard|keyboardHidden|orientation|screenSize" />
+
+        <!-- 新增：设置界面 -->
+        <activity
+            android:name=".SettingsActivity"
+            android:screenOrientation="landscape"
+            android:configChanges="keyboard|keyboardHidden|orientation|screenSize" />
+
         <!-- 开机自启广播 -->
         <receiver
             android:name=".BootReceiver"

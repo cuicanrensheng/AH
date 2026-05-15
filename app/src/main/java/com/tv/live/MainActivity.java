@@ -1,4 +1,8 @@
 package com.tv.live;
+import com.tv.live.model.Channel;
+import com.tv.live.model.Playlist;
+import com.tv.live.utils.PlaylistManager;
+import com.tv.live.utils.WebServer;
 
 import android.os.Bundle;
 import android.view.GestureDetector;

@@ -1,5 +1,4 @@
 package com.tv.live;
-
 import android.os.Bundle;
 import android.view.View;
 import android.view.ViewGroup;
@@ -26,9 +25,7 @@ public class ChannelListActivity extends AppCompatActivity {
 
         listView.setOnItemClickListener((ad, v, pos, id) -> {
             Channel ch = channelList.get(pos);
-            if (mainInstance != null) {
-                mainInstance.playChannel(ch);
-            }
+            mainInstance.playChannel(ch);
             finish();
         });
     }

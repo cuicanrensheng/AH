@@ -138,7 +138,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // 核心播放方法
-    private void playChannel(Channel channel) {
+    public void playChannel(Channel channel) {
         runOnUiThread(() -> {
             MediaItem mediaItem = MediaItem.fromUri(channel.getUrl());
             exoPlayer.setMediaItem(mediaItem);

@@ -81,7 +81,7 @@ dependencies {
     implementation 'com.google.android.exoplayer:exoplayer-hls:2.19.1'
     implementation 'com.google.android.exoplayer:exoplayer-core:2.19.1'
 
-    implementation 'com.github.videolan:vlc-android:3.5.4'
+    implementation 'de.mrmaffen:vlc-android-sdk:3.0.13'
 
     implementation 'org.nanohttpd:nanohttpd-webserver:2.3.1'
 

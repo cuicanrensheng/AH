@@ -17,8 +17,9 @@ public class WebServer extends NanoHTTPD {
         this.context = context.getApplicationContext();
     }
 
+    // 去掉throws Exception，和父类保持一致
     @Override
-    public void start() throws Exception {
+    public void start() {
         super.start();
         Log.i(TAG, "Web Server started on port " + PORT);
     }
@@ -33,7 +34,8 @@ public class WebServer extends NanoHTTPD {
     public Response serve(IHTTPSession session) {
         String path = session.getUri();
         Method method = session.getMethod();
-        Map<String, String> params = new HashMap<>(session.getParameters());
+        // 强制类型转换，解决类型不匹配
+        Map<String, String> params = new HashMap<>((Map<String, String>) session.getParameters());
 
         Log.d(TAG, "Request: " + method + " " + path + ", params: " + params);
 

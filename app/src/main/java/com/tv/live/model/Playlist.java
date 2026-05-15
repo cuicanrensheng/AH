@@ -1,17 +1,18 @@
 package com.tv.live.model;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public class Playlist {
     private long id;
     private String name;
-    private String url; // 加上这个字段，给 WebServer 用
+    private String url;
     private List<Channel> channels;
 
-    // 无参构造（你现在用的）
+    // 无参构造
     public Playlist() {}
 
-    // 全参构造（兼容所有情况）
+    // 4 参数全参构造
     public Playlist(long id, String name, String url, List<Channel> channels) {
         this.id = id;
         this.name = name;
@@ -19,19 +20,23 @@ public class Playlist {
         this.channels = channels;
     }
 
-    // 兼容旧代码的构造方法
+    // 兼容旧代码：3 参数（给 WebServer 用）
+    public Playlist(long id, String name, String url) {
+        this(id, name, url, new ArrayList<>());
+    }
+
+    // 兼容旧代码：3 参数（给 PlaylistParser 用）
     public Playlist(long id, String name, List<Channel> channels) {
         this(id, name, "", channels);
     }
 
-    // 加上 WebServer 需要的 getUrl() 方法
-    public String getUrl() { return url; }
-    public void setUrl(String url) { this.url = url; }
-
+    // Getter 和 Setter
     public long getId() { return id; }
     public void setId(long id) { this.id = id; }
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
+    public String getUrl() { return url; }
+    public void setUrl(String url) { this.url = url; }
     public List<Channel> getChannels() { return channels; }
     public void setChannels(List<Channel> channels) { this.channels = channels; }
 }

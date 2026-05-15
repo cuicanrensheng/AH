@@ -66,7 +66,7 @@ dependencies {
     implementation 'com.google.android.exoplayer:exoplayer-dash:2.19.1'
     implementation 'com.google.android.exoplayer:exoplayer-hls:2.19.1'
 
-    // 内置Web服务 10481端口
+    // 内置Web服务 10481端口（修正为nanohttpd-webserver，避免和其他依赖冲突）
     implementation 'org.nanohttpd:nanohttpd-webserver:2.3.1'
 
     // 网络请求、IPv6适配
@@ -77,6 +77,9 @@ dependencies {
 
     // 本地缓存、配置存储
     implementation 'androidx.datastore:datastore-preferences:1.0.0'
+
+    // 新增：Gson（JSON解析，导入导出数据必须）
+    implementation 'com.google.code.gson:gson:2.10.1'
 
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'
 }

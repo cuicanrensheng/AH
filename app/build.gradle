@@ -20,14 +20,13 @@ android {
         }
     }
 
-    // 【最终版】和 Actions 完全对齐的签名配置
     signingConfigs {
         release {
-            // 注意：这里去掉了 app/ 前缀，Gradle 会自动在 app/ 目录下查找
-            storeFile file(System.getenv("KS_FILE") ?: "build/auto-release.jks")
-            storePassword System.getenv("KS_PASS") ?: "auto1234"
-            keyAlias System.getenv("KS_ALIAS") ?: "auto"
-            keyPassword System.getenv("KEY_PASS") ?: "auto1234"
+            // 直接使用相对路径，Gradle 会从 app/ 目录下查找
+            storeFile file("build/auto-release.jks")
+            storePassword System.getenv("KS_PASS", "auto1234")
+            keyAlias System.getenv("KS_ALIAS", "auto")
+            keyPassword System.getenv("KEY_PASS", "auto1234")
         }
     }
 

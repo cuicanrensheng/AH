@@ -2,6 +2,15 @@ plugins {
     id 'com.android.application'
 }
 
+// 关键：repositories 必须放在文件顶层，不能在 android {} 里面
+repositories {
+    google()
+    mavenCentral()
+    maven { url 'https://maven.aliyun.com/repository/google' }
+    maven { url 'https://maven.aliyun.com/repository/jcenter' }
+    maven { url 'https://jitpack.io' }
+}
+
 android {
     namespace "com.tv.live"
     compileSdk 34
@@ -59,15 +68,6 @@ android {
     }
 }
 
-// 国内镜像源，解决依赖下载问题
-repositories {
-    google()
-    mavenCentral()
-    maven { url 'https://maven.aliyun.com/repository/google' }
-    maven { url 'https://maven.aliyun.com/repository/jcenter' }
-    maven { url 'https://jitpack.io' }
-}
-
 dependencies {
     // 基础安卓依赖
     implementation 'androidx.appcompat:appcompat:1.6.1'
@@ -75,7 +75,7 @@ dependencies {
     implementation 'com.google.android.material:material:1.11.0'
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
 
-    // ExoPlayer 稳定版（去掉失效的rtmp模块）
+    // ExoPlayer 稳定版
     implementation 'com.google.android.exoplayer:exoplayer:2.19.1'
     implementation 'com.google.android.exoplayer:exoplayer-ui:2.19.1'
     implementation 'com.google.android.exoplayer:exoplayer-extractor:2.19.1'
@@ -83,7 +83,7 @@ dependencies {
     implementation 'com.google.android.exoplayer:exoplayer-hls:2.19.1'
     implementation 'com.google.android.exoplayer:exoplayer-core:2.19.1'
 
-    // 替换为稳定可用的VLC SDK（来自JitPack）
+    // VLC SDK（来自JitPack）
     implementation 'com.github.videolan:vlc-android:3.5.4'
 
     // 内置Web服务 10481端口

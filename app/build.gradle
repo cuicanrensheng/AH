@@ -2,7 +2,7 @@ plugins {
     id 'com.android.application'
 }
 
-// 关键：repositories 必须放在文件顶层，不能在 android {} 里面
+// 仓库必须放在文件顶层
 repositories {
     google()
     mavenCentral()
@@ -12,8 +12,10 @@ repositories {
 }
 
 android {
-    namespace "com.tv.live"
+    // 必须指定 compileSdk
     compileSdk 34
+
+    namespace "com.tv.live"
 
     defaultConfig {
         applicationId "com.tv.live"

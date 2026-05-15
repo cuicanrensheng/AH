@@ -20,13 +20,14 @@ android {
         }
     }
 
-    // 自动适配 Actions 动态密钥，不用写死密码
+    // 【已修正】自动适配 Actions 动态密钥
     signingConfigs {
         release {
-            storeFile file(System.getenv("KS_FILE", "debug.keystore"))
-            storePassword System.getenv("KS_PASS", "android")
-            keyAlias System.getenv("KS_ALIAS", "androiddebugkey")
-            keyPassword System.getenv("KEY_PASS", "android")
+            // 优先读取 Actions 传入的路径，本地构建 fallback 到默认值
+            storeFile file(System.getenv("KS_FILE") ?: "app/build/auto-release.jks")
+            storePassword System.getenv("KS_PASS") ?: "auto1234"
+            keyAlias System.getenv("KS_ALIAS") ?: "auto"
+            keyPassword System.getenv("KEY_PASS") ?: "auto1234"
         }
     }
 

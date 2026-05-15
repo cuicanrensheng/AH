@@ -6,7 +6,7 @@ import android.content.Intent;
 
 public class BootReceiver extends BroadcastReceiver {
 
-    // 显式无参构造，专治Lint实例化报错
+    // 显式无参构造，解决Lint无法实例化报错
     public BootReceiver() {
     }
 

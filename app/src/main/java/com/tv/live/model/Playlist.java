@@ -1,27 +1,25 @@
 package com.tv.live.model;
-
-import java.util.ArrayList;
 import java.util.List;
 
 public class Playlist {
     private long id;
     private String name;
-    private String url;
     private List<Channel> channels;
 
-    public Playlist(long id, String name, String url) {
-        this(id, name, url, new ArrayList<>());
-    }
+    // 无参构造（必须加，否则报错）
+    public Playlist() {}
 
-    public Playlist(long id, String name, String url, List<Channel> channels) {
+    // 全参构造
+    public Playlist(long id, String name, List<Channel> channels) {
         this.id = id;
         this.name = name;
-        this.url = url;
         this.channels = channels;
     }
 
     public long getId() { return id; }
+    public void setId(long id) { this.id = id; }
     public String getName() { return name; }
-    public String getUrl() { return url; }
+    public void setName(String name) { this.name = name; }
     public List<Channel> getChannels() { return channels; }
+    public void setChannels(List<Channel> channels) { this.channels = channels; }
 }

@@ -1,5 +1,6 @@
 package com.tv.live.model;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public class Playlist {

@@ -19,7 +19,6 @@ android {
             abiFilters 'armeabi-v7a', 'arm64-v8a'
         }
 
-        // 强制开启完整打包，不精简任何资源和依赖
         vectorDrawables.useSupportLibrary = true
         multiDexEnabled true
     }
@@ -35,7 +34,6 @@ android {
 
     buildTypes {
         release {
-            // 关闭所有压缩和混淆，强制保留全部代码和资源
             minifyEnabled false
             shrinkResources false
             debuggable false
@@ -49,18 +47,25 @@ android {
         coreLibraryDesugaringEnabled true
     }
 
-    // 强制打包所有 assets，不压缩
     aaptOptions {
         noCompress 'html', 'js', 'css', 'json', 'm3u', 'xml', 'gz', 'ts'
     }
 
-    // 强制包含所有依赖，不裁剪
     packagingOptions {
         pickFirst 'META-INF/*'
         exclude 'META-INF/*.SF'
         exclude 'META-INF/*.DSA'
         exclude 'META-INF/*.RSA'
     }
+}
+
+// 国内镜像源，解决依赖下载问题
+repositories {
+    google()
+    mavenCentral()
+    maven { url 'https://maven.aliyun.com/repository/google' }
+    maven { url 'https://maven.aliyun.com/repository/jcenter' }
+    maven { url 'https://jitpack.io' }
 }
 
 dependencies {
@@ -70,17 +75,16 @@ dependencies {
     implementation 'com.google.android.material:material:1.11.0'
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
 
-    // ExoPlayer 全套（带解码器）
+    // ExoPlayer 稳定版（去掉失效的rtmp模块）
     implementation 'com.google.android.exoplayer:exoplayer:2.19.1'
     implementation 'com.google.android.exoplayer:exoplayer-ui:2.19.1'
     implementation 'com.google.android.exoplayer:exoplayer-extractor:2.19.1'
     implementation 'com.google.android.exoplayer:exoplayer-dash:2.19.1'
     implementation 'com.google.android.exoplayer:exoplayer-hls:2.19.1'
     implementation 'com.google.android.exoplayer:exoplayer-core:2.19.1'
-    implementation 'com.google.android.exoplayer:exoplayer-rtmp:2.19.1'
 
-    // 新增：VLC 播放器 SDK（体积大头，直接+30MB）
-    implementation 'de.mrmaffen:vlc-android-sdk:4.0.0'
+    // 替换为稳定可用的VLC SDK（来自JitPack）
+    implementation 'com.github.videolan:vlc-android:3.5.4'
 
     // 内置Web服务 10481端口
     implementation 'org.nanohttpd:nanohttpd-webserver:2.3.1'

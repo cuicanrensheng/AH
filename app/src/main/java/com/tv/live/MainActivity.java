@@ -1,7 +1,9 @@
 package com.tv.live;
 
+import com.google.android.exoplayer2.ExoPlayer;
+import com.google.android.exoplayer2.MediaItem;
+import com.google.android.exoplayer2.ui.PlayerView;
 import com.tv.live.model.Channel;
-import com.tv.live.model.Playlist;
 import com.tv.live.utils.PlaylistManager;
 import com.tv.live.utils.WebServer;
 import android.os.Bundle;
@@ -14,6 +16,8 @@ import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 
 public class MainActivity extends AppCompatActivity {
+    private PlayerView playerView;
+    private ExoPlayer exoPlayer;
     private GestureDetector gestureDetector;
     private WebServer webServer;
     private int currentChannelIndex = 0;
@@ -22,57 +26,79 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        // 绑定你刚创建的布局（含PlayerView）
         setContentView(R.layout.activity_main);
 
-        // 延迟初始化，保证界面先加载，彻底解决黑屏
+        // 初始化播放器
+        playerView = findViewById(R.id.playerView);
+        exoPlayer = new ExoPlayer.Builder(this).build();
+        playerView.setPlayer(exoPlayer);
+
+        // 延迟初始化其他耗时操作，不卡主界面
         new Handler().postDelayed(() -> {
             // 初始化数据管理器
             PlaylistManager.init(MainActivity.this);
             // 初始化手势识别
-            gestureDetector = new GestureDetector(MainActivity.this, new GestureDetector.SimpleOnGestureListener() {
-                @Override
-                public boolean onFling(MotionEvent e1, MotionEvent e2, float velocityX, float velocityY) {
-                    float deltaX = e2.getX() - e1.getX();
-                    float deltaY = e2.getY() - e1.getY();
-                    if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 100) {
-                        if (deltaX > 0) previousLine();
-                        else nextLine();
-                        return true;
-                    } else if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 100) {
-                        if (deltaY > 0) previousChannel();
-                        else nextChannel();
-                        return true;
-                    }
-                    return false;
-                }
+            initGestureDetector();
+            // 启动后台Web服务
+            initWebServer();
+            // 加载并播放第一个频道
+            loadFirstChannel();
+        }, 300);
+    }
 
-                @Override
-                public void onLongPress(MotionEvent e) {
-                    toggleFavorite();
-                }
-            });
-
-            gestureDetector.setOnDoubleTapListener(new GestureDetector.OnDoubleTapListener() {
-                @Override
-                public boolean onSingleTapConfirmed(MotionEvent e) { return false; }
-                @Override
-                public boolean onDoubleTap(MotionEvent e) {
-                    toggleFullscreen();
+    private void initGestureDetector() {
+        gestureDetector = new GestureDetector(MainActivity.this, new GestureDetector.SimpleOnGestureListener() {
+            @Override
+            public boolean onFling(MotionEvent e1, MotionEvent e2, float velocityX, float velocityY) {
+                float deltaX = e2.getX() - e1.getX();
+                float deltaY = e2.getY() - e1.getY();
+                if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 100) {
+                    if (deltaX > 0) previousLine();
+                    else nextLine();
+                    return true;
+                } else if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 100) {
+                    if (deltaY > 0) previousChannel();
+                    else nextChannel();
                     return true;
                 }
-                @Override
-                public boolean onDoubleTapEvent(MotionEvent e) { return false; }
-            });
-
-            // 启动后台Web服务
-            webServer = new WebServer(MainActivity.this);
-            try {
-                webServer.start();
-                Toast.makeText(MainActivity.this, "后台服务已启动：http://本机IP:10481", Toast.LENGTH_LONG).show();
-            } catch (Exception e) {
-                Toast.makeText(MainActivity.this, "服务启动失败：" + e.getMessage(), Toast.LENGTH_SHORT).show();
+                return false;
             }
-        }, 300);
+
+            @Override
+            public void onLongPress(MotionEvent e) {
+                toggleFavorite();
+            }
+        });
+
+        gestureDetector.setOnDoubleTapListener(new GestureDetector.OnDoubleTapListener() {
+            @Override
+            public boolean onSingleTapConfirmed(MotionEvent e) { return false; }
+            @Override
+            public boolean onDoubleTap(MotionEvent e) {
+                toggleFullscreen();
+                return true;
+            }
+            @Override
+            public boolean onDoubleTapEvent(MotionEvent e) { return false; }
+        });
+    }
+
+    private void initWebServer() {
+        webServer = new WebServer(MainActivity.this);
+        try {
+            webServer.start(10481);
+            runOnUiThread(() -> Toast.makeText(MainActivity.this, "后台服务已启动：http://本机IP:10481", Toast.LENGTH_LONG).show());
+        } catch (Exception e) {
+            runOnUiThread(() -> Toast.makeText(MainActivity.this, "服务启动失败：" + e.getMessage(), Toast.LENGTH_SHORT).show());
+        }
+    }
+
+    private void loadFirstChannel() {
+        java.util.List<Channel> channels = PlaylistManager.getCurrentPlaylistChannels();
+        if (!channels.isEmpty()) {
+            playChannel(channels.get(0));
+        }
     }
 
     @Override
@@ -111,13 +137,23 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // 核心功能方法
+    // 核心播放方法
+    private void playChannel(Channel channel) {
+        runOnUiThread(() -> {
+            MediaItem mediaItem = MediaItem.fromUri(channel.getUrl());
+            exoPlayer.setMediaItem(mediaItem);
+            exoPlayer.prepare();
+            exoPlayer.play();
+            Toast.makeText(MainActivity.this, "正在播放：" + channel.getName(), Toast.LENGTH_SHORT).show();
+        });
+    }
+
+    // 频道切换方法
     private void nextChannel() {
         java.util.List<Channel> channels = PlaylistManager.getCurrentPlaylistChannels();
         if (currentChannelIndex < channels.size() - 1) {
             currentChannelIndex++;
             playChannel(channels.get(currentChannelIndex));
-            Toast.makeText(this, "下一台：" + channels.get(currentChannelIndex).getName(), Toast.LENGTH_SHORT).show();
         }
     }
 
@@ -126,7 +162,6 @@ public class MainActivity extends AppCompatActivity {
         if (currentChannelIndex > 0) {
             currentChannelIndex--;
             playChannel(channels.get(currentChannelIndex));
-            Toast.makeText(this, "上一台：" + channels.get(currentChannelIndex).getName(), Toast.LENGTH_SHORT).show();
         }
     }
 
@@ -156,13 +191,14 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private void playChannel(Channel channel) {
-        // 播放逻辑
-    }
-
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        // 释放播放器资源
+        if (exoPlayer != null) {
+            exoPlayer.release();
+        }
+        // 关闭Web服务
         if (webServer != null) {
             webServer.stop();
         }

@@ -1,18 +1,17 @@
 package com.tv.live;
+
 import com.tv.live.model.Channel;
 import com.tv.live.model.Playlist;
 import com.tv.live.utils.PlaylistManager;
 import com.tv.live.utils.WebServer;
-
 import android.os.Bundle;
+import android.os.Handler;
 import android.view.GestureDetector;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
-import com.tv.live.utils.PlaylistManager;
-import com.tv.live.utils.WebServer;
 
 public class MainActivity extends AppCompatActivity {
     private GestureDetector gestureDetector;
@@ -25,61 +24,63 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        // 初始化数据管理器
-        PlaylistManager.init(this);
+        // 延迟初始化，保证界面先加载，彻底解决黑屏
+        new Handler().postDelayed(() -> {
+            // 初始化数据管理器
+            PlaylistManager.init(MainActivity.this);
+            // 初始化手势识别
+            gestureDetector = new GestureDetector(MainActivity.this, new GestureDetector.SimpleOnGestureListener() {
+                @Override
+                public boolean onFling(MotionEvent e1, MotionEvent e2, float velocityX, float velocityY) {
+                    float deltaX = e2.getX() - e1.getX();
+                    float deltaY = e2.getY() - e1.getY();
+                    if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 100) {
+                        if (deltaX > 0) previousLine();
+                        else nextLine();
+                        return true;
+                    } else if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 100) {
+                        if (deltaY > 0) previousChannel();
+                        else nextChannel();
+                        return true;
+                    }
+                    return false;
+                }
 
-        // 初始化手势识别
-        gestureDetector = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
-            @Override
-            public boolean onFling(MotionEvent e1, MotionEvent e2, float velocityX, float velocityY) {
-                float deltaX = e2.getX() - e1.getX();
-                float deltaY = e2.getY() - e1.getY();
+                @Override
+                public void onLongPress(MotionEvent e) {
+                    toggleFavorite();
+                }
+            });
 
-                if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 100) {
-                    if (deltaX > 0) previousLine();
-                    else nextLine();
-                    return true;
-                } else if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 100) {
-                    if (deltaY > 0) previousChannel();
-                    else nextChannel();
+            gestureDetector.setOnDoubleTapListener(new GestureDetector.OnDoubleTapListener() {
+                @Override
+                public boolean onSingleTapConfirmed(MotionEvent e) { return false; }
+                @Override
+                public boolean onDoubleTap(MotionEvent e) {
+                    toggleFullscreen();
                     return true;
                 }
-                return false;
+                @Override
+                public boolean onDoubleTapEvent(MotionEvent e) { return false; }
+            });
+
+            // 启动后台Web服务
+            webServer = new WebServer(MainActivity.this);
+            try {
+                webServer.start();
+                Toast.makeText(MainActivity.this, "后台服务已启动：http://本机IP:10481", Toast.LENGTH_LONG).show();
+            } catch (Exception e) {
+                Toast.makeText(MainActivity.this, "服务启动失败：" + e.getMessage(), Toast.LENGTH_SHORT).show();
             }
-
-            @Override
-            public void onLongPress(MotionEvent e) {
-                toggleFavorite();
-            }
-        });
-
-        gestureDetector.setOnDoubleTapListener(new GestureDetector.OnDoubleTapListener() {
-            @Override
-            public boolean onSingleTapConfirmed(MotionEvent e) { return false; }
-
-            @Override
-            public boolean onDoubleTap(MotionEvent e) {
-                toggleFullscreen();
-                return true;
-            }
-
-            @Override
-            public boolean onDoubleTapEvent(MotionEvent e) { return false; }
-        });
-
-        // 启动后台Web服务
-        webServer = new WebServer(this);
-        try {
-            webServer.start();
-            Toast.makeText(this, "后台服务已启动：http://本机IP:10481", Toast.LENGTH_LONG).show();
-        } catch (Exception e) {
-            Toast.makeText(this, "服务启动失败：" + e.getMessage(), Toast.LENGTH_SHORT).show();
-        }
+        }, 300);
     }
 
     @Override
     public boolean onTouchEvent(MotionEvent event) {
-        return gestureDetector.onTouchEvent(event) || super.onTouchEvent(event);
+        if (gestureDetector != null) {
+            return gestureDetector.onTouchEvent(event) || super.onTouchEvent(event);
+        }
+        return super.onTouchEvent(event);
     }
 
     // 遥控器按键处理
@@ -156,12 +157,14 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void playChannel(Channel channel) {
-        // 此处替换为你的播放器播放逻辑
+        // 播放逻辑
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        webServer.stop();
+        if (webServer != null) {
+            webServer.stop();
+        }
     }
 }

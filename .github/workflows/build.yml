@@ -68,22 +68,37 @@ jobs:
       - name: Grant execute permission
         run: chmod +x gradlew
 
-      # 关键修复：先创建目录，防止 keytool 报错
-      - name: Prepare build dir
-        run: mkdir -p app/build
+      # --------------------------
+      # 关键修复：带调试的目录创建+密钥生成
+      # --------------------------
+      - name: 1. 创建并验证 build 目录
+        run: |
+          mkdir -p app/build
+          echo "目录创建完成"
+          ls -la app/build/  # 验证目录是否存在
 
-      # 生成密钥库，路径和密码与 build.gradle 完全对齐
-      - name: Auto Generate Release Keystore
+      - name: 2. 强制生成密钥库（带错误检查）
         run: |
           keytool -genkey -noprompt \
-          -keystore app/build/auto-release.jks \
-          -alias auto \
-          -keyalg RSA -keysize 2048 -validity 10000 \
-          -storepass auto1234 \
-          -keypass auto1234 \
-          -dname "CN=Auto,OU=Dev,O=Dev,L=City,S=State,C=CN"
+            -keystore app/build/auto-release.jks \
+            -alias auto \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass auto1234 \
+            -keypass auto1234 \
+            -dname "CN=Auto,OU=Dev,O=Dev,L=City,S=State,C=CN"
+          
+          # 检查文件是否生成成功
+          if [ -f app/build/auto-release.jks ]; then
+            echo "✅ 密钥库生成成功！"
+            ls -la app/build/auto-release.jks
+          else
+            echo "❌ 密钥库生成失败！"
+            exit 1
+          fi
 
-      # 构建时传入和 build.gradle 完全匹配的环境变量
+      # --------------------------
+      # 构建阶段（和 build.gradle 完全对齐）
+      # --------------------------
       - name: Clean & Build Release Auto Sign
         run: ./gradlew clean assembleRelease
         env:

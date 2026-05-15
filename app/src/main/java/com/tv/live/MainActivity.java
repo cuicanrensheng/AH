@@ -1,11 +1,5 @@
 package com.tv.live;
 
-import com.google.android.exoplayer2.ExoPlayer;
-import com.google.android.exoplayer2.MediaItem;
-import com.google.android.exoplayer2.ui.PlayerView;
-import com.tv.live.model.Channel;
-import com.tv.live.utils.PlaylistManager;
-import com.tv.live.utils.WebServer;
 import android.os.Bundle;
 import android.os.Handler;
 import android.view.GestureDetector;
@@ -14,132 +8,123 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
+import com.google.android.exoplayer2.ExoPlayer;
+import com.google.android.exoplayer2.MediaItem;
+import com.google.android.exoplayer2.ui.PlayerView;
+import com.tv.live.model.Channel;
+import com.tv.live.utils.PlaylistManager;
+import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
     private PlayerView playerView;
     private ExoPlayer exoPlayer;
     private GestureDetector gestureDetector;
-    private WebServer webServer;
     private int currentChannelIndex = 0;
-    private boolean isFullscreen = false;
+
+    public static MainActivity instance;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        // 绑定你刚创建的布局（含PlayerView）
         setContentView(R.layout.activity_main);
+        instance = this;
 
         // 初始化播放器
         playerView = findViewById(R.id.playerView);
         exoPlayer = new ExoPlayer.Builder(this).build();
         playerView.setPlayer(exoPlayer);
 
+        // 初始化手势识别（触屏操作核心）
+        initGestureDetector();
+
         // 延迟初始化其他耗时操作，不卡主界面
         new Handler().postDelayed(() -> {
             // 初始化数据管理器
             PlaylistManager.init(MainActivity.this);
-            // 初始化手势识别
-            initGestureDetector();
-            // 启动后台Web服务
-            initWebServer();
             // 加载并播放第一个频道
             loadFirstChannel();
         }, 300);
     }
 
+    // 初始化手势识别（实现所有触屏操作）
     private void initGestureDetector() {
-        gestureDetector = new GestureDetector(MainActivity.this, new GestureDetector.SimpleOnGestureListener() {
+        gestureDetector = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
+            // 1. 上下滑动：切换频道
             @Override
             public boolean onFling(MotionEvent e1, MotionEvent e2, float velocityX, float velocityY) {
                 float deltaX = e2.getX() - e1.getX();
                 float deltaY = e2.getY() - e1.getY();
-                if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 100) {
-                    if (deltaX > 0) previousLine();
-                    else nextLine();
-                    return true;
-                } else if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 100) {
-                    if (deltaY > 0) previousChannel();
-                    else nextChannel();
+
+                // 上下滑动：频道切换
+                if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 100) {
+                    if (deltaY < 0) {
+                        // 上滑：下一个频道
+                        nextChannel();
+                    } else {
+                        // 下滑：上一个频道
+                        previousChannel();
+                    }
                     return true;
                 }
-                return false;
+                return super.onFling(e1, e2, velocityX, velocityY);
             }
 
+            // 2. 单击屏幕：OK键（确认/暂停播放）
             @Override
-            public void onLongPress(MotionEvent e) {
-                toggleFavorite();
+            public boolean onSingleTapConfirmed(MotionEvent e) {
+                if (exoPlayer != null) {
+                    if (exoPlayer.isPlaying()) {
+                        exoPlayer.pause();
+                    } else {
+                        exoPlayer.play();
+                    }
+                }
+                return true;
             }
-        });
 
-        gestureDetector.setOnDoubleTapListener(new GestureDetector.OnDoubleTapListener() {
-            @Override
-            public boolean onSingleTapConfirmed(MotionEvent e) { return false; }
+            // 3. 双击屏幕：菜单/帮助键（打开设置页）
             @Override
             public boolean onDoubleTap(MotionEvent e) {
-                toggleFullscreen();
+                openSettingsPage();
                 return true;
             }
+
+            // 4. 长按屏幕：长按OK键（打开设置页）
             @Override
-            public boolean onDoubleTapEvent(MotionEvent e) { return false; }
+            public void onLongPress(MotionEvent e) {
+                openSettingsPage();
+            }
         });
     }
 
-    private void initWebServer() {
-        webServer = new WebServer(MainActivity.this);
-        try {
-            webServer.start(10481);
-            runOnUiThread(() -> Toast.makeText(MainActivity.this, "后台服务已启动：http://本机IP:10481", Toast.LENGTH_LONG).show());
-        } catch (Exception e) {
-            runOnUiThread(() -> Toast.makeText(MainActivity.this, "服务启动失败：" + e.getMessage(), Toast.LENGTH_SHORT).show());
-        }
-    }
-
+    // 加载并播放第一个频道
     private void loadFirstChannel() {
-        java.util.List<Channel> channels = PlaylistManager.getCurrentPlaylistChannels();
-        if (!channels.isEmpty()) {
-            playChannel(channels.get(0));
-        }
-    }
+        new Thread(() -> {
+            try {
+                Thread.sleep(1000); // 给直播源解析留1秒时间
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
 
-    @Override
-    public boolean onTouchEvent(MotionEvent event) {
-        if (gestureDetector != null) {
-            return gestureDetector.onTouchEvent(event) || super.onTouchEvent(event);
-        }
-        return super.onTouchEvent(event);
-    }
-
-    // 遥控器按键处理
-    @Override
-    public boolean onKeyDown(int keyCode, KeyEvent event) {
-        switch (keyCode) {
-            case KeyEvent.KEYCODE_DPAD_UP:
-                nextChannel();
-                return true;
-            case KeyEvent.KEYCODE_DPAD_DOWN:
-                previousChannel();
-                return true;
-            case KeyEvent.KEYCODE_DPAD_LEFT:
-                previousLine();
-                return true;
-            case KeyEvent.KEYCODE_DPAD_RIGHT:
-                nextLine();
-                return true;
-            case KeyEvent.KEYCODE_MENU:
-            case KeyEvent.KEYCODE_ENTER:
-                toggleFullscreen();
-                return true;
-            case KeyEvent.KEYCODE_BACK:
-                onBackPressed();
-                return true;
-            default:
-                return super.onKeyDown(keyCode, event);
-        }
+            runOnUiThread(() -> {
+                List<Channel> channels = PlaylistManager.getCurrentPlaylistChannels();
+                if (channels != null && !channels.isEmpty()) {
+                    playChannel(channels.get(0));
+                } else {
+                    Toast.makeText(MainActivity.this, "直播源加载失败，请检查网络", Toast.LENGTH_LONG).show();
+                }
+            });
+        }).start();
     }
 
     // 核心播放方法
     public void playChannel(Channel channel) {
         runOnUiThread(() -> {
+            if (channel == null || channel.getUrl() == null || channel.getUrl().isEmpty()) {
+                Toast.makeText(MainActivity.this, "无效的直播地址", Toast.LENGTH_SHORT).show();
+                return;
+            }
+
             MediaItem mediaItem = MediaItem.fromUri(channel.getUrl());
             exoPlayer.setMediaItem(mediaItem);
             exoPlayer.prepare();
@@ -148,46 +133,91 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    // 频道切换方法
+    // 下一个频道
     private void nextChannel() {
-        java.util.List<Channel> channels = PlaylistManager.getCurrentPlaylistChannels();
+        List<Channel> channels = PlaylistManager.getCurrentPlaylistChannels();
         if (currentChannelIndex < channels.size() - 1) {
             currentChannelIndex++;
             playChannel(channels.get(currentChannelIndex));
         }
     }
 
+    // 上一个频道
     private void previousChannel() {
-        java.util.List<Channel> channels = PlaylistManager.getCurrentPlaylistChannels();
+        List<Channel> channels = PlaylistManager.getCurrentPlaylistChannels();
         if (currentChannelIndex > 0) {
             currentChannelIndex--;
             playChannel(channels.get(currentChannelIndex));
         }
     }
 
-    private void nextLine() {
-        Toast.makeText(this, "切换到下一条线路", Toast.LENGTH_SHORT).show();
+    // 打开设置页面
+    private void openSettingsPage() {
+        startActivity(new android.content.Intent(this, SettingsActivity.class));
     }
 
-    private void previousLine() {
-        Toast.makeText(this, "切换到上一条线路", Toast.LENGTH_SHORT).show();
+    // 触摸事件分发
+    @Override
+    public boolean onTouchEvent(MotionEvent event) {
+        return gestureDetector.onTouchEvent(event) || super.onTouchEvent(event);
     }
 
-    private void toggleFavorite() {
-        java.util.List<Channel> channels = PlaylistManager.getCurrentPlaylistChannels();
-        if (!channels.isEmpty()) {
-            Channel channel = channels.get(currentChannelIndex);
-            PlaylistManager.toggleFavorite(channel);
-            Toast.makeText(this, channel.isFavorite() ? "已收藏" : "已取消收藏", Toast.LENGTH_SHORT).show();
-        }
-    }
+    // 遥控器按键处理（实现所有遥控器操作）
+    @Override
+    public boolean onKeyDown(int keyCode, KeyEvent event) {
+        switch (keyCode) {
+            // 上下方向键：切换频道
+            case KeyEvent.KEYCODE_DPAD_UP:
+                previousChannel();
+                return true;
+            case KeyEvent.KEYCODE_DPAD_DOWN:
+                nextChannel();
+                return true;
 
-    private void toggleFullscreen() {
-        isFullscreen = !isFullscreen;
-        if (isFullscreen) {
-            getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION);
-        } else {
-            getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_VISIBLE);
+            // OK键：确认/暂停播放
+            case KeyEvent.KEYCODE_DPAD_CENTER:
+            case KeyEvent.KEYCODE_ENTER:
+                if (exoPlayer != null) {
+                    if (exoPlayer.isPlaying()) {
+                        exoPlayer.pause();
+                    } else {
+                        exoPlayer.play();
+                    }
+                }
+                return true;
+
+            // 菜单/帮助键：打开设置页
+            case KeyEvent.KEYCODE_MENU:
+            case KeyEvent.KEYCODE_HELP:
+                openSettingsPage();
+                return true;
+
+            // 数字键：直接切换频道
+            case KeyEvent.KEYCODE_0:
+            case KeyEvent.KEYCODE_1:
+            case KeyEvent.KEYCODE_2:
+            case KeyEvent.KEYCODE_3:
+            case KeyEvent.KEYCODE_4:
+            case KeyEvent.KEYCODE_5:
+            case KeyEvent.KEYCODE_6:
+            case KeyEvent.KEYCODE_7:
+            case KeyEvent.KEYCODE_8:
+            case KeyEvent.KEYCODE_9:
+                int num = keyCode - KeyEvent.KEYCODE_0;
+                List<Channel> channels = PlaylistManager.getCurrentPlaylistChannels();
+                if (num >= 0 && num < channels.size()) {
+                    currentChannelIndex = num;
+                    playChannel(channels.get(num));
+                }
+                return true;
+
+            // 返回键
+            case KeyEvent.KEYCODE_BACK:
+                onBackPressed();
+                return true;
+
+            default:
+                return super.onKeyDown(keyCode, event);
         }
     }
 
@@ -198,9 +228,10 @@ public class MainActivity extends AppCompatActivity {
         if (exoPlayer != null) {
             exoPlayer.release();
         }
-        // 关闭Web服务
-        if (webServer != null) {
-            webServer.stop();
-        }
+    }
+
+    // 点击屏幕打开设置（备用）
+    public void openChannelList(View v) {
+        openSettingsPage();
     }
 }

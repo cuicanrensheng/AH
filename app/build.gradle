@@ -20,22 +20,27 @@ android {
         }
     }
 
+    // 改用系统默认Debug签名，删掉所有jks和环境变量
     signingConfigs {
-        release {
-            // 直接使用相对路径，Gradle 会从 app/ 目录下查找
-            storeFile file("build/auto-release.jks")
-            storePassword System.getenv("KS_PASS", "auto1234")
-            keyAlias System.getenv("KS_ALIAS", "auto")
-            keyPassword System.getenv("KEY_PASS", "auto1234")
+        debug {
+            keyAlias "androiddebugkey"
+            keyPassword "android"
+            storePassword "android"
         }
     }
 
     buildTypes {
+        debug {
+            minifyEnabled false
+            shrinkResources false
+            debuggable true
+        }
+        // release也复用debug签名，不用额外密钥
         release {
             minifyEnabled false
             shrinkResources false
             debuggable true
-            signingConfig signingConfigs.release
+            signingConfig signingConfigs.debug
         }
     }
 

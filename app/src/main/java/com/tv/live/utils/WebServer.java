@@ -3,11 +3,11 @@ package com.tv.live.utils;
 import android.content.Context;
 import android.util.Log;
 import fi.iki.elonen.NanoHTTPD;
+import java.io.IOException; // 新增导入
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-// 1. 导入Playlist类
 import com.tv.live.model.Playlist;
 
 public class WebServer extends NanoHTTPD {
@@ -20,8 +20,9 @@ public class WebServer extends NanoHTTPD {
         this.context = context.getApplicationContext();
     }
 
+    // 关键修复：声明抛出 IOException，和父类保持一致
     @Override
-    public void start() {
+    public void start() throws IOException {
         super.start();
         Log.i(TAG, "Web Server started on port " + PORT);
     }
@@ -37,7 +38,6 @@ public class WebServer extends NanoHTTPD {
         String path = session.getUri();
         Method method = session.getMethod();
 
-        // 2. 修复类型转换错误
         Map<String, List<String>> rawParams = session.getParameters();
         Map<String, String> params = new HashMap<>();
         for (Map.Entry<String, List<String>> entry : rawParams.entrySet()) {
@@ -85,7 +85,6 @@ public class WebServer extends NanoHTTPD {
     }
 
     private Response servePlaylistList() {
-        // 3. 修复Playlist类型和getAllPlaylists()调用
         List<Playlist> playlists = PlaylistManager.getAllPlaylists();
         StringBuilder html = new StringBuilder("<!DOCTYPE html><html><head><meta charset='UTF-8'><title>订阅源列表</title></head><body><h1>所有订阅源</h1><a href='/'>返回首页</a><br><br>");
         for (Playlist playlist : playlists) {
@@ -101,7 +100,6 @@ public class WebServer extends NanoHTTPD {
         if (name == null || url == null) {
             return newFixedLengthResponse("参数错误：缺少name或url");
         }
-        // 4. 修复Playlist构造函数调用
         Playlist playlist = new Playlist(System.currentTimeMillis(), name, url);
         PlaylistManager.addPlaylist(playlist);
         return newFixedLengthResponse(Response.Status.OK, "text/plain", "添加成功！");

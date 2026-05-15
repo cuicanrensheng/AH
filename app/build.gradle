@@ -7,7 +7,7 @@ android {
     compileSdk 34
 
     defaultConfig {
-        applicationId "com.tv.live.custom"
+        applicationId "com.tv.live"
         minSdk 21
         targetSdk 34
         versionCode 1
@@ -18,9 +18,11 @@ android {
         ndk {
             abiFilters 'armeabi-v7a', 'arm64-v8a'
         }
+
+        // 开启全部资源打包，不精简
+        vectorDrawables.useSupportLibrary = true
     }
 
-    // 启用你上传的 release.keystore 正式签名
     signingConfigs {
         release {
             storeFile file("release.keystore")
@@ -32,6 +34,7 @@ android {
 
     buildTypes {
         release {
+            // 彻底关闭混淆、代码压缩、资源压缩
             minifyEnabled false
             shrinkResources false
             debuggable false
@@ -42,14 +45,38 @@ android {
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
+        coreLibraryDesugaringEnabled true
+    }
+
+    // 强制打包全部assets、不压缩任何资源
+    aaptOptions {
+        noCompress 'html', 'js', 'css', 'json', 'm3u', 'xml', 'gz'
     }
 }
 
 dependencies {
+    // 基础兼容
     implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'androidx.core:core-ktx:1.12.0'
+
+    // ExoPlayer 全套播放器
     implementation 'com.google.android.exoplayer:exoplayer:2.19.1'
     implementation 'com.google.android.exoplayer:exoplayer-ui:2.19.1'
     implementation 'com.google.android.exoplayer:exoplayer-extractor:2.19.1'
     implementation 'com.google.android.exoplayer:exoplayer-dash:2.19.1'
     implementation 'com.google.android.exoplayer:exoplayer-hls:2.19.1'
+
+    // 内置Web服务 10481端口
+    implementation 'org.nanohttpd:nanohttpd-webserver:2.3.1'
+
+    // 网络请求、IPv6适配
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+
+    // 解析M3U/TVBox/XML节目单
+    implementation 'org.jsoup:jsoup:1.17.2'
+
+    // 本地缓存、配置存储
+    implementation 'androidx.datastore:datastore-preferences:1.0.0'
+
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'
 }

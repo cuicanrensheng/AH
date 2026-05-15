@@ -7,6 +7,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+// 1. 导入Playlist类
+import com.tv.live.model.Playlist;
+
 public class WebServer extends NanoHTTPD {
     private static final String TAG = "WebServer";
     private static final int PORT = 10481;
@@ -17,7 +20,6 @@ public class WebServer extends NanoHTTPD {
         this.context = context.getApplicationContext();
     }
 
-    // 去掉throws Exception，和父类保持一致
     @Override
     public void start() {
         super.start();
@@ -34,8 +36,15 @@ public class WebServer extends NanoHTTPD {
     public Response serve(IHTTPSession session) {
         String path = session.getUri();
         Method method = session.getMethod();
-        // 强制类型转换，解决类型不匹配
-        Map<String, String> params = new HashMap<>((Map<String, String>) session.getParameters());
+
+        // 2. 修复类型转换错误
+        Map<String, List<String>> rawParams = session.getParameters();
+        Map<String, String> params = new HashMap<>();
+        for (Map.Entry<String, List<String>> entry : rawParams.entrySet()) {
+            if (!entry.getValue().isEmpty()) {
+                params.put(entry.getKey(), entry.getValue().get(0));
+            }
+        }
 
         Log.d(TAG, "Request: " + method + " " + path + ", params: " + params);
 
@@ -76,6 +85,7 @@ public class WebServer extends NanoHTTPD {
     }
 
     private Response servePlaylistList() {
+        // 3. 修复Playlist类型和getAllPlaylists()调用
         List<Playlist> playlists = PlaylistManager.getAllPlaylists();
         StringBuilder html = new StringBuilder("<!DOCTYPE html><html><head><meta charset='UTF-8'><title>订阅源列表</title></head><body><h1>所有订阅源</h1><a href='/'>返回首页</a><br><br>");
         for (Playlist playlist : playlists) {
@@ -91,6 +101,7 @@ public class WebServer extends NanoHTTPD {
         if (name == null || url == null) {
             return newFixedLengthResponse("参数错误：缺少name或url");
         }
+        // 4. 修复Playlist构造函数调用
         Playlist playlist = new Playlist(System.currentTimeMillis(), name, url);
         PlaylistManager.addPlaylist(playlist);
         return newFixedLengthResponse(Response.Status.OK, "text/plain", "添加成功！");

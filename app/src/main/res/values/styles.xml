@@ -1,28 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- 基础 Material 主主题（你项目当前使用） -->
-    <style name="Theme.TVLive.NoTitle" parent="Theme.MaterialComponents.Light.NoActionBar">
-        <item name="android:windowNoTitle">true</item>
-        <item name="android:windowFullscreen">true</item>
-        <item name="android:windowContentOverlay">@null</item>
-    </style>
-
-    <!-- 补齐 AppCompat 全套主题（解决之前找不到 AppCompat 的报错） -->
-    <style name="Theme.AppCompat.Light.NoActionBar" parent="Base.Theme.AppCompat.Light.NoActionBar"/>
-    <style name="Theme.AppCompat.NoTitle" parent="Theme.AppCompat.Light.NoActionBar">
-        <item name="android:windowNoTitle">true</item>
-        <item name="android:windowFullscreen">true</item>
-    </style>
-
-    <!-- 补齐 Base 基础主题（防止系统继承缺失） -->
-    <style name="Base.Theme.AppCompat.Light.NoActionBar" parent="Theme.MaterialComponents.Light.NoActionBar">
+    <!-- 主主题：必须继承 AppCompat，不能用纯 Material -->
+    <style name="Theme.TVLive.NoTitle" parent="Theme.AppCompat.Light.NoActionBar">
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
-    </style>
-
-    <!-- 启动页/闪屏页专用主题（防止启动白屏闪退） -->
-    <style name="Theme.SplashScreen" parent="Theme.TVLive.NoTitle">
-        <item name="android:windowBackground">@android:color/black</item>
-        <item name="android:windowIsTranslucent">false</item>
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowContentOverlay">@null</item>
     </style>
 </resources>

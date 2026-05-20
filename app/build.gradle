@@ -14,7 +14,6 @@ android {
         versionName "1.0"
     }
 
-    // 新增签名配置
     signingConfigs {
         release {
             storeFile file("../release.keystore")
@@ -33,6 +32,7 @@ android {
     buildTypes {
         release {
             minifyEnabled false
+            shrinkResources false   // 关键：彻底关闭资源压缩，恢复40MB完整包
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             signingConfig signingConfigs.release
         }

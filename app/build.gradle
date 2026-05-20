@@ -14,10 +14,30 @@ android {
         versionName "1.0"
     }
 
+    // 新增签名配置
+    signingConfigs {
+        release {
+            storeFile file("../release.keystore")
+            storePassword "admin123"
+            keyAlias "myreleasekey"
+            keyPassword "admin123"
+        }
+        debug {
+            storeFile file("../debug.keystore")
+            storePassword "android"
+            keyAlias "androiddebugkey"
+            keyPassword "android"
+        }
+    }
+
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.release
+        }
+        debug {
+            signingConfig signingConfigs.debug
         }
     }
 }

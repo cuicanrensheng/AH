@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.TVLive.NoTitle" parent="Theme.Light.NoTitleBar.Fullscreen">
-        <item name="windowNoTitle">true</item>
+    <!-- AndroidX 标准全屏无标题主题，适配高版本AGP -->
+    <style name="Theme.TVLive.NoTitle" parent="Theme.MaterialComponents.Light.NoTitleBar.Fullscreen">
+        <item name="android:windowNoTitle">true</item>
         <item name="android:windowFullscreen">true</item>
+        <item name="android:windowActionBar">false</item>
     </style>
 </resources>

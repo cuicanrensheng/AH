@@ -12,6 +12,9 @@ android {
         targetSdk 34
         versionCode 1
         versionName "1.0"
+
+        // 强制开启多 dex，把所有依赖都打进去
+        multiDexEnabled true
     }
 
     signingConfigs {
@@ -32,7 +35,8 @@ android {
     buildTypes {
         release {
             minifyEnabled false
-            shrinkResources false   // 关键：彻底关闭资源压缩，恢复40MB完整包
+            shrinkResources false
+            crunchPngs false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             signingConfig signingConfigs.release
         }
@@ -43,9 +47,23 @@ android {
 }
 
 dependencies {
+    // 基础UI
     implementation "androidx.appcompat:appcompat:1.6.1"
     implementation "com.google.android.material:material:1.11.0"
+
+    // 播放器核心（体积大头）
     implementation "com.google.android.exoplayer:exoplayer:2.19.1"
+    implementation "com.google.android.exoplayer:exoplayer-ui:2.19.1"
+
+    // 网络
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+    implementation 'com.squareup.retrofit2:retrofit:2.9.0'
+    implementation 'com.squareup.retrofit2:converter-gson:2.9.0'
+
+    // 工具类
     implementation 'org.apache.commons:commons-lang3:3.14.0'
+    implementation 'com.google.code.gson:gson:2.10.1'
+
+    // 解决依赖过多导致空包问题
+    implementation 'androidx.multidex:multidex:2.0.1'
 }

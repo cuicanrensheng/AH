@@ -18,17 +18,16 @@ jobs:
           distribution: 'temurin'
           cache: gradle
 
-      # 自动生成 gradlew 脚本，解决文件缺失问题
       - name: 生成 Gradle 包装脚本
-        run: gradle wrapper
+        run: gradle wrapper --gradle-version 9.5.1
 
       - name: 赋予脚本执行权限
         run: chmod +x gradlew
 
-      - name: 编译 Release 版本 APK
+      - name: 编译 Release APK
         run: ./gradlew assembleRelease
 
-      - name: 上传编译好的 APK
+      - name: 上传成品 APK
         uses: actions/upload-artifact@v4
         with:
           name: TVLive-直播APP

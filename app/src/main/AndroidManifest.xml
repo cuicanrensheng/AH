@@ -1,8 +1,42 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <!-- 继承 Material 无标题主题，和你的 material 1.11.0 兼容 -->
-    <style name="Theme.TVLive.NoTitle" parent="Theme.MaterialComponents.Light.NoActionBar">
-        <item name="windowNoTitle">true</item>
-        <item name="windowActionBar">false</item>
-    </style>
-</resources>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
+    
+    <application
+        android:allowBackup="true"
+        android:label="TVLive"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.TVLive.NoTitle"
+        android:usesCleartextTraffic="true">
+        
+        <activity
+            android:name=".SettingsActivity"
+            android:exported="false"/>
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- 暂时注释开机广播，避免启动闪退 -->
+        <!--
+        <receiver
+            android:name=".BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED"/>
+            </intent-filter>
+        </receiver>
+        -->
+
+    </application>
+</manifest>

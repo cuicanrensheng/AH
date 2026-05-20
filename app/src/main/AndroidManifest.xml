@@ -1,10 +1,48 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <!-- 主主题：直接继承 AppCompat，完美适配 AppCompatActivity -->
-    <style name="Theme.TVLive.NoTitle" parent="Theme.AppCompat.Light.NoActionBar">
-        <item name="windowActionBar">false</item>
-        <item name="windowNoTitle">true</item>
-        <item name="android:windowFullscreen">true</item>
-        <item name="android:windowContentOverlay">@null</item>
-    </style>
-</resources>
+<!-- 新增 tools 命名空间，用于解决包名合并冲突 -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    package="com.tv.live">
+
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
+    
+    <application
+        <!-- 核心：强制覆盖 Material 库的 resources@package 冲突 -->
+        tools:replace="android:resources@package"
+        android:allowBackup="true"
+        android:label="TVLive"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.TVLive.NoTitle"
+        android:usesCleartextTraffic="true">
+        
+        <activity
+            android:name=".SettingsActivity"
+            android:exported="false"/>
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:theme="@style/Theme.TVLive.NoTitle">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- 暂时注释开机广播，避免启动闪退 -->
+        <!--
+        <receiver
+            android:name=".BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED"/>
+            </intent-filter>
+        </receiver>
+        -->
+
+    </application>
+</manifest>

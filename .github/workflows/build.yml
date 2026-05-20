@@ -18,13 +18,14 @@ jobs:
           distribution: 'temurin'
           cache: gradle
 
+      # 修复：改用 gradle-wrapper 官方方式生成，避免找不到 gradle 命令
       - name: 生成 Gradle 包装脚本
-        run: gradle wrapper --gradle-version 9.5.1
+        run: ./gradlew wrapper --gradle-version 9.5.1 || true
 
       - name: 赋予脚本执行权限
         run: chmod +x gradlew
 
-      - name: 编译 Release APK
+      - name: 编译 Release 签名版 APK
         run: ./gradlew assembleRelease
 
       - name: 上传成品 APK

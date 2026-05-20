@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- 原生AndroidX 标准全屏无标题主题，无任何外部依赖 -->
-    <style name="Theme.TVLive.NoTitle" parent="Theme.Android.Light.NoTitleBar.Fullscreen">
+    <!-- 系统原生标准全屏无标题主题，100%存在，无需任何依赖 -->
+    <style name="Theme.TVLive.NoTitle" parent="@android:style/Theme.Light.NoTitleBar.Fullscreen">
         <item name="android:windowNoTitle">true</item>
         <item name="android:windowFullscreen">true</item>
     </style>

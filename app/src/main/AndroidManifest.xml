@@ -1,18 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- 主主题：对应 manifest 引用 -->
-    <style name="Theme.TVLive.NoTitle" parent="Theme.MaterialComponents.Light.NoActionBar">
+    <!-- 主主题：直接继承 AppCompat，完美适配 AppCompatActivity -->
+    <style name="Theme.TVLive.NoTitle" parent="Theme.AppCompat.Light.NoActionBar">
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
         <item name="android:windowFullscreen">true</item>
         <item name="android:windowContentOverlay">@null</item>
     </style>
-
-    <!-- 补齐 AppCompat 依赖链，彻底解决找不到主题报错 -->
-    <style name="Base.Theme.AppCompat.Light.NoActionBar" parent="Theme.MaterialComponents.Light.NoActionBar">
-        <item name="windowActionBar">false</item>
-        <item name="windowNoTitle">true</item>
-    </style>
-
-    <style name="Theme.AppCompat.Light.NoActionBar" parent="Base.Theme.AppCompat.Light.NoActionBar"/>
 </resources>

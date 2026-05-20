@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- 适配 AppCompatActivity 的 AppCompat 全屏无标题主题 -->
-    <style name="Theme.TVLive.NoTitle" parent="Theme.AppCompat.Light.NoTitleBar.Fullscreen">
+    <style name="Theme.TVLive.NoTitle" parent="Theme.AppCompat.Light.NoTitleBar">
         <item name="android:windowNoTitle">true</item>
         <item name="android:windowFullscreen">true</item>
     </style>

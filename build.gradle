@@ -1,9 +1,4 @@
 plugins {
-    id 'com.android.application' version '8.1.0' apply false
-    id 'com.android.library' version '8.1.0' apply false
-}
-
-repositories {
-    google()
-    mavenCentral()
+    id 'com.android.application' version '8.5.0' apply false
+    id 'com.android.library' version '8.5.0' apply false
 }

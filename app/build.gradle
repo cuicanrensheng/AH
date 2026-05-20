@@ -85,7 +85,4 @@ dependencies {
 
     // 权限框架
     implementation 'com.hjq:xxpermissions:13.0'
-
-    // 多Dex支持
-实现'androidx.multidex:multidex:2.0.1'
 }

@@ -12,7 +12,7 @@
         android:label="TVLive"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.TVLive.NoTitle"
+        android:theme="@style/Theme.TVLive.NoTitle">
 
         <activity
             android:name=".MainActivity"

@@ -27,6 +27,13 @@ jobs:
       - name: 编译 Release 签名版 APK
         run: ./gradlew assembleRelease
 
+      - name: Clean & Refresh Dependencies
+        run: ./gradlew clean --refresh-dependencies
+
+      - name: Build Release APK
+        run: ./gradlew assembleRelease
+
+
       - name: 上传成品 APK
         uses: actions/upload-artifact@v4
         with:

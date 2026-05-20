@@ -11,9 +11,9 @@
         android:allowBackup="true"
         android:label="TVLive"
         android:supportsRtl="true"
-        android:theme="@style/Theme.TVLive.NoTitle">
-        
-        
+        android:theme="@style/Theme.TVLive.NoTitle"
+        <!-- 推荐使用 networkSecurityConfig，和你之前创建的 xml 配合 -->
+        android:networkSecurityConfig="@xml/network_security_config">
         
         <activity
             android:name=".SettingsActivity"

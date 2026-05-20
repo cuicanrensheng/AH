@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="20dp">
+
+    <Switch
+        android:id="@+id/sw_reverse"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="频道反转"/>
+
+    <Switch
+        android:id="@+id/sw_boot"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="开机自启动"/>
+
+    <Switch
+        android:id="@+id/sw_epg"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="EPG节目单开关"/>
+
+    <Button
+        android:id="@+id/btn_source"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="切换直播源"/>
+
+</LinearLayout>

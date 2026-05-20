@@ -12,8 +12,7 @@
         android:label="TVLive"
         android:supportsRtl="true"
         android:theme="@style/Theme.TVLive.NoTitle">
-        android:usesCleartextandroid:networkSecurityConfig="@xml/network_security_config"
-        ...>Traffic="true">
+        
         
         
         <activity

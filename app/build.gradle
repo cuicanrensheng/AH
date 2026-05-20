@@ -83,6 +83,4 @@ dependencies {
     implementation 'org.apache.commons:commons-lang3:3.14.0'
     implementation 'com.blankj:utilcodex:1.31.1'
 
-    // 权限框架
-    implementation 'com.hjq:xxpermissions:13.0'
 }

@@ -3,12 +3,13 @@ plugins {
 }
 
 android {
-    compileSdk 33
+    namespace "com.tv.live"
+    compileSdk 34
 
     defaultConfig {
         applicationId "com.tv.live"
         minSdk 21
-        targetSdk 33
+        targetSdk 34
         versionCode 1
         versionName "1.0"
     }

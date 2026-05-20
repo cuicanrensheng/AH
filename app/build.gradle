@@ -79,4 +79,9 @@ dependencies {
     // 工具
     implementation 'org.apache.commons:commons-lang3:3.14.0'
     implementation 'com.blankj:utilcodex:1.31.1'
+
+    // VLC播放器
+    implementation 'org.videolan.android:libvlc-all:3.5.0'
+
+    
 }

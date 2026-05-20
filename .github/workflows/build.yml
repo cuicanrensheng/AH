@@ -16,15 +16,12 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
-          cache: gradle
 
-      # 直接下载 gradlew，不用手动生成
-      - name: 下载 Gradle Wrapper
-        run: |
-          curl -s https://services.gradle.org/distributions/gradle-9.5.1-bin.zip -o gradle.zip
-          unzip -q gradle.zip
-          cp gradle-9.5.1/bin/gradlew ./
-          chmod +x gradlew
+      # 官方 Gradle 配置，自动生成 gradlew、自动授权、自动缓存
+      - name: 配置 Gradle 9.5.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.5.1"
 
       - name: 编译 Release 签名版 APK
         run: ./gradlew assembleRelease

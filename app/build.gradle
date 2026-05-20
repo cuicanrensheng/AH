@@ -12,9 +12,7 @@ android {
         targetSdk 34
         versionCode 1
         versionName "1.0"
-
-        // 强制开启多 dex，把所有依赖都打进去
-        multiDexEnabled true
+        multiDexEnabled true // 支持大量依赖
     }
 
     signingConfigs {
@@ -44,26 +42,50 @@ android {
             signingConfig signingConfigs.debug
         }
     }
+
+    // 强制不剔除任何资源和依赖
+    packagingOptions {
+        resources {
+            excludes = []
+        }
+        dex {
+            useLegacyPackaging true
+        }
+    }
 }
 
 dependencies {
     // 基础UI
     implementation "androidx.appcompat:appcompat:1.6.1"
     implementation "com.google.android.material:material:1.11.0"
+    implementation "androidx.constraintlayout:constraintlayout:2.1.4"
+    implementation "androidx.recyclerview:recyclerview:1.3.2"
 
-    // 播放器核心（体积大头）
+    // 播放器核心（ExoPlayer全套）
     implementation "com.google.android.exoplayer:exoplayer:2.19.1"
     implementation "com.google.android.exoplayer:exoplayer-ui:2.19.1"
+    implementation "com.google.android.exoplayer:exoplayer-hls:2.19.1"
+    implementation "com.google.android.exoplayer:exoplayer-dash:2.19.1"
 
-    // 网络
+    // 网络请求全套
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
     implementation 'com.squareup.retrofit2:retrofit:2.9.0'
     implementation 'com.squareup.retrofit2:converter-gson:2.9.0'
 
-    // 工具类
-    implementation 'org.apache.commons:commons-lang3:3.14.0'
+    // 图片加载
+    implementation 'com.github.bumptech.glide:glide:4.16.0'
+    annotationProcessor 'com.github.bumptech.glide:compiler:4.16.0'
+
+    // JSON解析
     implementation 'com.google.code.gson:gson:2.10.1'
 
-    // 解决依赖过多导致空包问题
-    implementation 'androidx.multidex:multidex:2.0.1'
+    // 工具类
+    implementation 'org.apache.commons:commons-lang3:3.14.0'
+    implementation 'com.blankj:utilcodex:1.31.1'
+
+    // 权限框架
+    implementation 'com.hjq:xxpermissions:13.0'
+
+    // 多Dex支持
+实现'androidx.multidex:multidex:2.0.1'
 }

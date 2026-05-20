@@ -17,8 +17,11 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      # 关键：给 gradlew 加上执行权限
-      - name: 赋予 gradlew 执行权限
+      # 自动生成完整 Gradle 9.5.1 wrapper（gradlew + jar + properties 全部自动生成）
+      - name: 自动生成 Gradle Wrapper
+        run: gradle wrapper --gradle-version 9.5.1
+
+      - name: 赋予执行权限
         run: chmod +x gradlew
 
       - name: 编译 Release 签名版 APK

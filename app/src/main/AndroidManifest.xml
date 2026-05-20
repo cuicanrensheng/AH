@@ -10,7 +10,7 @@
         android:label="TVLive"
         android:supportsRtl="true"
         android:theme="@style/Theme.TVLive.NoTitle">
-
+        android:usesCleartextTraffic="true">
         <activity
             android:name=".MainActivity"
             android:exported="true"

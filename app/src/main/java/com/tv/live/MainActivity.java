@@ -129,4 +129,30 @@ public class MainActivity extends AppCompatActivity {
                 nextChannel();
                 return true;
             case KeyEvent.KEYCODE_DPAD_CENTER:
-          
+                startActivity(new Intent(this, SettingActivity.class));
+                return true;
+            default:
+                return super.onKeyDown(keyCode, event);
+        }
+    }
+
+    @Override
+    public boolean onTouchEvent(MotionEvent event) {
+        return gestureDetector.onTouchEvent(event);
+    }
+
+    private class GestureListener extends GestureDetector.SimpleOnGestureListener {
+        @Override
+        public boolean onFling(MotionEvent e1, MotionEvent e2, float velocityX, float velocityY) {
+            return true;
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if(exoPlayer != null) {
+            exoPlayer.release();
+        }
+    }
+}

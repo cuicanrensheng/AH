@@ -32,7 +32,13 @@
             android:name=".SettingsActivity"
             android:exported="false"
             android:screenOrientation="sensorLandscape"/>
-
+        
+         <!-- 频道列表页（新增注册） -->
+         <activity
+            android:name=".ChannelListActivity"
+            android:exported="false"
+            android:screenOrientation="sensorLandscape"/>
+        
         <!-- 开机自启广播 -->
         <receiver
             android:name=".BootReceiver"

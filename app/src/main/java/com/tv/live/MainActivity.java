@@ -9,7 +9,6 @@ import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.widget.Toast;
 
-import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.view.GestureDetectorCompat;
 
@@ -27,7 +26,6 @@ import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
 
-    // 静态实例放在类内部第一行，修复你之前的语法错误
     public static MainActivity mInstance;
 
     public static final String URL_SOURCE_1 = "https://raw.githubusercontent.com/cuicanrensheng/IPTV/refs/heads/main/playlist1.m3u";
@@ -58,6 +56,12 @@ public class MainActivity extends AppCompatActivity {
         loadList();
     }
 
+    @Override
+    protected void onResume() {
+        super.onResume();
+        loadConfig();
+    }
+
     private void loadConfig() {
         SharedPreferences sp = getSharedPreferences("setting", MODE_PRIVATE);
         reverse = sp.getBoolean("reverse", false);
@@ -74,11 +78,15 @@ public class MainActivity extends AppCompatActivity {
     private void loadList() {
         new Thread(() -> {
             try {
+                loadConfig();
                 String url = sourceType == 0 ? URL_SOURCE_1 : URL_SOURCE_2;
+
                 HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
                 BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream()));
                 String line;
                 String name = null;
+
+                channels.clear();
                 while ((line = br.readLine()) != null) {
                     if (line.startsWith("#EXTINF")) {
                         name = line.replaceAll(".*,", "").trim();
@@ -94,10 +102,10 @@ public class MainActivity extends AppCompatActivity {
 
                 runOnUiThread(() -> {
                     if (!channels.isEmpty()) play(0);
-                    else Toast.makeText(this, "无频道", Toast.LENGTH_SHORT).show();
+                    else Toast.makeText(this, "无频道数据", Toast.LENGTH_SHORT).show();
                 });
             } catch (Exception e) {
-                runOnUiThread(() -> Toast.makeText(this, "加载失败", Toast.LENGTH_SHORT).show());
+                runOnUiThread(() -> Toast.makeText(this, "直播源加载失败", Toast.LENGTH_SHORT).show());
             }
         }).start();
     }
@@ -125,32 +133,32 @@ public class MainActivity extends AppCompatActivity {
         play(currentPos);
     }
 
-    // ========== 电视遥控器按键逻辑 ==========
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
-        if (keyCode == KeyEvent.KEYCODE_DPAD_UP) prev();
-        else if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) next();
-        else if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER)
-            startActivity(new Intent(this, ChannelListActivity.class));
-        else if (keyCode == KeyEvent.KEYCODE_HELP || keyCode == KeyEvent.KEYCODE_MENU)
-            startActivity(new Intent(this, SettingsActivity.class));
+        switch (keyCode) {
+            case KeyEvent.KEYCODE_DPAD_UP:
+                prev();
+                return true;
+            case KeyEvent.KEYCODE_DPAD_DOWN:
+                next();
+                return true;
+            case KeyEvent.KEYCODE_DPAD_CENTER:
+                startActivity(new Intent(this, ChannelListActivity.class));
+                return true;
+            case KeyEvent.KEYCODE_HELP:
+            case KeyEvent.KEYCODE_MENU:
+                startActivity(new Intent(this, SettingsActivity.class));
+                return true;
+        }
         return super.onKeyDown(keyCode, event);
     }
 
-    // ========== 手机触摸手势逻辑 ==========
     @Override
     public boolean onTouchEvent(MotionEvent event) {
-        gesture.onTouchEvent(event);
-        return true;
+        return gesture.onTouchEvent(event);
     }
 
     private class GestureListener extends GestureDetector.SimpleOnGestureListener {
-        @Override
-        public boolean onDoubleTap(MotionEvent e) {
-            startActivity(new Intent(MainActivity.this, SettingsActivity.class));
-            return true;
-        }
-
         @Override
         public boolean onSingleTapUp(MotionEvent e) {
             startActivity(new Intent(MainActivity.this, ChannelListActivity.class));
@@ -158,7 +166,13 @@ public class MainActivity extends AppCompatActivity {
         }
 
         @Override
-        public boolean onFling(MotionEvent e1, MotionEvent e2, float vX, float vY) {
+        public boolean onDoubleTap(MotionEvent e) {
+            startActivity(new Intent(MainActivity.this, SettingsActivity.class));
+            return true;
+        }
+
+        @Override
+        public boolean onFling(MotionEvent e1, MotionEvent e2, float velocityX, float velocityY) {
             if (e2.getY() < e1.getY() - 100) next();
             else if (e2.getY() > e1.getY() + 100) prev();
             return true;
@@ -171,7 +185,6 @@ public class MainActivity extends AppCompatActivity {
         if (exoPlayer != null) exoPlayer.release();
     }
 
-    // 频道实体类
     public static class Channel {
         public String name;
         public String url;

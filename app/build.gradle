@@ -13,6 +13,11 @@ android {
         versionCode 1
         versionName "1.0"
         multiDexEnabled true
+
+        // 【新增】指定CPU架构，VLC必须配置
+        ndk {
+            abiFilters 'arm64-v8a', 'armeabi-v7a'
+        }
     }
 
     signingConfigs {
@@ -43,8 +48,11 @@ android {
         }
     }
 
-    // 解决协程文件冲突
+    // 【修改】VLC必须开启旧版JNI打包模式
     packagingOptions {
+        jniLibs {
+            useLegacyPackaging true
+        }
         resources {
             pickFirsts += ['META-INF/com.android.tools/proguard/coroutines.pro']
         }
@@ -54,7 +62,6 @@ android {
 dependencies {
     // 基础UI
     implementation "androidx.appcompat:appcompat:1.6.1"
-    // 【核心修改】排除 material 冲突的 resources 模块，解决 Manifest 合并报错
     implementation('com.google.android.material:material:1.11.0') {
         exclude group: 'com.google.android.material', module: 'resources'
     }
@@ -83,6 +90,6 @@ dependencies {
     implementation 'org.apache.commons:commons-lang3:3.14.0'
     implementation 'com.blankj:utilcodex:1.31.1'
 
-    // VLC播放器
-    implementation 'org.videolan.android:libvlc-all:3.7.0'
+    // 【关键修改】VLC改用api强制全量打包进APK
+    api 'org.videolan.android:libvlc-all:3.7.0'
 }

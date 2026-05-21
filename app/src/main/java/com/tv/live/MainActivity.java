@@ -143,30 +143,6 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // 【已修改】移除“保留上一帧画面2秒”的逻辑，直接切换频道
-    public void play(int index) {
-        if (index < 0 || index >= channels.size()) {
-            return;
-        }
-        if (index == currentChannelIndex) {
-            toggleMenu();
-            return;
-        }
-
-        curIndex = index;
-        currentChannelIndex = index;
-
-        String url = channels.get(index).url;
-        String name = channels.get(index).name;
-        MediaItem item = MediaItem.fromUri(url);
-        exoPlayer.setMediaItem(item);
-        exoPlayer.prepare();
-        exoPlayer.play();
-
-        tvEpgInfo.setText("正在播放：" + name + "\nEPG数据源：" + EPG_URL);
-        toggleMenu();
-    }
-
     // 全屏沉浸式隐藏状态栏
     private void setFullscreen() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {

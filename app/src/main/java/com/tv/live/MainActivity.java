@@ -48,7 +48,7 @@ public class MainActivity extends AppCompatActivity {
 
     // 直播源 & EPG地址
     private static final String LIVE_M3U = "https://gitee.com/qf_1111/iptv/raw/master/playlist.m3u";
-    private static final EPG_URL = "http://epg.51zmt.top:8000/e.xml.gz";
+    private static final String EPG_URL = "http://epg.51zmt.top:8000/e.xml.gz";
 
     private ExoPlayer exoPlayer;
     private PlayerView playerView;
@@ -111,7 +111,7 @@ public class MainActivity extends AppCompatActivity {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             WindowInsetsController controller = getWindow().getInsetsController();
             if (controller != null) {
-                controller.hide(WindowInsets.Type.statusBars | WindowInsets.Type.navigationBars);
+                controller.hide(WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars());
                 controller.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
             }
         } else {
@@ -215,17 +215,19 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void initGesture() {
-        gestureDetector = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
+        gestureDetector = new GestureDetector(this, new Gesture.SimpleOnGestureListener() {
             @Override
             public boolean onSingleTapConfirmed(MotionEvent e) {
                 showChannelList();
                 return true;
             }
+
             @Override
             public boolean onDoubleTap(MotionEvent e) {
                 goSetting();
                 return true;
             }
+
             @Override
             public boolean onFling(MotionEvent e1, MotionEvent e2, float vx, float vy) {
                 float dy = e2.getY() - e1.getY();

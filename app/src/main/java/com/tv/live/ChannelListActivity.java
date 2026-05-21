@@ -1,7 +1,9 @@
 package com.tv.live;
 
+import android.graphics.Color;
 import android.os.Bundle;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.ListView;
@@ -20,21 +22,38 @@ public class ChannelListActivity extends AppCompatActivity {
 
         ListView listView = findViewById(R.id.channel_list);
 
-        // 读取MainActivity的频道列表
         final List<MainActivity.Channel> channelList = MainActivity.mInstance.channels;
         List<String> names = new ArrayList<>();
         for (MainActivity.Channel c : channelList) {
             names.add(c.name);
         }
 
-        ArrayAdapter<String> adapter = new ArrayAdapter<>(this,
-                android.R.layout.simple_list_item_1, names);
+        // 带高亮的列表适配器
+        ArrayAdapter<String> adapter = new ArrayAdapter<String>(this,
+                android.R.layout.simple_list_item_1, names) {
+            @Override
+            public View getView(int position, View convertView, ViewGroup parent) {
+                View view = super.getView(position, convertView, parent);
+                // 当前播放频道高亮显示
+                if (position == MainActivity.mInstance.currentChannelIndex) {
+                    view.setBackgroundColor(Color.parseColor("#FFE0E0E0"));
+                } else {
+                    view.setBackgroundColor(Color.TRANSPARENT);
+                }
+                return view;
+            }
+        };
+
         listView.setAdapter(adapter);
 
+        // 自动滚动定位到正在播放的频道
+        int currentPos = MainActivity.mInstance.currentChannelIndex;
+        listView.smoothScrollToPositionFromTop(currentPos, 0);
+
+        // 点击切换频道
         listView.setOnItemClickListener((AdapterView<?> parent, View view, int position, long id) -> {
-            // 调用MainActivity的play方法
             MainActivity.mInstance.play(position);
-            finish(); // 播放后关闭频道列表页
+            finish();
         });
     }
 }

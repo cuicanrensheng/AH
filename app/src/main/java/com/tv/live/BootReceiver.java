@@ -8,11 +8,14 @@ import android.content.SharedPreferences;
 public class BootReceiver extends BroadcastReceiver {
     @Override
     public void onReceive(Context context, Intent intent) {
-        SharedPreferences sp = context.getSharedPreferences("setting", Context.MODE_PRIVATE);
-        if (sp.getBoolean("boot", false)) {
-            Intent i = new Intent(context, MainActivity.class);
-            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            context.startActivity(i);
+        if(Intent.ACTION_BOOT_COMPLETED.equals(intent.getAction())){
+            SharedPreferences sp = context.getSharedPreferences("setting",Context.MODE_PRIVATE);
+            boolean isAutoBoot = sp.getBoolean("boot",false);
+            if(isAutoBoot){
+                Intent mainIntent = new Intent(context,MainActivity.class);
+                mainIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                context.startActivity(mainIntent);
+            }
         }
     }
 }

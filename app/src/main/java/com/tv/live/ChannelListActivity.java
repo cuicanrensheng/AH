@@ -1,47 +1,40 @@
 package com.tv.live;
 
-import android.app.Activity;
 import android.os.Bundle;
 import android.view.View;
-import android.view.ViewGroup;
+import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.ListView;
-import android.widget.TextView;
+
+import androidx.appcompat.app.AppCompatActivity;
 
 import java.util.ArrayList;
 import java.util.List;
 
-public class ChannelListActivity extends Activity {
+public class ChannelListActivity extends AppCompatActivity {
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        ListView listView = new ListView(this);
-        setContentView(listView);
+        setContentView(R.layout.activity_channel_list);
 
+        ListView listView = findViewById(R.id.channel_list);
+
+        // 读取MainActivity的频道列表
+        final List<MainActivity.Channel> channelList = MainActivity.mInstance.channels;
         List<String> names = new ArrayList<>();
-        for (MainActivity.Channel c : MainActivity.mInstance.channels) {
+        for (MainActivity.Channel c : channelList) {
             names.add(c.name);
         }
 
-        ArrayAdapter<String> adapter = new ArrayAdapter<String>(
-            this,
-        android.R.layout.simple_list_item_1,
-        names
-     ) {
-
-            @Override
-            public View getView(int position, View convertView, ViewGroup parent) {
-                TextView tv = (TextView) super.getView(position, convertView, parent);
-                tv.setTextSize(22);
-                tv.setPadding(30, 20, 30, 20);
-                return tv;
-            }
-        };
-
+        ArrayAdapter<String> adapter = new ArrayAdapter<>(this,
+                android.R.layout.simple_list_item_1, names);
         listView.setAdapter(adapter);
-        listView.setOnItemClickListener((p, v, pos, id) -> {
-            MainActivity.mInstance.play(pos);
-            finish();
+
+        listView.setOnItemClickListener((AdapterView<?> parent, View view, int position, long id) -> {
+            // 调用MainActivity的play方法
+            MainActivity.mInstance.play(position);
+            finish(); // 播放后关闭频道列表页
         });
     }
 }

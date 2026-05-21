@@ -8,19 +8,25 @@ import android.widget.ArrayAdapter;
 import android.widget.ListView;
 import android.widget.TextView;
 
-public class ChannelListActivity extends Activity {
+import java.util.ArrayList;
+import java.util.List;
 
+public class ChannelListActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
         ListView listView = new ListView(this);
         setContentView(listView);
 
-        ArrayAdapter<String> adapter = new ArrayAdapter<String>(
+        List<String> names = new ArrayList<>();
+        for (MainActivity.Channel c : MainActivity.mInstance.channels) {
+            names.add(c.name);
+        }
+
+        ArrayAdapter<String> adapter = new ArrayAdapter<>(
                 this,
                 android.R.layout.simple_list_item_1,
-                new String[]{"频道1","频道2","频道3"}
+                names
         ) {
             @Override
             public View getView(int position, View convertView, ViewGroup parent) {
@@ -32,8 +38,8 @@ public class ChannelListActivity extends Activity {
         };
 
         listView.setAdapter(adapter);
-        listView.setOnItemClickListener((parent, view, position, id) -> {
-            MainActivity.mInstance.play(position);
+        listView.setOnItemClickListener((p, v, pos, id) -> {
+            MainActivity.mInstance.play(pos);
             finish();
         });
     }

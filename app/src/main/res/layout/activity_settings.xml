@@ -3,39 +3,29 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:padding="20dp">
+    android:padding="30dp">
 
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="选择播放器内核"
-        android:textSize="20sp"
+    <Switch
+        android:id="@+id/sw_rev"
+        android:text="频道反转"
+        android:textSize="22sp"
         android:layout_marginBottom="20dp"/>
 
-    <RadioGroup
-        android:id="@+id/radio_player_group"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical">
+    <Switch
+        android:id="@+id/sw_boot"
+        android:text="开机自启"
+        android:textSize="22sp"
+        android:layout_marginBottom="20dp"/>
 
-        <RadioButton
-            android:id="@+id/radio_exo"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="ExoPlayer（推荐）"/>
+    <Switch
+        android:id="@+id/sw_source"
+        android:text="切换备用直播源"
+        android:textSize="22sp"
+        android:layout_marginBottom="20dp"/>
 
-        <RadioButton
-            android:id="@+id/radio_vlc"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="VLC播放器（兼容强）"/>
-    </RadioGroup>
-
-    <Button
-        android:id="@+id/btn_save"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="保存设置"
-        android:layout_marginTop="20dp"/>
+    <Switch
+        android:id="@+id/sw_epg"
+        android:text="EPG节目单"
+        android:textSize="22sp"/>
 
 </LinearLayout>

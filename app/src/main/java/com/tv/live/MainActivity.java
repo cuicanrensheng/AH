@@ -36,7 +36,7 @@ public class MainActivity extends AppCompatActivity {
 
     private PlayerView playerView;
     private ExoPlayer exoPlayer;
-    private final List<Channel> channels = new ArrayList<>();
+    public final List<Channel> channels = new ArrayList<>();
     private int currentPos = 0;
     private boolean reverse;
     private boolean epgEnable;

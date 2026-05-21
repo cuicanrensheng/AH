@@ -68,7 +68,7 @@ public class MainActivity extends AppCompatActivity {
 
     // 填入你的真实直播源 m3u8 地址
     private String getCurrentChannelUrl() {
-        return "https://你的直播地址.m3u8";
+        return "https://gitee.com/qf_1111/iptv/raw/master/playlist.m3u";
     }
 
     private void releaseAllPlayer() {

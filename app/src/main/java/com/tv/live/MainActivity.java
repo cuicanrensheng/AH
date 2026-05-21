@@ -1,4 +1,5 @@
 package com.tv.live;
+
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Build;
@@ -13,11 +14,15 @@ import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.widget.TextView;
 import android.widget.Toast;
+
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
+
 import com.google.android.exoplayer2.ExoPlayer;
 import com.google.android.exoplayer2.MediaItem;
+import com.google.android.exoplayer2.ui.AspectRatioFrameLayout;
 import com.google.android.exoplayer2.ui.PlayerView;
+
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
@@ -36,15 +41,12 @@ public class MainActivity extends AppCompatActivity {
     public static class Channel {
         public String name;
         public String url;
+
         public Channel(String name, String url) {
             this.name = name;
             this.url = url;
         }
     }
-
-    // 切换画面延时参数
-    private static final long SWITCH_DELAY_TIME = 2000;
-    private boolean isSwitching = false;
 
     // 直播源 & EPG地址
     private static final String LIVE_M3U = "https://gitee.com/qf_1111/iptv/raw/master/playlist.m3u";
@@ -54,6 +56,7 @@ public class MainActivity extends AppCompatActivity {
     private PlayerView playerView;
     private View epgLayout;
     private TextView tvEpgInfo;
+    private View menuLayout;
 
     // 设置项
     private boolean isReverse;
@@ -70,8 +73,11 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+
         mInstance = this;
+        // 开启全屏隐藏状态栏导航栏
         setFullscreen();
+
         initView();
         initPlayer();
         readConfig();
@@ -79,31 +85,86 @@ public class MainActivity extends AppCompatActivity {
         loadM3USource();
     }
 
-    // 优化后：防黑屏 + 同步下标
+    private void initView() {
+        playerView = findViewById(R.id.player_view);
+        epgLayout = findViewById(R.id.epg_layout);
+        tvEpgInfo = findViewById(R.id.tv_epg_info);
+        menuLayout = findViewById(R.id.menu_layout);
+
+        // 绑定画面比例按钮
+        findViewById(R.id.btn_aspect_ratio).setOnClickListener(v -> showAspectRatioDialog());
+    }
+
+    private void initPlayer() {
+        exoPlayer = new ExoPlayer.Builder(this).build();
+        playerView.setPlayer(exoPlayer);
+        playerView.setUseController(false);
+    }
+
+    private void readConfig() {
+        SharedPreferences sp = getSharedPreferences("setting", MODE_PRIVATE);
+        isReverse = sp.getBoolean("reverse", false);
+        openEpg = sp.getBoolean("epg", true);
+        epgLayout.setVisibility(openEpg ? View.VISIBLE : View.GONE);
+    }
+
+    private void initGesture() {
+        gestureDetector = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
+            @Override
+            public boolean onSingleTapConfirmed(MotionEvent e) {
+                toggleMenu();
+                return true;
+            }
+
+            @Override
+            public boolean onDoubleTap(MotionEvent e) {
+                goSetting();
+                return true;
+            }
+
+            @Override
+            public boolean onFling(MotionEvent e1, MotionEvent e2, float vx, float vy) {
+                float dy = e2.getY() - e1.getY();
+                if (Math.abs(dy) > 80) {
+                    if (dy < 0) nextChannel();
+                    else preChannel();
+                    return true;
+                }
+                return false;
+            }
+        });
+    }
+
+    private void toggleMenu() {
+        if (menuLayout.getVisibility() == View.VISIBLE) {
+            menuLayout.setVisibility(View.GONE);
+        } else {
+            menuLayout.setVisibility(View.VISIBLE);
+        }
+    }
+
+    // 【已修改】移除“保留上一帧画面2秒”的逻辑，直接切换频道
     public void play(int index) {
-        if (index < 0 || index >= channels.size() || isSwitching) {
+        if (index < 0 || index >= channels.size()) {
             return;
         }
         if (index == currentChannelIndex) {
+            toggleMenu();
             return;
         }
 
-        isSwitching = true;
         curIndex = index;
         currentChannelIndex = index;
 
-        exoPlayer.setPlayWhenReady(false);
+        String url = channels.get(index).url;
+        String name = channels.get(index).name;
+        MediaItem item = MediaItem.fromUri(url);
+        exoPlayer.setMediaItem(item);
+        exoPlayer.prepare();
+        exoPlayer.play();
 
-        mHandler.postDelayed(() -> {
-            String url = channels.get(index).url;
-            String name = channels.get(index).name;
-            MediaItem item = MediaItem.fromUri(url);
-            exoPlayer.setMediaItem(item);
-            exoPlayer.prepare();
-            exoPlayer.play();
-            tvEpgInfo.setText("正在播放：" + name + "\nEPG数据源：" + EPG_URL);
-            isSwitching = false;
-        }, SWITCH_DELAY_TIME);
+        tvEpgInfo.setText("正在播放：" + name + "\nEPG数据源：" + EPG_URL);
+        toggleMenu();
     }
 
     // 全屏沉浸式隐藏状态栏
@@ -124,25 +185,6 @@ public class MainActivity extends AppCompatActivity {
                             | View.SYSTEM_UI_FLAG_FULLSCREEN
             );
         }
-    }
-
-    private void initView() {
-        playerView = findViewById(R.id.player_view);
-        epgLayout = findViewById(R.id.epg_layout);
-        tvEpgInfo = findViewById(R.id.tv_epg_info);
-    }
-
-    private void initPlayer() {
-        exoPlayer = new ExoPlayer.Builder(this).build();
-        playerView.setPlayer(exoPlayer);
-        playerView.setUseController(false);
-    }
-
-    private void readConfig() {
-        SharedPreferences sp = getSharedPreferences("setting", MODE_PRIVATE);
-        isReverse = sp.getBoolean("reverse", false);
-        openEpg = sp.getBoolean("epg", true);
-        epgLayout.setVisibility(openEpg ? View.VISIBLE : View.GONE);
     }
 
     private void loadM3USource() {
@@ -198,47 +240,8 @@ public class MainActivity extends AppCompatActivity {
         play(curIndex);
     }
 
-    private void showChannelList() {
-        if (channels.isEmpty()) return;
-        String[] names = new String[channels.size()];
-        for (int i = 0; i < channels.size(); i++) {
-            names[i] = channels.get(i).name;
-        }
-        new AlertDialog.Builder(this)
-                .setTitle("频道列表")
-                .setItems(names, (d, w) -> play(w))
-                .show();
-    }
-
     private void goSetting() {
         startActivity(new Intent(this, SettingsActivity.class));
-    }
-
-    private void initGesture() {
-        gestureDetector = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
-            @Override
-            public boolean onSingleTapConfirmed(MotionEvent e) {
-                showChannelList();
-                return true;
-            }
-
-            @Override
-            public boolean onDoubleTap(MotionEvent e) {
-                goSetting();
-                return true;
-            }
-
-            @Override
-            public boolean onFling(MotionEvent e1, MotionEvent e2, float vx, float vy) {
-                float dy = e2.getY() - e1.getY();
-                if (Math.abs(dy) > 80) {
-                    if (dy < 0) nextChannel();
-                    else preChannel();
-                    return true;
-                }
-                return false;
-            }
-        });
     }
 
     @Override
@@ -257,10 +260,10 @@ public class MainActivity extends AppCompatActivity {
                 return true;
             case KeyEvent.KEYCODE_DPAD_CENTER:
             case KeyEvent.KEYCODE_ENTER:
-                showChannelList();
+                toggleMenu();
                 return true;
             case KeyEvent.KEYCODE_MENU:
-                goSetting();
+                toggleMenu();
                 return true;
         }
         return super.onKeyDown(keyCode, event);
@@ -271,6 +274,9 @@ public class MainActivity extends AppCompatActivity {
         super.onResume();
         readConfig();
         setFullscreen();
+        if (exoPlayer != null) {
+            exoPlayer.play();
+        }
     }
 
     @Override
@@ -282,5 +288,32 @@ public class MainActivity extends AppCompatActivity {
             exoPlayer = null;
         }
         mInstance = null;
+    }
+
+    // 画面比例设置弹窗
+    private void showAspectRatioDialog() {
+        String[] items = {"默认", "16:9", "4:3", "填充", "原始/裁剪"};
+        new AlertDialog.Builder(this)
+                .setTitle("画面比例")
+                .setItems(items, (dialog, which) -> {
+                    switch (which) {
+                        case 0:
+                            playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
+                            break;
+                        case 1:
+                            playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIXED_WIDTH);
+                            break;
+                        case 2:
+                            playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIXED_HEIGHT);
+                            break;
+                        case 3:
+                            playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
+                            break;
+                        case 4:
+                            playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_ZOOM);
+                            break;
+                    }
+                })
+                .show();
     }
 }

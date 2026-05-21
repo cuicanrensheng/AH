@@ -86,6 +86,38 @@ public class MainActivity extends AppCompatActivity {
         initGesture();
         loadM3USource();
     }
+    public void play(int index) {
+    if (index < 0 || index >= channels.size() || isSwitching) {
+        return;
+    }
+        
+    // 同一个频道不重复切换
+    if (index == currentChannelIndex) {
+        return;
+    }
+
+    isSwitching = true;
+    curIndex = index;
+    currentChannelIndex = index;
+
+    // 定格上一个频道画面，不立即黑屏
+    exoPlayer.setPlayWhenReady(false);
+
+    // 延迟2秒后再加载新频道
+    mHandler.postDelayed(() -> {
+        String url = channels.get(index).url;
+        String name = channels.get(index).name;
+
+        MediaItem item = MediaItem.fromUri(url);
+        exoPlayer.setMediaItem(item);
+        exoPlayer.prepare();
+        exoPlayer.play();
+
+        tvEpgInfo.setText("正在播放：" + name + "\nEPG数据源：" + EPG_URL);
+        isSwitching = false;
+    }, SWITCH_DELAY_TIME);
+}
+
 
     // 全屏沉浸式隐藏状态栏
     private void setFullscreen() {

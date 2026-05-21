@@ -47,6 +47,10 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+     // 切换画面延时参数
+    private static final long SWITCH_DELAY_TIME = 2000;
+    private boolean isSwitching = false;
+    
     // 直播源 & EPG地址
     private static final String LIVE_M3U = "https://gitee.com/qf_1111/iptv/raw/master/playlist.m3u";
     private static final String EPG_URL = "http://epg.51zmt.top:8000/e.xml.gz";

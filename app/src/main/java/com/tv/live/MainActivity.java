@@ -187,7 +187,7 @@ public class MainActivity extends AppCompatActivity {
                 br.close();
                 conn.disconnect();
                 mHandler.post(() -> {
-                    if (!channels.isEmpty()) play(curIndex);
+                    play(curIndex);
                     Toast.makeText(this, "加载完成：" + channels.size() + "个频道", Toast.LENGTH_SHORT).show();
                 });
             } catch (Exception e) {
@@ -203,7 +203,7 @@ public class MainActivity extends AppCompatActivity {
         }
         curIndex--;
         if (curIndex < 0) curIndex = channels.size() - 1;
-        play(curIndex);
+       
     }
 
     private void nextChannel() {
@@ -213,7 +213,7 @@ public class MainActivity extends AppCompatActivity {
         }
         curIndex++;
         if (curIndex >= channels.size()) curIndex = 0;
-        play(curIndex);
+       
     }
 
     private void goSetting() {

@@ -161,20 +161,22 @@ public class MainActivity extends AppCompatActivity {
 
     // 播放频道，同步更新当前下标
     public void play(int index) {
-        if (index < 0 || index >= channels.size()) return;
-        curIndex = index;
-        currentChannelIndex = index;
+    if (index < 0 || index >= channels.size()) return;
+    // 同步更新播放下标
+    curIndex = index;
+    currentChannelIndex = index;
 
-        String url = channels.get(index).url;
-        String name = channels.get(index).name;
+    String url = channels.get(index).url;
+    String name = channels.get(index).name;
 
-        MediaItem item = MediaItem.fromUri(url);
-        exoPlayer.setMediaItem(item);
-        exoPlayer.prepare();
-        exoPlayer.play();
+    MediaItem item = MediaItem.fromUri(url);
+    exoPlayer.setMediaItem(item);
+    exoPlayer.prepare();
+    exoPlayer.play();
 
-        tvEpgInfo.setText("正在播放：" + name + "\nEPG数据源：" + EPG_URL);
-    }
+    tvEpgInfo.setText("正在播放：" + name + "\nEPG数据源：" + EPG_URL);
+}
+
 
     // 上一频道
     private void preChannel() {

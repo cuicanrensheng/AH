@@ -215,7 +215,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void initGesture() {
-        gestureDetector = new GestureDetector(this, new Gesture.SimpleOnGestureListener() {
+        gestureDetector = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
             @Override
             public boolean onSingleTapConfirmed(MotionEvent e) {
                 showChannelList();

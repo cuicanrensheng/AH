@@ -1,5 +1,4 @@
 package com.tv.live;
-
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Build;
@@ -14,14 +13,11 @@ import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.widget.TextView;
 import android.widget.Toast;
-
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
-
 import com.google.android.exoplayer2.ExoPlayer;
 import com.google.android.exoplayer2.MediaItem;
 import com.google.android.exoplayer2.ui.PlayerView;
-
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
@@ -40,20 +36,19 @@ public class MainActivity extends AppCompatActivity {
     public static class Channel {
         public String name;
         public String url;
-
         public Channel(String name, String url) {
             this.name = name;
             this.url = url;
         }
     }
 
-     // 切换画面延时参数
+    // 切换画面延时参数
     private static final long SWITCH_DELAY_TIME = 2000;
     private boolean isSwitching = false;
-    
+
     // 直播源 & EPG地址
     private static final String LIVE_M3U = "https://gitee.com/qf_1111/iptv/raw/master/playlist.m3u";
-    private static final String EPG_URL = "http://epg.51zmt.top:8000/e.xml.gz";
+    private static final EPG_URL = "http://epg.51zmt.top:8000/e.xml.gz";
 
     private ExoPlayer exoPlayer;
     private PlayerView playerView;
@@ -75,56 +70,48 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-
         mInstance = this;
-        // 开启全屏隐藏状态栏导航栏
         setFullscreen();
-
         initView();
         initPlayer();
         readConfig();
         initGesture();
         loadM3USource();
     }
+
+    // 优化后：防黑屏 + 同步下标
     public void play(int index) {
-    if (index < 0 || index >= channels.size() || isSwitching) {
-        return;
+        if (index < 0 || index >= channels.size() || isSwitching) {
+            return;
+        }
+        if (index == currentChannelIndex) {
+            return;
+        }
+
+        isSwitching = true;
+        curIndex = index;
+        currentChannelIndex = index;
+
+        exoPlayer.setPlayWhenReady(false);
+
+        mHandler.postDelayed(() -> {
+            String url = channels.get(index).url;
+            String name = channels.get(index).name;
+            MediaItem item = MediaItem.fromUri(url);
+            exoPlayer.setMediaItem(item);
+            exoPlayer.prepare();
+            exoPlayer.play();
+            tvEpgInfo.setText("正在播放：" + name + "\nEPG数据源：" + EPG_URL);
+            isSwitching = false;
+        }, SWITCH_DELAY_TIME);
     }
-        
-    // 同一个频道不重复切换
-    if (index == currentChannelIndex) {
-        return;
-    }
-
-    isSwitching = true;
-    curIndex = index;
-    currentChannelIndex = index;
-
-    // 定格上一个频道画面，不立即黑屏
-    exoPlayer.setPlayWhenReady(false);
-
-    // 延迟2秒后再加载新频道
-    mHandler.postDelayed(() -> {
-        String url = channels.get(index).url;
-        String name = channels.get(index).name;
-
-        MediaItem item = MediaItem.fromUri(url);
-        exoPlayer.setMediaItem(item);
-        exoPlayer.prepare();
-        exoPlayer.play();
-
-        tvEpgInfo.setText("正在播放：" + name + "\nEPG数据源：" + EPG_URL);
-        isSwitching = false;
-    }, SWITCH_DELAY_TIME);
-}
-
 
     // 全屏沉浸式隐藏状态栏
     private void setFullscreen() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             WindowInsetsController controller = getWindow().getInsetsController();
             if (controller != null) {
-                controller.hide(WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars());
+                controller.hide(WindowInsets.Type.statusBars | WindowInsets.Type.navigationBars);
                 controller.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
             }
         } else {
@@ -138,12 +125,6 @@ public class MainActivity extends AppCompatActivity {
             );
         }
     }
-    
-    @Override
-    protected void onResume() {
-    super.onResume();
-    setFullscreen();
-}
 
     private void initView() {
         playerView = findViewById(R.id.player_view);
@@ -157,7 +138,6 @@ public class MainActivity extends AppCompatActivity {
         playerView.setUseController(false);
     }
 
-    // 读取设置
     private void readConfig() {
         SharedPreferences sp = getSharedPreferences("setting", MODE_PRIVATE);
         isReverse = sp.getBoolean("reverse", false);
@@ -165,7 +145,6 @@ public class MainActivity extends AppCompatActivity {
         epgLayout.setVisibility(openEpg ? View.VISIBLE : View.GONE);
     }
 
-    // 网络解析M3U
     private void loadM3USource() {
         new Thread(() -> {
             try {
@@ -176,7 +155,6 @@ public class MainActivity extends AppCompatActivity {
                 String line;
                 String nameTemp = null;
                 channels.clear();
-
                 while ((line = br.readLine()) != null) {
                     if (line.startsWith("#EXTINF")) {
                         int pos = line.lastIndexOf(",");
@@ -190,7 +168,6 @@ public class MainActivity extends AppCompatActivity {
                 }
                 br.close();
                 conn.disconnect();
-
                 mHandler.post(() -> {
                     if (!channels.isEmpty()) play(curIndex);
                     Toast.makeText(this, "加载完成：" + channels.size() + "个频道", Toast.LENGTH_SHORT).show();
@@ -201,26 +178,6 @@ public class MainActivity extends AppCompatActivity {
         }).start();
     }
 
-    // 播放频道，同步更新当前下标
-    public void play(int index) {
-    if (index < 0 || index >= channels.size()) return;
-    // 同步更新播放下标
-    curIndex = index;
-    currentChannelIndex = index;
-
-    String url = channels.get(index).url;
-    String name = channels.get(index).name;
-
-    MediaItem item = MediaItem.fromUri(url);
-    exoPlayer.setMediaItem(item);
-    exoPlayer.prepare();
-    exoPlayer.play();
-
-    tvEpgInfo.setText("正在播放：" + name + "\nEPG数据源：" + EPG_URL);
-}
-
-
-    // 上一频道
     private void preChannel() {
         if (isReverse) {
             nextChannel();
@@ -231,7 +188,6 @@ public class MainActivity extends AppCompatActivity {
         play(curIndex);
     }
 
-    // 下一频道
     private void nextChannel() {
         if (isReverse) {
             preChannel();
@@ -242,7 +198,6 @@ public class MainActivity extends AppCompatActivity {
         play(curIndex);
     }
 
-    // 弹出频道列表
     private void showChannelList() {
         if (channels.isEmpty()) return;
         String[] names = new String[channels.size()];
@@ -255,12 +210,10 @@ public class MainActivity extends AppCompatActivity {
                 .show();
     }
 
-    // 打开设置
     private void goSetting() {
         startActivity(new Intent(this, SettingsActivity.class));
     }
 
-    // 手势初始化
     private void initGesture() {
         gestureDetector = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
             @Override
@@ -268,13 +221,11 @@ public class MainActivity extends AppCompatActivity {
                 showChannelList();
                 return true;
             }
-
             @Override
             public boolean onDoubleTap(MotionEvent e) {
                 goSetting();
                 return true;
             }
-
             @Override
             public boolean onFling(MotionEvent e1, MotionEvent e2, float vx, float vy) {
                 float dy = e2.getY() - e1.getY();
@@ -293,7 +244,6 @@ public class MainActivity extends AppCompatActivity {
         return gestureDetector.onTouchEvent(event) || super.onTouchEvent(event);
     }
 
-    // 遥控器按键
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         switch (keyCode) {
@@ -318,7 +268,6 @@ public class MainActivity extends AppCompatActivity {
     protected void onResume() {
         super.onResume();
         readConfig();
-        // 返回前台重新恢复全屏
         setFullscreen();
     }
 

@@ -3,10 +3,30 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
+    <!-- ExoPlayer播放视图 -->
     <com.google.android.exoplayer2.ui.PlayerView
-        android:id="@+id/exo_player_view"
+        android:id="@+id/player_view"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:clickable="true"/>
+        android:layout_height="match_parent"/>
+
+    <!-- EPG节目单布局 -->
+    <LinearLayout
+        android:id="@+id/epg_layout"
+        android:layout_width="match_parent"
+        android:layout_height="150dp"
+        android:layout_gravity="bottom"
+        android:background="#99000000"
+        android:orientation="vertical"
+        android:padding="10dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/tv_epg_info"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="#ffffff"
+            android:textSize="14sp"/>
+
+    </LinearLayout>
 
 </FrameLayout>

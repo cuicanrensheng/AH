@@ -27,7 +27,16 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
+    public static MainActivity mInstance;
+    public static class Channel {
+        public String name;
+        public String url;
 
+        public Channel(String name, String url) {
+            this.name = name;
+            this.url = url;
+        }
+    }
     // 直播源 & EPG地址
     private static final String LIVE_M3U_URL = "https://gitee.com/qf_1111/iptv/raw/master/playlist.m3u";
     private static final String EPG_XML_URL = "http://epg.51zmt.top:8000/e.xml.gz";

@@ -39,3 +39,5 @@
     </receiver>
 
 </application>
+<!-- 就是缺了这一行 -->
+</manifest>

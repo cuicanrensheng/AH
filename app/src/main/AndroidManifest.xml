@@ -26,12 +26,6 @@
         android:exported="false"
         android:screenOrientation="sensor"/>
 
-    <!-- 注意：如果你的播放器类名不是 PlayerActivity，直接删掉这一行 -->
-    <activity
-        android:name=".PlayerActivity"
-        android:exported="false"
-        android:screenOrientation="landscape"/>
-
     <receiver
         android:name=".BootReceiver"
         android:exported="false">

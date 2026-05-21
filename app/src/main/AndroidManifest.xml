@@ -1,39 +1,44 @@
-<?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<application
+    android:allowBackup="true"
+    android:label="直播"
+    android:supportsRtl="true"
+    android:theme="@style/Theme.AppCompat.Light.NoActionBar"
+    android:usesCleartextTraffic="true"
+    android:networkSecurityConfig="@xml/network_security_config">
 
-    <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <activity
+        android:name=".MainActivity"
+        android:exported="true"
+        android:screenOrientation="sensor">
+        <intent-filter>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent-filter>
+    </activity>
 
-    <application
-        android:allowBackup="true"
-        android:label="直播"
-        android:supportsRtl="true"
-        android:theme="@style/Theme.AppCompat.Light.NoActionBar"
-        android:usesCleartextTraffic="true"
-        android:networkSecurityConfig="@xml/network_security_config">
+    <!-- 补充 sensor 实现横竖屏自动适配 -->
+    <activity
+        android:name=".SettingsActivity"
+        android:exported="false"
+        android:screenOrientation="sensor"/>
 
-        <activity
-            android:name=".MainActivity"
-            android:exported="true"
-            android:screenOrientation="sensor">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
+    <activity
+        android:name=".ChannelListActivity"
+        android:exported="false"
+        android:screenOrientation="sensor"/>
 
-        <activity android:name=".SettingsActivity" android:exported="false"/>
-        <activity android:name=".ChannelListActivity" android:exported="false"/>
+    <!-- 新增：播放器页面强制横屏（根据你的实际类名修改） -->
+    <activity
+        android:name=".PlayerActivity"
+        android:exported="false"
+        android:screenOrientation="landscape"/>
 
-        <receiver
-            android:name=".BootReceiver"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-            </intent-filter>
-        </receiver>
+    <receiver
+        android:name=".BootReceiver"
+        android:exported="false">
+        <intent-filter>
+            <action android:name="android.intent.action.BOOT_COMPLETED" />
+        </intent-filter>
+    </receiver>
 
-    </application>
-
-</manifest>
+</application>

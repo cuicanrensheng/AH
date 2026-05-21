@@ -23,11 +23,12 @@ public class ChannelListActivity extends Activity {
             names.add(c.name);
         }
 
-        ArrayAdapter<String> adapter = new ArrayAdapter<>(
-                this,
-                android.R.layout.simple_list_item_1,
-                names
-        ) {
+        ArrayAdapter<String> adapter = new ArrayAdapter<String>(
+            this,
+        android.R.layout.simple_list_item_1,
+        names
+     ) {
+
             @Override
             public View getView(int position, View convertView, ViewGroup parent) {
                 TextView tv = (TextView) super.getView(position, convertView, parent);

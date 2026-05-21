@@ -14,19 +14,19 @@ public class SettingsActivity extends AppCompatActivity {
         SharedPreferences sp = getSharedPreferences("setting", MODE_PRIVATE);
         SharedPreferences.Editor ed = sp.edit();
 
-        Switch rev = findViewById(R.id.sw_rev);
-        Switch boot = findViewById(R.id.sw_boot);
-        Switch source = findViewById(R.id.sw_source);
-        Switch epg = findViewById(R.id.sw_epg);
+        Switch swRev = findViewById(R.id.sw_rev);
+        Switch swBoot = findViewById(R.id.sw_boot);
+        Switch swSource = findViewById(R.id.sw_source);
+        Switch swEpg = findViewById(R.id.sw_epg);
 
-        rev.setChecked(sp.getBoolean("reverse", false));
-        boot.setChecked(sp.getBoolean("boot", false));
-        source.setChecked(sp.getInt("source", 0) == 1);
-        epg.setChecked(sp.getBoolean("epg", true));
+        swRev.setChecked(sp.getBoolean("reverse", false));
+        swBoot.setChecked(sp.getBoolean("boot", false));
+        swSource.setChecked(sp.getInt("source",0)==1);
+        swEpg.setChecked(sp.getBoolean("epg",true));
 
-        rev.setOnCheckedChangeListener((b, v) -> ed.putBoolean("reverse", v).apply());
-        boot.setOnCheckedChangeListener((b, v) -> ed.putBoolean("boot", v).apply());
-        source.setOnCheckedChangeListener((b, v) -> ed.putInt("source", v ? 1 : 0).apply());
-        epg.setOnCheckedChangeListener((b, v) -> ed.putBoolean("epg", v).apply());
+        swRev.setOnCheckedChangeListener((b, v)-> ed.putBoolean("reverse",v).apply());
+        swBoot.setOnCheckedChangeListener((b, v)-> ed.putBoolean("boot",v).apply());
+        swSource.setOnCheckedChangeListener((b, v)-> ed.putInt("source",v?1:0).apply());
+        swEpg.setOnCheckedChangeListener((b, v)-> ed.putBoolean("epg",v).apply());
     }
 }

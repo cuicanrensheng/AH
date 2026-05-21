@@ -2,6 +2,7 @@ package com.tv.live;
 
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -9,6 +10,8 @@ import android.view.GestureDetector;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.WindowInsets;
+import android.view.WindowInsetsController;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -28,10 +31,12 @@ import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
 
-    // 单例实例（给ChannelListActivity调用）
+    // 单例实例
     public static MainActivity mInstance;
+    // 当前播放频道下标，用于列表定位
+    public int currentChannelIndex = 0;
 
-    // 频道实体类（给ChannelListActivity调用）
+    // 频道实体类
     public static class Channel {
         public String name;
         public String url;
@@ -55,7 +60,7 @@ public class MainActivity extends AppCompatActivity {
     private boolean isReverse;
     private boolean openEpg;
 
-    // 频道集合（public给外部访问）
+    // 频道集合
     public final List<Channel> channels = new ArrayList<>();
     private int curIndex = 0;
 
@@ -67,14 +72,35 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        // 初始化单例
         mInstance = this;
+        // 开启全屏隐藏状态栏导航栏
+        setFullscreen();
 
         initView();
         initPlayer();
         readConfig();
         initGesture();
         loadM3USource();
+    }
+
+    // 全屏沉浸式隐藏状态栏
+    private void setFullscreen() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            WindowInsetsController controller = getWindow().getInsetsController();
+            if (controller != null) {
+                controller.hide(WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars());
+                controller.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+            }
+        } else {
+            getWindow().getDecorView().setSystemUiVisibility(
+                    View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                            | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                            | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                            | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                            | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                            | View.SYSTEM_UI_FLAG_FULLSCREEN
+            );
+        }
     }
 
     private void initView() {
@@ -97,7 +123,7 @@ public class MainActivity extends AppCompatActivity {
         epgLayout.setVisibility(openEpg ? View.VISIBLE : View.GONE);
     }
 
-    // 网络解析M3U，填充channels列表
+    // 网络解析M3U
     private void loadM3USource() {
         new Thread(() -> {
             try {
@@ -133,10 +159,12 @@ public class MainActivity extends AppCompatActivity {
         }).start();
     }
 
-    // 公开播放方法，给ChannelListActivity调用
+    // 播放频道，同步更新当前下标
     public void play(int index) {
         if (index < 0 || index >= channels.size()) return;
         curIndex = index;
+        currentChannelIndex = index;
+
         String url = channels.get(index).url;
         String name = channels.get(index).name;
 
@@ -221,7 +249,7 @@ public class MainActivity extends AppCompatActivity {
         return gestureDetector.onTouchEvent(event) || super.onTouchEvent(event);
     }
 
-    // 遥控器按键（已修复KEYCODE_BUTTON_HELP问题）
+    // 遥控器按键
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         switch (keyCode) {
@@ -235,7 +263,6 @@ public class MainActivity extends AppCompatActivity {
             case KeyEvent.KEYCODE_ENTER:
                 showChannelList();
                 return true;
-            // 用通用的KEYCODE_MENU替代KEYCODE_BUTTON_HELP
             case KeyEvent.KEYCODE_MENU:
                 goSetting();
                 return true;
@@ -247,6 +274,8 @@ public class MainActivity extends AppCompatActivity {
     protected void onResume() {
         super.onResume();
         readConfig();
+        // 返回前台重新恢复全屏
+        setFullscreen();
     }
 
     @Override
@@ -257,7 +286,6 @@ public class MainActivity extends AppCompatActivity {
             exoPlayer.release();
             exoPlayer = null;
         }
-        // 销毁单例
         mInstance = null;
     }
 }

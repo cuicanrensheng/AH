@@ -57,9 +57,13 @@ public class ChannelListActivity extends AppCompatActivity {
         listView.setSelection(currentPos);
         listView.smoothScrollToPositionFromTop(currentPos, 50);
 
-        // 点击切换频道
-        listView.setOnItemClickListener((AdapterView<?> parent, View view, int position, long id) ->
-            finish();
+        // 修复点击事件语法
+        listView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+            @Override
+            public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
+                // 点击后关闭当前页面
+                finish();
+            }
         });
     }
 }

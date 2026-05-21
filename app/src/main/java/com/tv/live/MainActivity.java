@@ -9,10 +9,15 @@ import android.view.GestureDetector;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
+
+import com.google.android.exoplayer2.ExoPlayer;
+import com.google.android.exoplayer2.MediaItem;
+import com.google.android.exoplayer2.ui.PlayerView;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -23,179 +28,190 @@ import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
 
-    // 你的真实直播源 + EPG
-    private static final String M3U_URL = "https://gitee.com/qf_1111/iptv/raw/master/playlist.m3u";
-    private static final String EPG_URL = "http://epg.51zmt.top:8000/e.xml.gz";
+    // 直播源 & EPG地址
+    private static final String LIVE_M3U_URL = "https://gitee.com/qf_1111/iptv/raw/master/playlist.m3u";
+    private static final String EPG_XML_URL = "http://epg.51zmt.top:8000/e.xml.gz";
 
-    // 设置
-    private boolean isReverse;
-    private boolean enableEpg;
-    private int sourceIndex;
+    // ExoPlayer
+    private ExoPlayer exoPlayer;
+    private PlayerView playerView;
 
-    // 频道数据（自动从m3u读取）
-    private final List<String> channelNames = new ArrayList<>();
-    private final List<String> channelUrls = new ArrayList<>();
-    private int currentIndex = 0;
+    // 设置参数
+    private boolean channelReverse;
+    private boolean epgOpen;
+    private int sourceSelectIndex;
 
+    // 频道数据
+    private final List<String> channelNameList = new ArrayList<>();
+    private final List<String> channelUrlList = new ArrayList<>();
+    private int currentPlayIndex = 0;
+
+    // 手势
     private GestureDetector gestureDetector;
-    private final Handler handler = new Handler(Looper.getMainLooper());
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+
+    // EPG控件
+    private View epgLayout;
+    private TextView tvEpgInfo;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        // 读取设置
-        loadSettings();
-
-        // 初始化手势
-        initGesture();
-
-        // 加载真实直播源
-        loadM3uLiveSource(M3U_URL);
+        initView();
+        initExoPlayer();
+        readAllSetting();
+        initGestureTouch();
+        loadNetM3ULiveSource();
     }
 
-    // 读取设置（反转、EPG、源序号）
-    private void loadSettings() {
-        SharedPreferences sp = getSharedPreferences("setting", MODE_PRIVATE);
-        isReverse = sp.getBoolean("reverse", false);
-        enableEpg = sp.getBoolean("epg", true);
-        sourceIndex = sp.getInt("source", 0);
+    // 初始化控件
+    private void initView(){
+        playerView = findViewById(R.id.player_view);
+        epgLayout = findViewById(R.id.epg_layout);
+        tvEpgInfo = findViewById(R.id.tv_epg_info);
     }
 
-    // 加载网络 M3U 直播源（你真实的源）
-    private void loadM3uLiveSource(String url) {
-        new Thread(() -> {
+    // 初始化ExoPlayer
+    private void initExoPlayer(){
+        exoPlayer = new ExoPlayer.Builder(this).build();
+        playerView.setPlayer(exoPlayer);
+        // 关闭默认控制栏
+        playerView.setUseController(false);
+    }
+
+    // 读取本地设置
+    private void readAllSetting(){
+        SharedPreferences sp = getSharedPreferences("setting",MODE_PRIVATE);
+        channelReverse = sp.getBoolean("reverse",false);
+        epgOpen = sp.getBoolean("epg",true);
+        sourceSelectIndex = sp.getInt("source",0);
+        // 控制EPG显示隐藏
+        epgLayout.setVisibility(epgOpen ? View.VISIBLE : View.GONE);
+    }
+
+    // 网络加载M3U直播源自动解析频道
+    private void loadNetM3ULiveSource(){
+        new Thread(()->{
             try {
-                HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
-                conn.setRequestMethod("GET");
-                BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+                HttpURLConnection connection = (HttpURLConnection) new URL(LIVE_M3U_URL).openConnection();
+                connection.setRequestMethod("GET");
+                connection.setConnectTimeout(8000);
+                connection.setReadTimeout(8000);
+                BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream()));
 
                 String line;
-                String name = null;
-                channelNames.clear();
-                channelUrls.clear();
+                String tempName = null;
+                channelNameList.clear();
+                channelUrlList.clear();
 
-                while ((line = br.readLine()) != null) {
-                    if (line.startsWith("#EXTINF")) {
-                        int last = line.lastIndexOf(",");
-                        if (last > 0) name = line.substring(last + 1);
-                    } else if (line.startsWith("http")) {
-                        if (name != null) {
-                            channelNames.add(name);
-                            channelUrls.add(line);
-                            name = null;
+                while ((line = reader.readLine()) != null){
+                    if(line.startsWith("#EXTINF:")){
+                        int nameIndex = line.lastIndexOf(",");
+                        if(nameIndex != -1){
+                            tempName = line.substring(nameIndex+1);
+                        }
+                    }else if(line.startsWith("http")){
+                        if(tempName != null){
+                            channelNameList.add(tempName);
+                            channelUrlList.add(line);
+                            tempName = null;
                         }
                     }
                 }
-                br.close();
-                conn.disconnect();
+                reader.close();
+                connection.disconnect();
 
-                handler.post(() -> {
-                    if (!channelNames.isEmpty()) playChannel(0);
-                    Toast.makeText(this, "加载完成：" + channelNames.size() + "个频道", Toast.LENGTH_SHORT).show();
+                mainHandler.post(()->{
+                    if(!channelUrlList.isEmpty()){
+                        playTargetChannel(0);
+                    }
+                    Toast.makeText(MainActivity.this,"加载成功 共"+channelNameList.size()+"个频道",Toast.LENGTH_SHORT).show();
                 });
-
-            } catch (Exception e) {
-                handler.post(() -> Toast.makeText(this, "加载源失败", Toast.LENGTH_SHORT).show());
+            }catch (Exception e){
+                mainHandler.post(()-> Toast.makeText(MainActivity.this,"直播源加载失败",Toast.LENGTH_SHORT).show());
             }
         }).start();
     }
 
-    // 播放指定频道
-    private void playChannel(int index) {
-        if (index < 0 || index >= channelUrls.size()) return;
-        currentIndex = index;
+    // ExoPlayer播放指定频道
+    private void playTargetChannel(int pos){
+        if(pos<0 || pos>=channelUrlList.size())return;
+        currentPlayIndex = pos;
+        String playUrl = channelUrlList.get(pos);
+        String showName = channelNameList.get(pos);
 
-        String url = channelUrls.get(index);
-        String name = channelNames.get(index);
+        MediaItem mediaItem = MediaItem.fromUri(playUrl);
+        exoPlayer.setMediaItem(mediaItem);
+        exoPlayer.prepare();
+        exoPlayer.play();
 
-        // 这里替换成你的播放器播放
-        // player.setUrl(url);
-        // player.start();
-
-        Toast.makeText(this, "正在播放：" + name, Toast.LENGTH_SHORT).show();
+        tvEpgInfo.setText("当前播放："+showName+"\nEPG地址："+EPG_XML_URL);
     }
 
-    // 上一频道（带反转）
-    private void prevChannel() {
-        if (isReverse) {
-            nextChannel();
+    // 上一个频道
+    private void switchLastChannel(){
+        if(channelReverse){
+            switchNextChannel();
             return;
         }
-        currentIndex--;
-        if (currentIndex < 0) currentIndex = channelUrls.size() - 1;
-        playChannel(currentIndex);
+        currentPlayIndex--;
+        if(currentPlayIndex<0)currentPlayIndex = channelUrlList.size()-1;
+        playTargetChannel(currentPlayIndex);
     }
 
-    // 下一频道（带反转）
-    private void nextChannel() {
-        if (isReverse) {
-            prevChannel();
+    // 下一个频道
+    private void switchNextChannel(){
+        if(channelReverse){
+            switchLastChannel();
             return;
         }
-        currentIndex++;
-        if (currentIndex >= channelUrls.size()) currentIndex = 0;
-        playChannel(currentIndex);
+        currentPlayIndex++;
+        if(currentPlayIndex>=channelUrlList.size())currentPlayIndex=0;
+        playTargetChannel(currentPlayIndex);
     }
 
-    // 显示频道列表（直接读取源里的真实频道）
-    private void showChannelList() {
-        if (channelNames.isEmpty()) return;
+    // 弹出全部频道列表选择
+    private void showAllChannelPop(){
+        if(channelNameList.isEmpty())return;
+        String[] channelArr = channelNameList.toArray(new String[0]);
         new AlertDialog.Builder(this)
                 .setTitle("频道列表")
-                .setItems(channelNames.toArray(new String[0]), (dialog, which) -> playChannel(which))
+                .setItems(channelArr,(dialog,which)-> playTargetChannel(which))
                 .show();
     }
 
-    // 打开设置
-    private void openSettings() {
-        startActivity(new Intent(this, SettingsActivity.class));
+    // 跳转设置页面
+    private void jumpToSettingPage(){
+        startActivity(new Intent(this,SettingsActivity.class));
     }
 
-    // ========== 电视遥控器 ==========
-    @Override
-    public boolean onKeyDown(int keyCode, KeyEvent event) {
-        switch (keyCode) {
-            case KeyEvent.KEYCODE_DPAD_UP:
-                prevChannel();
-                return true;
-            case KeyEvent.KEYCODE_DPAD_DOWN:
-                nextChannel();
-                return true;
-            case KeyEvent.KEYCODE_DPAD_CENTER:
-            case KeyEvent.KEYCODE_ENTER:
-                showChannelList();
-                return true;
-            case KeyEvent.KEYCODE_MENU:
-            case KeyEvent.KEYCODE_BUTTON_HELP:
-                openSettings();
-                return true;
-        }
-        return super.onKeyDown(keyCode, event);
-    }
-
-    // ========== 手机手势 ==========
-    private void initGesture() {
-        gestureDetector = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
+    // 初始化手机触摸手势
+    private void initGestureTouch(){
+        gestureDetector = new GestureDetector(this,new GestureDetector.SimpleOnGestureListener(){
+            // 单击弹出频道列表
             @Override
             public boolean onSingleTapConfirmed(MotionEvent e) {
-                showChannelList();
+                showAllChannelPop();
                 return true;
             }
-
+            // 双击打开设置
             @Override
             public boolean onDoubleTap(MotionEvent e) {
-                openSettings();
+                jumpToSettingPage();
                 return true;
             }
-
+            // 上下滑动切频道
             @Override
-            public boolean onFling(MotionEvent e1, MotionEvent e2, float vx, float vy) {
-                float dy = e2.getY() - e1.getY();
-                if (Math.abs(dy) > 80) {
-                    if (dy < 0) nextChannel();
-                    else prevChannel();
+            public boolean onFling(MotionEvent e1, MotionEvent e2, float velocityX, float velocityY) {
+                float yDistance = e2.getY()-e1.getY();
+                if(Math.abs(yDistance)>80){
+                    if(yDistance<0){
+                        switchNextChannel();
+                    }else {
+                        switchLastChannel();
+                    }
                     return true;
                 }
                 return false;
@@ -205,13 +221,46 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     public boolean onTouchEvent(MotionEvent event) {
-        return gestureDetector.onTouchEvent(event) || super.onTouchEvent(event);
+        return gestureDetector.onTouchEvent(event)||super.onTouchEvent(event);
     }
 
-    // 返回时刷新设置
+    // 电视遥控器按键监听
+    @Override
+    public boolean onKeyDown(int keyCode, KeyEvent event) {
+        switch (keyCode){
+            case KeyEvent.KEYCODE_DPAD_UP:
+                switchLastChannel();
+                return true;
+            case KeyEvent.KEYCODE_DPAD_DOWN:
+                switchNextChannel();
+                return true;
+            case KeyEvent.KEYCODE_DPAD_CENTER:
+            case KeyEvent.KEYCODE_ENTER:
+                showAllChannelPop();
+                return true;
+            case KeyEvent.KEYCODE_MENU:
+            case KeyEvent.KEYCODE_BUTTON_HELP:
+                jumpToSettingPage();
+                return true;
+        }
+        return super.onKeyDown(keyCode, event);
+    }
+
+    // 从设置页返回刷新配置
     @Override
     protected void onResume() {
         super.onResume();
-        loadSettings();
+        readAllSetting();
+    }
+
+    // 销毁释放播放器
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if(exoPlayer!=null){
+            exoPlayer.stop();
+            exoPlayer.release();
+            exoPlayer=null;
+        }
     }
 }

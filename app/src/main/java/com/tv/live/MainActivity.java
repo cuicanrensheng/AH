@@ -138,6 +138,12 @@ public class MainActivity extends AppCompatActivity {
             );
         }
     }
+    
+    @Override
+    protected void onResume() {
+    super.onResume();
+    setFullscreen();
+}
 
     private void initView() {
         playerView = findViewById(R.id.player_view);

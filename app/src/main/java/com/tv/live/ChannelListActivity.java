@@ -22,6 +22,12 @@ public class ChannelListActivity extends AppCompatActivity {
 
         ListView listView = findViewById(R.id.channel_list);
 
+        // 空值防护，避免闪退
+        if (MainActivity.mInstance == null || MainActivity.mInstance.channels.isEmpty()) {
+            finish();
+            return;
+        }
+
         final List<MainActivity.Channel> channelList = MainActivity.mInstance.channels;
         List<String> names = new ArrayList<>();
         for (MainActivity.Channel c : channelList) {
@@ -46,9 +52,10 @@ public class ChannelListActivity extends AppCompatActivity {
 
         listView.setAdapter(adapter);
 
-        // 自动滚动定位到正在播放的频道
+        // 双重定位，保证一定滚动到当前播放频道
         int currentPos = MainActivity.mInstance.currentChannelIndex;
-        listView.smoothScrollToPositionFromTop(currentPos, 0);
+        listView.setSelection(currentPos);
+        listView.smoothScrollToPositionFromTop(currentPos, 50);
 
         // 点击切换频道
         listView.setOnItemClickListener((AdapterView<?> parent, View view, int position, long id) -> {

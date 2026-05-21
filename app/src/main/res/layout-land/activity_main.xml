@@ -3,13 +3,13 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <!-- ExoPlayer播放视图 -->
+    <!-- ExoPlayer 播放视图 -->
     <com.google.android.exoplayer2.ui.PlayerView
         android:id="@+id/player_view"
         android:layout_width="match_parent"
         android:layout_height="match_parent"/>
 
-    <!-- EPG节目单布局 -->
+    <!-- EPG 节目单布局 -->
     <LinearLayout
         android:id="@+id/epg_layout"
         android:layout_width="match_parent"
@@ -26,6 +26,92 @@
             android:layout_height="wrap_content"
             android:textColor="#ffffff"
             android:textSize="14sp"/>
+
+    </LinearLayout>
+
+    <!-- 右侧设置菜单 -->
+    <LinearLayout
+        android:id="@+id/menu_layout"
+        android:layout_width="200dp"
+        android:layout_height="match_parent"
+        android:layout_gravity="end"
+        android:background="#CC000000"
+        android:orientation="vertical"
+        android:padding="16dp"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="线路选择"
+            android:textColor="#FFFFFF"
+            android:textSize="18sp"
+            android:padding="12dp"/>
+
+        <TextView
+            android:id="@+id/btn_aspect_ratio"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="画面比例"
+            android:textColor="#FFFFFF"
+            android:textSize="18sp"
+            android:padding="12dp"/>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="解码方式"
+            android:textColor="#FFFFFF"
+            android:textSize="18sp"
+            android:padding="12dp"/>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="超时换源"
+            android:textColor="#FFFFFF"
+            android:textSize="18sp"
+            android:padding="12dp"/>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="分类管理"
+            android:textColor="#FFFFFF"
+            android:textSize="18sp"
+            android:padding="12dp"/>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="订阅配置"
+            android:textColor="#FFFFFF"
+            android:textSize="18sp"
+            android:padding="12dp"/>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="显示设置"
+            android:textColor="#FFFFFF"
+            android:textSize="18sp"
+            android:padding="12dp"/>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="偏好设置"
+            android:textColor="#FFFFFF"
+            android:textSize="18sp"
+            android:padding="12dp"/>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="其他设置"
+            android:textColor="#FFFFFF"
+            android:textSize="18sp"
+            android:padding="12dp"/>
 
     </LinearLayout>
 

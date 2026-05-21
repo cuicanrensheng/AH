@@ -7,12 +7,11 @@ import android.os.Bundle;
 import android.view.GestureDetector;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
-import android.view.View;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.gesture.GestureDetectorCompat;
+import androidx.core.view.GestureDetectorCompat;
 
 import com.google.android.exoplayer2.ExoPlayer;
 import com.google.android.exoplayer2.MediaItem;
@@ -27,6 +26,9 @@ import java.util.Collections;
 import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
+
+    // 静态实例放在类内部第一行，修复你之前的语法错误
+    public static MainActivity mInstance;
 
     public static final String URL_SOURCE_1 = "https://raw.githubusercontent.com/cuicanrensheng/IPTV/refs/heads/main/playlist1.m3u";
     public static final String URL_SOURCE_2 = "https://gitee.com/qf_1111/iptv/raw/master/playlist.m3u";
@@ -46,6 +48,8 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        mInstance = this;
+
         playerView = findViewById(R.id.exo_player_view);
 
         loadConfig();
@@ -98,7 +102,7 @@ public class MainActivity extends AppCompatActivity {
         }).start();
     }
 
-    private void play(int pos) {
+    public void play(int pos) {
         if (channels.isEmpty()) return;
         currentPos = pos;
         Channel c = channels.get(pos);
@@ -121,7 +125,7 @@ public class MainActivity extends AppCompatActivity {
         play(currentPos);
     }
 
-    // ========== 电视遥控器 ==========
+    // ========== 电视遥控器按键逻辑 ==========
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         if (keyCode == KeyEvent.KEYCODE_DPAD_UP) prev();
@@ -133,7 +137,7 @@ public class MainActivity extends AppCompatActivity {
         return super.onKeyDown(keyCode, event);
     }
 
-    // ========== 手机触摸 ==========
+    // ========== 手机触摸手势逻辑 ==========
     @Override
     public boolean onTouchEvent(MotionEvent event) {
         gesture.onTouchEvent(event);
@@ -167,9 +171,13 @@ public class MainActivity extends AppCompatActivity {
         if (exoPlayer != null) exoPlayer.release();
     }
 
+    // 频道实体类
     public static class Channel {
         public String name;
         public String url;
-        public Channel(String n, String u) { name = n; url = u; }
+        public Channel(String n, String u) {
+            name = n;
+            url = u;
+        }
     }
 }

@@ -14,7 +14,7 @@ android {
         versionName "1.0"
         multiDexEnabled true
 
-        // 【新增】指定CPU架构，VLC必须配置
+        // VLC 必须指定CPU架构
         ndk {
             abiFilters 'arm64-v8a', 'armeabi-v7a'
         }
@@ -48,7 +48,7 @@ android {
         }
     }
 
-    // 【修改】VLC必须开启旧版JNI打包模式
+    // VLC 必须开启旧版 JNI 打包模式
     packagingOptions {
         jniLibs {
             useLegacyPackaging true
@@ -90,6 +90,6 @@ dependencies {
     implementation 'org.apache.commons:commons-lang3:3.14.0'
     implementation 'com.blankj:utilcodex:1.31.1'
 
-    // 【关键修改】VLC改用api强制全量打包进APK
+    // 【关键】改用 api 强制把 VLC 所有类+so 打进 APK
     api 'org.videolan.android:libvlc-all:3.7.0'
 }

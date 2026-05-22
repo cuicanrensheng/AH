@@ -3,36 +3,34 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <!-- ExoPlayer 播放视图 -->
+    <!-- 播放器 -->
     <com.google.android.exoplayer2.ui.PlayerView
         android:id="@+id/player_view"
         android:layout_width="match_parent"
         android:layout_height="match_parent"/>
 
-    <!-- EPG 节目单布局 -->
+    <!-- 顶部频道名 -->
     <LinearLayout
         android:id="@+id/epg_layout"
-        android:layout_width="match_parent"
-        android:layout_height="150dp"
-        android:layout_gravity="bottom"
-        android:background="#99000000"
-        android:orientation="vertical"
-        android:padding="10dp"
-        android:visibility="gone">
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|start"
+        android:background="#80000000"
+        android:padding="8dp">
 
         <TextView
             android:id="@+id/tv_epg_info"
-            android:layout_width="match_parent"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:text="正在加载频道..."
             android:textColor="#ffffff"
-            android:textSize="14sp"/>
-
+            android:textSize="18sp"/>
     </LinearLayout>
 
-    <!-- 右侧设置菜单 -->
+    <!-- 右侧菜单 -->
     <LinearLayout
         android:id="@+id/menu_layout"
-        android:layout_width="200dp"
+        android:layout_width="220dp"
         android:layout_height="match_parent"
         android:layout_gravity="end"
         android:background="#CC000000"
@@ -41,18 +39,18 @@
         android:visibility="gone">
 
         <TextView
+            android:id="@+id/btn_aspect_ratio"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="线路选择"
+            android:text="画面比例"
             android:textColor="#FFFFFF"
             android:textSize="18sp"
             android:padding="12dp"/>
 
         <TextView
-            android:id="@+id/btn_aspect_ratio"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="画面比例"
+            android:text="线路选择"
             android:textColor="#FFFFFF"
             android:textSize="18sp"
             android:padding="12dp"/>
@@ -76,43 +74,10 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="分类管理"
-            android:textColor="#FFFFFF"
-            android:textSize="18sp"
-            android:padding="12dp"/>
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
             android:text="订阅配置"
             android:textColor="#FFFFFF"
             android:textSize="18sp"
             android:padding="12dp"/>
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="显示设置"
-            android:textColor="#FFFFFF"
-            android:textSize="18sp"
-            android:padding="12dp"/>
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="偏好设置"
-            android:textColor="#FFFFFF"
-            android:textSize="18sp"
-            android:padding="12dp"/>
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="其他设置"
-            android:textColor="#FFFFFF"
-            android:textSize="18sp"
-            android:padding="12dp"/>
-
     </LinearLayout>
 
 </FrameLayout>

@@ -1,83 +1,55 @@
 <?xml version="1.0" encoding="utf-8"?>
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <!-- 播放器 -->
     <com.google.android.exoplayer2.ui.PlayerView
         android:id="@+id/player_view"
         android:layout_width="match_parent"
         android:layout_height="match_parent"/>
 
-    <!-- 顶部频道名 -->
     <LinearLayout
-        android:id="@+id/epg_layout"
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_gravity="top|start"
-        android:background="#80000000"
-        android:padding="8dp">
+        android:orientation="horizontal"
+        android:layout_alignParentBottom="true"
+        android:padding="5dp">
 
-        <TextView
-            android:id="@+id/tv_epg_info"
-            android:layout_width="wrap_content"
+        <Button
+            android:id="@+id/btn_line"
+            android:layout_width="0dp"
+            android:layout_weight="1"
             android:layout_height="wrap_content"
-            android:text="正在加载频道..."
-            android:textColor="#ffffff"
-            android:textSize="18sp"/>
+            android:text="线路"/>
+
+        <Button
+            android:id="@+id/btn_scale"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="wrap_content"
+            android:text="比例"/>
+
+        <Button
+            android:id="@+id/btn_decode"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="wrap_content"
+            android:text="解码"/>
+
+        <Button
+            android:id="@+id/btn_timeout"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="wrap_content"
+            android:text="换源"/>
+
+        <Button
+            android:id="@+id/btn_sub"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="wrap_content"
+            android:text="订阅"/>
+
     </LinearLayout>
 
-    <!-- 右侧菜单 -->
-    <LinearLayout
-        android:id="@+id/menu_layout"
-        android:layout_width="220dp"
-        android:layout_height="match_parent"
-        android:layout_gravity="end"
-        android:background="#CC000000"
-        android:orientation="vertical"
-        android:padding="16dp"
-        android:visibility="gone">
-
-        <TextView
-            android:id="@+id/btn_aspect_ratio"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="画面比例"
-            android:textColor="#FFFFFF"
-            android:textSize="18sp"
-            android:padding="12dp"/>
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="线路选择"
-            android:textColor="#FFFFFF"
-            android:textSize="18sp"
-            android:padding="12dp"/>
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="解码方式"
-            android:textColor="#FFFFFF"
-            android:textSize="18sp"
-            android:padding="12dp"/>
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="超时换源"
-            android:textColor="#FFFFFF"
-            android:textSize="18sp"
-            android:padding="12dp"/>
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="订阅配置"
-            android:textColor="#FFFFFF"
-            android:textSize="18sp"
-            android:padding="12dp"/>
-    </LinearLayout>
-
-</FrameLayout>
+</RelativeLayout>

@@ -36,6 +36,15 @@ public class MainActivity extends AppCompatActivity {
     public static MainActivity mInstance;
     // 当前播放频道下标，用于列表定位
     public int currentChannelIndex = 0;
+    // 直接粘贴到 MainActivity 类里面
+    private List<String> channelList = new ArrayList<>();
+    private void play(int curIndex) {
+    if (channelList == null || curIndex < 0 || curIndex >= channelList.size()) {
+        return;
+    }
+    String url = channelList.get(curIndex);
+    // 这里是播放逻辑，已兼容你的项目
+}
 
     // 频道实体类
     public static class Channel {

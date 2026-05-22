@@ -31,22 +31,32 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
-
-    // 单例实例
     public static MainActivity mInstance;
-    // 当前播放频道下标，用于列表定位
     public int currentChannelIndex = 0;
-    // 直接粘贴到 MainActivity 类里面
-    private List<String> channelList = new ArrayList<>();
-    private void play(int curIndex) {
-    if (channelList == null || curIndex < 0 || curIndex >= channelList.size()) {
-        return;
-    }
-    String url = channelList.get(curIndex);
-    // 这里是播放逻辑，已兼容你的项目
-}
 
-    // 频道实体类
+    // 播放器核心
+    private ExoPlayer exoPlayer;
+    private PlayerView playerView;
+    private View epgLayout;
+    private TextView tvEpgInfo;
+    private View menuLayout;
+
+    // 配置
+    private boolean isReverse;
+    private boolean openEpg;
+
+    // 频道列表
+    public final List<Channel> channels = new ArrayList<>();
+    private int curIndex = 0;
+
+    private GestureDetector gestureDetector;
+    private final Handler mHandler = new Handler(Looper.getMainLooper());
+
+    // 直播源
+    private static final String LIVE_M3U = "https://gitee.com/qf_1111/iptv/raw/master/playlist.m3u";
+    private static final String EPG_URL = "http://epg.51zmt.top:8000/e.xml.gz";
+
+    // 频道实体
     public static class Channel {
         public String name;
         public String url;
@@ -57,36 +67,13 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // 直播源 & EPG地址
-    private static final String LIVE_M3U = "https://gitee.com/qf_1111/iptv/raw/master/playlist.m3u";
-    private static final String EPG_URL = "http://epg.51zmt.top:8000/e.xml.gz";
-
-    private ExoPlayer exoPlayer;
-    private PlayerView playerView;
-    private View epgLayout;
-    private TextView tvEpgInfo;
-    private View menuLayout;
-
-    // 设置项
-    private boolean isReverse;
-    private boolean openEpg;
-
-    // 频道集合
-    public final List<Channel> channels = new ArrayList<>();
-    private int curIndex = 0;
-
-    private GestureDetector gestureDetector;
-    private final Handler mHandler = new Handler(Looper.getMainLooper());
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-
         mInstance = this;
-        // 开启全屏隐藏状态栏导航栏
-        setFullscreen();
 
+        setFullscreen();
         initView();
         initPlayer();
         readConfig();
@@ -100,23 +87,103 @@ public class MainActivity extends AppCompatActivity {
         tvEpgInfo = findViewById(R.id.tv_epg_info);
         menuLayout = findViewById(R.id.menu_layout);
 
-        // 绑定画面比例按钮
         findViewById(R.id.btn_aspect_ratio).setOnClickListener(v -> showAspectRatioDialog());
     }
 
+    // ====================== 播放器初始化 ======================
     private void initPlayer() {
         exoPlayer = new ExoPlayer.Builder(this).build();
         playerView.setPlayer(exoPlayer);
         playerView.setUseController(false);
     }
 
-    private void readConfig() {
-        SharedPreferences sp = getSharedPreferences("setting", MODE_PRIVATE);
-        isReverse = sp.getBoolean("reverse", false);
-        openEpg = sp.getBoolean("epg", true);
-        epgLayout.setVisibility(openEpg ? View.VISIBLE : View.GONE);
+    // ====================== 核心播放方法（修复黑屏、无画面） ======================
+    private void play(int curIndex) {
+        if (channels == null || channels.isEmpty()) return;
+        if (curIndex < 0 || curIndex >= channels.size()) return;
+
+        this.curIndex = curIndex;
+        currentChannelIndex = curIndex;
+
+        Channel channel = channels.get(curIndex);
+        String url = channel.url;
+        String name = channel.name;
+
+        // 显示频道名
+        if (tvEpgInfo != null) {
+            tvEpgInfo.setText(name);
+        }
+
+        // 播放逻辑（解决黑屏、不播放）
+        if (exoPlayer != null) {
+            exoPlayer.stop();
+            exoPlayer.clearMediaItems();
+            MediaItem item = MediaItem.fromUri(url);
+            exoPlayer.setMediaItem(item);
+            exoPlayer.prepare();
+            exoPlayer.play();
+        }
     }
 
+    // ====================== 切台（上/下） ======================
+    private void preChannel() {
+        if (isReverse) {
+            nextChannel();
+            return;
+        }
+        curIndex--;
+        if (curIndex < 0) curIndex = channels.size() - 1;
+        play(curIndex);
+    }
+
+    private void nextChannel() {
+        if (isReverse) {
+            preChannel();
+            return;
+        }
+        curIndex++;
+        if (curIndex >= channels.size()) curIndex = 0;
+        play(curIndex);
+    }
+
+    // ====================== 加载M3U ======================
+    private void loadM3USource() {
+        new Thread(() -> {
+            try {
+                HttpURLConnection conn = (HttpURLConnection) new URL(LIVE_M3U).openConnection();
+                conn.setRequestMethod("GET");
+                conn.setConnectTimeout(8000);
+                BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+                String line;
+                String nameTemp = null;
+                channels.clear();
+
+                while ((line = br.readLine()) != null) {
+                    if (line.startsWith("#EXTINF")) {
+                        int pos = line.lastIndexOf(",");
+                        if (pos > 0) nameTemp = line.substring(pos + 1);
+                    } else if (line.startsWith("http")) {
+                        if (nameTemp != null) {
+                            channels.add(new Channel(nameTemp, line));
+                            nameTemp = null;
+                        }
+                    }
+                }
+                br.close();
+                conn.disconnect();
+
+                mHandler.post(() -> {
+                    if (!channels.isEmpty()) play(0);
+                    Toast.makeText(this, "加载完成：" + channels.size() + "个频道", Toast.LENGTH_SHORT).show();
+                });
+
+            } catch (Exception e) {
+                mHandler.post(() -> Toast.makeText(this, "直播源加载失败", Toast.LENGTH_SHORT).show());
+            }
+        }).start();
+    }
+
+    // ====================== 手势、菜单、全屏 ======================
     private void initGesture() {
         gestureDetector = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
             @Override
@@ -145,14 +212,9 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void toggleMenu() {
-        if (menuLayout.getVisibility() == View.VISIBLE) {
-            menuLayout.setVisibility(View.GONE);
-        } else {
-            menuLayout.setVisibility(View.VISIBLE);
-        }
+        menuLayout.setVisibility(menuLayout.getVisibility() == View.VISIBLE ? View.GONE : View.VISIBLE);
     }
 
-    // 全屏沉浸式隐藏状态栏
     private void setFullscreen() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             WindowInsetsController controller = getWindow().getInsetsController();
@@ -172,63 +234,18 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private void loadM3USource() {
-        new Thread(() -> {
-            try {
-                HttpURLConnection conn = (HttpURLConnection) new URL(LIVE_M3U).openConnection();
-                conn.setRequestMethod("GET");
-                conn.setConnectTimeout(8000);
-                BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream()));
-                String line;
-                String nameTemp = null;
-                channels.clear();
-                while ((line = br.readLine()) != null) {
-                    if (line.startsWith("#EXTINF")) {
-                        int pos = line.lastIndexOf(",");
-                        if (pos > 0) nameTemp = line.substring(pos + 1);
-                    } else if (line.startsWith("http")) {
-                        if (nameTemp != null) {
-                            channels.add(new Channel(nameTemp, line));
-                            nameTemp = null;
-                        }
-                    }
-                }
-                br.close();
-                conn.disconnect();
-                mHandler.post(() -> {
-                    play(curIndex);
-                    Toast.makeText(this, "加载完成：" + channels.size() + "个频道", Toast.LENGTH_SHORT).show();
-                });
-            } catch (Exception e) {
-                mHandler.post(() -> Toast.makeText(this, "直播源加载失败", Toast.LENGTH_SHORT).show());
-            }
-        }).start();
-    }
-
-    private void preChannel() {
-        if (isReverse) {
-            nextChannel();
-            return;
-        }
-        curIndex--;
-        if (curIndex < 0) curIndex = channels.size() - 1;
-       
-    }
-
-    private void nextChannel() {
-        if (isReverse) {
-            preChannel();
-            return;
-        }
-        curIndex++;
-        if (curIndex >= channels.size()) curIndex = 0;
-       
+    private void readConfig() {
+        SharedPreferences sp = getSharedPreferences("setting", MODE_PRIVATE);
+        isReverse = sp.getBoolean("reverse", false);
+        openEpg = sp.getBoolean("epg", true);
+        epgLayout.setVisibility(openEpg ? View.VISIBLE : View.GONE);
     }
 
     private void goSetting() {
         startActivity(new Intent(this, SettingsActivity.class));
     }
 
+    // ====================== 触摸、遥控器 ======================
     @Override
     public boolean onTouchEvent(MotionEvent event) {
         return gestureDetector.onTouchEvent(event) || super.onTouchEvent(event);
@@ -245,8 +262,6 @@ public class MainActivity extends AppCompatActivity {
                 return true;
             case KeyEvent.KEYCODE_DPAD_CENTER:
             case KeyEvent.KEYCODE_ENTER:
-                toggleMenu();
-                return true;
             case KeyEvent.KEYCODE_MENU:
                 toggleMenu();
                 return true;
@@ -254,14 +269,39 @@ public class MainActivity extends AppCompatActivity {
         return super.onKeyDown(keyCode, event);
     }
 
+    // ====================== 画面比例 ======================
+    private void showAspectRatioDialog() {
+        String[] items = {"默认", "16:9", "4:3", "填充", "原始/裁剪"};
+        new AlertDialog.Builder(this)
+                .setTitle("画面比例")
+                .setItems(items, (dialog, which) -> {
+                    switch (which) {
+                        case 0:
+                            playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
+                            break;
+                        case 1:
+                            playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIXED_16_9);
+                            break;
+                        case 2:
+                            playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIXED_4_3);
+                            break;
+                        case 3:
+                            playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
+                            break;
+                        case 4:
+                            playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_ZOOM);
+                            break;
+                    }
+                }).show();
+    }
+
+    // ====================== 生命周期 ======================
     @Override
     protected void onResume() {
         super.onResume();
         readConfig();
         setFullscreen();
-        if (exoPlayer != null) {
-            exoPlayer.play();
-        }
+        if (exoPlayer != null) exoPlayer.play();
     }
 
     @Override
@@ -273,32 +313,5 @@ public class MainActivity extends AppCompatActivity {
             exoPlayer = null;
         }
         mInstance = null;
-    }
-
-    // 画面比例设置弹窗
-    private void showAspectRatioDialog() {
-        String[] items = {"默认", "16:9", "4:3", "填充", "原始/裁剪"};
-        new AlertDialog.Builder(this)
-                .setTitle("画面比例")
-                .setItems(items, (dialog, which) -> {
-                    switch (which) {
-                        case 0:
-                            playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
-                            break;
-                        case 1:
-                            playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIXED_WIDTH);
-                            break;
-                        case 2:
-                            playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIXED_HEIGHT);
-                            break;
-                        case 3:
-                            playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
-                            break;
-                        case 4:
-                            playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_ZOOM);
-                            break;
-                    }
-                })
-                .show();
     }
 }

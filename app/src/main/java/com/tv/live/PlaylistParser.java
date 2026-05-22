@@ -1,7 +1,6 @@
-package com.tv.live;
-
-import android.os.AsyncTask;
+import android.util.Log;
 import java.io.BufferedReader;
+import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -9,44 +8,33 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class PlaylistParser {
+    private static final String TAG = "M3UParser";
 
-    public interface CallbackWithName{
-        void onSuccess(List<String> urls, List<String> names);
-    }
+    // 解析网络M3U文件，返回单频道单线路列表
+    public static List<List<String>> parseFromUrl(String m3uUrl) throws IOException {
+        List<List<String>> channelList = new ArrayList<>();
+        URL url = new URL(m3uUrl);
+        HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+        connection.setRequestMethod("GET");
+        connection.setConnectTimeout(8000);
+        connection.setReadTimeout(8000);
 
-    public void parseWithName(String url, CallbackWithName callback){
-        new AsyncTask<String, Void, List<Object>>(){
-            @Override
-            protected List<Object> doInBackground(String... strings) {
-                List<String> urls = new ArrayList<>();
-                List<String> names = new ArrayList<>();
-                try{
-                    URL u = new URL(strings[0]);
-                    HttpURLConnection conn = (HttpURLConnection)u.openConnection();
-                    BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream()));
-                    String line;
-                    String currentName = "未知频道";
-                    while((line=br.readLine())!=null){
-                        if(line.startsWith("#EXTINF:")){
-                            int comma = line.lastIndexOf(",");
-                            if(comma>0) currentName = line.substring(comma+1);
-                        }else if(line.startsWith("http")){
-                            urls.add(line);
-                            names.add(currentName);
-                        }
-                    }
-                }catch (Exception e){
-                    e.printStackTrace();
-                }
-                List<Object> res = new ArrayList<>();
-                res.add(urls);
-                res.add(names);
-                return res;
+        BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream()));
+        String line;
+        List<String> singleChannel;
+
+        while ((line = reader.readLine()) != null) {
+            line = line.trim();
+            // 过滤m3u8播放地址
+            if (line.startsWith("http") && (line.endsWith(".m3u8") || line.contains(".m3u8"))) {
+                singleChannel = new ArrayList<>();
+                singleChannel.add(line);
+                channelList.add(singleChannel);
             }
-            @Override
-            protected void onPostExecute(List<Object> res) {
-                callback.onSuccess((List<String>)res.get(0), (List<String>)res.get(1));
-            }
-        }.execute(url);
+        }
+        reader.close();
+        connection.disconnect();
+        Log.d(TAG, "解析完成，频道总数：" + channelList.size());
+        return channelList;
     }
 }

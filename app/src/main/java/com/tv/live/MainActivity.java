@@ -108,20 +108,21 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    // 应用画面比例设置
-    private void applyAllSetting() {
-        int scale = setting.getScale();
-        switch (scale) {
-            case SettingsManager.SCALE_16_9:
-                playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIXED_16_9);
-                break;
-            case SettingsManager.SCALE_FILL:
-                playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
-                break;
-            default:
-                playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
-        }
+// 应用画面比例设置
+private void applyAllSetting() {
+    int scale = setting.getScale();
+    switch (scale) {
+        case SettingsManager.SCALE_16_9:
+            // 旧版ExoPlayer 16:9 对应固定宽度
+            playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIXED_WIDTH);
+            break;
+        case SettingsManager.SCALE_FILL:
+            playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
+            break;
+        default:
+            playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
     }
+}
 
     // 默认初始频道
     private void initDefaultChannel() {

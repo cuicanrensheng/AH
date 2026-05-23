@@ -62,8 +62,19 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_main);
+
+        // ====================== 【核心修复：强制全屏、隐藏系统导航栏，解决右下角黑方块】 ======================
+        getWindow().getDecorView().setSystemUiVisibility(
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                        | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                        | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                        | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                        | View.SYSTEM_UI_FLAG_FULLSCREEN
+                        | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+
+        setContentView(R.layout.activity_main);
 
         mInstance = this;
         sp = getSharedPreferences("tv_config", MODE_PRIVATE);
@@ -73,6 +84,9 @@ public class MainActivity extends AppCompatActivity {
 
         playerView = findViewById(R.id.player_view);
         setting = SettingsManager.getInstance(this);
+
+        // 播放器强制全屏拉伸，彻底去掉黑边黑块
+        playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
 
         gestureDetector = new GestureDetector(this, new MyGestureListener());
         playerView.setOnTouchListener((v, event) -> {
@@ -237,25 +251,24 @@ public class MainActivity extends AppCompatActivity {
         int s = setting.getScale();
         if (s == SettingsManager.SCALE_16_9) playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIXED_WIDTH);
         else if (s == SettingsManager.SCALE_FILL) playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
-        else playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
+        else playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
     }
-    
-    private void loadDefaultSource() {
-    new Thread(() -> {
-        try {
-            String url = "https://gitee.com/qf_1111/iptv/raw/master/playlist.m3u";
-            List<Channel> result = PlaylistParser.parseWithRealName(url);
-            runOnUiThread(() -> {
-                channelSourceList = result;
-                channels = result;
-                if (!channelSourceList.isEmpty()) playChannel(0);
-            });
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }).start();
-}
 
+    private void loadDefaultSource() {
+        new Thread(() -> {
+            try {
+                String url = "https://gitee.com/qf_1111/iptv/raw/master/playlist.m3u";
+                List<Channel> result = PlaylistParser.parseWithRealName(url);
+                runOnUiThread(() -> {
+                    channelSourceList = result;
+                    channels = result;
+                    if (!channelSourceList.isEmpty()) playChannel(0);
+                });
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }).start();
+    }
 
     private void playChannel(int index) {
         if (channelSourceList.isEmpty() || index < 0 || index >= channelSourceList.size()) return;
@@ -351,39 +364,40 @@ public class MainActivity extends AppCompatActivity {
                 .show();
     }
 
+    private void loadSubscribeUrl() {
+        EditText ed = new EditText(this);
+        ed.setInputType(InputType.TYPE_TEXT_VARIATION_URI);
+        ed.setText("https://gitee.com/qf_1111/iptv/raw/master/playlist.m3u");
+        new AlertDialog.Builder(this)
+                .setTitle("M3U订阅地址")
+                .setView(ed)
+                .setPositiveButton("加载", (d, w) -> {
+                    String url = ed.getText().toString().trim();
+                    setting.setSubUrl(url);
+                    Toast.makeText(this, "解析中...", Toast.LENGTH_SHORT).show();
+                    new Thread(() -> {
+                        try {
+                            List<Channel> result = PlaylistParser.parseWithRealName(url);
+                            runOnUiThread(() -> {
+                                channelSourceList = result;
+                                channels = result;
+                                if (!channelSourceList.isEmpty()) playChannel(0);
+                                Toast.makeText(this, "共 " + result.size() + " 个频道", Toast.LENGTH_SHORT).show();
+                            });
+                        } catch (Exception e) {
+                            runOnUiThread(() -> Toast.makeText(this, "解析失败", Toast.LENGTH_SHORT).show());
+                        }
+                    }).start();
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
     @Override
     protected void onPause() {
         super.onPause();
         if (exoPlayer != null) exoPlayer.pause();
     }
-    private void loadSubscribeUrl() {
-    EditText ed = new EditText(this);
-    ed.setInputType(InputType.TYPE_TEXT_VARIATION_URI);
-    ed.setText("https://gitee.com/qf_1111/iptv/raw/master/playlist.m3u");
-    new AlertDialog.Builder(this)
-            .setTitle("M3U订阅地址")
-            .setView(ed)
-            .setPositiveButton("加载", (d, w) -> {
-                String url = ed.getText().toString().trim();
-                setting.setSubUrl(url);
-                Toast.makeText(this, "解析中...", Toast.LENGTH_SHORT).show();
-                new Thread(() -> {
-                    try {
-                        List<Channel> result = PlaylistParser.parseWithRealName(url);
-                        runOnUiThread(() -> {
-                            channelSourceList = result;
-                            channels = result;
-                            if (!channelSourceList.isEmpty()) playChannel(0);
-                            Toast.makeText(this, "共 " + result.size() + " 个频道", Toast.LENGTH_SHORT).show();
-                        });
-                    } catch (Exception e) {
-                        runOnUiThread(() -> Toast.makeText(this, "解析失败", Toast.LENGTH_SHORT).show());
-                    }
-                }).start();
-            })
-            .setNegativeButton("取消", null)
-            .show();
-}
 
     @Override
     protected void onDestroy() {

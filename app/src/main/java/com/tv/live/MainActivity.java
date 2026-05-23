@@ -64,20 +64,17 @@ public class MainActivity extends AppCompatActivity {
         mInstance = this;
         playerView = findViewById(R.id.player_view);
         setting = SettingsManager.getInstance(this);
-        
-        // ========== 【关键修复】让手势必生效 ==========
-        playerView.setUseController(false); // 禁用Exo自带控制
+
+        // 手势核心修复
+        gestureDetector = new GestureDetector(this, new MyGestureListener());
         playerView.setOnTouchListener((v, event) -> {
-            // 所有触摸都交给Activity手势
             gestureDetector.onTouchEvent(event);
             return true;
         });
-        
+
         initExoPlayer();
         applyAllSetting();
         initDefaultChannel();
-
-        gestureDetector = new GestureDetector(this, new MyGestureListener());
 
         findViewById(R.id.btn_line).setOnClickListener(v -> showLineDialog());
         findViewById(R.id.btn_scale).setOnClickListener(v -> showScaleDialog());
@@ -86,6 +83,7 @@ public class MainActivity extends AppCompatActivity {
         findViewById(R.id.btn_sub).setOnClickListener(v -> loadSubscribeUrl());
     }
 
+    // 电视遥控器
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         switch (keyCode) {
@@ -108,18 +106,17 @@ public class MainActivity extends AppCompatActivity {
         return super.onKeyDown(keyCode, event);
     }
 
-    @Override
-    public boolean onTouchEvent(MotionEvent event) {
-        return gestureDetector.onTouchEvent(event);
-    }
-
+    // 手机手势
     private class MyGestureListener extends GestureDetector.SimpleOnGestureListener {
         @Override
         public boolean onFling(MotionEvent e1, MotionEvent e2, float vx, float vy) {
             float dy = e2.getY() - e1.getY();
             if (Math.abs(dy) > 80) {
-                if (dy > 0) changeChannel(channelReverse ? -1 : 1);
-                else changeChannel(channelReverse ? 1 : -1);
+                if (dy > 0) {
+                    changeChannel(channelReverse ? -1 : 1);
+                } else {
+                    changeChannel(channelReverse ? 1 : -1);
+                }
             }
             return true;
         }
@@ -144,12 +141,13 @@ public class MainActivity extends AppCompatActivity {
 
     private void toggleUI() {
         uiVisible = !uiVisible;
-        findViewById(R.id.btn_line).setVisibility(uiVisible ? View.VISIBLE : View.GONE);
-        findViewById(R.id.btn_scale).setVisibility(uiVisible ? View.VISIBLE : View.GONE);
-        findViewById(R.id.btn_decode).setVisibility(uiVisible ? View.VISIBLE : View.GONE);
-        findViewById(R.id.btn_timeout).setVisibility(uiVisible ? View.VISIBLE : View.GONE);
-        findViewById(R.id.btn_sub).setVisibility(uiVisible ? View.VISIBLE : View.GONE);
-        Toast.makeText(this, uiVisible ? "显示控制栏" : "隐藏控制栏", Toast.LENGTH_SHORT).show();
+        int vis = uiVisible ? View.VISIBLE : View.GONE;
+        findViewById(R.id.btn_line).setVisibility(vis);
+        findViewById(R.id.btn_scale).setVisibility(vis);
+        findViewById(R.id.btn_decode).setVisibility(vis);
+        findViewById(R.id.btn_timeout).setVisibility(vis);
+        findViewById(R.id.btn_sub).setVisibility(vis);
+        Toast.makeText(this, uiVisible ? "显示控制" : "隐藏控制", Toast.LENGTH_SHORT).show();
     }
 
     private void changeChannel(int delta) {
@@ -176,7 +174,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void showSettingDialog() {
-        String[] items = {"频道反转","开机自启","EPG节目单"};
+        String[] items = {"频道反转", "开机自启", "EPG节目单"};
         boolean[] checked = {channelReverse, bootAutoStart, epgEnabled};
 
         new AlertDialog.Builder(this)
@@ -195,7 +193,7 @@ public class MainActivity extends AppCompatActivity {
                             .putBoolean("bootAutoStart", bootAutoStart)
                             .putBoolean("epgEnabled", epgEnabled)
                             .apply();
-                    Toast.makeText(this, "设置已保存", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, "保存成功", Toast.LENGTH_SHORT).show();
                 })
                 .setNeutralButton("切换直播源", (d, w) -> loadSubscribeUrl())
                 .show();
@@ -204,8 +202,11 @@ public class MainActivity extends AppCompatActivity {
     private void initExoPlayer() {
         DefaultRenderersFactory factory = new DefaultRenderersFactory(this);
         int mode = setting.getDecode();
-        if (mode == SettingsManager.DECODE_HARD) factory.setEnableDecoderFallback(false);
-        else if (mode == SettingsManager.DECODE_SOFT) factory.setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF);
+        if (mode == SettingsManager.DECODE_HARD) {
+            factory.setEnableDecoderFallback(false);
+        } else if (mode == SettingsManager.DECODE_SOFT) {
+            factory.setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF);
+        }
 
         if (exoPlayer != null) exoPlayer.release();
         exoPlayer = new ExoPlayer.Builder(this).setRenderersFactory(factory).build();
@@ -223,21 +224,23 @@ public class MainActivity extends AppCompatActivity {
 
     private void applyAllSetting() {
         int s = setting.getScale();
-        if (s == SettingsManager.SCALE_16_9) playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIXED_WIDTH);
-        else if (s == SettingsManager.SCALE_FILL) playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
-        else playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
+        if (s == SettingsManager.SCALE_16_9) {
+            playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIXED_WIDTH);
+        } else if (s == SettingsManager.SCALE_FILL) {
+            playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
+        } else {
+            playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
+        }
     }
 
     private void initDefaultChannel() {
         new Thread(() -> {
             try {
-                String defaultUrl = "https://gitee.com/qf_1111/iptv/raw/master/playlist.m3u";
-                List<List<String>> list = PlaylistParser.parseFromUrl(defaultUrl);
+                String url = "https://gitee.com/qf_1111/iptv/raw/master/playlist.m3u";
+                List<List<String>> list = PlaylistParser.parseFromUrl(url);
                 runOnUiThread(() -> {
                     channelSourceList = list;
-                    if (!channelSourceList.isEmpty()) {
-                        playChannel(0);
-                    }
+                    if (!channelSourceList.isEmpty()) playChannel(0);
                 });
             } catch (Exception e) {
                 e.printStackTrace();
@@ -251,16 +254,15 @@ public class MainActivity extends AppCompatActivity {
         List<String> lines = channelSourceList.get(index);
         int line = setting.getLine();
         if (line >= lines.size()) line = 0;
-        String url = lines.get(line);
+        String playUrl = lines.get(line);
 
         exoPlayer.stop();
         exoPlayer.clearMediaItems();
-        exoPlayer.setMediaItem(MediaItem.fromUri(url));
+        exoPlayer.setMediaItem(MediaItem.fromUri(playUrl));
         exoPlayer.prepare();
         exoPlayer.play();
         startTimeoutCheck();
-
-        Toast.makeText(this, "正在播放：频道 " + (index + 1), Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, "频道 " + (index + 1), Toast.LENGTH_SHORT).show();
     }
 
     private void startTimeoutCheck() {
@@ -282,14 +284,14 @@ public class MainActivity extends AppCompatActivity {
             setting.setLine(now + 1);
             playChannel(currentPlayIndex);
         } else {
-            Toast.makeText(this, "当前频道所有线路失效", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "本频道所有线路失效", Toast.LENGTH_SHORT).show();
         }
     }
 
     private void showLineDialog() {
         int now = setting.getLine();
         new AlertDialog.Builder(this)
-                .setTitle("选择播放线路")
+                .setTitle("切换线路")
                 .setSingleChoiceItems(new String[]{"线路1","线路2","线路3"}, now, (d, p) -> {
                     setting.setLine(p);
                     playChannel(currentPlayIndex);
@@ -300,7 +302,7 @@ public class MainActivity extends AppCompatActivity {
     private void showScaleDialog() {
         int now = setting.getScale();
         new AlertDialog.Builder(this)
-                .setTitle("画面显示比例")
+                .setTitle("画面比例")
                 .setSingleChoiceItems(scaleArr, now, (d, p) -> {
                     setting.setScale(p);
                     applyAllSetting();
@@ -326,7 +328,7 @@ public class MainActivity extends AppCompatActivity {
         EditText et = v.findViewById(R.id.et_timeout);
         et.setText(String.valueOf(setting.getTimeoutSec()));
         new AlertDialog.Builder(this)
-                .setTitle("超时自动换源(秒)")
+                .setTitle("超时换源(秒)")
                 .setView(v)
                 .setPositiveButton("确定", (d, w) -> {
                     try {
@@ -334,8 +336,8 @@ public class MainActivity extends AppCompatActivity {
                         setting.setTimeoutSec(t);
                     } catch (Exception ignored) {}
                 })
-                .setNegativeButton("关闭自动换源", (d, w) -> setting.setTimeoutEnable(false))
-                .setNeutralButton("开启自动换源", (d, w) -> setting.setTimeoutEnable(true))
+                .setNegativeButton("关闭", (d, w) -> setting.setTimeoutEnable(false))
+                .setNeutralButton("开启", (d, w) -> setting.setTimeoutEnable(true))
                 .show();
     }
 
@@ -346,17 +348,17 @@ public class MainActivity extends AppCompatActivity {
         new AlertDialog.Builder(this)
                 .setTitle("M3U订阅地址")
                 .setView(ed)
-                .setPositiveButton("确认加载", (d, w) -> {
+                .setPositiveButton("加载", (d, w) -> {
                     String url = ed.getText().toString().trim();
                     setting.setSubUrl(url);
-                    Toast.makeText(this, "正在解析频道列表...", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, "解析中...", Toast.LENGTH_SHORT).show();
                     new Thread(() -> {
                         try {
                             List<List<String>> list = PlaylistParser.parseFromUrl(url);
                             runOnUiThread(() -> {
                                 channelSourceList = list;
                                 if (!channelSourceList.isEmpty()) playChannel(0);
-                                Toast.makeText(this, "加载成功：" + list.size() + "个频道", Toast.LENGTH_SHORT).show();
+                                Toast.makeText(this, "共 " + list.size() + " 个频道", Toast.LENGTH_SHORT).show();
                             });
                         } catch (Exception e) {
                             runOnUiThread(() -> Toast.makeText(this, "解析失败", Toast.LENGTH_SHORT).show());

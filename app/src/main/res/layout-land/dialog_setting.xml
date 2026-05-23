@@ -21,7 +21,7 @@
             android:id="@+id/sw_reverse"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginLeft="auto" />
+            android:layout_marginLeft="10dp" />
     </LinearLayout>
 
     <LinearLayout
@@ -41,7 +41,7 @@
             android:id="@+id/sw_boot"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginLeft="auto" />
+            android:layout_marginLeft="10dp" />
     </LinearLayout>
 
     <LinearLayout
@@ -61,7 +61,7 @@
             android:id="@+id/sw_epg"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginLeft="auto" />
+            android:layout_marginLeft="10dp" />
     </LinearLayout>
 
 </LinearLayout>

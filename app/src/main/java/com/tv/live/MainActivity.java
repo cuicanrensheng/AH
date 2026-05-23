@@ -11,9 +11,6 @@ import android.widget.EditText;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import com.tv.live.SettingsManager;
-// 只保留 Media3 新版，删除全部 exoplayer2 旧版
-import androidx.media3.exoplayer.ExoPlayer;
-import androidx.media3.ui.PlayerView;
 import android.os.Bundle;
 import java.util.ArrayList;
 import java.util.List;

@@ -72,20 +72,20 @@ dependencies {
     implementation "com.google.android.exoplayer:exoplayer-dash:2.19.1"
 
     // 网络全套
-    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
-    implementation 'com.squareup.retrofit2:retrofit:2.9.0'
-    implementation 'com.squareup.retrofit2:converter-gson:2.9.0'
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0"
+    implementation 'com.squareup.retrofit2:retrofit:2.9.0"
+    implementation 'com.squareup.retrofit2:converter-gson:2.9.0"
 
     // 图片
-    implementation 'com.github.bumptech.glide:glide:4.16.0'
-    annotationProcessor 'com.github.bumptech.glide:compiler:4.16.0'
+    implementation 'com.github.bumptech.glide:glide:4.16.0"
+    annotationProcessor 'com.github.bumptech.glide:compiler:4.16.0"
 
     // JSON
-    implementation 'com.google.code.gson:gson:2.10.1'
+    implementation 'com.google.code.gson:gson:2.10.1"
 
     // 工具
-    implementation 'org.apache.commons:commons-lang3:3.14.0'
-    implementation 'com.blankj:utilcodex:1.31.1'
+    implementation 'org.apache.commons:commons-lang3:3.14.0"
+    implementation 'com.blankj:utilcodex:1.31.1"
 
     // ==============================
     // VLC 已彻底删除！

@@ -64,7 +64,15 @@ public class MainActivity extends AppCompatActivity {
         mInstance = this;
         playerView = findViewById(R.id.player_view);
         setting = SettingsManager.getInstance(this);
-
+        
+        // ========== 【关键修复】让手势必生效 ==========
+        playerView.setUseController(false); // 禁用Exo自带控制
+        playerView.setOnTouchListener((v, event) -> {
+            // 所有触摸都交给Activity手势
+            gestureDetector.onTouchEvent(event);
+            return true;
+        });
+        
         initExoPlayer();
         applyAllSetting();
         initDefaultChannel();

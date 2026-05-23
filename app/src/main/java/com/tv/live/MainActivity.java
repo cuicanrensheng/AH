@@ -16,7 +16,7 @@ import com.google.android.exoplayer2.MediaItem;
 import com.google.android.exoplayer2.PlaybackException;
 import com.google.android.exoplayer2.Player;
 import com.google.android.exoplayer2.ui.PlayerView;
-import com.google.android.exoplayer2.video.AspectRatioFrameLayout;
+import com.google.android.exoplayer2.ui.AspectRatioFrameLayout;
 import com.google.android.exoplayer2.DefaultRenderersFactory;
 import java.util.ArrayList;
 import java.util.List;

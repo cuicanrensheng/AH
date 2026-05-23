@@ -25,6 +25,7 @@ import java.util.List;
 public class MainActivity extends AppCompatActivity {
     private ExoPlayer exoPlayer;
     private PlayerView playerView;
+    // 规范变量名 + 权限修饰符
     private SettingsManager setting;
     private List<List<String>> channelSourceList = new ArrayList<>();
     private int currentPlayIndex = 0;

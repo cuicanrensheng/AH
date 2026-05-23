@@ -63,59 +63,64 @@ public class MainActivity extends AppCompatActivity {
     private final String URL1 = "https://gitee.com/qf_1111/iptv/raw/master/playlist.m3u";
     private final String URL2 = "https://raw.githubusercontent.com/cuicanrensheng/IPTV/refs/heads/main/playlist1.m3u";
     private final String URL3 = "https://gitee.com/qf_1111/iptv/raw/master/iptvedqw.m3u";
-
+    
     @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
+protected void onCreate(Bundle savedInstanceState) {
+    super.onCreate(savedInstanceState);
 
-        // 【核心1】强制全屏，无视系统状态栏/导航栏，彻底消除黑边黑块
-        getWindow().getDecorView().setSystemUiVisibility(
-                View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                        | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                        | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                        | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                        | View.SYSTEM_UI_FLAG_FULLSCREEN
-                        | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
-        getWindow().getAttributes().layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+    // 强制全屏，消除系统黑边
+    getWindow().getDecorView().setSystemUiVisibility(
+            View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                    | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                    | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                    | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                    | View.SYSTEM_UI_FLAG_FULLSCREEN
+                    | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
+    getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+    getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+    getWindow().getAttributes().layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
 
-        setContentView(R.layout.activity_main);
-        mInstance = this;
+    setContentView(R.layout.activity_main);
+    mInstance = this;
 
-        sp = getSharedPreferences("tv_config", MODE_PRIVATE);
-        channelReverse = sp.getBoolean("channelReverse", false);
-        bootAutoStart = sp.getBoolean("bootAutoStart", false);
-        epgEnabled = sp.getBoolean("epgEnabled", true);
+    sp = getSharedPreferences("tv_config", MODE_PRIVATE);
+    channelReverse = sp.getBoolean("channelReverse", false);
+    bootAutoStart = sp.getBoolean("bootAutoStart", false);
+    epgEnabled = sp.getBoolean("epgEnabled", true);
 
-        playerView = findViewById(R.id.player_view);
-        setting = SettingsManager.getInstance(this);
-        // 【核心2】播放器强制全屏拉伸覆盖
-        playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
+    playerView = findViewById(R.id.player_view);
+    setting = SettingsManager.getInstance(this);
+    playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
 
-        gestureDetector = new GestureDetector(this, new MyGestureListener());
-        playerView.setOnTouchListener((v, event) -> {
-            gestureDetector.onTouchEvent(event);
-            // 单击屏幕 → 隐藏按钮
-            if (event.getAction() == MotionEvent.ACTION_UP && uiVisible) {
-                setUI(false);
-            }
-            return true;
-        });
+    // ========== 核心：代码强制溢出5%，无XML报错 ==========
+    playerView.post(() -> {
+        android.widget.FrameLayout.LayoutParams params = (android.widget.FrameLayout.LayoutParams) playerView.getLayoutParams();
+        params.width = (int) (getResources().getDisplayMetrics().widthPixels * 1.05f);
+        params.height = (int) (getResources().getDisplayMetrics().heightPixels * 1.05f);
+        params.gravity = android.view.Gravity.CENTER;
+        playerView.setLayoutParams(params);
+    });
 
-        initExoPlayer();
-        applyAllSetting();
-        loadSource(URL3);
+    gestureDetector = new GestureDetector(this, new MyGestureListener());
+    playerView.setOnTouchListener((v, event) -> {
+        gestureDetector.onTouchEvent(event);
+        if (event.getAction() == MotionEvent.ACTION_UP && uiVisible) {
+            setUI(false);
+        }
+        return true;
+    });
 
-        // 初始化：隐藏所有按钮
-        setUI(false);
+    initExoPlayer();
+    applyAllSetting();
+    loadSource(URL3);
+    setUI(false);
 
-        findViewById(R.id.btn_line).setOnClickListener(v -> showLineDialog());
-        findViewById(R.id.btn_scale).setOnClickListener(v -> showScaleDialog());
-        findViewById(R.id.btn_decode).setOnClickListener(v -> showDecodeDialog());
-        findViewById(R.id.btn_timeout).setOnClickListener(v -> showTimeoutDialog());
-        findViewById(R.id.btn_sub).setOnClickListener(v -> showSourceDialog());
-    }
+    findViewById(R.id.btn_line).setOnClickListener(v -> showLineDialog());
+    findViewById(R.id.btn_scale).setOnClickListener(v -> showScaleDialog());
+    findViewById(R.id.btn_decode).setOnClickListener(v -> showDecodeDialog());
+    findViewById(R.id.btn_timeout).setOnClickListener(v -> showTimeoutDialog());
+    findViewById(R.id.btn_sub).setOnClickListener(v -> showSourceDialog());
+}
 
     private class MyGestureListener extends GestureDetector.SimpleOnGestureListener {
         // 上下滑动切台

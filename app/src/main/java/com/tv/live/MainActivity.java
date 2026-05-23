@@ -26,20 +26,24 @@ import com.google.android.exoplayer2.DefaultRenderersFactory;
 import java.util.ArrayList;
 import java.util.List;
 
-class LiveChannel {
-    public String name;
-    public List<String> urls;
-    public LiveChannel(String name, List<String> urls) {
-        this.name = name;
-        this.urls = urls;
-    }
-}
-
 public class MainActivity extends AppCompatActivity {
+    public static MainActivity mInstance;
+    public int currentChannelIndex = 0;
+
+    public static class Channel {
+        public String name;
+        public List<String> urls;
+        public Channel(String name, List<String> urls) {
+            this.name = name;
+            this.urls = urls;
+        }
+    }
+
+    public List<Channel> channels = new ArrayList<>();
     private ExoPlayer exoPlayer;
     private PlayerView playerView;
     private SettingsManager setting;
-    private List<LiveChannel> channelList = new ArrayList<>();
+    private List<Channel> channelSourceList = new ArrayList<>();
     private int currentPlayIndex = 0;
     private Handler mainHandler = new Handler(Looper.getMainLooper());
     private Runnable timeoutRunnable;
@@ -61,6 +65,7 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
+        mInstance = this;
         sp = getSharedPreferences("tv_config", MODE_PRIVATE);
         channelReverse = sp.getBoolean("channelReverse", false);
         bootAutoStart = sp.getBoolean("bootAutoStart", false);
@@ -149,25 +154,27 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void changeChannel(int delta) {
-        if (channelList.isEmpty()) return;
+        if (channelSourceList == null || channelSourceList.isEmpty()) return;
         int newIndex = currentPlayIndex + delta;
-        if (newIndex < 0) newIndex = channelList.size() - 1;
-        if (newIndex >= channelList.size()) newIndex = 0;
+        if (newIndex < 0) newIndex = channelSourceList.size() - 1;
+        if (newIndex >= channelSourceList.size()) newIndex = 0;
+        currentChannelIndex = newIndex;
         playChannel(newIndex);
     }
 
     private void showChannelListDialog() {
-        if (channelList.isEmpty()) {
+        if (channelSourceList.isEmpty()) {
             Toast.makeText(this, "暂无频道", Toast.LENGTH_SHORT).show();
             return;
         }
-        String[] names = new String[channelList.size()];
+        String[] names = new String[channelSourceList.size()];
         for (int i = 0; i < names.length; i++) {
-            names[i] = channelList.get(i).name;
+            names[i] = channelSourceList.get(i).name;
         }
         new AlertDialog.Builder(this)
-                .setTitle("频道列表｜当前：" + channelList.get(currentPlayIndex).name)
+                .setTitle("频道列表｜当前：" + channelSourceList.get(currentPlayIndex).name)
                 .setSingleChoiceItems(names, currentPlayIndex, (dialog, which) -> {
+                    currentChannelIndex = which;
                     playChannel(which);
                     dialog.dismiss();
                 })
@@ -175,7 +182,6 @@ public class MainActivity extends AppCompatActivity {
                 .show();
     }
 
-    // ====================== 【重要】独立 Switch 开关设置弹窗 ======================
     private void showSettingDialog() {
         View view = getLayoutInflater().inflate(R.layout.dialog_setting, null);
         Switch sw_reverse = view.findViewById(R.id.sw_reverse);
@@ -238,10 +244,15 @@ public class MainActivity extends AppCompatActivity {
         new Thread(() -> {
             try {
                 String url = "https://gitee.com/qf_1111/iptv/raw/master/playlist.m3u";
-                List<LiveChannel> list = PlaylistParser.parseChannelFromUrl(url);
+                List<List<String>> raw = PlaylistParser.parseFromUrl(url);
+                List<Channel> result = new ArrayList<>();
+                for (int i = 0; i < raw.size(); i++) {
+                    result.add(new Channel("频道 " + (i + 1), raw.get(i)));
+                }
                 runOnUiThread(() -> {
-                    channelList = list;
-                    if (!channelList.isEmpty()) playChannel(0);
+                    channelSourceList = result;
+                    channels = result;
+                    if (!channelSourceList.isEmpty()) playChannel(0);
                 });
             } catch (Exception e) {
                 e.printStackTrace();
@@ -250,9 +261,10 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void playChannel(int index) {
-        if (channelList.isEmpty() || index < 0 || index >= channelList.size()) return;
+        if (channelSourceList.isEmpty() || index < 0 || index >= channelSourceList.size()) return;
         currentPlayIndex = index;
-        LiveChannel ch = channelList.get(index);
+        currentChannelIndex = index;
+        Channel ch = channelSourceList.get(index);
         int line = setting.getLine();
         if (line >= ch.urls.size()) line = 0;
         String url = ch.urls.get(line);
@@ -279,7 +291,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void autoSwitchLine() {
-        LiveChannel ch = channelList.get(currentPlayIndex);
+        Channel ch = channelSourceList.get(currentPlayIndex);
         int now = setting.getLine();
         if (now + 1 < ch.urls.size()) {
             setting.setLine(now + 1);
@@ -355,11 +367,16 @@ public class MainActivity extends AppCompatActivity {
                     Toast.makeText(this, "解析中...", Toast.LENGTH_SHORT).show();
                     new Thread(() -> {
                         try {
-                            List<LiveChannel> list = PlaylistParser.parseChannelFromUrl(url);
+                            List<List<String>> raw = PlaylistParser.parseFromUrl(url);
+                            List<Channel> result = new ArrayList<>();
+                            for (int i = 0; i < raw.size(); i++) {
+                                result.add(new Channel("频道 " + (i + 1), raw.get(i)));
+                            }
                             runOnUiThread(() -> {
-                                channelList = list;
-                                if (!channelList.isEmpty()) playChannel(0);
-                                Toast.makeText(this, "共 " + list.size() + " 个频道", Toast.LENGTH_SHORT).show();
+                                channelSourceList = result;
+                                channels = result;
+                                if (!channelSourceList.isEmpty()) playChannel(0);
+                                Toast.makeText(this, "共 " + result.size() + " 个频道", Toast.LENGTH_SHORT).show();
                             });
                         } catch (Exception e) {
                             runOnUiThread(() -> Toast.makeText(this, "解析失败", Toast.LENGTH_SHORT).show());

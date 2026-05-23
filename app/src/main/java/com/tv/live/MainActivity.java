@@ -239,27 +239,24 @@ public class MainActivity extends AppCompatActivity {
         else if (s == SettingsManager.SCALE_FILL) playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
         else playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
     }
-
+    
     private void loadDefaultSource() {
-        new Thread(() -> {
-            try {
-                String url = "https://gitee.com/qf_1111/iptv/raw/master/playlist.m3u";
-                List<List<String>> raw = PlaylistParser.parseFromUrl(url);
-                List<Channel> result = new ArrayList<>();
-                for (int i = 0; i < raw.size(); i++) {
-                    result.add(new Channel("频道 " + (i + 1), raw.get(i)));
-                }
-                runOnUiThread(() -> {
-                    channelSourceList = result;
-                    channels = result;
-                    if (!channelSourceList.isEmpty()) playChannel(0);
-                });
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        }).start();
-    }
-
+    new Thread(() -> {
+        try {
+            String url = "https://gitee.com/qf_1111/iptv/raw/master/playlist.m3u";
+            // 直接获取【名称+线路】
+            List<Channel> result = PlaylistParser.parseFromUrlRealName(url);
+            runOnUiThread(() -> {
+                channelSourceList = result;
+                channels = result;
+                if (!channelSourceList.isEmpty()) playChannel(0);
+            });
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }).start();
+}
+ 
     private void playChannel(int index) {
         if (channelSourceList.isEmpty() || index < 0 || index >= channelSourceList.size()) return;
         currentPlayIndex = index;
@@ -354,38 +351,34 @@ public class MainActivity extends AppCompatActivity {
                 .show();
     }
 
-    private void loadSubscribeUrl() {
-        EditText ed = new EditText(this);
-        ed.setInputType(InputType.TYPE_TEXT_VARIATION_URI);
-        ed.setText("https://gitee.com/qf_1111/iptv/raw/master/playlist.m3u");
-        new AlertDialog.Builder(this)
-                .setTitle("M3U订阅地址")
-                .setView(ed)
-                .setPositiveButton("加载", (d, w) -> {
-                    String url = ed.getText().toString().trim();
-                    setting.setSubUrl(url);
-                    Toast.makeText(this, "解析中...", Toast.LENGTH_SHORT).show();
-                    new Thread(() -> {
-                        try {
-                            List<List<String>> raw = PlaylistParser.parseFromUrl(url);
-                            List<Channel> result = new ArrayList<>();
-                            for (int i = 0; i < raw.size(); i++) {
-                                result.add(new Channel("频道 " + (i + 1), raw.get(i)));
-                            }
-                            runOnUiThread(() -> {
-                                channelSourceList = result;
-                                channels = result;
-                                if (!channelSourceList.isEmpty()) playChannel(0);
-                                Toast.makeText(this, "共 " + result.size() + " 个频道", Toast.LENGTH_SHORT).show();
-                            });
-                        } catch (Exception e) {
-                            runOnUiThread(() -> Toast.makeText(this, "解析失败", Toast.LENGTH_SHORT).show());
-                        }
-                    }).start();
-                })
-                .setNegativeButton("取消", null)
-                .show();
-    }
+   private void loadSubscribeUrl() {
+    EditText ed = new EditText(this);
+    ed.setInputType(InputType.TYPE_TEXT_VARIATION_URI);
+    ed.setText("https://gitee.com/qf_1111/iptv/raw/master/playlist.m3u");
+    new AlertDialog.Builder(this)
+            .setTitle("M3U订阅地址")
+            .setView(ed)
+            .setPositiveButton("加载", (d, w) -> {
+                String url = ed.getText().toString().trim();
+                setting.setSubUrl(url);
+                Toast.makeText(this, "解析中...", Toast.LENGTH_SHORT).show();
+                new Thread(() -> {
+                    try {
+                        List<Channel> result = PlaylistParser.parseFromUrlRealName(url);
+                        runOnUiThread(() -> {
+                            channelSourceList = result;
+                            channels = result;
+                            if (!channelSourceList.isEmpty()) playChannel(0);
+                            Toast.makeText(this, "共 " + result.size() + " 个频道", Toast.LENGTH_SHORT).show();
+                        });
+                    } catch (Exception e) {
+                        runOnUiThread(() -> Toast.makeText(this, "解析失败", Toast.LENGTH_SHORT).show());
+                    }
+                }).start();
+            })
+            .setNegativeButton("取消", null)
+            .show();
+}
 
     @Override
     protected void onPause() {

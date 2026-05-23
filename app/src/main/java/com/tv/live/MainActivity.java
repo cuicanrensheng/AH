@@ -23,9 +23,22 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
+    // 解决 ChannelListActivity 找不到 mInstance、Channel、currentChannelIndex
+    public static MainActivity mInstance;
+    public int currentChannelIndex = 0;
+
+    public static class Channel {
+        public String name;
+        public List<String> urls;
+        public Channel(String name, List<String> urls) {
+            this.name = name;
+            this.urls = urls;
+        }
+    }
+    public List<Channel> channels = new ArrayList<>();
+
     private ExoPlayer exoPlayer;
     private PlayerView playerView;
-    // 规范变量名 + 权限修饰符
     private SettingsManager setting;
     private List<List<String>> channelSourceList = new ArrayList<>();
     private int currentPlayIndex = 0;

@@ -55,15 +55,20 @@ public class MainActivity extends AppCompatActivity {
     private boolean channelReverse = false;
     private boolean bootAutoStart = false;
     private boolean epgEnabled = true;
-    private boolean uiVisible = true;
+    private boolean uiVisible = false; // 默认隐藏按钮
 
     private SharedPreferences sp;
+
+    // 3个直播源
+    private final String URL1 = "https://gitee.com/qf_1111/iptv/raw/master/playlist.m3u";
+    private final String URL2 = "https://raw.githubusercontent.com/cuicanrensheng/IPTV/refs/heads/main/playlist1.m3u";
+    private final String URL3 = "https://gitee.com/qf_1111/iptv/raw/master/iptvedqw.m3u";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        // ====================== 【核心修复：强制全屏、隐藏系统导航栏，解决右下角黑方块】 ======================
+        // 【核心1】强制全屏，无视系统状态栏/导航栏，彻底消除黑边黑块
         getWindow().getDecorView().setSystemUiVisibility(
                 View.SYSTEM_UI_FLAG_LAYOUT_STABLE
                         | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
@@ -73,10 +78,11 @@ public class MainActivity extends AppCompatActivity {
                         | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+        getWindow().getAttributes().layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
 
         setContentView(R.layout.activity_main);
-
         mInstance = this;
+
         sp = getSharedPreferences("tv_config", MODE_PRIVATE);
         channelReverse = sp.getBoolean("channelReverse", false);
         bootAutoStart = sp.getBoolean("bootAutoStart", false);
@@ -84,50 +90,35 @@ public class MainActivity extends AppCompatActivity {
 
         playerView = findViewById(R.id.player_view);
         setting = SettingsManager.getInstance(this);
-
-        // 播放器强制全屏拉伸，彻底去掉黑边黑块
+        // 【核心2】播放器强制全屏拉伸覆盖
         playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
 
         gestureDetector = new GestureDetector(this, new MyGestureListener());
         playerView.setOnTouchListener((v, event) -> {
             gestureDetector.onTouchEvent(event);
+            // 单击屏幕 → 隐藏按钮
+            if (event.getAction() == MotionEvent.ACTION_UP && uiVisible) {
+                setUI(false);
+            }
             return true;
         });
 
         initExoPlayer();
         applyAllSetting();
-        loadDefaultSource();
+        loadSource(URL3);
+
+        // 初始化：隐藏所有按钮
+        setUI(false);
 
         findViewById(R.id.btn_line).setOnClickListener(v -> showLineDialog());
         findViewById(R.id.btn_scale).setOnClickListener(v -> showScaleDialog());
         findViewById(R.id.btn_decode).setOnClickListener(v -> showDecodeDialog());
         findViewById(R.id.btn_timeout).setOnClickListener(v -> showTimeoutDialog());
-        findViewById(R.id.btn_sub).setOnClickListener(v -> loadSubscribeUrl());
-    }
-
-    @Override
-    public boolean onKeyDown(int keyCode, KeyEvent event) {
-        switch (keyCode) {
-            case KeyEvent.KEYCODE_DPAD_UP:
-                changeChannel(channelReverse ? 1 : -1);
-                return true;
-            case KeyEvent.KEYCODE_DPAD_DOWN:
-                changeChannel(channelReverse ? -1 : 1);
-                return true;
-            case KeyEvent.KEYCODE_DPAD_CENTER:
-                showChannelListDialog();
-                return true;
-            case KeyEvent.KEYCODE_HELP:
-                showSettingDialog();
-                return true;
-            case KeyEvent.KEYCODE_BACK:
-                finish();
-                return true;
-        }
-        return super.onKeyDown(keyCode, event);
+        findViewById(R.id.btn_sub).setOnClickListener(v -> showSourceDialog());
     }
 
     private class MyGestureListener extends GestureDetector.SimpleOnGestureListener {
+        // 上下滑动切台
         @Override
         public boolean onFling(MotionEvent e1, MotionEvent e2, float vx, float vy) {
             float dy = e2.getY() - e1.getY();
@@ -138,33 +129,49 @@ public class MainActivity extends AppCompatActivity {
             return true;
         }
 
+        // 双击 → 显示按钮
+        @Override
+        public boolean onDoubleTap(MotionEvent e) {
+            setUI(true);
+            return true;
+        }
+
+        // 单击 → 弹出频道列表
         @Override
         public boolean onSingleTapConfirmed(MotionEvent e) {
             showChannelListDialog();
             return true;
         }
 
-        @Override
-        public boolean onDoubleTap(MotionEvent e) {
-            toggleUI();
-            return true;
-        }
-
+        // 长按 → 打开设置
         @Override
         public void onLongPress(MotionEvent e) {
             showSettingDialog();
         }
     }
 
-    private void toggleUI() {
-        uiVisible = !uiVisible;
-        int vis = uiVisible ? View.VISIBLE : View.GONE;
+    // 控制按钮显示/隐藏
+    private void setUI(boolean show) {
+        uiVisible = show;
+        int vis = show ? View.VISIBLE : View.GONE;
         findViewById(R.id.btn_line).setVisibility(vis);
         findViewById(R.id.btn_scale).setVisibility(vis);
         findViewById(R.id.btn_decode).setVisibility(vis);
         findViewById(R.id.btn_timeout).setVisibility(vis);
         findViewById(R.id.btn_sub).setVisibility(vis);
-        Toast.makeText(this, uiVisible ? "显示控制" : "隐藏控制", Toast.LENGTH_SHORT).show();
+    }
+
+    // 直播源切换弹窗
+    private void showSourceDialog() {
+        new AlertDialog.Builder(this)
+                .setTitle("选择直播源")
+                .setItems(new String[]{"源1","源2","源3"}, (d, w) -> {
+                    if (w == 0) loadSource(URL1);
+                    if (w == 1) loadSource(URL2);
+                    if (w == 2) loadSource(URL3);
+                })
+                .setNegativeButton("取消", null)
+                .show();
     }
 
     private void changeChannel(int delta) {
@@ -213,18 +220,30 @@ public class MainActivity extends AppCompatActivity {
                     channelReverse = sw_reverse.isChecked();
                     bootAutoStart = sw_boot.isChecked();
                     epgEnabled = sw_epg.isChecked();
-
-                    sp.edit()
-                            .putBoolean("channelReverse", channelReverse)
+                    sp.edit().putBoolean("channelReverse", channelReverse)
                             .putBoolean("bootAutoStart", bootAutoStart)
-                            .putBoolean("epgEnabled", epgEnabled)
-                            .apply();
-
-                    Toast.makeText(this, "设置已保存", Toast.LENGTH_SHORT).show();
+                            .putBoolean("epgEnabled", epgEnabled).apply();
+                    Toast.makeText(this, "保存成功", Toast.LENGTH_SHORT).show();
                 })
                 .setNegativeButton("取消", null)
-                .setNeutralButton("切换直播源", (d, w) -> loadSubscribeUrl())
+                .setNeutralButton("切换源", (d, w) -> showSourceDialog())
                 .show();
+    }
+
+    private void loadSource(String url) {
+        new Thread(() -> {
+            try {
+                List<Channel> res = PlaylistParser.parseWithRealName(url);
+                runOnUiThread(() -> {
+                    channelSourceList = res;
+                    channels = res;
+                    if (!res.isEmpty()) playChannel(0);
+                    Toast.makeText(this, "已切换源：" + res.size() + "个频道", Toast.LENGTH_SHORT).show();
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> Toast.makeText(this, "源加载失败", Toast.LENGTH_SHORT).show());
+            }
+        }).start();
     }
 
     private void initExoPlayer() {
@@ -252,22 +271,6 @@ public class MainActivity extends AppCompatActivity {
         if (s == SettingsManager.SCALE_16_9) playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIXED_WIDTH);
         else if (s == SettingsManager.SCALE_FILL) playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
         else playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
-    }
-
-    private void loadDefaultSource() {
-        new Thread(() -> {
-            try {
-                String url = "https://gitee.com/qf_1111/iptv/raw/master/playlist.m3u";
-                List<Channel> result = PlaylistParser.parseWithRealName(url);
-                runOnUiThread(() -> {
-                    channelSourceList = result;
-                    channels = result;
-                    if (!channelSourceList.isEmpty()) playChannel(0);
-                });
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        }).start();
     }
 
     private void playChannel(int index) {
@@ -364,33 +367,16 @@ public class MainActivity extends AppCompatActivity {
                 .show();
     }
 
-    private void loadSubscribeUrl() {
-        EditText ed = new EditText(this);
-        ed.setInputType(InputType.TYPE_TEXT_VARIATION_URI);
-        ed.setText("https://gitee.com/qf_1111/iptv/raw/master/playlist.m3u");
-        new AlertDialog.Builder(this)
-                .setTitle("M3U订阅地址")
-                .setView(ed)
-                .setPositiveButton("加载", (d, w) -> {
-                    String url = ed.getText().toString().trim();
-                    setting.setSubUrl(url);
-                    Toast.makeText(this, "解析中...", Toast.LENGTH_SHORT).show();
-                    new Thread(() -> {
-                        try {
-                            List<Channel> result = PlaylistParser.parseWithRealName(url);
-                            runOnUiThread(() -> {
-                                channelSourceList = result;
-                                channels = result;
-                                if (!channelSourceList.isEmpty()) playChannel(0);
-                                Toast.makeText(this, "共 " + result.size() + " 个频道", Toast.LENGTH_SHORT).show();
-                            });
-                        } catch (Exception e) {
-                            runOnUiThread(() -> Toast.makeText(this, "解析失败", Toast.LENGTH_SHORT).show());
-                        }
-                    }).start();
-                })
-                .setNegativeButton("取消", null)
-                .show();
+    @Override
+    public boolean onKeyDown(int keyCode, KeyEvent event) {
+        switch (keyCode) {
+            case KeyEvent.KEYCODE_DPAD_UP: changeChannel(channelReverse ? 1 : -1); return true;
+            case KeyEvent.KEYCODE_DPAD_DOWN: changeChannel(channelReverse ? -1 : 1); return true;
+            case KeyEvent.KEYCODE_DPAD_CENTER: showChannelListDialog(); return true;
+            case KeyEvent.KEYCODE_HELP: showSettingDialog(); return true;
+            case KeyEvent.KEYCODE_BACK: finish(); return true;
+        }
+        return super.onKeyDown(keyCode, event);
     }
 
     @Override

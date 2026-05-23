@@ -244,8 +244,7 @@ public class MainActivity extends AppCompatActivity {
     new Thread(() -> {
         try {
             String url = "https://gitee.com/qf_1111/iptv/raw/master/playlist.m3u";
-            // 直接获取【名称+线路】
-            List<Channel> result = PlaylistParser.parseFromUrlRealName(url);
+            List<Channel> result = PlaylistParser.parseWithRealName(url);
             runOnUiThread(() -> {
                 channelSourceList = result;
                 channels = result;
@@ -256,7 +255,8 @@ public class MainActivity extends AppCompatActivity {
         }
     }).start();
 }
- 
+
+
     private void playChannel(int index) {
         if (channelSourceList.isEmpty() || index < 0 || index >= channelSourceList.size()) return;
         currentPlayIndex = index;
@@ -351,7 +351,12 @@ public class MainActivity extends AppCompatActivity {
                 .show();
     }
 
-   private void loadSubscribeUrl() {
+    @Override
+    protected void onPause() {
+        super.onPause();
+        if (exoPlayer != null) exoPlayer.pause();
+    }
+    private void loadSubscribeUrl() {
     EditText ed = new EditText(this);
     ed.setInputType(InputType.TYPE_TEXT_VARIATION_URI);
     ed.setText("https://gitee.com/qf_1111/iptv/raw/master/playlist.m3u");
@@ -364,7 +369,7 @@ public class MainActivity extends AppCompatActivity {
                 Toast.makeText(this, "解析中...", Toast.LENGTH_SHORT).show();
                 new Thread(() -> {
                     try {
-                        List<Channel> result = PlaylistParser.parseFromUrlRealName(url);
+                        List<Channel> result = PlaylistParser.parseWithRealName(url);
                         runOnUiThread(() -> {
                             channelSourceList = result;
                             channels = result;
@@ -379,12 +384,6 @@ public class MainActivity extends AppCompatActivity {
             .setNegativeButton("取消", null)
             .show();
 }
-
-    @Override
-    protected void onPause() {
-        super.onPause();
-        if (exoPlayer != null) exoPlayer.pause();
-    }
 
     @Override
     protected void onDestroy() {

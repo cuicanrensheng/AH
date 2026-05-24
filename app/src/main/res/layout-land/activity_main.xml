@@ -1,13 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:background="#000000">
 
     <com.google.android.exoplayer2.ui.PlayerView
         android:id="@+id/player_view"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:keepScreenOn="true"/>
+        android:layout_gravity="center"/>
 
     <LinearLayout
         android:layout_width="wrap_content"
@@ -19,42 +20,38 @@
 
         <Button
             android:id="@+id/btn_line"
-            android:layout_width="50dp"
-            android:layout_height="50dp"
-            android:text="线路"
-            android:textSize="10sp"/>
+            android:layout_width="55dp"
+            android:layout_height="55dp"
+            android:text="线路"/>
 
         <Button
             android:id="@+id/btn_scale"
-            android:layout_width="50dp"
-            android:layout_height="50dp"
+            android:layout_width="55dp"
+            android:layout_height="55dp"
             android:text="比例"
-            android:textSize="10sp"
             android:layout_marginTop="8dp"/>
 
         <Button
             android:id="@+id/btn_decode"
-            android:layout_width="50dp"
-            android:layout_height="50dp"
+            android:layout_width="55dp"
+            android:layout_height="55dp"
             android:text="解码"
-            android:textSize="10sp"
             android:layout_marginTop="8dp"/>
 
         <Button
             android:id="@+id/btn_timeout"
-            android:layout_width="50dp"
-            android:layout_height="50dp"
+            android:layout_width="55dp"
+            android:layout_height="55dp"
             android:text="超时"
-            android:textSize="10sp"
             android:layout_marginTop="8dp"/>
 
         <Button
             android:id="@+id/btn_sub"
-            android:layout_width="50dp"
-            android:layout_height="50dp"
+            android:layout_width="55dp"
+            android:layout_height="55dp"
             android:text="源"
-            android:textSize="10sp"
             android:layout_marginTop="8dp"/>
+
     </LinearLayout>
 
 </FrameLayout>

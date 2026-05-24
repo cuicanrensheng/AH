@@ -114,7 +114,7 @@ public class MainActivity extends AppCompatActivity {
 
         initExoPlayer();
         applyAllSetting();
-        loadSource(URL3);
+        loadSource(URL1);
         setUI(false); // 默认隐藏按钮
 
         findViewById(R.id.btn_line).setOnClickListener(v -> showLineDialog());

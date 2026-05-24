@@ -2,13 +2,14 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:padding="15dp">
+    android:padding="16dp">
 
     <EditText
         android:id="@+id/et_timeout"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="输入3-10秒超时时间"
-        android:inputType="number"/>
+        android:inputType="number"
+        android:hint="请输入超时秒数"
+        android:text="6"/>
 
 </LinearLayout>

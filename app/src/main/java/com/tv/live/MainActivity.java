@@ -64,6 +64,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
         getWindow().getDecorView().setSystemUiVisibility(
                 View.SYSTEM_UI_FLAG_LAYOUT_STABLE
                         | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
@@ -71,34 +72,33 @@ public class MainActivity extends AppCompatActivity {
                         | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
                         | View.SYSTEM_UI_FLAG_FULLSCREEN
                         | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
+
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
         getWindow().getAttributes().layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
 
         setContentView(R.layout.activity_main);
         mInstance = this;
+
         sp = getSharedPreferences("tv_config", MODE_PRIVATE);
         channelReverse = sp.getBoolean("channelReverse", false);
         bootAutoStart = sp.getBoolean("bootAutoStart", false);
         epgEnabled = sp.getBoolean("epgEnabled", true);
 
         playerView = findViewById(R.id.player_view);
+        playerView.setUseController(false);
+        playerView.setFocusable(false);
+        playerView.setFocusableInTouchMode(false);
+
         setting = SettingsManager.getInstance(this);
         playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
 
-        playerView.post(() -> {
-            FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) playerView.getLayoutParams();
-            params.width = (int) (getResources().getDisplayMetrics().widthPixels * 1.05f);
-            params.height = (int) (getResources().getDisplayMetrics().heightPixels * 1.05f);
-            params.gravity = android.view.Gravity.CENTER;
-            playerView.setLayoutParams(params);
+        gestureDetector = new GestureDetector(this, new MyGestureListener());
+        playerView.setOnTouchListener((v, event) -> {
+            gestureDetector.onTouchEvent(event);
+            return true;
         });
 
-        gestureDetector = new GestureDetector(this, new MyGestureListener());
-        playerView.setOnTouchListener((v, event) -> gestureDetector.onTouchEvent(event));
-
         initExoPlayer();
-        playerView.setUseController(false); // 强制彻底关闭底部播放控制栏
         applyAllSetting();
         loadSource(URL1);
         setUI(false);

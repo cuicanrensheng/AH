@@ -65,7 +65,7 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         getWindow().getDecorView().setSystemUiVisibility(
-                View.SYSTEM_UI_FLAG_LAYOUT_STANDARD
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE
                         | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
                         | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
                         | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
@@ -103,7 +103,6 @@ public class MainActivity extends AppCompatActivity {
         setUI(false);
     }
 
-    // 手势：无双击，只保留 切台、单击频道列表、长按设置
     private class MyGestureListener extends GestureDetector.SimpleOnGestureListener {
         @Override
         public boolean onFling(MotionEvent e1, MotionEvent e2, float vx, float vy) {
@@ -144,23 +143,16 @@ public class MainActivity extends AppCompatActivity {
         } catch (Exception ignored) {}
     }
 
-    // 完整设置：线路、比例、解码、超时、直播源、反转、开机、EPG
     private void showSettingDialog() {
         View view = getLayoutInflater().inflate(R.layout.dialog_setting, null);
 
         Switch sw_reverse = view.findViewById(R.id.sw_reverse);
         Switch sw_boot = view.findViewById(R.id.sw_boot);
         Switch sw_epg = view.findViewById(R.id.sw_epg);
-        Switch sw_timeout = view.findViewById(R.id.sw_timeout);
-        EditText et_timeout = view.findViewById(R.id.et_timeout_sec);
-        EditText et_sub_url = view.findViewById(R.id.et_sub_url);
 
         sw_reverse.setChecked(channelReverse);
         sw_boot.setChecked(bootAutoStart);
         sw_epg.setChecked(epgEnabled);
-        sw_timeout.setChecked(setting.isTimeoutEnable());
-        et_timeout.setText(String.valueOf(setting.getTimeoutSec()));
-        et_sub_url.setText(setting.getSubUrl());
 
         new AlertDialog.Builder(this)
                 .setTitle("播放设置")
@@ -169,16 +161,6 @@ public class MainActivity extends AppCompatActivity {
                     channelReverse = sw_reverse.isChecked();
                     bootAutoStart = sw_boot.isChecked();
                     epgEnabled = sw_epg.isChecked();
-                    setting.setTimeoutEnable(sw_timeout.isChecked());
-
-                    try {
-                        int sec = Integer.parseInt(et_timeout.getText().toString());
-                        setting.setTimeoutSec(sec);
-                    } catch (Exception e) {
-                        setting.setTimeoutSec(6);
-                    }
-
-                    setting.setSubUrl(et_sub_url.getText().toString().trim());
 
                     sp.edit().putBoolean("channelReverse", channelReverse)
                             .putBoolean("bootAutoStart", bootAutoStart)
@@ -194,7 +176,7 @@ public class MainActivity extends AppCompatActivity {
     private void showSourceDialog() {
         new AlertDialog.Builder(this)
                 .setTitle("选择直播源")
-                .setItems(new String[]{"源1","源2","源3","自定义/虎牙"}, (d, w) -> {
+                .setItems(new String[]{"源1","源2","源3","自定义"}, (d, w) -> {
                     if (w == 0) loadSource(URL1);
                     if (w == 1) loadSource(URL2);
                     if (w == 2) loadSource(URL3);
@@ -206,47 +188,16 @@ public class MainActivity extends AppCompatActivity {
 
     private void showCustomSourceInput() {
         EditText et = new EditText(this);
-        et.setHint("输入虎牙链接/房间号/m3u8");
+        et.setHint("输入m3u地址");
         new AlertDialog.Builder(this)
                 .setTitle("自定义直播源")
                 .setView(et)
                 .setPositiveButton("播放", (d, w) -> {
                     String input = et.getText().toString().trim();
-                    if (!input.isEmpty()) loadCustomOrHuyaSource(input);
+                    if (!input.isEmpty()) loadSource(input);
                 })
                 .setNegativeButton("取消", null)
                 .show();
-    }
-
-    private void loadCustomOrHuyaSource(String input) {
-        new Thread(() -> {
-            try {
-                String realUrl;
-                if (input.contains("huya") || input.matches("\\d+")) {
-                    realUrl = HuyaParser.getHuyaRealUrl(input);
-                    List<Channel> single = new ArrayList<>();
-                    List<String> urls = new ArrayList<>();
-                    urls.add(realUrl);
-                    single.add(new Channel("虎牙直播", urls));
-                    runOnUiThread(() -> {
-                        channelSourceList = single;
-                        channels = single;
-                        playChannel(0);
-                        Toast.makeText(this, "虎牙直播加载成功", Toast.LENGTH_SHORT).show();
-                    });
-                } else {
-                    List<Channel> res = PlaylistParser.parseWithRealName(input);
-                    runOnUiThread(() -> {
-                        channelSourceList = res;
-                        channels = res;
-                        if (!res.isEmpty()) playChannel(0);
-                        Toast.makeText(this, "加载成功：" + res.size() + "个频道", Toast.LENGTH_SHORT).show();
-                    });
-                }
-            } catch (Exception e) {
-                runOnUiThread(() -> Toast.makeText(this, "加载失败", Toast.LENGTH_SHORT).show());
-            }
-        }).start();
     }
 
     private void loadSource(String url) {
@@ -257,10 +208,10 @@ public class MainActivity extends AppCompatActivity {
                     channelSourceList = res;
                     channels = res;
                     if (!res.isEmpty()) playChannel(0);
-                    Toast.makeText(this, "已切换源：" + res.size() + "个频道", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, "已加载：" + res.size() + "个频道", Toast.LENGTH_SHORT).show();
                 });
             } catch (Exception e) {
-                runOnUiThread(() -> Toast.makeText(this, "源加载失败", Toast.LENGTH_SHORT).show());
+                runOnUiThread(() -> Toast.makeText(this, "加载失败", Toast.LENGTH_SHORT).show());
             }
         }).start();
     }
@@ -274,7 +225,6 @@ public class MainActivity extends AppCompatActivity {
         playChannel(newIndex);
     }
 
-    // 频道列表 + 节目单预告
     private void showChannelListDialog() {
         if (channelSourceList.isEmpty()) {
             Toast.makeText(this, "暂无频道", Toast.LENGTH_SHORT).show();
@@ -283,11 +233,7 @@ public class MainActivity extends AppCompatActivity {
         String[] items = new String[channelSourceList.size()];
         for (int i = 0; i < items.length; i++) {
             Channel ch = channelSourceList.get(i);
-            if (epgEnabled && ch.epg != null && !ch.epg.isEmpty()) {
-                items[i] = ch.name + " | " + ch.epg;
-            } else {
-                items[i] = ch.name;
-            }
+            items[i] = ch.name;
         }
         new AlertDialog.Builder(this)
                 .setTitle("频道列表")
@@ -342,12 +288,7 @@ public class MainActivity extends AppCompatActivity {
         exoPlayer.prepare();
         exoPlayer.play();
         startTimeoutCheck();
-
-        if (epgEnabled && ch.epg != null && !ch.epg.isEmpty()) {
-            Toast.makeText(this, "正在播放：" + ch.name + "\n节目：" + ch.epg, Toast.LENGTH_SHORT).show();
-        } else {
-            Toast.makeText(this, "正在播放：" + ch.name, Toast.LENGTH_SHORT).show();
-        }
+        Toast.makeText(this, "正在播放：" + ch.name, Toast.LENGTH_SHORT).show();
     }
 
     private void startTimeoutCheck() {

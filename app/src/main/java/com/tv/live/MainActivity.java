@@ -12,6 +12,7 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.Switch;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
@@ -59,71 +60,72 @@ public class MainActivity extends AppCompatActivity {
 
     private SharedPreferences sp;
 
-    // 3个直播源
+    // 3个内置直播源
     private final String URL1 = "https://gitee.com/qf_1111/iptv/raw/master/playlist.m3u";
     private final String URL2 = "https://raw.githubusercontent.com/cuicanrensheng/IPTV/refs/heads/main/playlist1.m3u";
     private final String URL3 = "https://gitee.com/qf_1111/iptv/raw/master/iptvedqw.m3u";
-    
+
     @Override
-protected void onCreate(Bundle savedInstanceState) {
-    super.onCreate(savedInstanceState);
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
 
-    // 强制全屏，消除系统黑边
-    getWindow().getDecorView().setSystemUiVisibility(
-            View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                    | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                    | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                    | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                    | View.SYSTEM_UI_FLAG_FULLSCREEN
-                    | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
-    getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-    getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
-    getWindow().getAttributes().layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+        // 强制全屏，消除系统黑边黑块
+        getWindow().getDecorView().setSystemUiVisibility(
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                        | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                        | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                        | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                        | View.SYSTEM_UI_FLAG_FULLSCREEN
+                        | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+        getWindow().getAttributes().layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
 
-    setContentView(R.layout.activity_main);
-    mInstance = this;
+        setContentView(R.layout.activity_main);
+        mInstance = this;
 
-    sp = getSharedPreferences("tv_config", MODE_PRIVATE);
-    channelReverse = sp.getBoolean("channelReverse", false);
-    bootAutoStart = sp.getBoolean("bootAutoStart", false);
-    epgEnabled = sp.getBoolean("epgEnabled", true);
+        sp = getSharedPreferences("tv_config", MODE_PRIVATE);
+        channelReverse = sp.getBoolean("channelReverse", false);
+        bootAutoStart = sp.getBoolean("bootAutoStart", false);
+        epgEnabled = sp.getBoolean("epgEnabled", true);
 
-    playerView = findViewById(R.id.player_view);
-    setting = SettingsManager.getInstance(this);
-    playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
+        playerView = findViewById(R.id.player_view);
+        setting = SettingsManager.getInstance(this);
+        playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
 
-    // ========== 核心：代码强制溢出5%，无XML报错 ==========
-    playerView.post(() -> {
-        android.widget.FrameLayout.LayoutParams params = (android.widget.FrameLayout.LayoutParams) playerView.getLayoutParams();
-        params.width = (int) (getResources().getDisplayMetrics().widthPixels * 1.05f);
-        params.height = (int) (getResources().getDisplayMetrics().heightPixels * 1.05f);
-        params.gravity = android.view.Gravity.CENTER;
-        playerView.setLayoutParams(params);
-    });
+        // 代码强制播放器溢出5%，彻底覆盖黑边黑块（无XML百分比报错）
+        playerView.post(() -> {
+            FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) playerView.getLayoutParams();
+            params.width = (int) (getResources().getDisplayMetrics().widthPixels * 1.05f);
+            params.height = (int) (getResources().getDisplayMetrics().heightPixels * 1.05f);
+            params.gravity = android.view.Gravity.CENTER;
+            playerView.setLayoutParams(params);
+        });
 
-    gestureDetector = new GestureDetector(this, new MyGestureListener());
-    playerView.setOnTouchListener((v, event) -> {
-        gestureDetector.onTouchEvent(event);
-        if (event.getAction() == MotionEvent.ACTION_UP && uiVisible) {
-            setUI(false);
-        }
-        return true;
-    });
+        gestureDetector = new GestureDetector(this, new MyGestureListener());
+        playerView.setOnTouchListener((v, event) -> {
+            gestureDetector.onTouchEvent(event);
+            // 单击隐藏按钮
+            if (event.getAction() == MotionEvent.ACTION_UP && uiVisible) {
+                setUI(false);
+            }
+            return true;
+        });
 
-    initExoPlayer();
-    applyAllSetting();
-    loadSource(URL3);
-    setUI(false);
+        initExoPlayer();
+        applyAllSetting();
+        loadSource(URL3);
+        setUI(false); // 默认隐藏按钮
 
-    findViewById(R.id.btn_line).setOnClickListener(v -> showLineDialog());
-    findViewById(R.id.btn_scale).setOnClickListener(v -> showScaleDialog());
-    findViewById(R.id.btn_decode).setOnClickListener(v -> showDecodeDialog());
-    findViewById(R.id.btn_timeout).setOnClickListener(v -> showTimeoutDialog());
-    findViewById(R.id.btn_sub).setOnClickListener(v -> showSourceDialog());
-}
+        findViewById(R.id.btn_line).setOnClickListener(v -> showLineDialog());
+        findViewById(R.id.btn_scale).setOnClickListener(v -> showScaleDialog());
+        findViewById(R.id.btn_decode).setOnClickListener(v -> showDecodeDialog());
+        findViewById(R.id.btn_timeout).setOnClickListener(v -> showTimeoutDialog());
+        findViewById(R.id.btn_sub).setOnClickListener(v -> showSourceDialog());
+    }
 
+    // 手势监听：双击显示按钮，单击弹出频道列表，长按设置，上下滑切台
     private class MyGestureListener extends GestureDetector.SimpleOnGestureListener {
-        // 上下滑动切台
         @Override
         public boolean onFling(MotionEvent e1, MotionEvent e2, float vx, float vy) {
             float dy = e2.getY() - e1.getY();
@@ -134,28 +136,25 @@ protected void onCreate(Bundle savedInstanceState) {
             return true;
         }
 
-        // 双击 → 显示按钮
         @Override
         public boolean onDoubleTap(MotionEvent e) {
-            setUI(true);
+            setUI(true); // 双击显示按钮
             return true;
         }
 
-        // 单击 → 弹出频道列表
         @Override
         public boolean onSingleTapConfirmed(MotionEvent e) {
             showChannelListDialog();
             return true;
         }
 
-        // 长按 → 打开设置
         @Override
         public void onLongPress(MotionEvent e) {
             showSettingDialog();
         }
     }
 
-    // 控制按钮显示/隐藏
+    // 控制按钮显隐
     private void setUI(boolean show) {
         uiVisible = show;
         int vis = show ? View.VISIBLE : View.GONE;
@@ -166,17 +165,86 @@ protected void onCreate(Bundle savedInstanceState) {
         findViewById(R.id.btn_sub).setVisibility(vis);
     }
 
-    // 直播源切换弹窗
+    // 直播源选择弹窗（新增：自定义源/虎牙源输入）
     private void showSourceDialog() {
         new AlertDialog.Builder(this)
                 .setTitle("选择直播源")
-                .setItems(new String[]{"源1","源2","源3"}, (d, w) -> {
+                .setItems(new String[]{"源1","源2","源3","自定义/虎牙源"}, (d, w) -> {
                     if (w == 0) loadSource(URL1);
                     if (w == 1) loadSource(URL2);
                     if (w == 2) loadSource(URL3);
+                    if (w == 3) showCustomSourceInput(); // 输入虎牙链接/自定义m3u8
                 })
                 .setNegativeButton("取消", null)
                 .show();
+    }
+
+    // 输入框：支持 虎牙房间号/虎牙链接/普通m3u8
+    private void showCustomSourceInput() {
+        EditText et = new EditText(this);
+        et.setHint("输入：虎牙房间号/虎牙链接/m3u8地址");
+        et.setInputType(InputType.TYPE_CLASS_TEXT);
+        new AlertDialog.Builder(this)
+                .setTitle("自定义直播源")
+                .setView(et)
+                .setPositiveButton("播放", (d, w) -> {
+                    String input = et.getText().toString().trim();
+                    if (input.isEmpty()) return;
+                    loadCustomOrHuyaSource(input);
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    // 自动判断：虎牙源/普通m3u8
+    private void loadCustomOrHuyaSource(String input) {
+        new Thread(() -> {
+            try {
+                String realUrl;
+                // 判断是否为虎牙
+                if (input.contains("huya") || input.matches("\\d+")) {
+                    realUrl = HuyaParser.getHuyaRealUrl(input);
+                    List<Channel> singleChannel = new ArrayList<>();
+                    List<String> urls = new ArrayList<>();
+                    urls.add(realUrl);
+                    singleChannel.add(new Channel("虎牙直播", urls));
+                    runOnUiThread(() -> {
+                        channelSourceList = singleChannel;
+                        channels = singleChannel;
+                        playChannel(0);
+                        Toast.makeText(this, "虎牙直播加载成功", Toast.LENGTH_SHORT).show();
+                    });
+                } else {
+                    // 普通m3u8直播源
+                    List<Channel> res = PlaylistParser.parseWithRealName(input);
+                    runOnUiThread(() -> {
+                        channelSourceList = res;
+                        channels = res;
+                        if (!res.isEmpty()) playChannel(0);
+                        Toast.makeText(this, "加载成功：" + res.size() + "个频道", Toast.LENGTH_SHORT).show();
+                    });
+                }
+            } catch (Exception e) {
+                runOnUiThread(() -> Toast.makeText(this, "加载失败：" + e.getMessage(), Toast.LENGTH_SHORT).show());
+            }
+        }).start();
+    }
+
+    // 加载内置3个直播源
+    private void loadSource(String url) {
+        new Thread(() -> {
+            try {
+                List<Channel> res = PlaylistParser.parseWithRealName(url);
+                runOnUiThread(() -> {
+                    channelSourceList = res;
+                    channels = res;
+                    if (!res.isEmpty()) playChannel(0);
+                    Toast.makeText(this, "已切换源：" + res.size() + "个频道", Toast.LENGTH_SHORT).show();
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> Toast.makeText(this, "源加载失败", Toast.LENGTH_SHORT).show());
+            }
+        }).start();
     }
 
     private void changeChannel(int delta) {
@@ -235,22 +303,6 @@ protected void onCreate(Bundle savedInstanceState) {
                 .show();
     }
 
-    private void loadSource(String url) {
-        new Thread(() -> {
-            try {
-                List<Channel> res = PlaylistParser.parseWithRealName(url);
-                runOnUiThread(() -> {
-                    channelSourceList = res;
-                    channels = res;
-                    if (!res.isEmpty()) playChannel(0);
-                    Toast.makeText(this, "已切换源：" + res.size() + "个频道", Toast.LENGTH_SHORT).show();
-                });
-            } catch (Exception e) {
-                runOnUiThread(() -> Toast.makeText(this, "源加载失败", Toast.LENGTH_SHORT).show());
-            }
-        }).start();
-    }
-
     private void initExoPlayer() {
         DefaultRenderersFactory factory = new DefaultRenderersFactory(this);
         int mode = setting.getDecode();
@@ -298,7 +350,7 @@ protected void onCreate(Bundle savedInstanceState) {
 
     private void startTimeoutCheck() {
         cancelTimeoutTask();
-        if (!setting.isTimeoutEnable()) return;
+        if (!setting.getTimeoutEnable()) return;
         int ms = setting.getTimeoutSec() * 1000;
         timeoutRunnable = this::autoSwitchLine;
         mainHandler.postDelayed(timeoutRunnable, ms);

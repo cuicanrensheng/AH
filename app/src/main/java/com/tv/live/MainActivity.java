@@ -98,6 +98,7 @@ public class MainActivity extends AppCompatActivity {
         playerView.setOnTouchListener((v, event) -> gestureDetector.onTouchEvent(event));
 
         initExoPlayer();
+        playerView.setUseController(false); // 强制彻底关闭底部播放控制栏
         applyAllSetting();
         loadSource(URL1);
         setUI(false);

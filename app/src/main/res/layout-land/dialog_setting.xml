@@ -3,7 +3,26 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:padding="20dp">
+    android:padding="16dp"
+    android:gap="10dp">
+
+    <Switch
+        android:id="@+id/sw_reverse"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="切台方向反转"/>
+
+    <Switch
+        android:id="@+id/sw_boot"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="开机自启"/>
+
+    <Switch
+        android:id="@+id/sw_epg"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="显示节目预告"/>
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -11,57 +30,29 @@
         android:gravity="center_vertical"
         android:orientation="horizontal">
 
-        <TextView
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="频道反转"
-            android:textSize="16sp" />
-
         <Switch
-            android:id="@+id/sw_reverse"
+            android:id="@+id/sw_timeout"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content" />
+            android:layout_height="wrap_content"
+            android:text="超时自动换源"/>
+
+        <EditText
+            android:id="@+id/et_timeout_sec"
+            android:layout_width="60dp"
+            android:layout_height="wrap_content"
+            android:inputType="number"
+            android:text="6"/>
     </LinearLayout>
 
-    <LinearLayout
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="自定义直播源地址"/>
+
+    <EditText
+        android:id="@+id/et_sub_url"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:layout_marginTop="10dp">
-
-        <TextView
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="开机自启"
-            android:textSize="16sp" />
-
-        <Switch
-            android:id="@+id/sw_boot"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content" />
-    </LinearLayout>
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:layout_marginTop="10dp">
-
-        <TextView
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="EPG节目单"
-            android:textSize="16sp" />
-
-        <Switch
-            android:id="@+id/sw_epg"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content" />
-    </LinearLayout>
+        android:minLines="2"/>
 
 </LinearLayout>

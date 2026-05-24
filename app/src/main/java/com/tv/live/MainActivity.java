@@ -136,11 +136,16 @@ public class MainActivity extends AppCompatActivity {
             return true;
         }
 
-        @Override
+           @Override
         public boolean onDoubleTap(MotionEvent e) {
-            setUI(true); // 双击显示按钮
-            return true;
+        // 双击：隐藏→显示，显示→隐藏
+        if (uiVisible) {
+            setUI(false);
+        } else {
+            setUI(true);
         }
+        return true;
+    }
 
         @Override
         public boolean onSingleTapConfirmed(MotionEvent e) {

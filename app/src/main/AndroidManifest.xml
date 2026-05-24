@@ -21,6 +21,8 @@
             android:keepScreenOn="true"
             android:screenOrientation="landscape"
             android:theme="@style/Theme.TVLive.NoTitle">
+            android:screenOrientation="sensorLandscape"
+            android:configChanges="orientation|screenSize|keyboardHidden"
 
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

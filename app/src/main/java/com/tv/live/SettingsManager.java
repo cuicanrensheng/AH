@@ -66,6 +66,10 @@ public class SettingsManager {
     public boolean isTimeoutEnable() {
         return sp.getBoolean(KEY_TIMEOUT_OPEN, true);
     }
+    // 兼容 MainActivity 调用
+    public boolean getTimeoutEnable() {
+        return isTimeoutEnable();
+    }
 
     // 超时秒数
     public void setTimeoutSec(int sec) {

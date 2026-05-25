@@ -31,17 +31,28 @@ import java.util.List;
 public class MainActivity extends AppCompatActivity {
     public static MainActivity mInstance;
     public int currentChannelIndex = 0;
-
+    
     public static class Channel {
-        public String name;
-        public List<String> urls;
-        public String epg;
-        public Channel(String name, List<String> urls) {
-            this.name = name;
-            this.urls = urls;
-            this.epg = "";
-        }
+    public String name;
+    public List<String> urls;
+    // EPG：节目时间+名称+回放地址
+    public List<EpgItem> epgList;
+
+    public static class EpgItem {
+        public String time;     // 时间 12:30–13:05
+        public String title;    // 节目名
+        public String playUrl;  // 回放地址，无则空
+        public boolean isNow;   // 是否正在播放
     }
+
+    public Channel(String name, List<String> urls) {
+        this.name = name;
+        this.urls = urls;
+        this.epgList = new ArrayList<>();
+    }
+}
+
+   
 
     public List<Channel> channels = new ArrayList<>();
     private ExoPlayer exoPlayer;

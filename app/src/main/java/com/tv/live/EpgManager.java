@@ -9,10 +9,8 @@ import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.text.SimpleDateFormat;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -36,8 +34,8 @@ public class EpgManager {
                 URL url = new URL(EPG_URL);
                 HttpURLConnection conn = (HttpURLConnection) url.openConnection();
                 conn.setRequestMethod("GET");
-                conn.setConnectTimeout(10000);
-                conn.setReadTimeout(10000);
+                conn.setConnectTimeout(15000);
+                conn.setReadTimeout(15000);
                 conn.setRequestProperty("User-Agent", "Mozilla/5.0");
 
                 InputStream is = new GZIPInputStream(new BufferedInputStream(conn.getInputStream()));
@@ -51,7 +49,7 @@ public class EpgManager {
                 parseXml(new ByteArrayInputStream(bos.toByteArray()));
                 context.getMainExecutor().execute(callback);
             } catch (Exception e) {
-                Log.e(TAG, "EPG解析失败", e);
+                Log.e(TAG, "EPG下载/解析失败", e);
                 context.getMainExecutor().execute(callback);
             }
         }).start();
@@ -91,8 +89,6 @@ public class EpgManager {
                             item.time = formatTime(startTime) + "–" + formatTime(stopTime);
                             item.title = title;
                             item.isNow = isNow(startTime, stopTime);
-
-                            // ========== 拼接7天回看地址 ==========
                             item.playUrl = buildPlaybackUrl(currentChannelName, startTime);
                             list.add(item);
                         }
@@ -105,12 +101,11 @@ public class EpgManager {
         is.close();
     }
 
-    // 生成回放链接：https://e.erw.cc/江西卫视/20250525/123000.m3u8
     private String buildPlaybackUrl(String chName, String xmlTime) {
         try {
             String date = xmlTime.substring(0, 8);
             String hms = xmlTime.substring(8, 14);
-            String cleanName = chName.replace(" ", "").replace("高清", "").replace("卫视", "");
+            String cleanName = chName.replace(" ", "").replace("高清", "").replace("卫视", "").replace("频道", "");
             return PLAYBACK_BASE + "/" + cleanName + "/" + date + "/" + hms + ".m3u8";
         } catch (Exception e) {
             return "";
@@ -124,23 +119,20 @@ public class EpgManager {
     private boolean isNow(String start, String stop) {
         try {
             long now = System.currentTimeMillis();
-            long s = parseXmlTime(start);
-            long e = parseXmlTime(stop);
+            long s = Long.parseLong(start.substring(0, 14)) * 1000;
+            long e = Long.parseLong(stop.substring(0, 14)) * 1000;
             return now >= s && now <= e;
         } catch (Exception e) {
             return false;
         }
     }
 
-    private long parseXmlTime(String t) {
-        return Long.parseLong(t.substring(0, 14)) * 1000;
-    }
-
+    // ✅ 超级宽松匹配：包含关键字就匹配（解决江西卫视[高清]匹配不到）
     public List<MainActivity.Channel.EpgItem> getEpgByChannelName(String channelName) {
+        String srcClean = channelName.replace(" ", "").replace("高清", "").replace("卫视", "").replace("频道", "");
         for (Map.Entry<String, List<MainActivity.Channel.EpgItem>> entry : epgCache.entrySet()) {
-            String key = entry.getKey().replace("高清", "").replace(" ", "");
-            String src = channelName.replace("高清", "").replace(" ", "");
-            if (key.contains(src) || src.contains(key)) {
+            String keyClean = entry.getKey().replace(" ", "").replace("高清", "").replace("卫视", "").replace("频道", "");
+            if (keyClean.contains(srcClean) || srcClean.contains(keyClean)) {
                 return entry.getValue();
             }
         }

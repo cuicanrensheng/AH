@@ -144,36 +144,7 @@ public class MainActivity extends AppCompatActivity {
         } catch (Exception ignored) {}
     }
 
-    private void showSettingDialog() {
-        View view = getLayoutInflater().inflate(R.layout.dialog_setting, null);
-
-        Switch sw_reverse = view.findViewById(R.id.sw_reverse);
-        Switch sw_boot = view.findViewById(R.id.sw_boot);
-        Switch sw_epg = view.findViewById(R.id.sw_epg);
-
-        sw_reverse.setChecked(channelReverse);
-        sw_boot.setChecked(bootAutoStart);
-        sw_epg.setChecked(epgEnabled);
-
-        new AlertDialog.Builder(this)
-                .setTitle("播放设置")
-                .setView(view)
-                .setPositiveButton("保存", (dialog, which) -> {
-                    channelReverse = sw_reverse.isChecked();
-                    bootAutoStart = sw_boot.isChecked();
-                    epgEnabled = sw_epg.isChecked();
-
-                    sp.edit().putBoolean("channelReverse", channelReverse)
-                            .putBoolean("bootAutoStart", bootAutoStart)
-                            .putBoolean("epgEnabled", epgEnabled).apply();
-
-                    Toast.makeText(this, "保存成功", Toast.LENGTH_SHORT).show();
-                })
-                .setNegativeButton("取消", null)
-                .setNeutralButton("切换直播源", (d, w) -> showSourceDialog())
-                .show();
-    }
-
+ 
     private void showSourceDialog() {
         new AlertDialog.Builder(this)
                 .setTitle("选择直播源")
@@ -186,6 +157,106 @@ public class MainActivity extends AppCompatActivity {
                 .setNegativeButton("取消", null)
                 .show();
     }
+    
+    private void showSettingDialog() {
+    View view = getLayoutInflater().inflate(R.layout.dialog_setting, null);
+
+    // 基础开关
+    Switch sw_reverse = view.findViewById(R.id.sw_reverse);
+    Switch sw_boot = view.findViewById(R.id.sw_boot);
+    Switch sw_epg = view.findViewById(R.id.sw_epg);
+    Switch sw_timeout = view.findViewById(R.id.sw_timeout);
+
+    // 线路、比例、解码
+    Spinner sp_line = view.findViewById(R.id.sp_line);
+    Spinner sp_scale = view.findViewById(R.id.sp_scale);
+    Spinner sp_decode = view.findViewById(R.id.sp_decode);
+
+    // 超时秒数、自定义源
+    EditText et_timeout_sec = view.findViewById(R.id.et_timeout_sec);
+    EditText et_sub_url = view.findViewById(R.id.et_sub_url);
+
+    // 初始化开关状态
+    sw_reverse.setChecked(channelReverse);
+    sw_boot.setChecked(bootAutoStart);
+    sw_epg.setChecked(epgEnabled);
+    sw_timeout.setChecked(setting.isTimeoutEnable());
+
+    // 线路选择
+    String[] lineArr = {"线路1", "线路2", "线路3"};
+    ArrayAdapter<String> lineAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, lineArr);
+    sp_line.setAdapter(lineAdapter);
+    sp_line.setSelection(setting.getLine());
+    sp_line.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+        @Override
+        public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+            setting.setLine(position);
+            playChannel(currentPlayIndex);
+        }
+        @Override
+        public void onNothingSelected(AdapterView<?> parent) {}
+    });
+
+    // 画面比例
+    String[] scaleArr = {"原始", "16:9", "全屏拉伸"};
+    ArrayAdapter<String> scaleAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, scaleArr);
+    sp_scale.setAdapter(scaleAdapter);
+    sp_scale.setSelection(setting.getScale());
+    sp_scale.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+        @Override
+        public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+            setting.setScale(position);
+            applyAllSetting();
+        }
+        @Override
+        public void onNothingSelected(AdapterView<?> parent) {}
+    });
+
+    // 解码模式
+    String[] decodeArr = {"自动", "硬解", "软解"};
+    ArrayAdapter<String> decodeAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, decodeArr);
+    sp_decode.setAdapter(decodeAdapter);
+    sp_decode.setSelection(setting.getDecode());
+    sp_decode.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+        @Override
+        public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+            setting.setDecode(position);
+            initExoPlayer();
+        }
+        @Override
+        public void onNothingSelected(AdapterView<?> parent) {}
+    });
+
+    // 超时设置
+    et_timeout_sec.setText(String.valueOf(setting.getTimeoutSec()));
+    et_sub_url.setText(setting.getSubUrl());
+
+    new AlertDialog.Builder(this)
+            .setTitle("播放设置")
+            .setView(view)
+            .setPositiveButton("保存", (dialog, which) -> {
+                channelReverse = sw_reverse.isChecked();
+                bootAutoStart = sw_boot.isChecked();
+                epgEnabled = sw_epg.isChecked();
+                setting.setTimeoutEnable(sw_timeout.isChecked());
+
+                try {
+                    int sec = Integer.parseInt(et_timeout_sec.getText().toString());
+                    setting.setTimeoutSec(sec);
+                } catch (Exception e) {
+                    setting.setTimeoutSec(6);
+                }
+                setting.setSubUrl(et_sub_url.getText().toString().trim());
+
+                sp.edit().putBoolean("channelReverse", channelReverse)
+                        .putBoolean("bootAutoStart", bootAutoStart)
+                        .putBoolean("epgEnabled", epgEnabled).apply();
+                Toast.makeText(this, "保存成功", Toast.LENGTH_SHORT).show();
+            })
+            .setNegativeButton("取消", null)
+            .setNeutralButton("切换直播源", (d, w) -> showSourceDialog())
+            .show();
+}
 
     private void showCustomSourceInput() {
         EditText et = new EditText(this);

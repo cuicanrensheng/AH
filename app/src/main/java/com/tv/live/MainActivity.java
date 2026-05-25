@@ -58,6 +58,8 @@ public class MainActivity extends AppCompatActivity {
 
     public List<Channel> channels = new ArrayList<>();
     private ExoPlayer exoPlayer;
+    private ExoPlayer playbackPlayer;
+    private boolean isPlayingPlayback = false;
     private PlayerView playerView;
     private SettingsManager setting;
     private List<Channel> channelSourceList = new ArrayList<>();
@@ -170,6 +172,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void showSettingDialog() {
+        cancelTimeoutTask();
         View view = getLayoutInflater().inflate(R.layout.dialog_setting, null);
 
         Switch sw_reverse = view.findViewById(R.id.sw_reverse);
@@ -279,7 +282,7 @@ public class MainActivity extends AppCompatActivity {
                     channelSourceList = res;
                     channels = res;
 
-                    EpgManager.getInstance().load(this, () -> {
+                    EpgManager.getInstance().load(MainActivity.this, () -> {
                         for (Channel ch : channelSourceList) {
                             ch.epgList = EpgManager.getInstance().getEpg(ch.name);
                         }
@@ -290,7 +293,7 @@ public class MainActivity extends AppCompatActivity {
                                 playChannel(0);
                             }
                         }
-                        Toast.makeText(this, "EPG已加载完成", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(MainActivity.this, "EPG已加载", Toast.LENGTH_SHORT).show();
                     });
                 });
             } catch (Exception e) {
@@ -382,10 +385,19 @@ public class MainActivity extends AppCompatActivity {
         lvEpg.setOnItemClickListener((parent, v, position, id) -> {
             Channel.EpgItem item = channelSourceList.get(currentPlayIndex).epgList.get(position);
             if (!TextUtils.isEmpty(item.playUrl)) {
-                exoPlayer.stop();
-                exoPlayer.setMediaItem(MediaItem.fromUri(item.playUrl));
-                exoPlayer.prepare();
-                exoPlayer.play();
+                isPlayingPlayback = true;
+                exoPlayer.pause();
+
+                if (playbackPlayer == null) {
+                    playbackPlayer = new ExoPlayer.Builder(MainActivity.this).build();
+                }
+                playerView.setPlayer(playbackPlayer);
+
+                playbackPlayer.stop();
+                playbackPlayer.setMediaItem(MediaItem.fromUri(item.playUrl));
+                playbackPlayer.prepare();
+                playbackPlayer.play();
+
                 Toast.makeText(MainActivity.this, "正在播放回放：" + item.title, Toast.LENGTH_SHORT).show();
             }
         });
@@ -455,6 +467,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void autoSwitchLine() {
+        if (isPlayingPlayback) return;
         Channel ch = channelSourceList.get(currentPlayIndex);
         int now = setting.getLine();
         if (now + 1 < ch.urls.size()) {
@@ -463,6 +476,23 @@ public class MainActivity extends AppCompatActivity {
         } else {
             Toast.makeText(this, "本频道所有线路失效", Toast.LENGTH_SHORT).show();
         }
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (isPlayingPlayback) {
+            isPlayingPlayback = false;
+            if (playbackPlayer != null) {
+                playbackPlayer.stop();
+                playbackPlayer.release();
+                playbackPlayer = null;
+            }
+            playerView.setPlayer(exoPlayer);
+            exoPlayer.prepare();
+            exoPlayer.play();
+            return;
+        }
+        super.onBackPressed();
     }
 
     @Override
@@ -497,6 +527,9 @@ public class MainActivity extends AppCompatActivity {
             exoPlayer.stop();
             exoPlayer.release();
             exoPlayer = null;
+        }
+        if (playbackPlayer != null) {
+            playbackPlayer.release();
         }
     }
 }

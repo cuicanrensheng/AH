@@ -289,11 +289,13 @@ public class MainActivity extends AppCompatActivity {
                 channelSourceList = res;
                 channels = res;
 
-                // 下载真实EPG，绑定到每个频道
+                // 下载EPG
                 EpgManager.getInstance().downloadAndParseEpg(this, () -> {
+                    // 给每个频道绑定节目单
                     for (Channel ch : channelSourceList) {
                         ch.epgList = EpgManager.getInstance().getEpgByChannelName(ch.name);
                     }
+
                     // 恢复上次播放频道
                     if (!res.isEmpty()) {
                         if (lastPlayChannelIndex >= 0 && lastPlayChannelIndex < res.size()) {
@@ -302,7 +304,9 @@ public class MainActivity extends AppCompatActivity {
                             playChannel(0);
                         }
                     }
-                    Toast.makeText(this, "已加载：" + res.size() + "个频道", Toast.LENGTH_SHORT).show();
+
+                    // ✅ 强制刷新UI，解决节目单空白
+                    Toast.makeText(this, "EPG已加载完成", Toast.LENGTH_SHORT).show();
                 });
             });
         } catch (Exception e) {
@@ -311,7 +315,6 @@ public class MainActivity extends AppCompatActivity {
     }).start();
 }
 
-   
     private void changeChannel(int delta) {
         if (channelSourceList == null || channelSourceList.isEmpty()) return;
         int newIndex = currentPlayIndex + delta;

@@ -18,11 +18,15 @@
             android:text="倒序换台"
             android:textColor="#ffffff"/>
 
+        <View
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_weight="1"/>
+
         <Switch
             android:id="@+id/sw_reverse"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="auto"/>
+            android:layout_height="wrap_content"/>
     </LinearLayout>
 
     <LinearLayout
@@ -38,11 +42,15 @@
             android:text="开机自启"
             android:textColor="#ffffff"/>
 
+        <View
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_weight="1"/>
+
         <Switch
             android:id="@+id/sw_boot"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="auto"/>
+            android:layout_height="wrap_content"/>
     </LinearLayout>
 
     <LinearLayout
@@ -58,11 +66,15 @@
             android:text="显示节目单"
             android:textColor="#ffffff"/>
 
+        <View
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_weight="1"/>
+
         <Switch
             android:id="@+id/sw_epg"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="auto"/>
+            android:layout_height="wrap_content"/>
     </LinearLayout>
 
     <TextView

@@ -323,7 +323,7 @@ public class MainActivity extends AppCompatActivity {
         currentChannelIndex = newIndex;
         playChannel(newIndex);
     }
-
+    
     private void showChannelListDialog() {
     if (channelSourceList == null || channelSourceList.isEmpty()) {
         Toast.makeText(this, "暂无频道", Toast.LENGTH_SHORT).show();
@@ -334,7 +334,6 @@ public class MainActivity extends AppCompatActivity {
     ListView lvChannel = view.findViewById(R.id.lv_channel);
     ListView lvEpg = view.findViewById(R.id.lv_epg);
 
-    // 左侧频道适配器
     ArrayAdapter<Channel> channelAdapter = new ArrayAdapter<Channel>(this,
             android.R.layout.simple_list_item_1, channelSourceList) {
         @Override
@@ -359,14 +358,9 @@ public class MainActivity extends AppCompatActivity {
     };
     lvChannel.setAdapter(channelAdapter);
     lvChannel.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
-    lvChannel.setItemChecked(currentPlayIndex, true);
 
-    // 右侧EPG适配器（只定义1次，修复重复定义报错）
     final ArrayAdapter<Channel.EpgItem> epgAdapter = new ArrayAdapter<Channel.EpgItem>(this,
-            android.R.layout.simple_list_item_1,
-            (channelSourceList != null && !channelSourceList.isEmpty())
-                    ? channelSourceList.get(currentPlayIndex).epgList
-                    : new ArrayList<Channel.EpgItem>()) {
+            android.R.layout.simple_list_item_1, new ArrayList<>()) {
         @Override
         public View getView(int position, View convertView, ViewGroup parent) {
             View v = super.getView(position, convertView, parent);
@@ -383,31 +377,31 @@ public class MainActivity extends AppCompatActivity {
     };
     lvEpg.setAdapter(epgAdapter);
 
-    // 左侧频道点击
-    lvChannel.setOnItemClickListener(new AdapterView.OnItemClickListener() {
-        @Override
-        public void onItemClick(AdapterView<?> parent, View v, int position, long id) {
-            currentPlayIndex = position;
-            playChannel(position);
-            Channel ch = channelSourceList.get(position);
-            epgAdapter.clear();
-            epgAdapter.addAll(ch.epgList);
-            epgAdapter.notifyDataSetChanged();
-        }
+    // 修复频道定位
+    lvChannel.post(() -> {
+        lvChannel.setItemChecked(currentPlayIndex, true);
+        lvChannel.setSelection(currentPlayIndex);
+        epgAdapter.clear();
+        epgAdapter.addAll(channelSourceList.get(currentPlayIndex).epgList);
+        epgAdapter.notifyDataSetChanged();
     });
 
-    // 右侧节目单点击回放
-    lvEpg.setOnItemClickListener(new AdapterView.OnItemClickListener() {
-        @Override
-        public void onItemClick(AdapterView<?> parent, View v, int position, long id) {
-            Channel.EpgItem item = channelSourceList.get(currentPlayIndex).epgList.get(position);
-            if (!TextUtils.isEmpty(item.playUrl)) {
-                exoPlayer.stop();
-                exoPlayer.setMediaItem(MediaItem.fromUri(item.playUrl));
-                exoPlayer.prepare();
-                exoPlayer.play();
-                Toast.makeText(MainActivity.this, "正在播放回放：" + item.title, Toast.LENGTH_SHORT).show();
-            }
+    lvChannel.setOnItemClickListener((parent, v, pos, id) -> {
+        currentPlayIndex = pos;
+        playChannel(pos);
+        epgAdapter.clear();
+        epgAdapter.addAll(channelSourceList.get(pos).epgList);
+        epgAdapter.notifyDataSetChanged();
+    });
+
+    lvEpg.setOnItemClickListener((parent, v, pos, id) -> {
+        Channel.EpgItem item = channelSourceList.get(currentPlayIndex).epgList.get(pos);
+        if (!TextUtils.isEmpty(item.playUrl)) {
+            exoPlayer.stop();
+            exoPlayer.setMediaItem(MediaItem.fromUri(item.playUrl));
+            exoPlayer.prepare();
+            exoPlayer.play();
+            Toast.makeText(MainActivity.this, "正在播放回放：" + item.title, Toast.LENGTH_SHORT).show();
         }
     });
 
@@ -416,8 +410,7 @@ public class MainActivity extends AppCompatActivity {
             .setNegativeButton("关闭", null)
             .show();
 }
-
-
+ 
     private void initExoPlayer() {
         DefaultRenderersFactory factory = new DefaultRenderersFactory(this);
         int mode = setting.getDecode();

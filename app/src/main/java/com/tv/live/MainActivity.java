@@ -280,16 +280,22 @@ public class MainActivity extends AppCompatActivity {
                 .setNegativeButton("取消", null)
                 .show();
     }
-
+    
     private void loadSource(String url) {
-        new Thread(() -> {
-            try {
-                List<Channel> res = PlaylistParser.parseWithRealName(url);
-                runOnUiThread(() -> {
-                    channelSourceList = res;
-                    channels = res;
+    new Thread(() -> {
+        try {
+            List<Channel> res = PlaylistParser.parseWithRealName(url);
+            runOnUiThread(() -> {
+                channelSourceList = res;
+                channels = res;
+
+                // 下载真实EPG，绑定到每个频道
+                EpgManager.getInstance().downloadAndParseEpg(this, () -> {
+                    for (Channel ch : channelSourceList) {
+                        ch.epgList = EpgManager.getInstance().getEpgByChannelName(ch.name);
+                    }
+                    // 恢复上次播放频道
                     if (!res.isEmpty()) {
-                        // ========== 自动恢复上次频道 ==========
                         if (lastPlayChannelIndex >= 0 && lastPlayChannelIndex < res.size()) {
                             playChannel(lastPlayChannelIndex);
                         } else {
@@ -298,12 +304,14 @@ public class MainActivity extends AppCompatActivity {
                     }
                     Toast.makeText(this, "已加载：" + res.size() + "个频道", Toast.LENGTH_SHORT).show();
                 });
-            } catch (Exception e) {
-                runOnUiThread(() -> Toast.makeText(this, "加载失败", Toast.LENGTH_SHORT).show());
-            }
-        }).start();
-    }
+            });
+        } catch (Exception e) {
+            runOnUiThread(() -> Toast.makeText(this, "加载失败", Toast.LENGTH_SHORT).show());
+        }
+    }).start();
+}
 
+   
     private void changeChannel(int delta) {
         if (channelSourceList == null || channelSourceList.isEmpty()) return;
         int newIndex = currentPlayIndex + delta;

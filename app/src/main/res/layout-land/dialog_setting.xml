@@ -8,124 +8,96 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:gravity="center_vertical"
-        android:orientation="horizontal">
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
         <TextView
-            android:text="频道反转"
-            android:textSize="16sp"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"/>
+            android:layout_height="wrap_content"
+            android:text="倒序换台"/>
         <Switch
             android:id="@+id/sw_reverse"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginLeft="10dp"/>
+            android:layout_gravity="end"/>
     </LinearLayout>
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:layout_marginTop="10dp">
+        android:gravity="center_vertical">
         <TextView
-            android:text="开机自启"
-            android:textSize="16sp"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"/>
+            android:layout_height="wrap_content"
+            android:text="开机自启"/>
         <Switch
             android:id="@+id/sw_boot"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginLeft="10dp"/>
+            android:layout_gravity="end"/>
     </LinearLayout>
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:layout_marginTop="10dp">
+        android:gravity="center_vertical">
         <TextView
-            android:text="EPG节目单"
-            android:textSize="16sp"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"/>
+            android:layout_height="wrap_content"
+            android:text="开启EPG"/>
         <Switch
             android:id="@+id/sw_epg"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginLeft="10dp"/>
-    </LinearLayout>
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:layout_marginTop="10dp">
-        <TextView
-            android:text="超时换源"
-            android:textSize="16sp"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"/>
-        <Switch
-            android:id="@+id/sw_timeout"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginLeft="10dp"/>
-        <EditText
-            android:id="@+id/et_timeout_sec"
-            android:layout_width="60dp"
-            android:layout_height="wrap_content"
-            android:inputType="number"
-            android:text="6"
-            android:layout_marginLeft="10dp"/>
+            android:layout_gravity="end"/>
     </LinearLayout>
 
     <TextView
-        android:text="线路选择"
-        android:textSize="16sp"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="10dp"/>
+        android:text="播放线路"/>
     <Spinner
         android:id="@+id/sp_line"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"/>
 
     <TextView
-        android:text="画面比例"
-        android:textSize="16sp"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="10dp"/>
+        android:text="画面比例"/>
     <Spinner
         android:id="@+id/sp_scale"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"/>
 
     <TextView
-        android:text="解码模式"
-        android:textSize="16sp"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="10dp"/>
+        android:text="解码模式"/>
     <Spinner
         android:id="@+id/sp_decode"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"/>
 
     <TextView
-        android:text="自定义直播源"
-        android:textSize="16sp"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="10dp"/>
+        android:text="超时切换线路(秒)"/>
+    <EditText
+        android:id="@+id/et_timeout_sec"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:inputType="number"/>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="字幕地址"/>
     <EditText
         android:id="@+id/et_sub_url"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:minLines="2"/>
+        android:hint="留空不加载字幕"/>
 
 </LinearLayout>

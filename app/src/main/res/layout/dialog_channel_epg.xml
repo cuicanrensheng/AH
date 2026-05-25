@@ -3,7 +3,7 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="horizontal"
-    android:background="#33000000">
+    android:background="#FF444444">
 
     <!-- 左侧频道列表 -->
     <ListView

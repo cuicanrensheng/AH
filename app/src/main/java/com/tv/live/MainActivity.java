@@ -333,29 +333,29 @@ public class MainActivity extends AppCompatActivity {
         View view = LayoutInflater.from(this).inflate(R.layout.dialog_channel_epg, null);
         ListView lvChannel = view.findViewById(R.id.lv_channel);
         ListView lvEpg = view.findViewById(R.id.lv_epg);
-
-        ArrayAdapter<Channel> channelAdapter = new ArrayAdapter<Channel>(this,
-                android.R.layout.simple_list_item_1, channelSourceList) {
-            @Override
-            public View getView(int position, View convertView, ViewGroup parent) {
-                View v = super.getView(position, convertView, parent);
-                TextView tv = v.findViewById(android.R.id.text1);
-                Channel ch = getItem(position);
-                String nowText = "";
-                if (epgEnabled && ch.epgList != null && !ch.epgList.isEmpty()) {
-                    for (Channel.EpgItem item : ch.epgList) {
-                        if (item.isNow) {
-                            nowText = "\n▶ " + item.title;
-                            break;
-                        }
-                    }
-                }
-                tv.setText(ch.name + nowText);
-                tv.setTextColor(Color.WHITE);
-                tv.setTextSize(16);
-                return v;
-            }
-        };
+        
+        ArrayAdapter<Channel.EpgItem> epgAdapter = new ArrayAdapter<Channel.EpgItem>(this,
+        android.R.layout.simple_list_item_1,
+        // ✅ 直接取最新的节目单，不缓存旧数据
+        (channelSourceList != null && !channelSourceList.isEmpty())
+                ? channelSourceList.get(currentPlayIndex).epgList
+                : new ArrayList<>()) {
+    @Override
+    public View getView(int position, View convertView, ViewGroup parent) {
+        View v = super.getView(position, convertView, parent);
+        TextView tv = v.findViewById(android.R.id.text1);
+        Channel.EpgItem item = getItem(position);
+        String text = item.time + "    " + item.title;
+        if (!TextUtils.isEmpty(item.playUrl)) text += "    回放";
+        if (item.isNow) text = "▶ " + text;
+        tv.setText(text);
+        tv.setTextColor(Color.WHITE);
+        tv.setTextSize(15);
+        return v;
+    }
+};
+lvEpg.setAdapter(epgAdapter);
+       
         lvChannel.setAdapter(channelAdapter);
         lvChannel.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
         lvChannel.setItemChecked(currentPlayIndex, true);

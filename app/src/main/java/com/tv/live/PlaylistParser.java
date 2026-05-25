@@ -30,7 +30,7 @@ public class PlaylistParser {
             if (line.startsWith("#EXTINF")) {
                 if (!currentUrls.isEmpty()) {
                     MainActivity.Channel ch = new MainActivity.Channel(currentName, new ArrayList<>(currentUrls));
-                    ch.epgList = generateSampleEpg(ch.name);
+                    ch.epgList = new ArrayList<>(); // 空列表，EpgManager自动填充真实节目单
                     channelList.add(ch);
                     currentUrls.clear();
                 }
@@ -45,46 +45,12 @@ public class PlaylistParser {
 
         if (!currentUrls.isEmpty()) {
             MainActivity.Channel ch = new MainActivity.Channel(currentName, new ArrayList<>(currentUrls));
-            ch.epgList = generateSampleEpg(ch.name);
+            ch.epgList = new ArrayList<>();
             channelList.add(ch);
         }
 
         reader.close();
         connection.disconnect();
         return channelList;
-    }
-
-    private static List<MainActivity.Channel.EpgItem> generateSampleEpg(String channelName) {
-        List<MainActivity.Channel.EpgItem> list = new ArrayList<>();
-
-        MainActivity.Channel.EpgItem e1 = new MainActivity.Channel.EpgItem();
-        e1.time = "12:00–12:30";
-        e1.title = "往期节目 · 回放";
-        e1.playUrl = "";
-        e1.isNow = false;
-        list.add(e1);
-
-        MainActivity.Channel.EpgItem e2 = new MainActivity.Channel.EpgItem();
-        e2.time = "12:30–13:05";
-        e2.title = channelName + " 正在直播";
-        e2.playUrl = "";
-        e2.isNow = true;
-        list.add(e2);
-
-        MainActivity.Channel.EpgItem e3 = new MainActivity.Channel.EpgItem();
-        e3.time = "13:05–13:57";
-        e3.title = "金牌调解";
-        e3.playUrl = "";
-        e3.isNow = false;
-        list.add(e3);
-
-        MainActivity.Channel.EpgItem e4 = new MainActivity.Channel.EpgItem();
-        e4.time = "14:00–15:00";
-        e4.title = "午后剧场";
-        e4.playUrl = "";
-        e4.isNow = false;
-        list.add(e4);
-
-        return list;
     }
 }

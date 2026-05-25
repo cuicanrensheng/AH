@@ -1,4 +1,5 @@
 package com.tv.live;
+
 import android.widget.TextView;
 import android.widget.AdapterView;
 import android.graphics.Color;
@@ -7,21 +8,17 @@ import android.view.LayoutInflater;
 import android.view.ViewGroup;
 import android.widget.ArrayAdapter;
 import android.widget.ListView;
-import android.widget.AdapterView;
-import android.widget.ArrayAdapter;
 import android.widget.Spinner;
 import android.app.AlertDialog;
 import android.content.SharedPreferences;
 import android.os.Handler;
 import android.os.Looper;
-import android.text.InputType;
 import android.view.GestureDetector;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.EditText;
-import android.widget.FrameLayout;
 import android.widget.Switch;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
@@ -67,16 +64,12 @@ public class MainActivity extends AppCompatActivity {
     private int currentPlayIndex = 0;
     private Handler mainHandler = new Handler(Looper.getMainLooper());
     private Runnable timeoutRunnable;
-    private final String[] scaleArr = {"原始比例","16:9比例","全屏拉伸"};
-    private final String[] decodeArr = {"自动解码","硬件解码","软件解码"};
     private GestureDetector gestureDetector;
     private boolean channelReverse = false;
     private boolean bootAutoStart = false;
     private boolean epgEnabled = true;
     private boolean uiVisible = false;
     private SharedPreferences sp;
-
-    // ====================== 保存上次播放频道 ======================
     private int lastPlayChannelIndex = 0;
 
     private final String URL1 = "https://gitee.com/qf_1111/iptv/raw/master/playlist.m3u";
@@ -102,8 +95,6 @@ public class MainActivity extends AppCompatActivity {
         channelReverse = sp.getBoolean("channelReverse", false);
         bootAutoStart = sp.getBoolean("bootAutoStart", false);
         epgEnabled = sp.getBoolean("epgEnabled", true);
-
-        // ========== 读取上次播放的频道 ==========
         lastPlayChannelIndex = sp.getInt("last_play_channel", 0);
 
         playerView = findViewById(R.id.player_view);
@@ -180,10 +171,11 @@ public class MainActivity extends AppCompatActivity {
 
     private void showSettingDialog() {
         View view = getLayoutInflater().inflate(R.layout.dialog_setting, null);
+
         Switch sw_reverse = view.findViewById(R.id.sw_reverse);
         Switch sw_boot = view.findViewById(R.id.sw_boot);
         Switch sw_epg = view.findViewById(R.id.sw_epg);
-        Switch sw_timeout = view.findViewById(R.id.sw_timeout);
+
         Spinner sp_line = view.findViewById(R.id.sp_line);
         Spinner sp_scale = view.findViewById(R.id.sp_scale);
         Spinner sp_decode = view.findViewById(R.id.sp_decode);
@@ -193,7 +185,6 @@ public class MainActivity extends AppCompatActivity {
         sw_reverse.setChecked(channelReverse);
         sw_boot.setChecked(bootAutoStart);
         sw_epg.setChecked(epgEnabled);
-        sw_timeout.setChecked(setting.isTimeoutEnable());
 
         String[] lineArr = {"线路1", "线路2", "线路3"};
         ArrayAdapter<String> lineAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, lineArr);
@@ -247,7 +238,6 @@ public class MainActivity extends AppCompatActivity {
                     channelReverse = sw_reverse.isChecked();
                     bootAutoStart = sw_boot.isChecked();
                     epgEnabled = sw_epg.isChecked();
-                    setting.setTimeoutEnable(sw_timeout.isChecked());
 
                     try {
                         int sec = Integer.parseInt(et_timeout_sec.getText().toString());
@@ -280,40 +270,34 @@ public class MainActivity extends AppCompatActivity {
                 .setNegativeButton("取消", null)
                 .show();
     }
-    
+
     private void loadSource(String url) {
-    new Thread(() -> {
-        try {
-            List<Channel> res = PlaylistParser.parseWithRealName(url);
-            runOnUiThread(() -> {
-                channelSourceList = res;
-                channels = res;
+        new Thread(() -> {
+            try {
+                List<Channel> res = PlaylistParser.parseWithRealName(url);
+                runOnUiThread(() -> {
+                    channelSourceList = res;
+                    channels = res;
 
-                // 下载EPG
-                EpgManager.getInstance().downloadAndParseEpg(this, () -> {
-                    // 给每个频道绑定节目单
-                    for (Channel ch : channelSourceList) {
-                        ch.epgList = EpgManager.getInstance().getEpgByChannelName(ch.name);
-                    }
-
-                    // 恢复上次播放频道
-                    if (!res.isEmpty()) {
-                        if (lastPlayChannelIndex >= 0 && lastPlayChannelIndex < res.size()) {
-                            playChannel(lastPlayChannelIndex);
-                        } else {
-                            playChannel(0);
+                    EpgManager.getInstance().load(this, () -> {
+                        for (Channel ch : channelSourceList) {
+                            ch.epgList = EpgManager.getInstance().getEpg(ch.name);
                         }
-                    }
-
-                    // ✅ 强制刷新UI，解决节目单空白
-                    Toast.makeText(this, "EPG已加载完成", Toast.LENGTH_SHORT).show();
+                        if (!res.isEmpty()) {
+                            if (lastPlayChannelIndex >= 0 && lastPlayChannelIndex < res.size()) {
+                                playChannel(lastPlayChannelIndex);
+                            } else {
+                                playChannel(0);
+                            }
+                        }
+                        Toast.makeText(this, "EPG已加载完成", Toast.LENGTH_SHORT).show();
+                    });
                 });
-            });
-        } catch (Exception e) {
-            runOnUiThread(() -> Toast.makeText(this, "加载失败", Toast.LENGTH_SHORT).show());
-        }
-    }).start();
-}
+            } catch (Exception e) {
+                runOnUiThread(() -> Toast.makeText(this, "加载失败", Toast.LENGTH_SHORT).show());
+            }
+        }).start();
+    }
 
     private void changeChannel(int delta) {
         if (channelSourceList == null || channelSourceList.isEmpty()) return;
@@ -323,94 +307,95 @@ public class MainActivity extends AppCompatActivity {
         currentChannelIndex = newIndex;
         playChannel(newIndex);
     }
-    
+
     private void showChannelListDialog() {
-    if (channelSourceList == null || channelSourceList.isEmpty()) {
-        Toast.makeText(this, "暂无频道", Toast.LENGTH_SHORT).show();
-        return;
-    }
+        if (channelSourceList == null || channelSourceList.isEmpty()) {
+            Toast.makeText(this, "暂无频道", Toast.LENGTH_SHORT).show();
+            return;
+        }
 
-    View view = LayoutInflater.from(this).inflate(R.layout.dialog_channel_epg, null);
-    ListView lvChannel = view.findViewById(R.id.lv_channel);
-    ListView lvEpg = view.findViewById(R.id.lv_epg);
+        View view = LayoutInflater.from(this).inflate(R.layout.dialog_channel_epg, null);
+        ListView lvChannel = view.findViewById(R.id.lv_channel);
+        ListView lvEpg = view.findViewById(R.id.lv_epg);
 
-    ArrayAdapter<Channel> channelAdapter = new ArrayAdapter<Channel>(this,
-            android.R.layout.simple_list_item_1, channelSourceList) {
-        @Override
-        public View getView(int position, View convertView, ViewGroup parent) {
-            View v = super.getView(position, convertView, parent);
-            TextView tv = v.findViewById(android.R.id.text1);
-            Channel ch = getItem(position);
-            String nowText = "";
-            if (epgEnabled && ch.epgList != null && !ch.epgList.isEmpty()) {
-                for (Channel.EpgItem item : ch.epgList) {
-                    if (item.isNow) {
-                        nowText = "\n▶ " + item.title;
-                        break;
+        ArrayAdapter<Channel> channelAdapter = new ArrayAdapter<Channel>(this,
+                android.R.layout.simple_list_item_1, channelSourceList) {
+            @Override
+            public View getView(int position, View convertView, ViewGroup parent) {
+                View v = super.getView(position, convertView, parent);
+                TextView tv = v.findViewById(android.R.id.text1);
+                Channel ch = getItem(position);
+                String nowText = "";
+                if (epgEnabled && ch.epgList != null && !ch.epgList.isEmpty()) {
+                    for (Channel.EpgItem item : ch.epgList) {
+                        if (item.isNow) {
+                            nowText = "\n▶ " + item.title;
+                            break;
+                        }
                     }
                 }
+                tv.setText(ch.name + nowText);
+                tv.setTextColor(Color.WHITE);
+                tv.setTextSize(16);
+                return v;
             }
-            tv.setText(ch.name + nowText);
-            tv.setTextColor(Color.WHITE);
-            tv.setTextSize(16);
-            return v;
-        }
-    };
-    lvChannel.setAdapter(channelAdapter);
-    lvChannel.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
+        };
 
-    final ArrayAdapter<Channel.EpgItem> epgAdapter = new ArrayAdapter<Channel.EpgItem>(this,
-            android.R.layout.simple_list_item_1, new ArrayList<>()) {
-        @Override
-        public View getView(int position, View convertView, ViewGroup parent) {
-            View v = super.getView(position, convertView, parent);
-            TextView tv = v.findViewById(android.R.id.text1);
-            Channel.EpgItem item = getItem(position);
-            String text = item.time + "    " + item.title;
-            if (!TextUtils.isEmpty(item.playUrl)) text += "    回放";
-            if (item.isNow) text = "▶ " + text;
-            tv.setText(text);
-            tv.setTextColor(Color.WHITE);
-            tv.setTextSize(15);
-            return v;
-        }
-    };
-    lvEpg.setAdapter(epgAdapter);
+        lvChannel.setAdapter(channelAdapter);
+        lvChannel.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
 
-    // 修复频道定位
-    lvChannel.post(() -> {
-        lvChannel.setItemChecked(currentPlayIndex, true);
-        lvChannel.setSelection(currentPlayIndex);
-        epgAdapter.clear();
-        epgAdapter.addAll(channelSourceList.get(currentPlayIndex).epgList);
-        epgAdapter.notifyDataSetChanged();
-    });
+        final ArrayAdapter<Channel.EpgItem> epgAdapter = new ArrayAdapter<Channel.EpgItem>(this,
+                android.R.layout.simple_list_item_1, new ArrayList<>()) {
+            @Override
+            public View getView(int position, View convertView, ViewGroup parent) {
+                View v = super.getView(position, convertView, parent);
+                TextView tv = v.findViewById(android.R.id.text1);
+                Channel.EpgItem item = getItem(position);
+                String text = item.time + "    " + item.title;
+                if (!TextUtils.isEmpty(item.playUrl)) text += "    回放";
+                if (item.isNow) text = "▶ " + text;
+                tv.setText(text);
+                tv.setTextColor(Color.WHITE);
+                tv.setTextSize(15);
+                return v;
+            }
+        };
 
-    lvChannel.setOnItemClickListener((parent, v, pos, id) -> {
-        currentPlayIndex = pos;
-        playChannel(pos);
-        epgAdapter.clear();
-        epgAdapter.addAll(channelSourceList.get(pos).epgList);
-        epgAdapter.notifyDataSetChanged();
-    });
+        lvEpg.setAdapter(epgAdapter);
 
-    lvEpg.setOnItemClickListener((parent, v, pos, id) -> {
-        Channel.EpgItem item = channelSourceList.get(currentPlayIndex).epgList.get(pos);
-        if (!TextUtils.isEmpty(item.playUrl)) {
-            exoPlayer.stop();
-            exoPlayer.setMediaItem(MediaItem.fromUri(item.playUrl));
-            exoPlayer.prepare();
-            exoPlayer.play();
-            Toast.makeText(MainActivity.this, "正在播放回放：" + item.title, Toast.LENGTH_SHORT).show();
-        }
-    });
+        lvChannel.post(() -> {
+            lvChannel.setItemChecked(currentPlayIndex, true);
+            lvChannel.setSelection(currentPlayIndex);
+            epgAdapter.clear();
+            epgAdapter.addAll(channelSourceList.get(currentPlayIndex).epgList);
+            epgAdapter.notifyDataSetChanged();
+        });
 
-    new AlertDialog.Builder(this)
-            .setView(view)
-            .setNegativeButton("关闭", null)
-            .show();
-}
- 
+        lvChannel.setOnItemClickListener((parent, v, position, id) -> {
+            currentPlayIndex = position;
+            playChannel(position);
+            epgAdapter.clear();
+            epgAdapter.addAll(channelSourceList.get(position).epgList);
+            epgAdapter.notifyDataSetChanged();
+        });
+
+        lvEpg.setOnItemClickListener((parent, v, position, id) -> {
+            Channel.EpgItem item = channelSourceList.get(currentPlayIndex).epgList.get(position);
+            if (!TextUtils.isEmpty(item.playUrl)) {
+                exoPlayer.stop();
+                exoPlayer.setMediaItem(MediaItem.fromUri(item.playUrl));
+                exoPlayer.prepare();
+                exoPlayer.play();
+                Toast.makeText(MainActivity.this, "正在播放回放：" + item.title, Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        new AlertDialog.Builder(this)
+                .setView(view)
+                .setNegativeButton("关闭", null)
+                .show();
+    }
+
     private void initExoPlayer() {
         DefaultRenderersFactory factory = new DefaultRenderersFactory(this);
         int mode = setting.getDecode();
@@ -433,7 +418,7 @@ public class MainActivity extends AppCompatActivity {
         int s = setting.getScale();
         if (s == SettingsManager.SCALE_16_9) playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIXED_WIDTH);
         else if (s == SettingsManager.SCALE_FILL) playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
-        else playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
+        else playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
     }
 
     private void playChannel(int index) {
@@ -451,16 +436,15 @@ public class MainActivity extends AppCompatActivity {
         exoPlayer.prepare();
         exoPlayer.play();
         startTimeoutCheck();
-        Toast.makeText(this, "正在播放：" + ch.name, Toast.LENGTH_SHORT).show();
 
-        // ========== 保存当前频道 ==========
         lastPlayChannelIndex = index;
         sp.edit().putInt("last_play_channel", lastPlayChannelIndex).apply();
+        Toast.makeText(this, "正在播放：" + ch.name, Toast.LENGTH_SHORT).show();
     }
 
     private void startTimeoutCheck() {
         cancelTimeoutTask();
-        if (!setting.getTimeoutEnable()) return;
+        if (!setting.isTimeoutEnable()) return;
         int ms = setting.getTimeoutSec() * 1000;
         timeoutRunnable = this::autoSwitchLine;
         mainHandler.postDelayed(timeoutRunnable, ms);
@@ -502,7 +486,6 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onStop() {
         super.onStop();
-        // 退出时保存频道
         sp.edit().putInt("last_play_channel", lastPlayChannelIndex).apply();
     }
 

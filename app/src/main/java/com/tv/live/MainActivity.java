@@ -312,25 +312,88 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void showChannelListDialog() {
-        if (channelSourceList.isEmpty()) {
-            Toast.makeText(this, "暂无频道", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        String[] items = new String[channelSourceList.size()];
-        for (int i = 0; i < items.length; i++) {
-            Channel ch = channelSourceList.get(i);
-            items[i] = ch.name;
-        }
-        new AlertDialog.Builder(this)
-                .setTitle("频道列表")
-                .setSingleChoiceItems(items, currentPlayIndex, (dialog, which) -> {
-                    currentChannelIndex = which;
-                    playChannel(which);
-                    dialog.dismiss();
-                })
-                .setNegativeButton("关闭", null)
-                .show();
+    if (channelSourceList.isEmpty()) {
+        Toast.makeText(this, "暂无频道", Toast.LENGTH_SHORT).show();
+        return;
     }
+
+    View view = LayoutInflater.from(this).inflate(R.layout.dialog_channel_epg, null);
+    ListView lvChannel = view.findViewById(R.id.lv_channel);
+    ListView lvEpg = view.findViewById(R.id.lv_epg);
+
+    // 左侧频道适配器
+    ArrayAdapter<Channel> channelAdapter = new ArrayAdapter<Channel>(this,
+            android.R.layout.simple_list_item_1, channelSourceList) {
+        @Override
+        public View getView(int position, View convertView, ViewGroup parent) {
+            View v = super.getView(position, convertView, parent);
+            TextView tv = v.findViewById(android.R.id.text1);
+            Channel ch = getItem(position);
+            String nowText = "";
+            if (epgEnabled && !ch.epgList.isEmpty()) {
+                for (Channel.EpgItem item : ch.epgList) {
+                    if (item.isNow) {
+                        nowText = "\n" + item.title;
+                        break;
+                    }
+                }
+            }
+            tv.setText(ch.name + nowText);
+            tv.setTextColor(Color.WHITE);
+            return v;
+        }
+    };
+    lvChannel.setAdapter(channelAdapter);
+    lvChannel.setItemChecked(currentPlayIndex, true);
+
+    // 右侧EPG适配器
+    ArrayAdapter<Channel.EpgItem> epgAdapter = new ArrayAdapter<>(this,
+            android.R.layout.simple_list_item_1, channelSourceList.get(currentPlayIndex).epgList) {
+        @Override
+        public View getView(int position, View convertView, ViewGroup parent) {
+            View v = super.getView(position, convertView, parent);
+            TextView tv = v.findViewById(android.R.id.text1);
+            Channel.EpgItem item = getItem(position);
+            String text = item.time + "    " + item.title;
+            if (!TextUtils.isEmpty(item.playUrl)) text += "    回放";
+            if (item.isNow) text = "▶ " + text;
+            tv.setText(text);
+            tv.setTextColor(Color.WHITE);
+            return v;
+        }
+    };
+    lvEpg.setAdapter(epgAdapter);
+
+    // 左侧点击切换频道，刷新右侧节目单
+    lvChannel.setOnItemClickListener((parent, v, position, id) -> {
+        currentPlayIndex = position;
+        playChannel(position);
+        // 刷新右侧EPG
+        Channel ch = channelSourceList.get(position);
+        epgAdapter.clear();
+        epgAdapter.addAll(ch.epgList);
+        epgAdapter.notifyDataSetChanged();
+    });
+
+    // 右侧点击：回放直接播放
+    lvEpg.setOnItemClickListener((parent, v, position, id) -> {
+        Channel.EpgItem item = channelSourceList.get(currentPlayIndex).epgList.get(position);
+        if (!TextUtils.isEmpty(item.playUrl)) {
+            // 播放回放地址
+            exoPlayer.stop();
+            exoPlayer.setMediaItem(MediaItem.fromUri(item.playUrl));
+            exoPlayer.prepare();
+            exoPlayer.play();
+            Toast.makeText(this, "正在播放回放：" + item.title, Toast.LENGTH_SHORT).show();
+        }
+    });
+
+    new AlertDialog.Builder(this)
+            .setView(view)
+            .setNegativeButton("关闭", null)
+            .show();
+}
+
 
     private void initExoPlayer() {
         DefaultRenderersFactory factory = new DefaultRenderersFactory(this);

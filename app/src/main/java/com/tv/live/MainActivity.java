@@ -318,7 +318,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void showChannelListDialog() {
-    if (channelSourceList.isEmpty()) {
+    if (channelSourceList == null || channelSourceList.isEmpty()) {
         Toast.makeText(this, "暂无频道", Toast.LENGTH_SHORT).show();
         return;
     }
@@ -336,20 +336,22 @@ public class MainActivity extends AppCompatActivity {
             TextView tv = v.findViewById(android.R.id.text1);
             Channel ch = getItem(position);
             String nowText = "";
-            if (epgEnabled && !ch.epgList.isEmpty()) {
+            if (epgEnabled && ch.epgList != null && !ch.epgList.isEmpty()) {
                 for (Channel.EpgItem item : ch.epgList) {
                     if (item.isNow) {
-                        nowText = "\n" + item.title;
+                        nowText = "\n▶ " + item.title;
                         break;
                     }
                 }
             }
             tv.setText(ch.name + nowText);
             tv.setTextColor(Color.WHITE);
+            tv.setTextSize(16);
             return v;
         }
     };
     lvChannel.setAdapter(channelAdapter);
+    lvChannel.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
     lvChannel.setItemChecked(currentPlayIndex, true);
 
     // 右侧EPG适配器
@@ -365,6 +367,7 @@ public class MainActivity extends AppCompatActivity {
             if (item.isNow) text = "▶ " + text;
             tv.setText(text);
             tv.setTextColor(Color.WHITE);
+            tv.setTextSize(15);
             return v;
         }
     };
@@ -374,7 +377,6 @@ public class MainActivity extends AppCompatActivity {
     lvChannel.setOnItemClickListener((parent, v, position, id) -> {
         currentPlayIndex = position;
         playChannel(position);
-        // 刷新右侧EPG
         Channel ch = channelSourceList.get(position);
         epgAdapter.clear();
         epgAdapter.addAll(ch.epgList);
@@ -385,7 +387,6 @@ public class MainActivity extends AppCompatActivity {
     lvEpg.setOnItemClickListener((parent, v, position, id) -> {
         Channel.EpgItem item = channelSourceList.get(currentPlayIndex).epgList.get(position);
         if (!TextUtils.isEmpty(item.playUrl)) {
-            // 播放回放地址
             exoPlayer.stop();
             exoPlayer.setMediaItem(MediaItem.fromUri(item.playUrl));
             exoPlayer.prepare();

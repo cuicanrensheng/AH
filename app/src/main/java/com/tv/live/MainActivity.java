@@ -386,26 +386,25 @@ public class MainActivity extends AppCompatActivity {
                 epgAdapter.notifyDataSetChanged();
             }
         });
-
-        lvEpg.setOnItemClickListener(new AdapterView.OnItemClickListener() {
-            @Override
-            public void onItemClick(AdapterView<?> parent, View v, int position, long id) {
-                Channel.EpgItem item = channelSourceList.get(currentPlayIndex).epgList.get(position);
-                if (!TextUtils.isEmpty(item.playUrl)) {
-                    exoPlayer.stop();
-                    exoPlayer.setMediaItem(MediaItem.fromUri(item.playUrl));
-                    exoPlayer.prepare();
-                    exoPlayer.play();
-                    Toast.makeText(MainActivity.this, "正在播放回放：" + item.title, Toast.LENGTH_SHORT).show();
-                }
+         lvEpg.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+        @Override
+        public void onItemClick(AdapterView<?> parent, View v, int position, long id) {
+            Channel.EpgItem item = channelSourceList.get(currentPlayIndex).epgList.get(position);
+            if (!TextUtils.isEmpty(item.playUrl)) {
+                exoPlayer.stop();
+                exoPlayer.setMediaItem(MediaItem.fromUri(item.playUrl));
+                exoPlayer.prepare();
+                exoPlayer.play();
+                Toast.makeText(MainActivity.this, "正在播放回放：" + item.title, Toast.LENGTH_SHORT).show();
             }
-        });
+        }
+    });
 
-        new AlertDialog.Builder(this)
-                .setView(view)
-                .setNegativeButton("关闭", null)
-                .show();
-    }
+    new AlertDialog.Builder(this)
+            .setView(view)
+            .setNegativeButton("关闭", null)
+            .show();
+}
 
     private void initExoPlayer() {
         DefaultRenderersFactory factory = new DefaultRenderersFactory(this);

@@ -78,6 +78,7 @@ public class MainActivity extends AppCompatActivity {
     private boolean epgEnabled = true;
     private boolean uiVisible = false;
     private SharedPreferences sp;
+    private int lastPlayChannelIndex = 0;
 
     private final String URL1 = "https://gitee.com/qf_1111/iptv/raw/master/playlist.m3u";
     private final String URL2 = "https://raw.githubusercontent.com/cuicanrensheng/IPTV/refs/heads/main/playlist1.m3u";

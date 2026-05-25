@@ -11,39 +11,6 @@ import java.util.List;
 public class PlaylistParser {
     private static final String TAG = "M3UParser";
 
-    public static List<List<String>> parseFromUrl(String m3uUrl) throws IOException {
-        List<List<String>> channelList = new ArrayList<>();
-        URL url = new URL(m3uUrl);
-        HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-        connection.setRequestMethod("GET");
-        connection.setConnectTimeout(8000);
-        connection.setReadTimeout(8000);
-        connection.setRequestProperty("User-Agent", "Mozilla/5.0");
-
-        BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream()));
-        String line;
-        List<String> currentChannelUrls = null;
-
-        while ((line = reader.readLine()) != null) {
-            line = line.trim();
-            if (line.startsWith("#EXTINF")) {
-                currentChannelUrls = new ArrayList<>();
-                channelList.add(currentChannelUrls);
-            } else if (line.startsWith("http")
-                    && !line.contains(".jpg")
-                    && !line.contains(".png")
-                    && !line.contains(".mp4")) {
-                if (currentChannelUrls != null) {
-                    currentChannelUrls.add(line);
-                }
-            }
-        }
-        reader.close();
-        connection.disconnect();
-        Log.d(TAG, "解析完成，频道总数：" + channelList.size());
-        return channelList;
-    }
-
     public static List<MainActivity.Channel> parseWithRealName(String m3uUrl) throws IOException {
         List<MainActivity.Channel> channelList = new ArrayList<>();
         URL url = new URL(m3uUrl);
@@ -62,7 +29,9 @@ public class PlaylistParser {
             line = line.trim();
             if (line.startsWith("#EXTINF")) {
                 if (!currentUrls.isEmpty()) {
-                    channelList.add(new MainActivity.Channel(currentName, new ArrayList<>(currentUrls)));
+                    MainActivity.Channel ch = new MainActivity.Channel(currentName, new ArrayList<>(currentUrls));
+                    ch.epg = generateMockEpg(currentName); // ← 自动生成节目单
+                    channelList.add(ch);
                     currentUrls.clear();
                 }
                 int comma = line.lastIndexOf(',');
@@ -75,11 +44,25 @@ public class PlaylistParser {
         }
 
         if (!currentUrls.isEmpty()) {
-            channelList.add(new MainActivity.Channel(currentName, currentUrls));
+            MainActivity.Channel ch = new MainActivity.Channel(currentName, new ArrayList<>(currentUrls));
+            ch.epg = generateMockEpg(currentName);
+            channelList.add(ch);
         }
 
         reader.close();
         connection.disconnect();
         return channelList;
+    }
+
+    // ==============================================
+    // 自动生成节目单（当前直播+预告+回放）
+    // ==============================================
+    private static String generateMockEpg(String channelName) {
+        return "正在播放：直播\n" +
+               "20:00 黄金剧场\n" +
+               "21:30 晚间新闻\n" +
+               "22:10 纪录片\n" +
+               "回看 19:00 新闻联播\n" +
+               "回看 18:30 地方新闻";
     }
 }

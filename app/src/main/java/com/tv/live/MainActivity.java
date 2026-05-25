@@ -317,8 +317,8 @@ public class MainActivity extends AppCompatActivity {
         if (newIndex >= channelSourceList.size()) newIndex = 0;
         currentChannelIndex = newIndex;
         playChannel(newIndex);
-    }
-
+    } 
+    
     private void showChannelListDialog() {
     if (channelSourceList == null || channelSourceList.isEmpty()) {
         Toast.makeText(this, "暂无频道", Toast.LENGTH_SHORT).show();
@@ -329,7 +329,6 @@ public class MainActivity extends AppCompatActivity {
     ListView lvChannel = view.findViewById(R.id.lv_channel);
     ListView lvEpg = view.findViewById(R.id.lv_epg);
 
-    // 左侧频道适配器
     ArrayAdapter<Channel> channelAdapter = new ArrayAdapter<Channel>(this,
             android.R.layout.simple_list_item_1, channelSourceList) {
         @Override
@@ -356,8 +355,8 @@ public class MainActivity extends AppCompatActivity {
     lvChannel.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
     lvChannel.setItemChecked(currentPlayIndex, true);
 
-    // 右侧EPG适配器
-    ArrayAdapter<Channel.EpgItem> epgAdapter = new ArrayAdapter<>(this,
+    // Java8 必须写完整泛型，不能用 <>
+    ArrayAdapter<Channel.EpgItem> epgAdapter = new ArrayAdapter<Channel.EpgItem>(this,
             android.R.layout.simple_list_item_1, channelSourceList.get(currentPlayIndex).epgList) {
         @Override
         public View getView(int position, View convertView, ViewGroup parent) {
@@ -375,25 +374,29 @@ public class MainActivity extends AppCompatActivity {
     };
     lvEpg.setAdapter(epgAdapter);
 
-    // 左侧点击切换频道，刷新右侧节目单
-    lvChannel.setOnItemClickListener((parent, v, position, id) -> {
-        currentPlayIndex = position;
-        playChannel(position);
-        Channel ch = channelSourceList.get(position);
-        epgAdapter.clear();
-        epgAdapter.addAll(ch.epgList);
-        epgAdapter.notifyDataSetChanged();
+    lvChannel.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+        @Override
+        public void onItemClick(AdapterView<?> parent, View v, int position, long id) {
+            currentPlayIndex = position;
+            playChannel(position);
+            Channel ch = channelSourceList.get(position);
+            epgAdapter.clear();
+            epgAdapter.addAll(ch.epgList);
+            epgAdapter.notifyDataSetChanged();
+        }
     });
 
-    // 右侧点击：回放直接播放
-    lvEpg.setOnItemClickListener((parent, v, position, id) -> {
-        Channel.EpgItem item = channelSourceList.get(currentPlayIndex).epgList.get(position);
-        if (!TextUtils.isEmpty(item.playUrl)) {
-            exoPlayer.stop();
-            exoPlayer.setMediaItem(MediaItem.fromUri(item.playUrl));
-            exoPlayer.prepare();
-            exoPlayer.play();
-            Toast.makeText(this, "正在播放回放：" + item.title, Toast.LENGTH_SHORT).show();
+    lvEpg.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+        @Override
+        public void onItemClick(AdapterView<?> parent, View v, int position, long id) {
+            Channel.EpgItem item = channelSourceList.get(currentPlayIndex).epgList.get(position);
+            if (!TextUtils.isEmpty(item.playUrl)) {
+                exoPlayer.stop();
+                exoPlayer.setMediaItem(MediaItem.fromUri(item.playUrl));
+                exoPlayer.prepare();
+                exoPlayer.play();
+                Toast.makeText(MainActivity.this, "正在播放回放：" + item.title, Toast.LENGTH_SHORT).show();
+            }
         }
     });
 

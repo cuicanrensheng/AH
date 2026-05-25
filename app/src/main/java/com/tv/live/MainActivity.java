@@ -1,4 +1,6 @@
 package com.tv.live;
+import android.widget.TextView;
+import android.widget.AdapterView;
 import android.graphics.Color;
 import android.text.TextUtils;
 import android.view.LayoutInflater;

@@ -22,7 +22,7 @@ public class EpgManager {
     private static EpgManager instance;
 
     private final Map<String, List<MainActivity.Channel.EpgItem>> epgData = new HashMap<>();
-    private final Map<String, String> idToName = new HashMap<>();
+    private final Map<String, String> channelIdToName = new HashMap<>();
 
     public static EpgManager getInstance() {
         if (instance == null) instance = new EpgManager();
@@ -56,47 +56,60 @@ public class EpgManager {
         XmlPullParser xml = factory.newPullParser();
         xml.setInput(is, StandardCharsets.UTF_8.name());
 
-        String chId = null, chName = null, start = null, stop = null, title = null;
+        String currChannelId = null;
+        String currChannelName = null;
+        String start = null, stop = null, title = null;
 
         while (xml.getEventType() != XmlPullParser.END_DOCUMENT) {
             String tag = xml.getName();
             if (xml.getEventType() == XmlPullParser.START_TAG) {
-                if ("channel".equals(tag)) chId = xml.getAttributeValue(null, "id");
-                else if ("display-name".equals(tag)) {
-                    chName = xml.nextText().trim();
-                    idToName.put(chId, chName);
-                    epgData.computeIfAbsent(chName, k -> new ArrayList<>());
+                if ("channel".equals(tag)) {
+                    currChannelId = xml.getAttributeValue(null, "id");
+                } else if ("display-name".equals(tag)) {
+                    currChannelName = xml.nextText().trim();
+                    channelIdToName.put(currChannelId, currChannelName);
+                    epgData.computeIfAbsent(currChannelName, k -> new ArrayList<>());
                 } else if ("programme".equals(tag)) {
-                    chId = xml.getAttributeValue(null, "channel");
+                    currChannelId = xml.getAttributeValue(null, "channel");
                     start = xml.getAttributeValue(null, "start");
                     stop = xml.getAttributeValue(null, "stop");
-                } else if ("title".equals(tag)) title = xml.nextText().trim();
+                } else if ("title".equals(tag)) {
+                    title = xml.nextText().trim();
+                }
             }
 
             if (xml.getEventType() == XmlPullParser.END_TAG && "programme".equals(tag)) {
-                chName = idToName.get(chId);
-                if (chName != null && start != null && stop != null && title != null) {
+                currChannelName = channelIdToName.get(currChannelId);
+                if (currChannelName != null && start != null && stop != null && title != null) {
                     MainActivity.Channel.EpgItem item = new MainActivity.Channel.EpgItem();
-                    item.time = start.substring(8,10)+":"+start.substring(10,12)+"–"+stop.substring(8,10)+":"+stop.substring(10,12);
+                    item.time = start.substring(8, 10) + ":" + start.substring(10, 12)
+                            + "–" + stop.substring(8, 10) + ":" + stop.substring(10, 12);
                     item.title = title;
+
                     long now = System.currentTimeMillis();
-                    long s = Long.parseLong(start.substring(0,14))*1000L;
-                    long e = Long.parseLong(stop.substring(0,14))*1000L;
-                    item.isNow = now >= s && now <= e;
-                    item.playUrl = PLAYBACK_BASE+"/"+chId+"/"+start.substring(0,8)+"/"+start.substring(8,14)+".m3u8";
-                    epgData.get(chName).add(item);
+                    long s = Long.parseLong(start.substring(0, 14)) * 1000L;
+                    long e = Long.parseLong(stop.substring(0, 14)) * 1000L;
+                    item.isNow = (now >= s && now <= e);
+
+                    item.playUrl = PLAYBACK_BASE + "/" + currChannelId + "/"
+                            + start.substring(0, 8) + "/" + start.substring(8, 14) + ".m3u8";
+                    epgData.get(currChannelName).add(item);
                 }
-                start=stop=title=null;
+                start = stop = title = null;
             }
             xml.next();
         }
     }
 
-    public List<MainActivity.Channel.EpgItem> getEpg(String srcName) {
-        String clean = srcName.replace("高清","").replace("HD","").replace(" ","").replace("-","");
-        for (Map.Entry<String, List<MainActivity.Channel.EpgItem>> entry : epgData.entrySet()) {
-            String key = entry.getKey().replace("高清","").replace("HD","").replace(" ","").replace("-","");
-            if (clean.contains(key) || key.contains(clean)) return entry.getValue();
+    public List<MainActivity.Channel.EpgItem> getEpg(String channelName) {
+        String clean = channelName.replace("高清", "").replace("HD", "")
+                .replace(" ", "").replace("-", "").replace("卫视", "").replace("频道", "");
+        for (String key : epgData.keySet()) {
+            String kc = key.replace("高清", "").replace("HD", "")
+                    .replace(" ", "").replace("-", "").replace("卫视", "").replace("频道", "");
+            if (clean.contains(kc) || kc.contains(clean)) {
+                return epgData.get(key);
+            }
         }
         return new ArrayList<>();
     }

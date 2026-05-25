@@ -333,7 +333,7 @@ public class MainActivity extends AppCompatActivity {
         View view = LayoutInflater.from(this).inflate(R.layout.dialog_channel_epg, null);
         ListView lvChannel = view.findViewById(R.id.lv_channel);
         ListView lvEpg = view.findViewById(R.id.lv_epg);
-        
+        // 右侧EPG适配器（打开弹窗时，直接拿最新epgList）
         ArrayAdapter<Channel.EpgItem> epgAdapter = new ArrayAdapter<Channel.EpgItem>(this,
         android.R.layout.simple_list_item_1,
         // ✅ 直接取最新的节目单，不缓存旧数据

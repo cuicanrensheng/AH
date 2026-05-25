@@ -1,4 +1,7 @@
 package com.tv.live;
+import android.widget.AdapterView;
+import android.widget.ArrayAdapter;
+import android.widget.Spinner;
 import android.app.AlertDialog;
 import android.content.SharedPreferences;
 import android.os.Handler;

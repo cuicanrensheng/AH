@@ -544,16 +544,19 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void autoSwitchLine() {
-        if (isPlayingPlayback) return;
-        Channel ch = channelSourceList.get(currentPlayIndex);
-        int now = setting.getLine();
-        if (now + 1 < ch.urls.size()) {
-            setting.setLine(now + 1);
-            playChannel(currentPlayIndex);
-        } else {
-            Toast.makeText(this, "本频道所有线路失效", Toast.LENGTH_SHORT).show();
-        }
+    // 回放中 / 设置弹窗打开中，直接禁止线路失效提示
+    if (isPlayingPlayback) return;
+
+    Channel ch = channelSourceList.get(currentPlayIndex);
+    int now = setting.getLine();
+    if (now + 1 < ch.urls.size()) {
+        setting.setLine(now + 1);
+        playChannel(currentPlayIndex);
+    } else {
+        Toast.makeText(this, "本频道所有线路失效", Toast.LENGTH_SHORT).show();
     }
+}
+
 
     @Override
     public void onBackPressed() {

@@ -27,7 +27,6 @@ import java.util.Set;
 
 public class MainActivity extends AppCompatActivity {
     public static MainActivity mInstance;
-    public int currentChannelIndex = 0;
 
     public static class Channel {
         public String name;
@@ -74,6 +73,11 @@ public class MainActivity extends AppCompatActivity {
         setting = SettingsManager.getInstance(this);
 
         playerView = findViewById(R.id.player_view);
+        // 关键修复：播放器禁止抢占触摸焦点
+        playerView.setClickable(false);
+        playerView.setFocusable(false);
+        playerView.setFocusableInTouchMode(false);
+        playerView.setLongClickable(true);
         playerView.setUseController(false);
 
         initExoPlayer();
@@ -108,14 +112,15 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    // 手势：单击左屏=EPG菜单，单击右屏=设置，上下滑动换台
+    // 最终可用手势：单击左屏=EPG菜单，单击右屏=设置，上下滑动换台
     private void initGesture() {
         gestureDetector = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
+            // 单击
             @Override
             public boolean onSingleTapUp(MotionEvent e) {
                 float x = e.getX();
-                int screenWidth = playerView.getWidth();
-                if (x < screenWidth / 2f) {
+                int width = playerView.getWidth();
+                if (x < width / 2f) {
                     showChannelListDialog();
                 } else {
                     showSettingDialog();
@@ -123,6 +128,7 @@ public class MainActivity extends AppCompatActivity {
                 return true;
             }
 
+            // 上下滑动
             @Override
             public boolean onFling(MotionEvent e1, MotionEvent e2, float velocityX, float velocityY) {
                 float dy = e2.getY() - e1.getY();
@@ -133,10 +139,12 @@ public class MainActivity extends AppCompatActivity {
                 return true;
             }
         });
-        playerView.setOnTouchListener((v, event) -> gestureDetector.onTouchEvent(event));
-    }
 
-    private void loadLiveSource() {
+        // 强制接管触摸事件
+        playerView.setOnTouchListener((v, event) -> {
+            gestureDetector.onTouchEvent(event);
+            return true;
+        });
     }
 
     private void playChannel(int index) {

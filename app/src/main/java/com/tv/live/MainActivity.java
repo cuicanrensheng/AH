@@ -78,7 +78,24 @@ public class MainActivity extends AppCompatActivity {
 
         initExoPlayer();
         initGesture();
-        loadLiveSource();
+
+        // 后台加载直播源 + EPG
+        new Thread(() -> {
+            try {
+                // 替换为你的真实M3U直播源地址
+                String liveUrl = "https://gitee.com/qf_1111/iptv/raw/master/playlist.m3u";
+                channelSourceList = PlaylistParser.parseWithRealName(liveUrl);
+
+                EpgManager.getInstance().load(this, () -> runOnUiThread(() -> {
+                    if (!channelSourceList.isEmpty()) {
+                        currentPlayIndex = 0;
+                        playChannel(0);
+                    }
+                }));
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }).start();
     }
 
     private void initExoPlayer() {
@@ -109,15 +126,29 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void loadLiveSource() {
-        // 直播源解析逻辑
     }
 
     private void playChannel(int index) {
-        // 播放逻辑
+        if (channelSourceList.isEmpty()) return;
+        currentPlayIndex = index;
+        Channel ch = channelSourceList.get(index);
+        exoPlayer.setMediaItem(com.google.android.exoplayer2.MediaItem.fromUri(ch.urls.get(0)));
+        exoPlayer.prepare();
+        exoPlayer.play();
+        startTimeoutCheck();
     }
 
-    private void nextChannel() {}
-    private void prevChannel() {}
+    private void nextChannel() {
+        int next = currentPlayIndex + 1;
+        if (next >= channelSourceList.size()) next = 0;
+        playChannel(next);
+    }
+
+    private void prevChannel() {
+        int prev = currentPlayIndex - 1;
+        if (prev < 0) prev = channelSourceList.size() - 1;
+        playChannel(prev);
+    }
 
     private void startTimeoutCheck() {
         cancelTimeoutTask();
@@ -142,7 +173,14 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void applyAllSetting() {
-        // 画面比例逻辑
+        int scaleMode;
+        switch (setting.getScale()) {
+            case 0: scaleMode = com.google.android.exoplayer2.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT; break;
+            case 1: scaleMode = com.google.android.exoplayer2.ui.AspectRatioFrameLayout.RESIZE_MODE_FIXED_WIDTH; break;
+            case 2: scaleMode = com.google.android.exoplayer2.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL; break;
+            default: scaleMode = com.google.android.exoplayer2.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT;
+        }
+        playerView.setResizeMode(scaleMode);
     }
 
     private void showChannelListDialog() {
@@ -274,7 +312,6 @@ public class MainActivity extends AppCompatActivity {
                 exoPlayer.pause();
                 if (playbackPlayer == null) playbackPlayer = new ExoPlayer.Builder(MainActivity.this).build();
                 playerView.setPlayer(playbackPlayer);
-                playbackPlayer.stop();
                 playbackPlayer.setMediaItem(com.google.android.exoplayer2.MediaItem.fromUri(item.playUrl));
                 playbackPlayer.prepare();
                 playbackPlayer.play();
@@ -400,7 +437,6 @@ public class MainActivity extends AppCompatActivity {
                 playbackPlayer = null;
             }
             playerView.setPlayer(exoPlayer);
-            exoPlayer.prepare();
             exoPlayer.play();
             return;
         }

@@ -44,10 +44,10 @@ public class PlaylistParser {
         }
 
         if (!currentUrls.isEmpty()) {
-            MainActivity.Channel ch = new MainActivity.Channel(currentName, new ArrayList<>(currentUrls));
-            ch.epgList = new ArrayList<>();
-            channelList.add(ch);
-        }
+           MainActivity.Channel ch = new MainActivity.Channel(currentName, "默认", new ArrayList<>(currentUrls));
+           ch.epgList = new ArrayList<>();
+           channelList.add(ch);
+}
 
         reader.close();
         connection.disconnect();

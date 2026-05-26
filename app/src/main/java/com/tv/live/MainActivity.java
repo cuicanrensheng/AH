@@ -1,5 +1,5 @@
 package com.tv.live;
-
+import android.widget.AdapterView;
 import android.app.AlertDialog;
 import android.content.SharedPreferences;
 import android.graphics.Color;
@@ -319,7 +319,7 @@ public class MainActivity extends AppCompatActivity {
         });
 
         lvGroup.setOnItemClickListener(new AdapterView.OnItemClickListener() {
-            @Override
+            
             public void onItemClick(AdapterView<?> parent, View v, int pos, long id) {
                 String g = (String) groupList.get(pos);
                 List newList = new ArrayList();
@@ -338,7 +338,7 @@ public class MainActivity extends AppCompatActivity {
         });
 
         lvChannel.setOnItemClickListener(new AdapterView.OnItemClickListener() {
-            @Override
+            
             public void onItemClick(AdapterView<?> parent, View v, int pos, long id) {
                 Channel ch = (Channel) groupChannels.get(pos);
                 int realIdx = channelSourceList.indexOf(ch);

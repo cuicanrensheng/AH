@@ -66,11 +66,10 @@ public class MainActivity extends AppCompatActivity {
     private SettingsManager setting;
     public List<Channel> channelSourceList = new ArrayList<>();
     public int currentPlayIndex = 0;
-    private Handler mainHandler = new Handler(Looper.getMainLooper());
+    private Handler mainHandler;
     private Runnable timeoutRunnable;
     private GestureDetector gestureDetector;
     private boolean channelReverse = false;
-    private boolean bootAutoStart = false;
     private boolean epgEnabled = true;
     private SharedPreferences sp;
     private int lastPlayChannelIndex = 0;
@@ -85,9 +84,9 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
         mInstance = this;
 
+        mainHandler = new Handler(Looper.getMainLooper());
         sp = getSharedPreferences("tv_config", MODE_PRIVATE);
         channelReverse = sp.getBoolean("channelReverse", false);
-        bootAutoStart = sp.getBoolean("bootAutoStart", false);
         epgEnabled = sp.getBoolean("epgEnabled", true);
         lastPlayChannelIndex = sp.getInt("last_play_channel", 0);
 
@@ -95,41 +94,52 @@ public class MainActivity extends AppCompatActivity {
         playerView.setUseController(false);
         playerView.setFocusable(false);
         playerView.setFocusableInTouchMode(false);
-        playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
+        playerView.setClickable(false);
 
         setting = SettingsManager.getInstance(this);
-        gestureDetector = new GestureDetector(this, new MyGestureListener());
-        playerView.setOnTouchListener((v, event) -> {
-            gestureDetector.onTouchEvent(event);
-            return true;
-        });
-
+        initGestureDetector();
         initExoPlayer();
         loadSource(URL1);
     }
 
-    private class MyGestureListener extends GestureDetector.SimpleOnGestureListener {
-        @Override
-        public boolean onFling(MotionEvent e1, MotionEvent e2, float vx, float vy) {
-            float dy = e2.getY() - e1.getY();
-            if (Math.abs(dy) > 60) {
-                if (dy > 0) changeChannel(1);
-                else changeChannel(-1);
+    // ✅ 核心修复：手势不冲突、单击/双击彻底分开
+    private void initGestureDetector() {
+        gestureDetector = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
+            @Override
+            public boolean onDown(MotionEvent e) {
+                return true; // 必须返回true，否则手势全失效
             }
-            return true;
-        }
 
-        @Override
-        public boolean onSingleTapConfirmed(MotionEvent e) {
-            float x = e.getX();
-            int w = playerView.getWidth();
-            if (x < w / 2f) {
+            // ✅ 单击 = 频道列表 + EPG
+            @Override
+            public boolean onSingleTapConfirmed(MotionEvent e) {
                 showChannelListDialog();
-            } else {
-                showSettingDialog();
+                return true;
             }
+
+            // ✅ 双击 = 设置界面
+            @Override
+            public boolean onDoubleTap(MotionEvent e) {
+                showSettingDialog();
+                return true;
+            }
+
+            // ✅ 上下滑动 = 换台
+            @Override
+            public boolean onFling(MotionEvent e1, MotionEvent e2, float vx, float vy) {
+                float dy = e2.getY() - e1.getY();
+                if (Math.abs(dy) > 60) {
+                    if (dy > 0) changeChannel(1);
+                    else changeChannel(-1);
+                }
+                return true;
+            }
+        });
+
+        playerView.setOnTouchListener((v, event) -> {
+            gestureDetector.onTouchEvent(event);
             return true;
-        }
+        });
     }
 
     private void changeChannel(int delta) {
@@ -203,13 +213,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private void applyAllSetting() {
-        int sc = setting.getScale();
-        if (sc == 1) playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIXED_WIDTH);
-        else if (sc == 2) playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
-        else playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
-    }
-
+    // ✅ 单击弹出：频道列表 + EPG
     private void showChannelListDialog() {
         if (channelSourceList == null || channelSourceList.isEmpty()) {
             Toast.makeText(this, "暂无频道", Toast.LENGTH_SHORT).show();
@@ -219,7 +223,8 @@ public class MainActivity extends AppCompatActivity {
         ListView lvChannel = view.findViewById(R.id.lv_channel);
         ListView lvEpg = view.findViewById(R.id.lv_epg);
 
-        ArrayAdapter<Channel> channelAdapter = new ArrayAdapter<Channel>(this, android.R.layout.simple_list_item_1, channelSourceList) {
+        ArrayAdapter<Channel> channelAdapter = new ArrayAdapter<Channel>(this,
+                android.R.layout.simple_list_item_1, channelSourceList) {
             @Override
             public View getView(int position, View convertView, ViewGroup parent) {
                 View v = super.getView(position, convertView, parent);
@@ -233,13 +238,20 @@ public class MainActivity extends AppCompatActivity {
         lvChannel.setAdapter(channelAdapter);
         lvChannel.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
 
-        ArrayAdapter<Channel.EpgItem> epgAdapter = new ArrayAdapter<Channel.EpgItem>(this, android.R.layout.simple_list_item_1, new ArrayList<>()) {
+        ArrayAdapter<Channel.EpgItem> epgAdapter = new ArrayAdapter<Channel.EpgItem>(this,
+                android.R.layout.simple_list_item_1, new ArrayList<>()) {
             @Override
             public View getView(int position, View convertView, ViewGroup parent) {
                 View v = super.getView(position, convertView, parent);
                 TextView tv = v.findViewById(android.R.id.text1);
                 tv.setTextColor(Color.WHITE);
                 tv.setTextSize(15);
+                Channel.EpgItem item = getItem(position);
+                if (item != null) {
+                    String info = item.time + " | " + item.title;
+                    if (item.isNow) info = "▶ " + info;
+                    tv.setText(info);
+                }
                 return v;
             }
         };
@@ -252,7 +264,12 @@ public class MainActivity extends AppCompatActivity {
             epgAdapter.notifyDataSetChanged();
         });
 
-        lvChannel.setOnItemClickListener((parent, v, position, id) -> playChannel(position));
+        lvChannel.setOnItemClickListener((parent, v, position, id) -> {
+            playChannel(position);
+            epgAdapter.clear();
+            epgAdapter.addAll(channelSourceList.get(position).epgList);
+            epgAdapter.notifyDataSetChanged();
+        });
 
         new AlertDialog.Builder(this)
                 .setView(view)
@@ -260,12 +277,70 @@ public class MainActivity extends AppCompatActivity {
                 .show();
     }
 
+    // ✅ 双击弹出：设置（所有功能全部修复生效）
     private void showSettingDialog() {
-        View view = getLayoutInflater().inflate(R.layout.dialog_setting, null);
+        View view = LayoutInflater.from(this).inflate(R.layout.dialog_setting, null);
+
+        Switch sw_reverse = view.findViewById(R.id.sw_reverse);
+        Switch sw_epg = view.findViewById(R.id.sw_epg);
+        Spinner sp_line = view.findViewById(R.id.sp_line);
+        Spinner sp_scale = view.findViewById(R.id.sp_scale);
+        Spinner sp_decode = view.findViewById(R.id.sp_decode);
+        EditText et_timeout = view.findViewById(R.id.et_timeout_sec);
+
+        sw_reverse.setChecked(channelReverse);
+        sw_epg.setChecked(epgEnabled);
+
+        String[] lines = {"线路1", "线路2", "线路3"};
+        sp_line.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, lines));
+        sp_line.setSelection(setting.getLine());
+
+        String[] scales = {"原始", "16:9", "全屏"};
+        sp_scale.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, scales));
+        sp_scale.setSelection(setting.getScale());
+
+        String[] decodes = {"自动", "硬解", "软解"};
+        sp_decode.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, decodes));
+        sp_decode.setSelection(setting.getDecode());
+
+        et_timeout.setText(String.valueOf(setting.getTimeoutSec()));
+
         new AlertDialog.Builder(this)
+                .setTitle("播放设置")
                 .setView(view)
-                .setNegativeButton("关闭", null)
+                .setPositiveButton("保存", (d, w) -> {
+                    channelReverse = sw_reverse.isChecked();
+                    epgEnabled = sw_epg.isChecked();
+
+                    setting.setLine(sp_line.getSelectedItemPosition());
+                    setting.setScale(sp_scale.getSelectedItemPosition());
+                    setting.setDecode(sp_decode.getSelectedItemPosition());
+
+                    try {
+                        int sec = Integer.parseInt(et_timeout.getText().toString());
+                        setting.setTimeoutSec(sec);
+                    } catch (Exception e) {
+                        setting.setTimeoutSec(6);
+                    }
+
+                    sp.edit()
+                            .putBoolean("channelReverse", channelReverse)
+                            .putBoolean("epgEnabled", epgEnabled)
+                            .apply();
+
+                    applyAllSetting();
+                    initExoPlayer();
+                    Toast.makeText(this, "保存成功", Toast.LENGTH_SHORT).show();
+                })
+                .setNegativeButton("取消", null)
                 .show();
+    }
+
+    private void applyAllSetting() {
+        int sc = setting.getScale();
+        if (sc == 1) playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIXED_WIDTH);
+        else if (sc == 2) playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
+        else playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
     }
 
     @Override
@@ -284,5 +359,6 @@ public class MainActivity extends AppCompatActivity {
         super.onDestroy();
         if (exoPlayer != null) exoPlayer.release();
         if (playbackPlayer != null) playbackPlayer.release();
+        mainHandler.removeCallbacksAndMessages(null);
     }
 }

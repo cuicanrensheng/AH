@@ -1,16 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#000000">
 
-    <!-- 播放器核心修复：
-    1. 去掉强制 fill 拉伸，改用适配模式
-    2. 禁止抢占焦点，保证手势滑动正常
-    3. 背景纯黑，解决黑屏底色问题
-    -->
     <com.google.android.exoplayer2.ui.PlayerView
         android:id="@+id/player_view"
         android:layout_width="match_parent"
@@ -18,44 +12,6 @@
         android:layout_gravity="center"
         android:focusable="false"
         android:focusableInTouchMode="false"
-        android:clickable="false"
-        app:use_controller="false"
-        app:resize_mode="fit"/>
-
-    <LinearLayout
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:layout_gravity="bottom|end"
-        android:padding="10dp"
-        android:background="#80000000"
-        android:visibility="gone">
-
-        <Button
-            android:id="@+id/btn_line"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="线路"/>
-        <Button
-            android:id="@+id/btn_scale"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="比例"/>
-        <Button
-            android:id="@+id/btn_decode"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="解码"/>
-        <Button
-            android:id="@+id/btn_timeout"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="超时"/>
-        <Button
-            android:id="@+id/btn_sub"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="源"/>
-    </LinearLayout>
+        android:clickable="false"/>
 
 </FrameLayout>

@@ -23,7 +23,8 @@ public class ChannelListActivity extends AppCompatActivity {
         ListView listView = findViewById(R.id.channel_list);
 
         // 空值防护，避免闪退
-       MainActivity.Channel ch = new MainActivity.Channel(currentName, "默认", new ArrayList<>(currentUrls));{
+      if (MainActivity.mInstance == null || MainActivity.mInstance.channelSourceList.isEmpty())
+{
             finish();
             return;
         }

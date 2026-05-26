@@ -3,32 +3,29 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="horizontal"
-    android:gravity="center_vertical"
     android:padding="10dp">
+
+    <TextView
+        android:id="@+id/tv_dayName"
+        android:layout_width="80dp"
+        android:layout_height="wrap_content"
+        android:textColor="#cccccc"
+        android:textSize="14sp"/>
 
     <TextView
         android:id="@+id/tv_time"
         android:layout_width="120dp"
         android:layout_height="wrap_content"
-        android:textColor="#aaaaaa"
-        android:textSize="15dp" />
+        android:textColor="#cccccc"
+        android:layout_marginLeft="5dp"
+        android:textSize="14sp"/>
 
     <TextView
         android:id="@+id/tv_title"
-        android:layout_width="0dp"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_weight="1"
         android:textColor="#ffffff"
-        android:textSize="16dp" />
-
-    <TextView
-        android:id="@+id/tv_replay"
-        android:layout_width="60dp"
-        android:layout_height="28dp"
-        android:background="#2266ccff"
-        android:gravity="center"
-        android:text="回看"
-        android:textColor="#ffffff"
-        android:textSize="13dp" />
+        android:layout_marginLeft="5dp"
+        android:textSize="15sp"/>
 
 </LinearLayout>

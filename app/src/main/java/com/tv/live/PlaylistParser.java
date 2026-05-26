@@ -29,7 +29,7 @@ public class PlaylistParser {
             line = line.trim();
             if (line.startsWith("#EXTINF")) {
                 if (!currentUrls.isEmpty()) {
-                    MainActivity.Channel ch = new MainActivity.Channel(currentName, new ArrayList<>(currentUrls));
+                    MainActivity.Channel ch = new MainActivity.Channel(currentName, "默认", new ArrayList<>(currentUrls));
                     ch.epgList = new ArrayList<>(); // 空列表，EpgManager自动填充真实节目单
                     channelList.add(ch);
                     currentUrls.clear();

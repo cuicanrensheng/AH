@@ -1,36 +1,29 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf‑8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="horizontal"
-    android:background="#CC000000"
-    android:padding="8dp">
+    android:background="#CC101420">
 
-    <!-- 左侧：频道分组 -->
     <ListView
         android:id="@+id/lv_group"
         android:layout_width="140dp"
         android:layout_height="match_parent"
-        android:divider="#44FFFFFF"
-        android:dividerHeight="1px"
-        android:padding="4dp"/>
+        android:background="#CC0F131E"
+        android:divider="#22FFFFFF"/>
 
-    <!-- 中间：频道列表 -->
     <ListView
         android:id="@+id/lv_channel"
-        android:layout_width="280dp"
+        android:layout_width="320dp"
         android:layout_height="match_parent"
-        android:divider="#44FFFFFF"
-        android:dividerHeight="1px"
-        android:padding="4dp"/>
+        android:background="#CC141824"
+        android:divider="#22FFFFFF"/>
 
-    <!-- 右侧：日期+节目+回看 -->
     <ListView
         android:id="@+id/lv_epg"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:divider="#44FFFFFF"
-        android:dividerHeight="1px"
-        android:padding="4dp"/>
+        android:background="#CC191D2A"
+        android:divider="#22FFFFFF"/>
 
 </LinearLayout>

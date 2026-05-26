@@ -56,7 +56,7 @@ public class MainActivity extends AppCompatActivity {
     private boolean isPlayingPlayback = false;
     private PlayerView playerView;
     private SettingsManager setting;
-    private int currentPlayIndex = 0;
+    public int currentPlayIndex = 0; // 统一为public，供ChannelListActivity调用
     private GestureDetector gestureDetector;
     private SharedPreferences sp;
     private boolean channelReverse = false;
@@ -73,7 +73,6 @@ public class MainActivity extends AppCompatActivity {
         setting = SettingsManager.getInstance(this);
 
         playerView = findViewById(R.id.player_view);
-        // 关键修复：播放器禁止抢占触摸焦点
         playerView.setClickable(false);
         playerView.setFocusable(false);
         playerView.setFocusableInTouchMode(false);
@@ -83,7 +82,7 @@ public class MainActivity extends AppCompatActivity {
         initExoPlayer();
         initGesture();
 
-        // 后台加载直播源 + EPG
+        // 内置直播源
         new Thread(() -> {
             try {
                 String liveUrl = "https://gitee.com/qf_1111/iptv/raw/master/playlist.m3u";
@@ -112,15 +111,13 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    // 最终可用手势：单击左屏=EPG菜单，单击右屏=设置，上下滑动换台
+    // 手势：单击左屏=EPG菜单，单击右屏=设置，上下滑动换台
     private void initGesture() {
         gestureDetector = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
-            // 单击
             @Override
             public boolean onSingleTapUp(MotionEvent e) {
-                float x = e.getX();
                 int width = playerView.getWidth();
-                if (x < width / 2f) {
+                if (e.getX() < width / 2f) {
                     showChannelListDialog();
                 } else {
                     showSettingDialog();
@@ -128,7 +125,6 @@ public class MainActivity extends AppCompatActivity {
                 return true;
             }
 
-            // 上下滑动
             @Override
             public boolean onFling(MotionEvent e1, MotionEvent e2, float velocityX, float velocityY) {
                 float dy = e2.getY() - e1.getY();
@@ -140,7 +136,6 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        // 强制接管触摸事件
         playerView.setOnTouchListener((v, event) -> {
             gestureDetector.onTouchEvent(event);
             return true;

@@ -28,7 +28,7 @@ public class ChannelListActivity extends AppCompatActivity {
             return;
         }
 
-        final List<MainActivity.Channel> channelList = MainActivity.mInstance.channels;
+        final List<MainActivity.Channel> channelList = MainActivity.mInstance.channelSourceList;
         List<String> names = new ArrayList<>();
         for (MainActivity.Channel c : channelList) {
             names.add(c.name);

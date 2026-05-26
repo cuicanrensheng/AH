@@ -3,7 +3,7 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:padding="16dp"
+    android:padding="20dp"
     android:background="#ff444444">
 
     <LinearLayout
@@ -11,18 +11,16 @@
         android:layout_height="wrap_content"
         android:gravity="center_vertical"
         android:orientation="horizontal">
-
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="倒序换台"
-            android:textColor="#ffffff"/>
-
+            android:textColor="#ffffff"
+            android:textSize="18sp"/>
         <View
             android:layout_width="0dp"
             android:layout_height="0dp"
             android:layout_weight="1"/>
-
         <Switch
             android:id="@+id/sw_reverse"
             android:layout_width="wrap_content"
@@ -34,19 +32,17 @@
         android:layout_height="wrap_content"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:layout_marginTop="8dp">
-
+        android:layout_marginTop="12dp">
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="开机自启"
-            android:textColor="#ffffff"/>
-
+            android:textColor="#ffffff"
+            android:textSize="18sp"/>
         <View
             android:layout_width="0dp"
             android:layout_height="0dp"
             android:layout_weight="1"/>
-
         <Switch
             android:id="@+id/sw_boot"
             android:layout_width="wrap_content"
@@ -58,19 +54,17 @@
         android:layout_height="wrap_content"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:layout_marginTop="8dp">
-
+        android:layout_marginTop="12dp">
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="显示节目单"
-            android:textColor="#ffffff"/>
-
+            android:textColor="#ffffff"
+            android:textSize="18sp"/>
         <View
             android:layout_width="0dp"
             android:layout_height="0dp"
             android:layout_weight="1"/>
-
         <Switch
             android:id="@+id/sw_epg"
             android:layout_width="wrap_content"
@@ -82,65 +76,65 @@
         android:layout_height="wrap_content"
         android:text="线路选择"
         android:textColor="#ffffff"
-        android:layout_marginTop="12dp"/>
-
+        android:textSize="18sp"
+        android:layout_marginTop="16dp"/>
     <Spinner
         android:id="@+id/sp_line"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"/>
+        android:layout_marginTop="6dp"/>
 
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="画面比例"
         android:textColor="#ffffff"
-        android:layout_marginTop="12dp"/>
-
+        android:textSize="18sp"
+        android:layout_marginTop="16dp"/>
     <Spinner
         android:id="@+id/sp_scale"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"/>
+        android:layout_marginTop="6dp"/>
 
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="解码模式"
         android:textColor="#ffffff"
-        android:layout_marginTop="12dp"/>
-
+        android:textSize="18sp"
+        android:layout_marginTop="16dp"/>
     <Spinner
         android:id="@+id/sp_decode"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"/>
+        android:layout_marginTop="6dp"/>
 
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="超时切换(秒)"
         android:textColor="#ffffff"
-        android:layout_marginTop="12dp"/>
-
+        android:textSize="18sp"
+        android:layout_marginTop="16dp"/>
     <EditText
         android:id="@+id/et_timeout_sec"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:inputType="number"
-        android:layout_marginTop="4dp"/>
+        android:layout_marginTop="6dp"/>
 
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="字幕地址(可选)"
         android:textColor="#ffffff"
-        android:layout_marginTop="12dp"/>
-
+        android:textSize="18sp"
+        android:layout_marginTop="16dp"/>
     <EditText
         android:id="@+id/et_sub_url"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"/>
+        android:layout_marginTop="6dp"/>
 
 </LinearLayout>

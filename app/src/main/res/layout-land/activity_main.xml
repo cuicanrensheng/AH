@@ -4,8 +4,13 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#FF444444">
+    android:background="#000000">
 
+    <!-- 播放器核心修复：
+    1. 去掉强制 fill 拉伸，改用适配模式
+    2. 禁止抢占焦点，保证手势滑动正常
+    3. 背景纯黑，解决黑屏底色问题
+    -->
     <com.google.android.exoplayer2.ui.PlayerView
         android:id="@+id/player_view"
         android:layout_width="match_parent"
@@ -13,8 +18,9 @@
         android:layout_gravity="center"
         android:focusable="false"
         android:focusableInTouchMode="false"
+        android:clickable="false"
         app:use_controller="false"
-        app:resize_mode="fill"/>
+        app:resize_mode="fit"/>
 
     <LinearLayout
         android:layout_width="wrap_content"

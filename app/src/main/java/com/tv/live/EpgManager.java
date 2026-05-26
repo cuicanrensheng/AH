@@ -90,7 +90,6 @@ public class EpgManager {
                     String today = sdfToday.format(new Date());
                     long diff = Long.parseLong(date) - Long.parseLong(today);
 
-                    // 严格匹配截图日期格式：今天/明天/后天 + 05-20
                     if (diff == 0) item.day = "今天\n"+monthDay;
                     else if (diff == 1) item.day = "明天\n"+monthDay;
                     else if (diff == 2) item.day = "后天\n"+monthDay;

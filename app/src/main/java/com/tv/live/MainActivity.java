@@ -82,8 +82,7 @@ public class MainActivity extends AppCompatActivity {
         // 后台加载直播源 + EPG
         new Thread(() -> {
             try {
-                // 替换为你的真实M3U直播源地址
-                String liveUrl = "https://gitee.com/qf_1111/iptv/raw/master/playlist.m3u";
+                String liveUrl = "你的直播源地址.m3u";
                 channelSourceList = PlaylistParser.parseWithRealName(liveUrl);
 
                 EpgManager.getInstance().load(this, () -> runOnUiThread(() -> {
@@ -109,15 +108,27 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
+    // 手势：单击左屏=EPG菜单，单击右屏=设置，上下滑动换台
     private void initGesture() {
         gestureDetector = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
             @Override
+            public boolean onSingleTapUp(MotionEvent e) {
+                float x = e.getX();
+                int screenWidth = playerView.getWidth();
+                if (x < screenWidth / 2f) {
+                    showChannelListDialog();
+                } else {
+                    showSettingDialog();
+                }
+                return true;
+            }
+
+            @Override
             public boolean onFling(MotionEvent e1, MotionEvent e2, float velocityX, float velocityY) {
                 float dy = e2.getY() - e1.getY();
-                float dx = e2.getX() - e1.getX();
-                if (Math.abs(dy) > Math.abs(dx)) {
-                    if (dy > 80) prevChannel();
-                    else if (dy < -80) nextChannel();
+                if (Math.abs(dy) > 80) {
+                    if (dy < -80) nextChannel();
+                    else if (dy > 80) prevChannel();
                 }
                 return true;
             }

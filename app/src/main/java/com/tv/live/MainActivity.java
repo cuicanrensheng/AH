@@ -82,7 +82,7 @@ public class MainActivity extends AppCompatActivity {
         // 后台加载直播源 + EPG
         new Thread(() -> {
             try {
-                String liveUrl = "你的直播源地址.m3u";
+                String liveUrl = "https://gitee.com/qf_1111/iptv/raw/master/playlist.m3u";
                 channelSourceList = PlaylistParser.parseWithRealName(liveUrl);
 
                 EpgManager.getInstance().load(this, () -> runOnUiThread(() -> {

@@ -1,4 +1,5 @@
 package com.tv.live;
+
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
@@ -7,45 +8,39 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class PlaylistParser {
-    public static List<MainActivity.Channel> parseWithRealName(String m3uUrl) throws Exception {
-        List<MainActivity.Channel> channelList = new ArrayList<>();
-        HttpURLConnection conn = (HttpURLConnection) new URL(m3uUrl).openConnection();
-        conn.setRequestMethod("GET");
-        conn.setRequestProperty("User-Agent","Mozilla/5.0");
-        BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+    public static List<MainActivity.Channel> parse(String url) throws Exception {
+        List<MainActivity.Channel> list = new ArrayList<>();
+        HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+        BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream()));
 
         String line;
-        String currentName = "未知频道";
-        String currentGroup = "默认";
-        List<String> currentUrls = new ArrayList<>();
+        String group = "默认";
+        String name = "";
+        List<String> urls = new ArrayList<>();
 
-        while ((line = reader.readLine()) != null) {
+        while ((line = br.readLine()) != null) {
             line = line.trim();
-            if(line.startsWith("#EXTINF")){
-                // 自动读取分组 group‑title
-                if(line.contains("group‑title=\"")){
-                    int s = line.indexOf("group‑title=\"") + 13;
+            if (line.startsWith("#EXTINF")) {
+                if (line.contains("group-title=\"")) {
+                    int s = line.indexOf("group-title=\"") + 13;
                     int e = line.indexOf("\"", s);
-                    if(e > s) currentGroup = line.substring(s,e);
+                    if (e > s) group = line.substring(s, e);
                 }
-                // 保存上一个频道
-                if(!currentUrls.isEmpty()){
-                    channelList.add(new MainActivity.Channel(currentName, currentGroup, new ArrayList<>(currentUrls)));
-                    currentUrls.clear();
+                if (!urls.isEmpty()) {
+                    list.add(new MainActivity.Channel(name, group, new ArrayList<>(urls)));
+                    urls.clear();
                 }
-                // 读取频道名称
                 int comma = line.lastIndexOf(',');
-                if(comma != -1) currentName = line.substring(comma+1).trim();
-            }else if(line.startsWith("http") && !line.contains(".jpg") && !line.contains(".png")){
-                currentUrls.add(line);
+                if (comma != -1) name = line.substring(comma + 1).trim();
+            } else if (line.startsWith("http")) {
+                urls.add(line);
             }
         }
-        // 最后一个频道
-        if(!currentUrls.isEmpty()){
-            channelList.add(new MainActivity.Channel(currentName, currentGroup, new ArrayList<>(currentUrls)));
+        if (!urls.isEmpty()) {
+            list.add(new MainActivity.Channel(name, group, urls));
         }
-        reader.close();
+        br.close();
         conn.disconnect();
-        return channelList;
+        return list;
     }
 }

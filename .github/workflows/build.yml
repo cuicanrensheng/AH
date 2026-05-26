@@ -6,10 +6,16 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - name: 拉取仓库代码
         uses: actions/checkout@v4
+
+      # 网络加速，解决国内下载超时
+      - name: 网络环境加速
+        run: |
+          echo "nameserver 114.114.114.114" | sudo tee /etc/resolv.conf
+          sudo apt update
 
       - name: 配置 JDK 17
         uses: actions/setup-java@v4
@@ -23,11 +29,9 @@ jobs:
       - name: 赋予执行权限
         run: chmod +x gradlew
 
-      # 先清理缓存、刷新依赖，再编译
       - name: 清理并刷新依赖
         run: ./gradlew clean --refresh-dependencies
 
-      # 关键：添加 --stacktrace 打印清单错误的具体行号
       - name: 编译 Release 签名版 APK
         run: ./gradlew assembleRelease --stacktrace
 

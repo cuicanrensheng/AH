@@ -23,14 +23,23 @@ public class PlaylistParser {
         BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream()));
         String line;
         String currentName = "未知频道";
+        String currentGroup = "默认";   // 新增：分组名称
         List<String> currentUrls = new ArrayList<>();
 
         while ((line = reader.readLine()) != null) {
             line = line.trim();
             if (line.startsWith("#EXTINF")) {
+                // 读取 group‑title 分组
+                if(line.contains("group-title=\"")){
+                    int s = line.indexOf("group-title=\"") + 13;
+                    int e = line.indexOf("\"", s);
+                    if(e > s) currentGroup = line.substring(s, e);
+                }
+
                 if (!currentUrls.isEmpty()) {
-                    MainActivity.Channel ch = new MainActivity.Channel(currentName, "默认", new ArrayList<>(currentUrls));
-                    ch.epgList = new ArrayList<>(); // 空列表，EpgManager自动填充真实节目单
+                    // 3参数：名称、分组、地址列表
+                    MainActivity.Channel ch = new MainActivity.Channel(currentName, currentGroup, new ArrayList<>(currentUrls));
+                    ch.epgList = new ArrayList<>();
                     channelList.add(ch);
                     currentUrls.clear();
                 }
@@ -43,11 +52,12 @@ public class PlaylistParser {
             }
         }
 
+        // 最后一个频道
         if (!currentUrls.isEmpty()) {
-           MainActivity.Channel ch = new MainActivity.Channel(currentName, "默认", new ArrayList<>(currentUrls));
+           MainActivity.Channel ch = new MainActivity.Channel(currentName, currentGroup, new ArrayList<>(currentUrls));
            ch.epgList = new ArrayList<>();
            channelList.add(ch);
-}
+        }
 
         reader.close();
         connection.disconnect();

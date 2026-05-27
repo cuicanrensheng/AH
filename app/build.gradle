@@ -14,7 +14,6 @@ android {
         versionName "1.0"
         multiDexEnabled true
 
-        // 保留架构，不删、不改
         ndk {
             abiFilters 'arm64-v8a', 'armeabi-v7a'
         }
@@ -48,48 +47,34 @@ android {
         }
     }
 
-    // 已移除 VLC 相关的 legacyPackaging
     packagingOptions {
         resources {
             pickFirsts += ['META-INF/com.android.tools/proguard/coroutines.pro']
         }
     }
 }
+
 dependencies {
-    // 基础UI
     implementation "androidx.appcompat:appcompat:1.6.1"
-    implementation 'com.google.code.gson:gson:2.10.1'
-    implementation('com.google.android.material:material:1.11.0') {
-        exclude group: 'com.google.android.material', module: 'resources'
-    }
+    implementation "com.google.android.material:material:1.11.0"
     implementation "androidx.constraintlayout:constraintlayout:2.1.4"
     implementation "androidx.recyclerview:recyclerview:1.3.2"
+
     implementation 'com.google.zxing:core:3.5.1'
     implementation 'com.google.code.gson:gson:2.10.1'
-    
-    // 播放器全套 —— 完全保留，不动！
+
     implementation "com.google.android.exoplayer:exoplayer:2.19.1"
     implementation "com.google.android.exoplayer:exoplayer-ui:2.19.1"
     implementation "com.google.android.exoplayer:exoplayer-hls:2.19.1"
     implementation "com.google.android.exoplayer:exoplayer-dash:2.19.1"
 
-    // 网络全套（已修正引号）
     implementation "com.squareup.okhttp3:okhttp:4.12.0"
     implementation "com.squareup.retrofit2:retrofit:2.9.0"
     implementation "com.squareup.retrofit2:converter-gson:2.9.0"
 
-    // 图片（已修正引号）
     implementation "com.github.bumptech.glide:glide:4.16.0"
     annotationProcessor "com.github.bumptech.glide:compiler:4.16.0"
 
-    // JSON（已修正引号）
-    implementation "com.google.code.gson:gson:2.10.1"
-
-    // 工具（已修正引号）
     implementation "org.apache.commons:commons-lang3:3.14.0"
     implementation "com.blankj:utilcodex:1.31.1"
-
-    // ==============================
-    // VLC 已彻底删除！
-    // ==============================
 }

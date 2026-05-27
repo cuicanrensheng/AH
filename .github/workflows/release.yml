@@ -9,20 +9,21 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: 拉取代码
+        uses: actions/checkout@v4
 
       - name: 下载构建产物
         uses: actions/download-artifact@v4
         with:
-          name: TVLive-APP
+          name: TVLive-直播APP  # 和你截图里的名字完全一致
           path: ./apk
 
-      - name: 创建发布
+      - name: 创建 GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ github.run_number }}
           name: 自动构建版本 v${{ github.run_number }}
-          body: 由GitHub Actions自动编译
+          body: 由 GitHub Actions 自动编译发布
           files: ./apk/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

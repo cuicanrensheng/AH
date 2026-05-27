@@ -1,6 +1,7 @@
 package com.tv.live;
 
 import fi.iki.elonen.NanoHTTPD;
+import org.json.JSONException;
 import org.json.JSONObject;
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -39,7 +40,7 @@ public class HttpServer extends NanoHTTPD {
         // 接收配置 POST 请求
         if ("/config".equals(uri) && Method.POST.equals(session.getMethod())) {
             try {
-                // 读取请求体（替代 session.getBody()）
+                // 读取请求体
                 InputStream inputStream = session.getInputStream();
                 BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
                 StringBuilder sb = new StringBuilder();
@@ -58,10 +59,23 @@ public class HttpServer extends NanoHTTPD {
                 JSONObject resp = new JSONObject();
                 resp.put("success", true);
                 return newFixedLengthResponse(Response.Status.OK, "application/json", resp.toString());
+            } catch (JSONException e) {
+                e.printStackTrace();
+                JSONObject resp = new JSONObject();
+                try {
+                    resp.put("success", false);
+                } catch (JSONException ex) {
+                    ex.printStackTrace();
+                }
+                return newFixedLengthResponse(Response.Status.BAD_REQUEST, "application/json", resp.toString());
             } catch (Exception e) {
                 e.printStackTrace();
                 JSONObject resp = new JSONObject();
-                resp.put("success", false);
+                try {
+                    resp.put("success", false);
+                } catch (JSONException ex) {
+                    ex.printStackTrace();
+                }
                 return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "application/json", resp.toString());
             }
         }

@@ -1,6 +1,8 @@
 package com.tv.live;
 
 import fi.iki.elonen.NanoHTTPD;
+import fi.iki.elonen.NanoHTTPD.IHTTPSession;
+import fi.iki.elonen.NanoHTTPD.Response;
 import org.json.JSONObject;
 import java.io.IOException;
 import java.io.InputStream;
@@ -17,6 +19,7 @@ public class HttpServer extends NanoHTTPD {
     public Response serve(IHTTPSession session) {
         String uri = session.getUri();
 
+        // 访问首页 → 返回设置网页
         if ("/".equals(uri)) {
             try {
                 InputStream is = getClass().getClassLoader().getResourceAsStream("public/settings.html");
@@ -33,6 +36,7 @@ public class HttpServer extends NanoHTTPD {
             }
         }
 
+        // 接收网页 POST 配置
         if ("/config".equals(uri) && Method.POST.equals(session.getMethod())) {
             try {
                 session.parseBody(null);
@@ -41,6 +45,7 @@ public class HttpServer extends NanoHTTPD {
                 String liveUrl = json.optString("liveUrl", "");
                 String epgUrl = json.optString("epgUrl", "");
 
+                // 回调给 Activity 保存并热更新
                 mainActivity.onReceiveNewConfig(liveUrl, epgUrl);
 
                 JSONObject resp = new JSONObject();

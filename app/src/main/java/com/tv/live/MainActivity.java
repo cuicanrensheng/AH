@@ -11,11 +11,9 @@ import android.os.Bundle;
 import android.provider.Settings;
 import android.text.TextUtils;
 import android.view.GestureDetector;
-import android.view.KeyEvent;
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
 import android.view.View;
-import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.widget.ArrayAdapter;
 import android.widget.EditText;
@@ -33,8 +31,8 @@ import com.google.android.exoplayer2.ui.PlayerView;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import com.google.zxing.BarcodeFormat;
-import com.google.zxing.EncodeHintType;
-import com.google.zxing.qrcode.QRCodeWriter;
+import com.google.zxing.MultiFormatWriter;
+import com.google.zxing.WriterException;
 import com.google.zxing.common.BitMatrix;
 import org.json.JSONObject;
 import java.io.BufferedReader;
@@ -48,6 +46,7 @@ import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.net.URL;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
@@ -87,7 +86,6 @@ public class MainActivity extends AppCompatActivity {
     private ExoPlayer playbackPlayer;
     private boolean isPlayingPlayback = false;
     private PlayerView playerView;
-    private SettingsManager setting;
     private GestureDetector gestureDetector;
     private SharedPreferences sp;
     private boolean epgEnabled = true;
@@ -100,14 +98,17 @@ public class MainActivity extends AppCompatActivity {
     private int currentRatioIndex = 0;
     private final String[] ratioNames = {"16:9", "4:3", "全屏"};
     private final int[] ratioModes = {
-        C.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING,
-        C.VIDEO_SCALING_MODE_SCALE_TO_FIT,
-        C.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING
+            C.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING,
+            C.VIDEO_SCALING_MODE_SCALE_TO_FIT,
+            C.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING
     };
 
-    // 自动更新配置（使用你的仓库地址）
+    // 自动更新配置
     private final String UPDATE_URL = "https://raw.githubusercontent.com/cuicanrensheng/AH/main/update.json";
     private static final int REQUEST_INSTALL_PACKAGES = 1001;
+
+    // 本地HTTP服务（扫码设置）
+    private HttpServer httpServer;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -133,10 +134,18 @@ public class MainActivity extends AppCompatActivity {
         playerView.setFocusableInTouchMode(true);
         playerView.requestFocus();
 
-        setting = SettingsManager.getInstance(this);
         initGesture();
         initExoPlayer();
 
+        // 启动本地HTTP服务（扫码设置）
+        httpServer = new HttpServer(10481, this);
+        try {
+            httpServer.start();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        // 加载频道列表
         new Thread(() -> {
             try {
                 String playUrl = TextUtils.isEmpty(customSource) ? LIVE_SOURCE_URL : customSource;
@@ -204,42 +213,43 @@ public class MainActivity extends AppCompatActivity {
         return null;
     }
 
-    private Bitmap generateQrCode(String text, int size) throws Exception {
-        Map<EncodeHintType, Object> hints = new HashMap<>();
-        hints.put(EncodeHintType.CHARACTER_SET, "UTF-8");
-        hints.put(EncodeHintType.MARGIN, 1);
-        BitMatrix matrix = new QRCodeWriter().encode(text, BarcodeFormat.QR_CODE, size, size, hints);
-        int[] pixels = new int[size * size];
-        for (int y = 0; y < size; y++) {
-            for (int x = 0; x < size; x++) {
-                pixels[y * size + x] = matrix.get(x, y) ? Color.BLACK : Color.WHITE;
-            }
-        }
-        Bitmap bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
-        bmp.setPixels(pixels, 0, size, 0, 0, size, size);
-        return bmp;
-    }
-
+    // 完整二维码生成方法（修复显示不全）
     private void showDynamicQrCodeDialog() {
         String ip = getLocalIpAddress();
         if (TextUtils.isEmpty(ip)) {
-            Toast.makeText(this, "获取IP失败", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "获取IP失败，请检查网络", Toast.LENGTH_SHORT).show();
             return;
         }
-        String url = "http://" + ip + ":10481";
+        String qrContent = "http://" + ip + ":10481";
+        int qrSize = 400;
+
         try {
-            Bitmap bmp = generateQrCode(url, 320);
-            View v = LayoutInflater.from(this).inflate(R.layout.dialog_qrcode, null);
-            ImageView iv = v.findViewById(R.id.iv_qrcode);
-            TextView tip = v.findViewById(R.id.tv_tip);
-            iv.setImageBitmap(bmp);
-            tip.setText("扫码管理订阅源/EPG\n" + url);
+            BitMatrix bitMatrix = new MultiFormatWriter().encode(
+                    qrContent,
+                    BarcodeFormat.QR_CODE,
+                    qrSize,
+                    qrSize
+            );
+
+            Bitmap bmp = Bitmap.createBitmap(qrSize, qrSize, Bitmap.Config.ARGB_8888);
+            for (int x = 0; x < qrSize; x++) {
+                for (int y = 0; y < qrSize; y++) {
+                    bmp.setPixel(x, y, bitMatrix.get(x, y) ? Color.BLACK : Color.WHITE);
+                }
+            }
+
+            View dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_qrcode, null);
+            ImageView ivQr = dialogView.findViewById(R.id.iv_qrcode);
+            ivQr.setImageBitmap(bmp);
+
             new AlertDialog.Builder(this)
                     .setTitle("扫码设置")
-                    .setView(v)
+                    .setView(dialogView)
                     .setPositiveButton("关闭", null)
                     .show();
-        } catch (Exception e) {
+
+        } catch (WriterException e) {
+            e.printStackTrace();
             Toast.makeText(this, "二维码生成失败", Toast.LENGTH_SHORT).show();
         }
     }
@@ -259,11 +269,15 @@ public class MainActivity extends AppCompatActivity {
             return true;
         }
         if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER) {
-            showChannelEpgDialog();
+            showChannelListDialog();
             return true;
         }
         if (keyCode == KeyEvent.KEYCODE_MENU || keyCode == KeyEvent.KEYCODE_HELP) {
             showSettingDialog();
+            return true;
+        }
+        if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
+            showDynamicQrCodeDialog();
             return true;
         }
         return super.onKeyUp(keyCode, event);
@@ -275,7 +289,7 @@ public class MainActivity extends AppCompatActivity {
             public boolean onDown(MotionEvent e) { return true; }
             @Override
             public boolean onSingleTapConfirmed(MotionEvent e) {
-                showChannelEpgDialog();
+                showChannelListDialog();
                 return true;
             }
             @Override
@@ -292,10 +306,7 @@ public class MainActivity extends AppCompatActivity {
                 return true;
             }
         });
-        playerView.setOnTouchListener((v, event) -> {
-            gestureDetector.onTouchEvent(event);
-            return true;
-        });
+        playerView.setOnTouchListener((v, event) -> gestureDetector.onTouchEvent(event));
     }
 
     private void changeChannel(int delta) {
@@ -345,13 +356,13 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private void showChannelEpgDialog() {
+    private void showChannelListDialog() {
         if (channelSourceList.isEmpty()) {
             Toast.makeText(this, "暂无频道", Toast.LENGTH_SHORT).show();
             return;
         }
 
-        View view = LayoutInflater.from(this).inflate(R.layout.dialog_channel_epg, null);
+        View view = LayoutInflater.from(this).inflate(R.layout.dialog_channel_list, null);
         ListView lvGroup = view.findViewById(R.id.lv_group);
         ListView lvChannel = view.findViewById(R.id.lv_channel);
         ListView lvEpg = view.findViewById(R.id.lv_epg);
@@ -387,7 +398,7 @@ public class MainActivity extends AppCompatActivity {
             public View getView(int position, View convertView, ViewGroup parent) {
                 View v = super.getView(position, convertView, parent);
                 TextView tv = v.findViewById(android.R.id.text1);
-                tv.setText(((Channel) getItem(position)).name);
+                tv.setText(groupChannels.get(position).name);
                 tv.setTextColor(Color.WHITE);
                 tv.setTextSize(16);
                 tv.setPadding(15, 18, 15, 18);
@@ -445,25 +456,25 @@ public class MainActivity extends AppCompatActivity {
             epgAdapter.notifyDataSetChanged();
         });
 
-        AlertDialog dialog = new AlertDialog.Builder(this)
+        new AlertDialog.Builder(this)
                 .setView(view)
                 .setCancelable(true)
-                .show();
-        dialog.setOnDismissListener(dialogInterface -> playerView.requestFocus());
+                .show()
+                .setOnDismissListener(dialog -> playerView.requestFocus());
     }
 
     private void showSettingDialog() {
         View v = LayoutInflater.from(this).inflate(R.layout.dialog_setting, null);
         SharedPreferences.Editor ed = sp.edit();
 
-        android.widget.Switch switch_reverse = v.findViewById(R.id.switch_reverse);
-        android.widget.Switch switch_boot = v.findViewById(R.id.switch_boot);
-        android.widget.Switch switch_update = v.findViewById(R.id.switch_update);
-        android.widget.Switch switch_line = v.findViewById(R.id.switch_line);
+        Switch switch_reverse = v.findViewById(R.id.switch_reverse);
+        Switch switch_boot = v.findViewById(R.id.switch_boot);
+        Switch switch_update = v.findViewById(R.id.switch_update);
+        Switch switch_line = v.findViewById(R.id.switch_line);
         TextView tv_ratio = v.findViewById(R.id.tv_ratio);
         TextView btn_source = v.findViewById(R.id.btn_source);
         TextView btn_epg = v.findViewById(R.id.btn_epg);
-        TextView btn_qrcode = v.findViewById(R.id.btn_qrcode);
+        TextView btn_qr = v.findViewById(R.id.btn_qr);
 
         switch_reverse.setChecked(sp.getBoolean("reverse_channel", false));
         switch_boot.setChecked(sp.getBoolean("boot_start", false));
@@ -483,41 +494,18 @@ public class MainActivity extends AppCompatActivity {
             ed.putInt("play_ratio", currentRatioIndex).apply();
         });
 
-        btn_qrcode.setOnClickListener(view -> showDynamicQrCodeDialog());
+        btn_qr.setOnClickListener(view -> {
+            showDynamicQrCodeDialog();
+        });
 
-        btn_source.setOnClickListener(view1 -> {
-            View dv = LayoutInflater.from(this).inflate(R.layout.dialog_source_history, null);
-            EditText et = dv.findViewById(R.id.et_source);
-            ListView lv = dv.findViewById(R.id.lv_history);
-            TextView clear = dv.findViewById(R.id.tv_clear);
+        btn_source.setOnClickListener(view -> {
+            View editView = LayoutInflater.from(this).inflate(R.layout.dialog_edit, null);
+            EditText et = editView.findViewById(R.id.et_input);
             et.setText(sp.getString("custom_source", ""));
-
-            ArrayAdapter<String> ad = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, sourceHistoryList);
-            lv.setAdapter(ad);
-
-            lv.setOnItemClickListener((parent, view12, position, id1) -> {
-                et.setText(sourceHistoryList.get(position));
-            });
-
-            lv.setOnItemLongClickListener((parent, view13, position, id12) -> {
-                sourceHistoryList.remove(position);
-                ad.notifyDataSetChanged();
-                sp.edit().putString("source_history_list", gson.toJson(sourceHistoryList)).apply();
-                Toast.makeText(this, "已删除", Toast.LENGTH_SHORT).show();
-                return true;
-            });
-
-            clear.setOnClickListener(view14 -> {
-                sourceHistoryList.clear();
-                ad.notifyDataSetChanged();
-                sp.edit().remove("source_history_list").apply();
-                Toast.makeText(this, "已清空", Toast.LENGTH_SHORT).show();
-            });
-
             new AlertDialog.Builder(this)
-                    .setTitle("自定义订阅源")
-                    .setView(dv)
-                    .setPositiveButton("保存", (dialog, which) -> {
+                    .setTitle("自定义直播源")
+                    .setView(editView)
+                    .setPositiveButton("保存", (d, w) -> {
                         String url = et.getText().toString().trim();
                         ed.putString("custom_source", url).apply();
                         saveSourceHistory(url);
@@ -527,25 +515,63 @@ public class MainActivity extends AppCompatActivity {
                     .show();
         });
 
-        btn_epg.setOnClickListener(view1 -> {
-            AlertDialog.Builder b = new AlertDialog.Builder(this);
-            b.setTitle("自定义节目单");
-            EditText edit = new EditText(this);
-            edit.setText(sp.getString("custom_epg", ""));
-            edit.setHint("xml/xml.gz");
-            b.setView(edit);
-            b.setPositiveButton("保存", (d, w) -> {
-                ed.putString("custom_epg", edit.getText().toString().trim()).apply();
-                Toast.makeText(this, "已保存，重启生效", Toast.LENGTH_SHORT).show();
-            });
-            b.setNegativeButton("取消", null);
-            b.show();
+        btn_epg.setOnClickListener(view -> {
+            View editView = LayoutInflater.from(this).inflate(R.layout.dialog_edit, null);
+            EditText et = editView.findViewById(R.id.et_input);
+            et.setText(sp.getString("custom_epg", ""));
+            new AlertDialog.Builder(this)
+                    .setTitle("自定义EPG")
+                    .setView(editView)
+                    .setPositiveButton("保存", (d, w) -> {
+                        String url = et.getText().toString().trim();
+                        ed.putString("custom_epg", url).apply();
+                        Toast.makeText(this, "已保存，重启生效", Toast.LENGTH_SHORT).show();
+                    })
+                    .setNegativeButton("取消", null)
+                    .show();
         });
 
         new AlertDialog.Builder(this)
                 .setView(v)
                 .setNegativeButton("关闭", null)
-                .show();
+                .show()
+                .setOnDismissListener(dialog -> playerView.requestFocus());
+    }
+
+    // 接收网页下发的配置并热更新
+    public void onReceiveNewConfig(String liveUrl, String epgUrl) {
+        SharedPreferences.Editor ed = sp.edit();
+        ed.putString("custom_source", liveUrl);
+        ed.putString("custom_epg", epgUrl);
+        ed.apply();
+
+        runOnUiThread(() -> Toast.makeText(this, "已收到新配置，正在刷新频道", Toast.LENGTH_SHORT).show());
+
+        new Thread(() -> {
+            try {
+                if (exoPlayer != null) {
+                    exoPlayer.stop();
+                }
+
+                String useSource = TextUtils.isEmpty(liveUrl) ? LIVE_SOURCE_URL : liveUrl;
+                channelSourceList = PlaylistParser.parse(useSource);
+
+                String useEpg = TextUtils.isEmpty(epgUrl) ? "http://epg.51zmt.top:8000/e.xml.gz" : epgUrl;
+                EpgManager.getInstance().setEpgUrl(useEpg);
+                EpgManager.getInstance().loadEpg(() -> runOnUiThread(() -> {
+                    for (Channel ch : channelSourceList) {
+                        ch.epgList = EpgManager.getInstance().getEpg(ch.name);
+                    }
+                    if (!channelSourceList.isEmpty()) {
+                        playChannel(0);
+                    }
+                    Toast.makeText(MainActivity.this, "频道刷新完成", Toast.LENGTH_SHORT).show();
+                }));
+            } catch (Exception e) {
+                runOnUiThread(() -> Toast.makeText(this, "配置刷新失败", Toast.LENGTH_SHORT).show());
+                e.printStackTrace();
+            }
+        }).start();
     }
 
     // 自动更新逻辑
@@ -571,7 +597,7 @@ public class MainActivity extends AppCompatActivity {
                 String downloadUrl = json.getString("downloadUrl");
                 String updateMsg = json.getString("message");
 
-                if (latestVersion > BuildConfig.VERSION_CODE) {
+                if (latestVersion > 1) {
                     runOnUiThread(() -> showUpdateDialog(updateMsg, downloadUrl));
                 }
             } catch (Exception e) {
@@ -658,6 +684,9 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        if (httpServer != null) {
+            httpServer.stop();
+        }
         if (exoPlayer != null) exoPlayer.release();
         if (playbackPlayer != null) playbackPlayer.release();
     }

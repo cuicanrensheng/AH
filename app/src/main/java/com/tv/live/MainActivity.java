@@ -110,24 +110,30 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     public boolean onKeyUp(int keyCode, KeyEvent event) {
-        if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
-            changeChannel(-1);
-            return true;
-        }
-        if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
-            changeChannel(1);
-            return true;
-        }
-        if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER) {
-            showChannelEpgDialog();
-            return true;
-        }
-        if (keyCode == KeyEvent.KEYCODE_MENU || keyCode == KeyEvent.KEYCODE_HELP) {
-            showSettingDialog();
-            return true;
-        }
-        return super.onKeyUp(keyCode, event);
+    SharedPreferences sp = getSharedPreferences("tv_config", 0);
+    boolean reverse = sp.getBoolean("reverse_channel", false);
+    int up = reverse ? 1 : -1;
+    int down = reverse ? -1 : 1;
+
+    if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
+        changeChannel(up);
+        return true;
     }
+    if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
+        changeChannel(down);
+        return true;
+    }
+    if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER) {
+        showChannelEpgDialog();
+        return true;
+    }
+    if (keyCode == KeyEvent.KEYCODE_MENU || keyCode == KeyEvent.KEYCODE_HELP) {
+        showSettingDialog();
+        return true;
+    }
+    return super.onKeyUp(keyCode, event);
+}
+
 
     private void initGesture() {
         gestureDetector = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
@@ -320,14 +326,62 @@ public class MainActivity extends AppCompatActivity {
         playbackPlayer.prepare();
         playbackPlayer.play();
     }
-
+    
     private void showSettingDialog() {
-        View view = LayoutInflater.from(this).inflate(R.layout.dialog_setting, null);
-        new AlertDialog.Builder(this)
-                .setTitle("播放设置")
-                .setNegativeButton("关闭", null)
-                .show();
-    }
+    View v = LayoutInflater.from(this).inflate(R.layout.dialog_setting, null);
+    SharedPreferences sp = getSharedPreferences("tv_config", 0);
+    SharedPreferences.Editor ed = sp.edit();
+
+    Switch switch_reverse = v.findViewById(R.id.switch_reverse);
+    Switch switch_boot = v.findViewById(R.id.switch_boot);
+    Switch switch_update = v.findViewById(R.id.switch_update);
+    Switch switch_line = v.findViewById(R.id.switch_line);
+    TextView btn_source = v.findViewById(R.id.btn_source);
+    TextView btn_epg = v.findViewById(R.id.btn_epg);
+
+    switch_reverse.setChecked(sp.getBoolean("reverse_channel", false));
+    switch_boot.setChecked(sp.getBoolean("boot_start", false));
+    switch_update.setChecked(sp.getBoolean("auto_update", true));
+    switch_line.setChecked(sp.getBoolean("auto_line", true));
+
+    switch_reverse.setOnCheckedChangeListener((b, c) -> ed.putBoolean("reverse_channel", c).apply());
+    switch_boot.setOnCheckedChangeListener((b, c) -> ed.putBoolean("boot_start", c).apply());
+    switch_update.setOnCheckedChangeListener((b, c) -> ed.putBoolean("auto_update", c).apply());
+    switch_line.setOnCheckedChangeListener((b, c) -> ed.putBoolean("auto_line", c).apply());
+
+    btn_source.setOnClickListener(v1 -> {
+        AlertDialog.Builder b = new AlertDialog.Builder(this);
+        b.setTitle("自定义订阅源");
+        android.widget.EditText edit = new android.widget.EditText(this);
+        edit.setText(sp.getString("custom_source", ""));
+        b.setView(edit);
+        b.setPositiveButton("保存", (d, w) -> {
+            ed.putString("custom_source", edit.getText().toString()).apply();
+            Toast.makeText(this, "已保存，重启生效", Toast.LENGTH_SHORT).show();
+        });
+        b.setNegativeButton("取消", null);
+        b.show();
+    });
+
+    btn_epg.setOnClickListener(v1 -> {
+        AlertDialog.Builder b = new AlertDialog.Builder(this);
+        b.setTitle("自定义节目单");
+        android.widget.EditText edit = new android.widget.EditText(this);
+        edit.setText(sp.getString("custom_epg", ""));
+        b.setView(edit);
+        b.setPositiveButton("保存", (d, w) -> {
+            ed.putString("custom_epg", edit.getText().toString()).apply();
+            Toast.makeText(this, "已保存，重启生效", Toast.LENGTH_SHORT).show();
+        });
+        b.setNegativeButton("取消", null);
+        b.show();
+    });
+
+    new AlertDialog.Builder(this)
+            .setView(v)
+            .setNegativeButton("关闭", null)
+            .show();
+}
 
     @Override
     public void onBackPressed() {

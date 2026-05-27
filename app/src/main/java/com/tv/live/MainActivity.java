@@ -54,6 +54,8 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import android.view.ViewGroup;
+import android.widget.Switch;
 
 public class MainActivity extends AppCompatActivity {
     public static MainActivity mInstance;

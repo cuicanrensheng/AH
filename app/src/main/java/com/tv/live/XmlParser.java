@@ -67,6 +67,6 @@ public class XmlParser {
     }
 
     public interface EpgCallback {
-        void onParsed(String channelName, List<Channel.EpgItem> items);
+    void onParsed(String channelName, List<MainActivity.Channel.EpgItem> items);
     }
 }

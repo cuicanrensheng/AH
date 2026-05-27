@@ -1,11 +1,11 @@
 package com.tv.live;
 
 import fi.iki.elonen.NanoHTTPD;
-import fi.iki.elonen.NanoHTTPD.IHTTPSession;
-import fi.iki.elonen.NanoHTTPD.Response;
 import org.json.JSONObject;
+import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 
 public class HttpServer extends NanoHTTPD {
     private final MainActivity mainActivity;
@@ -19,7 +19,7 @@ public class HttpServer extends NanoHTTPD {
     public Response serve(IHTTPSession session) {
         String uri = session.getUri();
 
-        // 访问首页 → 返回设置网页
+        // 访问首页
         if ("/".equals(uri)) {
             try {
                 InputStream is = getClass().getClassLoader().getResourceAsStream("public/settings.html");
@@ -36,16 +36,23 @@ public class HttpServer extends NanoHTTPD {
             }
         }
 
-        // 接收网页 POST 配置
+        // 接收配置 POST 请求
         if ("/config".equals(uri) && Method.POST.equals(session.getMethod())) {
             try {
-                session.parseBody(null);
-                String body = session.getBody();
+                // 读取请求体（替代 session.getBody()）
+                InputStream inputStream = session.getInputStream();
+                BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
+                StringBuilder sb = new StringBuilder();
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    sb.append(line);
+                }
+                String body = sb.toString();
+
                 JSONObject json = new JSONObject(body);
                 String liveUrl = json.optString("liveUrl", "");
                 String epgUrl = json.optString("epgUrl", "");
 
-                // 回调给 Activity 保存并热更新
                 mainActivity.onReceiveNewConfig(liveUrl, epgUrl);
 
                 JSONObject resp = new JSONObject();

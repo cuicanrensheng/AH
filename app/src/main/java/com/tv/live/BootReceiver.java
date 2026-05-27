@@ -10,8 +10,7 @@ public class BootReceiver extends BroadcastReceiver {
     public void onReceive(Context context, Intent intent) {
         if (Intent.ACTION_BOOT_COMPLETED.equals(intent.getAction())) {
             SharedPreferences sp = context.getSharedPreferences("tv_config", Context.MODE_PRIVATE);
-            boolean bootStart = sp.getBoolean("boot_start", false);
-            if (bootStart) {
+            if (sp.getBoolean("boot_start", false)) {
                 Intent i = new Intent(context, MainActivity.class);
                 i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 context.startActivity(i);

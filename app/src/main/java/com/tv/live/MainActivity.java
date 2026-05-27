@@ -1,5 +1,5 @@
 package com.tv.live;
-import android.widget.Switch;
+
 import android.app.AlertDialog;
 import android.content.DialogInterface;
 import android.content.SharedPreferences;
@@ -15,6 +15,7 @@ import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
+import android.widget.EditText;
 import android.widget.ListView;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -24,6 +25,9 @@ import com.google.android.exoplayer2.MediaItem;
 import com.google.android.exoplayer2.PlaybackException;
 import com.google.android.exoplayer2.Player;
 import com.google.android.exoplayer2.ui.PlayerView;
+import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
+import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -66,8 +70,10 @@ public class MainActivity extends AppCompatActivity {
     private SharedPreferences sp;
     private boolean epgEnabled = true;
     private int lastPlayIndex = 0;
-
     private final String LIVE_SOURCE_URL = "https://gitee.com/qf_1111/iptv/raw/master/playlist.m3u";
+
+    private List<String> sourceHistoryList = new ArrayList<>();
+    private Gson gson = new Gson();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -80,6 +86,10 @@ public class MainActivity extends AppCompatActivity {
         sp = getSharedPreferences("tv_config", MODE_PRIVATE);
         epgEnabled = sp.getBoolean("epgEnabled", true);
         lastPlayIndex = sp.getInt("last_play", 0);
+        String customSource = sp.getString("custom_source", "");
+        String customEpg = sp.getString("custom_epg", "");
+
+        loadSourceHistory();
 
         playerView = findViewById(R.id.player_view);
         playerView.setUseController(false);
@@ -94,7 +104,12 @@ public class MainActivity extends AppCompatActivity {
 
         new Thread(() -> {
             try {
-                channelSourceList = PlaylistParser.parse(LIVE_SOURCE_URL);
+                String playUrl = TextUtils.isEmpty(customSource) ? LIVE_SOURCE_URL : customSource;
+                channelSourceList = PlaylistParser.parse(playUrl);
+
+                String epgUrl = TextUtils.isEmpty(customEpg) ? "http://epg.51zmt.top:8000/e.xml.gz" : customEpg;
+                EpgManager.getInstance().setEpgUrl(epgUrl);
+
                 EpgManager.getInstance().loadEpg(() -> runOnUiThread(() -> {
                     for (Channel ch : channelSourceList) {
                         ch.epgList = EpgManager.getInstance().getEpg(ch.name);
@@ -108,32 +123,49 @@ public class MainActivity extends AppCompatActivity {
         }).start();
     }
 
+    private void loadSourceHistory() {
+        String json = sp.getString("source_history_list", "");
+        Type type = new TypeToken<List<String>>() {}.getType();
+        List<String> list = gson.fromJson(json, type);
+        if (list == null) list = new ArrayList<>();
+        sourceHistoryList = list;
+    }
+
+    private void saveSourceHistory(String url) {
+        if (TextUtils.isEmpty(url)) return;
+        sourceHistoryList.remove(url);
+        sourceHistoryList.add(0, url);
+        if (sourceHistoryList.size() > 10) {
+            sourceHistoryList = sourceHistoryList.subList(0, 10);
+        }
+        String json = gson.toJson(sourceHistoryList);
+        sp.edit().putString("source_history_list", json).apply();
+    }
+
     @Override
     public boolean onKeyUp(int keyCode, KeyEvent event) {
-    SharedPreferences sp = getSharedPreferences("tv_config", 0);
-    boolean reverse = sp.getBoolean("reverse_channel", false);
-    int up = reverse ? 1 : -1;
-    int down = reverse ? -1 : 1;
+        boolean reverse = sp.getBoolean("reverse_channel", false);
+        int up = reverse ? 1 : -1;
+        int down = reverse ? -1 : 1;
 
-    if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
-        changeChannel(up);
-        return true;
+        if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
+            changeChannel(up);
+            return true;
+        }
+        if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
+            changeChannel(down);
+            return true;
+        }
+        if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER) {
+            showChannelEpgDialog();
+            return true;
+        }
+        if (keyCode == KeyEvent.KEYCODE_MENU || keyCode == KeyEvent.KEYCODE_HELP) {
+            showSettingDialog();
+            return true;
+        }
+        return super.onKeyUp(keyCode, event);
     }
-    if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
-        changeChannel(down);
-        return true;
-    }
-    if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER) {
-        showChannelEpgDialog();
-        return true;
-    }
-    if (keyCode == KeyEvent.KEYCODE_MENU || keyCode == KeyEvent.KEYCODE_HELP) {
-        showSettingDialog();
-        return true;
-    }
-    return super.onKeyUp(keyCode, event);
-}
-
 
     private void initGesture() {
         gestureDetector = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
@@ -179,7 +211,9 @@ public class MainActivity extends AppCompatActivity {
         exoPlayer.addListener(new Player.Listener() {
             @Override
             public void onPlayerError(PlaybackException error) {
-                autoSwitchLine();
+                if (sp.getBoolean("auto_line", true)) {
+                    autoSwitchLine();
+                }
             }
         });
     }
@@ -209,129 +243,113 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void showChannelEpgDialog() {
-    if (channelSourceList.isEmpty()) {
-        Toast.makeText(this, "暂无频道", Toast.LENGTH_SHORT).show();
-        return;
-    }
-
-    View view = LayoutInflater.from(this).inflate(R.layout.dialog_channel_epg, null);
-    ListView lvGroup = view.findViewById(R.id.lv_group);
-    ListView lvChannel = view.findViewById(R.id.lv_channel);
-    ListView lvEpg = view.findViewById(R.id.lv_epg);
-
-    // 分组
-    Set<String> groupSet = new LinkedHashSet<>();
-    for (Channel ch : channelSourceList) groupSet.add(ch.group);
-    List<String> groupList = new ArrayList<>(groupSet);
-
-    ArrayAdapter<String> groupAdapter = new ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, groupList) {
-        @Override
-        public View getView(int position, View convertView, ViewGroup parent) {
-            View v = super.getView(position, convertView, parent);
-            TextView tv = v.findViewById(android.R.id.text1);
-            tv.setText(groupList.get(position));
-            tv.setTextColor(Color.WHITE);
-            tv.setTextSize(17);
-            tv.setPadding(15, 18, 15, 18);
-            return v;
+        if (channelSourceList.isEmpty()) {
+            Toast.makeText(this, "暂无频道", Toast.LENGTH_SHORT).show();
+            return;
         }
-    };
-    lvGroup.setAdapter(groupAdapter);
-    lvGroup.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
 
-    // 当前频道 & 分组
-    Channel currentCh = channelSourceList.get(currentPlayIndex);
-    String currentGroupName = currentCh.group;
-    int groupPos = groupList.indexOf(currentGroupName);
+        View view = LayoutInflater.from(this).inflate(R.layout.dialog_channel_epg, null);
+        ListView lvGroup = view.findViewById(R.id.lv_group);
+        ListView lvChannel = view.findViewById(R.id.lv_channel);
+        ListView lvEpg = view.findViewById(R.id.lv_epg);
 
-    // 频道列表
-    List<Channel> groupChannels = new ArrayList<>();
-    for (Channel ch : channelSourceList) {
-        if (ch.group.equals(currentGroupName)) {
-            groupChannels.add(ch);
-        }
-    }
+        Channel currentCh = channelSourceList.get(currentPlayIndex);
+        Set<String> groupSet = new LinkedHashSet<>();
+        for (Channel ch : channelSourceList) groupSet.add(ch.group);
+        List<String> groupList = new ArrayList<>(groupSet);
+        int groupPos = groupList.indexOf(currentCh.group);
 
-    ArrayAdapter<Channel> channelAdapter = new ArrayAdapter<Channel>(this, android.R.layout.simple_list_item_1, groupChannels) {
-        @Override
-        public View getView(int position, View convertView, ViewGroup parent) {
-            View v = super.getView(position, convertView, parent);
-            TextView tv = v.findViewById(android.R.id.text1);
-            Channel ch = getItem(position);
-            tv.setText(ch.name);
-            tv.setTextColor(Color.WHITE);
-            tv.setTextSize(16);
-            tv.setPadding(15, 18, 15, 18);
-            return v;
-        }
-    };
-    lvChannel.setAdapter(channelAdapter);
-    lvChannel.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
-
-    // EPG 适配器
-    ArrayAdapter<Channel.EpgItem> epgAdapter = new ArrayAdapter<Channel.EpgItem>(this, R.layout.item_epg, new ArrayList<Channel.EpgItem>()) {
-        @Override
-        public View getView(int position, View convertView, ViewGroup parent) {
-            if (convertView == null) {
-                convertView = LayoutInflater.from(getContext()).inflate(R.layout.item_epg, parent, false);
+        ArrayAdapter<String> groupAdapter = new ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, groupList) {
+            @Override
+            public View getView(int position, View convertView, ViewGroup parent) {
+                View v = super.getView(position, convertView, parent);
+                TextView tv = v.findViewById(android.R.id.text1);
+                tv.setText(groupList.get(position));
+                tv.setTextColor(Color.WHITE);
+                tv.setTextSize(17);
+                tv.setPadding(15, 18, 15, 18);
+                return v;
             }
-            TextView tvDayName = convertView.findViewById(R.id.tv_dayName);
-            TextView tvTime = convertView.findViewById(R.id.tv_time);
-            TextView tvTitle = convertView.findViewById(R.id.tv_title);
-            Channel.EpgItem item = getItem(position);
+        };
+        lvGroup.setAdapter(groupAdapter);
+        lvGroup.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
 
-            tvDayName.setText(item.dayName);
-            tvTime.setText(item.time);
-            tvTitle.setText(item.title);
-            return convertView;
-        }
-    };
-    lvEpg.setAdapter(epgAdapter);
-
-    // ===================== 核心修复：自动定位 + 加载EPG =====================
-    lvGroup.post(() -> {
-        // 选中当前分组
-        lvGroup.setItemChecked(groupPos, true);
-        lvGroup.setSelection(groupPos);
-
-        // 选中当前频道并滚动
-        int channelPos = groupChannels.indexOf(currentCh);
-        lvChannel.setItemChecked(channelPos, true);
-        lvChannel.setSelection(channelPos);
-
-        // 加载当前频道节目单
-        epgAdapter.clear();
-        epgAdapter.addAll(currentCh.epgList);
-        epgAdapter.notifyDataSetChanged();
-    });
-
-    // 分组切换
-    lvGroup.setOnItemClickListener((parent, v, pos, id) -> {
-        String g = groupList.get(pos);
-        groupChannels.clear();
+        List<Channel> groupChannels = new ArrayList<>();
         for (Channel ch : channelSourceList) {
-            if (ch.group.equals(g)) groupChannels.add(ch);
+            if (ch.group.equals(currentCh.group)) groupChannels.add(ch);
         }
-        channelAdapter.notifyDataSetChanged();
-        epgAdapter.clear();
-    });
 
-    // 频道切换
-    lvChannel.setOnItemClickListener((parent, v, pos, id) -> {
-        Channel ch = groupChannels.get(pos);
-        int realIdx = channelSourceList.indexOf(ch);
-        playChannel(realIdx);
-        epgAdapter.clear();
-        epgAdapter.addAll(ch.epgList);
-        epgAdapter.notifyDataSetChanged();
-    });
+        ArrayAdapter<Channel> channelAdapter = new ArrayAdapter<Channel>(this, android.R.layout.simple_list_item_1, groupChannels) {
+            @Override
+            public View getView(int position, View convertView, ViewGroup parent) {
+                View v = super.getView(position, convertView, parent);
+                TextView tv = v.findViewById(android.R.id.text1);
+                tv.setText(((Channel) getItem(position)).name);
+                tv.setTextColor(Color.WHITE);
+                tv.setTextSize(16);
+                tv.setPadding(15, 18, 15, 18);
+                return v;
+            }
+        };
+        lvChannel.setAdapter(channelAdapter);
+        lvChannel.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
 
-    AlertDialog dialog = new AlertDialog.Builder(this)
-            .setView(view)
-            .setCancelable(true)
-            .show();
-    dialog.setOnDismissListener(dialogInterface -> playerView.requestFocus());
-}
+        ArrayAdapter<Channel.EpgItem> epgAdapter = new ArrayAdapter<Channel.EpgItem>(this, R.layout.item_epg, new ArrayList<>()) {
+            @Override
+            public View getView(int position, View convertView, ViewGroup parent) {
+                if (convertView == null) {
+                    convertView = LayoutInflater.from(getContext()).inflate(R.layout.item_epg, parent, false);
+                }
+                TextView tvDayName = convertView.findViewById(R.id.tv_dayName);
+                TextView tvTime = convertView.findViewById(R.id.tv_time);
+                TextView tvTitle = convertView.findViewById(R.id.tv_title);
+                Channel.EpgItem item = getItem(position);
+                tvDayName.setText(item.dayName);
+                tvTime.setText(item.time);
+                tvTitle.setText(item.title);
+                return convertView;
+            }
+        };
+        lvEpg.setAdapter(epgAdapter);
+
+        lvGroup.post(() -> {
+            lvGroup.setItemChecked(groupPos, true);
+            lvGroup.setSelection(groupPos);
+
+            int channelPos = groupChannels.indexOf(currentCh);
+            lvChannel.setItemChecked(channelPos, true);
+            lvChannel.setSelection(channelPos);
+
+            epgAdapter.clear();
+            epgAdapter.addAll(currentCh.epgList);
+            epgAdapter.notifyDataSetChanged();
+        });
+
+        lvGroup.setOnItemClickListener((parent, v, pos, id) -> {
+            String g = groupList.get(pos);
+            groupChannels.clear();
+            for (Channel ch : channelSourceList) {
+                if (ch.group.equals(g)) groupChannels.add(ch);
+            }
+            channelAdapter.notifyDataSetChanged();
+            epgAdapter.clear();
+        });
+
+        lvChannel.setOnItemClickListener((parent, v, pos, id) -> {
+            Channel ch = groupChannels.get(pos);
+            int realIdx = channelSourceList.indexOf(ch);
+            playChannel(realIdx);
+            epgAdapter.clear();
+            epgAdapter.addAll(ch.epgList);
+            epgAdapter.notifyDataSetChanged();
+        });
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setView(view)
+                .setCancelable(true)
+                .show();
+        dialog.setOnDismissListener(dialogInterface -> playerView.requestFocus());
+    }
 
     private void playReplay(String url) {
         isPlayingPlayback = true;
@@ -344,62 +362,92 @@ public class MainActivity extends AppCompatActivity {
         playbackPlayer.prepare();
         playbackPlayer.play();
     }
-    
+
     private void showSettingDialog() {
-    View v = LayoutInflater.from(this).inflate(R.layout.dialog_setting, null);
-    SharedPreferences sp = getSharedPreferences("tv_config", 0);
-    SharedPreferences.Editor ed = sp.edit();
+        View v = LayoutInflater.from(this).inflate(R.layout.dialog_setting, null);
+        SharedPreferences.Editor ed = sp.edit();
 
-    android.widget.Switch switch_reverse = v.findViewById(R.id.switch_reverse);
-    android.widget.Switch switch_boot = v.findViewById(R.id.switch_boot);
-    android.widget.Switch switch_update = v.findViewById(R.id.switch_update);
-    android.widget.Switch switch_line = v.findViewById(R.id.switch_line);
-    TextView btn_source = v.findViewById(R.id.btn_source);
-    TextView btn_epg = v.findViewById(R.id.btn_epg);
+        android.widget.Switch switch_reverse = v.findViewById(R.id.switch_reverse);
+        android.widget.Switch switch_boot = v.findViewById(R.id.switch_boot);
+        android.widget.Switch switch_update = v.findViewById(R.id.switch_update);
+        android.widget.Switch switch_line = v.findViewById(R.id.switch_line);
+        TextView btn_source = v.findViewById(R.id.btn_source);
+        TextView btn_epg = v.findViewById(R.id.btn_epg);
 
-    switch_reverse.setChecked(sp.getBoolean("reverse_channel", false));
-    switch_boot.setChecked(sp.getBoolean("boot_start", false));
-    switch_update.setChecked(sp.getBoolean("auto_update", true));
-    switch_line.setChecked(sp.getBoolean("auto_line", true));
+        switch_reverse.setChecked(sp.getBoolean("reverse_channel", false));
+        switch_boot.setChecked(sp.getBoolean("boot_start", false));
+        switch_update.setChecked(sp.getBoolean("auto_update", true));
+        switch_line.setChecked(sp.getBoolean("auto_line", true));
 
-    switch_reverse.setOnCheckedChangeListener((b, c) -> ed.putBoolean("reverse_channel", c).apply());
-    switch_boot.setOnCheckedChangeListener((b, c) -> ed.putBoolean("boot_start", c).apply());
-    switch_update.setOnCheckedChangeListener((b, c) -> ed.putBoolean("auto_update", c).apply());
-    switch_line.setOnCheckedChangeListener((b, c) -> ed.putBoolean("auto_line", c).apply());
+        switch_reverse.setOnCheckedChangeListener((b, c) -> ed.putBoolean("reverse_channel", c).apply());
+        switch_boot.setOnCheckedChangeListener((b, c) -> ed.putBoolean("boot_start", c).apply());
+        switch_update.setOnCheckedChangeListener((b, c) -> ed.putBoolean("auto_update", c).apply());
+        switch_line.setOnCheckedChangeListener((b, c) -> ed.putBoolean("auto_line", c).apply());
 
-    btn_source.setOnClickListener(v1 -> {
-        AlertDialog.Builder b = new AlertDialog.Builder(this);
-        b.setTitle("自定义订阅源");
-        android.widget.EditText edit = new android.widget.EditText(this);
-        edit.setText(sp.getString("custom_source", ""));
-        b.setView(edit);
-        b.setPositiveButton("保存", (d, w) -> {
-            ed.putString("custom_source", edit.getText().toString()).apply();
-            Toast.makeText(this, "已保存，重启生效", Toast.LENGTH_SHORT).show();
+        btn_source.setOnClickListener(v1 -> {
+            View dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_source_history, null);
+            EditText etSource = dialogView.findViewById(R.id.et_source);
+            ListView lvHistory = dialogView.findViewById(R.id.lv_history);
+            TextView tvClear = dialogView.findViewById(R.id.tv_clear);
+
+            etSource.setText(sp.getString("custom_source", ""));
+
+            ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, sourceHistoryList);
+            lvHistory.setAdapter(adapter);
+
+            lvHistory.setOnItemClickListener((parent, view1, position, id) -> {
+                String url = sourceHistoryList.get(position);
+                etSource.setText(url);
+            });
+
+            lvHistory.setOnItemLongClickListener((parent, view1, position, id) -> {
+                sourceHistoryList.remove(position);
+                adapter.notifyDataSetChanged();
+                sp.edit().putString("source_history_list", gson.toJson(sourceHistoryList)).apply();
+                Toast.makeText(this, "已删除", Toast.LENGTH_SHORT).show();
+                return true;
+            });
+
+            tvClear.setOnClickListener(view12 -> {
+                sourceHistoryList.clear();
+                adapter.notifyDataSetChanged();
+                sp.edit().remove("source_history_list").apply();
+                Toast.makeText(this, "已清空历史", Toast.LENGTH_SHORT).show();
+            });
+
+            new AlertDialog.Builder(this)
+                    .setTitle("自定义订阅源")
+                    .setView(dialogView)
+                    .setPositiveButton("保存", (dialog, which) -> {
+                        String url = etSource.getText().toString().trim();
+                        ed.putString("custom_source", url).apply();
+                        saveSourceHistory(url);
+                        Toast.makeText(this, "已保存，重启生效", Toast.LENGTH_SHORT).show();
+                    })
+                    .setNegativeButton("取消", null)
+                    .show();
         });
-        b.setNegativeButton("取消", null);
-        b.show();
-    });
 
-    btn_epg.setOnClickListener(v1 -> {
-        AlertDialog.Builder b = new AlertDialog.Builder(this);
-        b.setTitle("自定义节目单");
-        android.widget.EditText edit = new android.widget.EditText(this);
-        edit.setText(sp.getString("custom_epg", ""));
-        b.setView(edit);
-        b.setPositiveButton("保存", (d, w) -> {
-            ed.putString("custom_epg", edit.getText().toString()).apply();
-            Toast.makeText(this, "已保存，重启生效", Toast.LENGTH_SHORT).show();
+        btn_epg.setOnClickListener(v1 -> {
+            AlertDialog.Builder b = new AlertDialog.Builder(this);
+            b.setTitle("自定义节目单");
+            EditText edit = new EditText(this);
+            edit.setText(sp.getString("custom_epg", ""));
+            edit.setHint("xml / xml.gz");
+            b.setView(edit);
+            b.setPositiveButton("保存", (d, w) -> {
+                ed.putString("custom_epg", edit.getText().toString().trim()).apply();
+                Toast.makeText(this, "已保存，重启生效", Toast.LENGTH_SHORT).show();
+            });
+            b.setNegativeButton("取消", null);
+            b.show();
         });
-        b.setNegativeButton("取消", null);
-        b.show();
-    });
 
-    new AlertDialog.Builder(this)
-            .setView(v)
-            .setNegativeButton("关闭", null)
-            .show();
-}
+        new AlertDialog.Builder(this)
+                .setView(v)
+                .setNegativeButton("关闭", null)
+                .show();
+    }
 
     @Override
     public void onBackPressed() {

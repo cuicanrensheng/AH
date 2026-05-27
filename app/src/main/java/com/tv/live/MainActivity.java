@@ -643,35 +643,47 @@ public static class Setting {
     }
 
     private void downloadAndInstallApk(String url) {
-        Toast.makeText(this, "正在下载更新...", Toast.LENGTH_SHORT).show();
-        new Thread(() -> {
-            try {
-                URL apkUrl = new URL(url);
-                HttpURLConnection conn = (HttpURLConnection) apkUrl.openConnection();
-                conn.connect();
-                InputStream is = conn.getInputStream();
-                File apkFile = new File(getExternalCacheDir(), "update.apk");
-                FileOutputStream fos = new FileOutputStream(apkFile);
-                byte[] buffer = new byte[1024];
-                int len;
-                while ((len = is.read(buffer)) != -1) {
-                    fos.write(buffer, 0, len);
-                }
-                fos.close();
-                is.close();
-                conn.disconnect();
+    Toast.makeText(this, "正在下载更新...", Toast.LENGTH_SHORT).show();
+    new Thread(() -> {
+        HttpURLConnection conn = null;
+        InputStream is = null;
+        FileOutputStream fos = null;
+        try {
+            URL apkUrl = new URL(url);
+            conn = (HttpURLConnection) apkUrl.openConnection();
+            conn.setInstanceFollowRedirects(true);
+            conn.setConnectTimeout(15000);
+            conn.setReadTimeout(15000);
+            conn.connect();
 
-                runOnUiThread(() -> {
-                    Intent intent = new Intent(Intent.ACTION_VIEW);
-                    intent.setDataAndType(Uri.fromFile(apkFile), "application/vnd.android.package-archive");
-                    intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                    startActivity(intent);
-                });
-            } catch (Exception e) {
-                runOnUiThread(() -> Toast.makeText(this, "更新失败：" + e.getMessage(), Toast.LENGTH_SHORT).show());
+            is = conn.getInputStream();
+            File apkFile = new File(getExternalCacheDir(), "update.apk");
+            fos = new FileOutputStream(apkFile);
+            byte[] buffer = new byte[2048];
+            int len;
+            while ((len = is.read(buffer)) != -1) {
+                fos.write(buffer, 0, len);
             }
-        }).start();
-    }
+
+            runOnUiThread(() -> {
+                Intent intent = new Intent(Intent.ACTION_VIEW);
+                intent.setDataAndType(Uri.fromFile(apkFile), "application/vnd.android.package-archive");
+                intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                startActivity(intent);
+            });
+        } catch (Exception e) {
+            runOnUiThread(() -> Toast.makeText(this, "更新失败：" + e.getMessage(), Toast.LENGTH_SHORT).show());
+        } finally {
+            try {
+                if (fos != null) fos.close();
+                if (is != null) is.close();
+                if (conn != null) conn.disconnect();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    }).start();
+}
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {

@@ -11,6 +11,7 @@ import android.os.Bundle;
 import android.provider.Settings;
 import android.text.TextUtils;
 import android.view.GestureDetector;
+import android.view.KeyEvent; // 关键：导入KeyEvent
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
 import android.view.View;

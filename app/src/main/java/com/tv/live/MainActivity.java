@@ -209,111 +209,129 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void showChannelEpgDialog() {
-        if (channelSourceList.isEmpty()) {
-            Toast.makeText(this, "暂无频道", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        View view = LayoutInflater.from(this).inflate(R.layout.dialog_channel_epg, null);
-        ListView lvGroup = view.findViewById(R.id.lv_group);
-        ListView lvChannel = view.findViewById(R.id.lv_channel);
-        ListView lvEpg = view.findViewById(R.id.lv_epg);
-
-        Set<String> groupSet = new LinkedHashSet<>();
-        for (Channel ch : channelSourceList) groupSet.add(ch.group);
-        List<String> groupList = new ArrayList<>(groupSet);
-
-        ArrayAdapter<String> groupAdapter = new ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, groupList) {
-            @Override
-            public View getView(int position, View convertView, ViewGroup parent) {
-                View v = super.getView(position, convertView, parent);
-                TextView tv = v.findViewById(android.R.id.text1);
-                tv.setText(groupList.get(position));
-                tv.setTextColor(Color.WHITE);
-                tv.setTextSize(17);
-                tv.setPadding(15, 18, 15, 18);
-                return v;
-            }
-        };
-        lvGroup.setAdapter(groupAdapter);
-        lvGroup.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
-        lvGroup.setItemChecked(0, true);
-
-        List<Channel> groupChannels = new ArrayList<>();
-        String curGroup = groupList.get(0);
-        for (Channel ch : channelSourceList) {
-            if (ch.group.equals(curGroup)) groupChannels.add(ch);
-        }
-
-        ArrayAdapter<Channel> channelAdapter = new ArrayAdapter<Channel>(this, android.R.layout.simple_list_item_1, groupChannels) {
-            @Override
-            public View getView(int position, View convertView, ViewGroup parent) {
-                View v = super.getView(position, convertView, parent);
-                TextView tv = v.findViewById(android.R.id.text1);
-                Channel ch = getItem(position);
-                tv.setText(ch.name);
-                tv.setTextColor(Color.WHITE);
-                tv.setTextSize(16);
-                tv.setPadding(15, 18, 15, 18);
-                return v;
-            }
-        };
-        lvChannel.setAdapter(channelAdapter);
-
-        ArrayAdapter<Channel.EpgItem> epgAdapter = new ArrayAdapter<Channel.EpgItem>(this, R.layout.item_epg, new ArrayList<Channel.EpgItem>()) {
-            @Override
-            public View getView(int position, View convertView, ViewGroup parent) {
-                if (convertView == null) {
-                    convertView = LayoutInflater.from(getContext()).inflate(R.layout.item_epg, parent, false);
-                }
-                TextView tvDayName = convertView.findViewById(R.id.tv_dayName);
-                TextView tvTime = convertView.findViewById(R.id.tv_time);
-                TextView tvTitle = convertView.findViewById(R.id.tv_title);
-                Channel.EpgItem item = getItem(position);
-
-                tvDayName.setText(item.dayName);
-                tvTime.setText(item.time);
-                tvTitle.setText(item.title);
-                return convertView;
-            }
-        };
-        lvEpg.setAdapter(epgAdapter);
-
-        lvChannel.post(() -> {
-            int selIdx = groupChannels.indexOf(channelSourceList.get(currentPlayIndex));
-            lvChannel.setItemChecked(selIdx, true);
-            epgAdapter.clear();
-            epgAdapter.addAll(channelSourceList.get(currentPlayIndex).epgList);
-            epgAdapter.notifyDataSetChanged();
-        });
-
-        lvGroup.setOnItemClickListener((parent, v, pos, id) -> {
-            String g = groupList.get(pos);
-            List<Channel> newList = new ArrayList<>();
-            for (Channel ch : channelSourceList) {
-                if (ch.group.equals(g)) newList.add(ch);
-            }
-            groupChannels.clear();
-            groupChannels.addAll(newList);
-            channelAdapter.notifyDataSetChanged();
-            epgAdapter.clear();
-        });
-
-        lvChannel.setOnItemClickListener((parent, v, pos, id) -> {
-            Channel ch = groupChannels.get(pos);
-            int realIdx = channelSourceList.indexOf(ch);
-            playChannel(realIdx);
-            epgAdapter.clear();
-            epgAdapter.addAll(ch.epgList);
-            epgAdapter.notifyDataSetChanged();
-        });
-
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setView(view)
-                .setCancelable(true)
-                .show();
-        dialog.setOnDismissListener(dialogInterface -> playerView.requestFocus());
+    if (channelSourceList.isEmpty()) {
+        Toast.makeText(this, "暂无频道", Toast.LENGTH_SHORT).show();
+        return;
     }
+
+    View view = LayoutInflater.from(this).inflate(R.layout.dialog_channel_epg, null);
+    ListView lvGroup = view.findViewById(R.id.lv_group);
+    ListView lvChannel = view.findViewById(R.id.lv_channel);
+    ListView lvEpg = view.findViewById(R.id.lv_epg);
+
+    // 分组
+    Set<String> groupSet = new LinkedHashSet<>();
+    for (Channel ch : channelSourceList) groupSet.add(ch.group);
+    List<String> groupList = new ArrayList<>(groupSet);
+
+    ArrayAdapter<String> groupAdapter = new ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, groupList) {
+        @Override
+        public View getView(int position, View convertView, ViewGroup parent) {
+            View v = super.getView(position, convertView, parent);
+            TextView tv = v.findViewById(android.R.id.text1);
+            tv.setText(groupList.get(position));
+            tv.setTextColor(Color.WHITE);
+            tv.setTextSize(17);
+            tv.setPadding(15, 18, 15, 18);
+            return v;
+        }
+    };
+    lvGroup.setAdapter(groupAdapter);
+    lvGroup.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
+
+    // 当前频道 & 分组
+    Channel currentCh = channelSourceList.get(currentPlayIndex);
+    String currentGroupName = currentCh.group;
+    int groupPos = groupList.indexOf(currentGroupName);
+
+    // 频道列表
+    List<Channel> groupChannels = new ArrayList<>();
+    for (Channel ch : channelSourceList) {
+        if (ch.group.equals(currentGroupName)) {
+            groupChannels.add(ch);
+        }
+    }
+
+    ArrayAdapter<Channel> channelAdapter = new ArrayAdapter<Channel>(this, android.R.layout.simple_list_item_1, groupChannels) {
+        @Override
+        public View getView(int position, View convertView, ViewGroup parent) {
+            View v = super.getView(position, convertView, parent);
+            TextView tv = v.findViewById(android.R.id.text1);
+            Channel ch = getItem(position);
+            tv.setText(ch.name);
+            tv.setTextColor(Color.WHITE);
+            tv.setTextSize(16);
+            tv.setPadding(15, 18, 15, 18);
+            return v;
+        }
+    };
+    lvChannel.setAdapter(channelAdapter);
+    lvChannel.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
+
+    // EPG 适配器
+    ArrayAdapter<Channel.EpgItem> epgAdapter = new ArrayAdapter<Channel.EpgItem>(this, R.layout.item_epg, new ArrayList<Channel.EpgItem>()) {
+        @Override
+        public View getView(int position, View convertView, ViewGroup parent) {
+            if (convertView == null) {
+                convertView = LayoutInflater.from(getContext()).inflate(R.layout.item_epg, parent, false);
+            }
+            TextView tvDayName = convertView.findViewById(R.id.tv_dayName);
+            TextView tvTime = convertView.findViewById(R.id.tv_time);
+            TextView tvTitle = convertView.findViewById(R.id.tv_title);
+            Channel.EpgItem item = getItem(position);
+
+            tvDayName.setText(item.dayName);
+            tvTime.setText(item.time);
+            tvTitle.setText(item.title);
+            return convertView;
+        }
+    };
+    lvEpg.setAdapter(epgAdapter);
+
+    // ===================== 核心修复：自动定位 + 加载EPG =====================
+    lvGroup.post(() -> {
+        // 选中当前分组
+        lvGroup.setItemChecked(groupPos, true);
+        lvGroup.setSelection(groupPos);
+
+        // 选中当前频道并滚动
+        int channelPos = groupChannels.indexOf(currentCh);
+        lvChannel.setItemChecked(channelPos, true);
+        lvChannel.setSelection(channelPos);
+
+        // 加载当前频道节目单
+        epgAdapter.clear();
+        epgAdapter.addAll(currentCh.epgList);
+        epgAdapter.notifyDataSetChanged();
+    });
+
+    // 分组切换
+    lvGroup.setOnItemClickListener((parent, v, pos, id) -> {
+        String g = groupList.get(pos);
+        groupChannels.clear();
+        for (Channel ch : channelSourceList) {
+            if (ch.group.equals(g)) groupChannels.add(ch);
+        }
+        channelAdapter.notifyDataSetChanged();
+        epgAdapter.clear();
+    });
+
+    // 频道切换
+    lvChannel.setOnItemClickListener((parent, v, pos, id) -> {
+        Channel ch = groupChannels.get(pos);
+        int realIdx = channelSourceList.indexOf(ch);
+        playChannel(realIdx);
+        epgAdapter.clear();
+        epgAdapter.addAll(ch.epgList);
+        epgAdapter.notifyDataSetChanged();
+    });
+
+    AlertDialog dialog = new AlertDialog.Builder(this)
+            .setView(view)
+            .setCancelable(true)
+            .show();
+    dialog.setOnDismissListener(dialogInterface -> playerView.requestFocus());
+}
 
     private void playReplay(String url) {
         isPlayingPlayback = true;

@@ -87,10 +87,10 @@ public class MainActivity extends AppCompatActivity {
     private int currentRatioIndex = 0;
     private final String[] ratioNames = {"16:9", "4:3", "全屏"};
     private final int[] ratioModes = {
-        ExoPlayer.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING,
-        ExoPlayer.VIDEO_SCALING_MODE_SCALE_TO_FIT,
-        ExoPlayer.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING
-    };
+    com.google.android.exoplayer2.C.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING,
+    com.google.android.exoplayer2.C.VIDEO_SCALING_MODE_SCALE_TO_FIT,
+    com.google.android.exoplayer2.C.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING
+};
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {

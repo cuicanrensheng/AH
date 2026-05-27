@@ -92,7 +92,7 @@ public class EpgManager {
         return new ArrayList<>();
     }
 
-    private String getDayName(Calendar itemCal, Calendar todayCal) {
+     public String getDayName(Calendar itemCal, Calendar todayCal) {
         int today = todayCal.get(Calendar.DAY_OF_YEAR);
         int itemDay = itemCal.get(Calendar.DAY_OF_YEAR);
         int diff = itemDay - today;

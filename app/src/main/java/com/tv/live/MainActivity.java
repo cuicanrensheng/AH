@@ -25,7 +25,6 @@ import com.google.android.exoplayer2.PlaybackException;
 import com.google.android.exoplayer2.Player;
 import com.google.android.exoplayer2.ui.PlayerView;
 import java.util.ArrayList;
-import java.util.Calendar;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -33,6 +32,7 @@ import java.util.Set;
 public class MainActivity extends AppCompatActivity {
     public static MainActivity mInstance;
     public int currentChannelIndex = 0;
+    public int currentPlayIndex = 0;
 
     public static class Channel {
         public String name;
@@ -41,7 +41,7 @@ public class MainActivity extends AppCompatActivity {
         public List<EpgItem> epgList;
 
         public static class EpgItem {
-            public String day;
+            public String dayName;
             public String time;
             public String title;
             public String playUrl;
@@ -62,7 +62,6 @@ public class MainActivity extends AppCompatActivity {
     private boolean isPlayingPlayback = false;
     private PlayerView playerView;
     private SettingsManager setting;
-    public int currentPlayIndex = 0;
     private GestureDetector gestureDetector;
     private SharedPreferences sp;
     private boolean epgEnabled = true;
@@ -95,10 +94,10 @@ public class MainActivity extends AppCompatActivity {
 
         new Thread(() -> {
             try {
-                channelSourceList = PlaylistParser.parseWithRealName(LIVE_SOURCE_URL);
-                EpgManager.getInstance().loadEpg("http://epg.51zmt.top:8000/e.xml.gz", () -> runOnUiThread(() -> {
+                channelSourceList = PlaylistParser.parse(LIVE_SOURCE_URL);
+                EpgManager.getInstance().loadEpg(() -> runOnUiThread(() -> {
                     for (Channel ch : channelSourceList) {
-                        ch.epgList = EpgManager.getInstance().getEpgByChannelName(ch.name);
+                        ch.epgList = EpgManager.getInstance().getEpg(ch.name);
                     }
                     int playIdx = Math.min(lastPlayIndex, channelSourceList.size() - 1);
                     playChannel(playIdx);
@@ -109,7 +108,6 @@ public class MainActivity extends AppCompatActivity {
         }).start();
     }
 
-    // ====================== 遥控器核心逻辑 ======================
     @Override
     public boolean onKeyUp(int keyCode, KeyEvent event) {
         if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
@@ -128,27 +126,8 @@ public class MainActivity extends AppCompatActivity {
             showSettingDialog();
             return true;
         }
-        if (keyCode == KeyEvent.KEYCODE_0) playChannelByNum(0);
-        if (keyCode == KeyEvent.KEYCODE_1) playChannelByNum(1);
-        if (keyCode == KeyEvent.KEYCODE_2) playChannelByNum(2);
-        if (keyCode == KeyEvent.KEYCODE_3) playChannelByNum(3);
-        if (keyCode == KeyEvent.KEYCODE_4) playChannelByNum(4);
-        if (keyCode == KeyEvent.KEYCODE_5) playChannelByNum(5);
-        if (keyCode == KeyEvent.KEYCODE_6) playChannelByNum(6);
-        if (keyCode == KeyEvent.KEYCODE_7) playChannelByNum(7);
-        if (keyCode == KeyEvent.KEYCODE_8) playChannelByNum(8);
-        if (keyCode == KeyEvent.KEYCODE_9) playChannelByNum(9);
         return super.onKeyUp(keyCode, event);
     }
-
-    private void playChannelByNum(int num) {
-        if (channelSourceList.size() > num) {
-            playChannel(num);
-            Toast.makeText(this, "切换到频道 " + (num + 1), Toast.LENGTH_SHORT).show();
-        }
-    }
-
-    // ===========================================================
 
     private void initGesture() {
         gestureDetector = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
@@ -173,7 +152,6 @@ public class MainActivity extends AppCompatActivity {
                 return true;
             }
         });
-
         playerView.setOnTouchListener((v, event) -> {
             gestureDetector.onTouchEvent(event);
             return true;
@@ -239,7 +217,7 @@ public class MainActivity extends AppCompatActivity {
         for (Channel ch : channelSourceList) groupSet.add(ch.group);
         List<String> groupList = new ArrayList<>(groupSet);
 
-        ArrayAdapter<String> groupAdapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, groupList) {
+        ArrayAdapter<String> groupAdapter = new ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, groupList) {
             @Override
             public View getView(int position, View convertView, ViewGroup parent) {
                 View v = super.getView(position, convertView, parent);
@@ -261,7 +239,7 @@ public class MainActivity extends AppCompatActivity {
             if (ch.group.equals(curGroup)) groupChannels.add(ch);
         }
 
-        ArrayAdapter<Channel> channelAdapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, groupChannels) {
+        ArrayAdapter<Channel> channelAdapter = new ArrayAdapter<Channel>(this, android.R.layout.simple_list_item_1, groupChannels) {
             @Override
             public View getView(int position, View convertView, ViewGroup parent) {
                 View v = super.getView(position, convertView, parent);
@@ -275,30 +253,21 @@ public class MainActivity extends AppCompatActivity {
             }
         };
         lvChannel.setAdapter(channelAdapter);
-        lvChannel.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
 
-        ArrayAdapter<Channel.EpgItem> epgAdapter = new ArrayAdapter<>(this, R.layout.item_epg, new ArrayList<>()) {
+        ArrayAdapter<Channel.EpgItem> epgAdapter = new ArrayAdapter<Channel.EpgItem>(this, R.layout.item_epg, new ArrayList<Channel.EpgItem>()) {
             @Override
             public View getView(int position, View convertView, ViewGroup parent) {
                 if (convertView == null) {
                     convertView = LayoutInflater.from(getContext()).inflate(R.layout.item_epg, parent, false);
                 }
-                TextView tvDay = convertView.findViewById(R.id.tv_day);
+                TextView tvDayName = convertView.findViewById(R.id.tv_dayName);
                 TextView tvTime = convertView.findViewById(R.id.tv_time);
                 TextView tvTitle = convertView.findViewById(R.id.tv_title);
-                TextView tvReplay = convertView.findViewById(R.id.tv_replay);
                 Channel.EpgItem item = getItem(position);
 
-                tvDay.setText(item.day);
+                tvDayName.setText(item.dayName);
                 tvTime.setText(item.time);
                 tvTitle.setText(item.title);
-
-                if (TextUtils.isEmpty(item.playUrl)) {
-                    tvReplay.setVisibility(View.INVISIBLE);
-                } else {
-                    tvReplay.setVisibility(View.VISIBLE);
-                    tvReplay.setOnClickListener(v -> playReplay(item.playUrl));
-                }
                 return convertView;
             }
         };
@@ -337,7 +306,6 @@ public class MainActivity extends AppCompatActivity {
                 .setView(view)
                 .setCancelable(true)
                 .show();
-
         dialog.setOnDismissListener(dialogInterface -> playerView.requestFocus());
     }
 
@@ -357,7 +325,6 @@ public class MainActivity extends AppCompatActivity {
         View view = LayoutInflater.from(this).inflate(R.layout.dialog_setting, null);
         new AlertDialog.Builder(this)
                 .setTitle("播放设置")
-                .setView(view)
                 .setNegativeButton("关闭", null)
                 .show();
     }

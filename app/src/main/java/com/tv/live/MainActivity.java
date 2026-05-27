@@ -1,8 +1,8 @@
 package com.tv.live;
 
 import android.app.AlertDialog;
-import android.content.DialogInterface;
 import android.content.SharedPreferences;
+import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.os.Bundle;
 import android.text.TextUtils;
@@ -13,9 +13,9 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
-import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.EditText;
+import android.widget.ImageView;
 import android.widget.ListView;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -27,10 +27,19 @@ import com.google.android.exoplayer2.Player;
 import com.google.android.exoplayer2.ui.PlayerView;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
+import com.google.zxing.BarcodeFormat;
+import com.google.zxing.EncodeHintType;
+import com.google.zxing.QRCodeWriter;
+import com.google.zxing.common.BitMatrix;
 import java.lang.reflect.Type;
+import java.net.InetAddress;
+import java.net.NetworkInterface;
 import java.util.ArrayList;
+import java.util.Enumeration;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 public class MainActivity extends AppCompatActivity {
@@ -75,6 +84,14 @@ public class MainActivity extends AppCompatActivity {
     private List<String> sourceHistoryList = new ArrayList<>();
     private Gson gson = new Gson();
 
+    private int currentRatioIndex = 0;
+    private final String[] ratioNames = {"16:9", "4:3", "全屏"};
+    private final int[] ratioModes = {
+        ExoPlayer.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING,
+        ExoPlayer.VIDEO_SCALING_MODE_SCALE_TO_FIT,
+        ExoPlayer.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING
+    };
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -86,9 +103,10 @@ public class MainActivity extends AppCompatActivity {
         sp = getSharedPreferences("tv_config", MODE_PRIVATE);
         epgEnabled = sp.getBoolean("epgEnabled", true);
         lastPlayIndex = sp.getInt("last_play", 0);
+        currentRatioIndex = sp.getInt("play_ratio", 0);
+
         String customSource = sp.getString("custom_source", "");
         String customEpg = sp.getString("custom_epg", "");
-
         loadSourceHistory();
 
         playerView = findViewById(R.id.player_view);
@@ -135,11 +153,73 @@ public class MainActivity extends AppCompatActivity {
         if (TextUtils.isEmpty(url)) return;
         sourceHistoryList.remove(url);
         sourceHistoryList.add(0, url);
-        if (sourceHistoryList.size() > 10) {
-            sourceHistoryList = sourceHistoryList.subList(0, 10);
+        if (sourceHistoryList.size() > 10) sourceHistoryList = sourceHistoryList.subList(0, 10);
+        sp.edit().putString("source_history_list", gson.toJson(sourceHistoryList)).apply();
+    }
+
+    private void updatePlayerRatio() {
+        if (exoPlayer != null) {
+            exoPlayer.setVideoScalingMode(ratioModes[currentRatioIndex]);
         }
-        String json = gson.toJson(sourceHistoryList);
-        sp.edit().putString("source_history_list", json).apply();
+    }
+
+    private String getLocalIpAddress() {
+        try {
+            Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
+            while (interfaces.hasMoreElements()) {
+                NetworkInterface intf = interfaces.nextElement();
+                Enumeration<InetAddress> addrs = intf.getInetAddresses();
+                while (addrs.hasMoreElements()) {
+                    InetAddress addr = addrs.nextElement();
+                    if (!addr.isLoopbackAddress() && addr.isSiteLocalAddress()) {
+                        return addr.getHostAddress();
+                    }
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
+
+    private Bitmap generateQrCode(String text, int size) throws Exception {
+        Map<EncodeHintType, Object> hints = new HashMap<>();
+        hints.put(EncodeHintType.CHARACTER_SET, "UTF-8");
+        hints.put(EncodeHintType.MARGIN, 1);
+        BitMatrix matrix = new QRCodeWriter().encode(text, BarcodeFormat.QR_CODE, size, size, hints);
+        int[] pixels = new int[size * size];
+        for (int y = 0; y < size; y++) {
+            for (int x = 0; x < size; x++) {
+                pixels[y * size + x] = matrix.get(x, y) ? Color.BLACK : Color.WHITE;
+            }
+        }
+        Bitmap bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+        bmp.setPixels(pixels, 0, size, 0, 0, size, size);
+        return bmp;
+    }
+
+    private void showDynamicQrCodeDialog() {
+        String ip = getLocalIpAddress();
+        if (TextUtils.isEmpty(ip)) {
+            Toast.makeText(this, "获取IP失败", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        String url = "http://" + ip + ":10481";
+        try {
+            Bitmap bmp = generateQrCode(url, 320);
+            View v = LayoutInflater.from(this).inflate(R.layout.dialog_qrcode, null);
+            ImageView iv = v.findViewById(R.id.iv_qrcode);
+            TextView tip = v.findViewById(R.id.tv_tip);
+            iv.setImageBitmap(bmp);
+            tip.setText("扫码管理订阅源/EPG\n" + url);
+            new AlertDialog.Builder(this)
+                    .setTitle("扫码设置")
+                    .setView(v)
+                    .setPositiveButton("关闭", null)
+                    .show();
+        } catch (Exception e) {
+            Toast.makeText(this, "二维码生成失败", Toast.LENGTH_SHORT).show();
+        }
     }
 
     @Override
@@ -208,6 +288,7 @@ public class MainActivity extends AppCompatActivity {
     private void initExoPlayer() {
         exoPlayer = new ExoPlayer.Builder(this).build();
         playerView.setPlayer(exoPlayer);
+        updatePlayerRatio();
         exoPlayer.addListener(new Player.Listener() {
             @Override
             public void onPlayerError(PlaybackException error) {
@@ -315,11 +396,9 @@ public class MainActivity extends AppCompatActivity {
         lvGroup.post(() -> {
             lvGroup.setItemChecked(groupPos, true);
             lvGroup.setSelection(groupPos);
-
             int channelPos = groupChannels.indexOf(currentCh);
             lvChannel.setItemChecked(channelPos, true);
             lvChannel.setSelection(channelPos);
-
             epgAdapter.clear();
             epgAdapter.addAll(currentCh.epgList);
             epgAdapter.notifyDataSetChanged();
@@ -351,18 +430,6 @@ public class MainActivity extends AppCompatActivity {
         dialog.setOnDismissListener(dialogInterface -> playerView.requestFocus());
     }
 
-    private void playReplay(String url) {
-        isPlayingPlayback = true;
-        exoPlayer.pause();
-        if (playbackPlayer == null) {
-            playbackPlayer = new ExoPlayer.Builder(this).build();
-        }
-        playerView.setPlayer(playbackPlayer);
-        playbackPlayer.setMediaItem(MediaItem.fromUri(url));
-        playbackPlayer.prepare();
-        playbackPlayer.play();
-    }
-
     private void showSettingDialog() {
         View v = LayoutInflater.from(this).inflate(R.layout.dialog_setting, null);
         SharedPreferences.Editor ed = sp.edit();
@@ -371,55 +438,65 @@ public class MainActivity extends AppCompatActivity {
         android.widget.Switch switch_boot = v.findViewById(R.id.switch_boot);
         android.widget.Switch switch_update = v.findViewById(R.id.switch_update);
         android.widget.Switch switch_line = v.findViewById(R.id.switch_line);
+        TextView tv_ratio = v.findViewById(R.id.tv_ratio);
         TextView btn_source = v.findViewById(R.id.btn_source);
         TextView btn_epg = v.findViewById(R.id.btn_epg);
+        TextView btn_qrcode = v.findViewById(R.id.btn_qrcode);
 
         switch_reverse.setChecked(sp.getBoolean("reverse_channel", false));
         switch_boot.setChecked(sp.getBoolean("boot_start", false));
         switch_update.setChecked(sp.getBoolean("auto_update", true));
         switch_line.setChecked(sp.getBoolean("auto_line", true));
+        tv_ratio.setText(ratioNames[currentRatioIndex]);
 
         switch_reverse.setOnCheckedChangeListener((b, c) -> ed.putBoolean("reverse_channel", c).apply());
         switch_boot.setOnCheckedChangeListener((b, c) -> ed.putBoolean("boot_start", c).apply());
         switch_update.setOnCheckedChangeListener((b, c) -> ed.putBoolean("auto_update", c).apply());
         switch_line.setOnCheckedChangeListener((b, c) -> ed.putBoolean("auto_line", c).apply());
 
-        btn_source.setOnClickListener(v1 -> {
-            View dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_source_history, null);
-            EditText etSource = dialogView.findViewById(R.id.et_source);
-            ListView lvHistory = dialogView.findViewById(R.id.lv_history);
-            TextView tvClear = dialogView.findViewById(R.id.tv_clear);
+        tv_ratio.setOnClickListener(view -> {
+            currentRatioIndex = (currentRatioIndex + 1) % ratioNames.length;
+            tv_ratio.setText(ratioNames[currentRatioIndex]);
+            updatePlayerRatio();
+            ed.putInt("play_ratio", currentRatioIndex).apply();
+        });
 
-            etSource.setText(sp.getString("custom_source", ""));
+        btn_qrcode.setOnClickListener(view -> showDynamicQrCodeDialog());
 
-            ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, sourceHistoryList);
-            lvHistory.setAdapter(adapter);
+        btn_source.setOnClickListener(view1 -> {
+            View dv = LayoutInflater.from(this).inflate(R.layout.dialog_source_history, null);
+            EditText et = dv.findViewById(R.id.et_source);
+            ListView lv = dv.findViewById(R.id.lv_history);
+            TextView clear = dv.findViewById(R.id.tv_clear);
+            et.setText(sp.getString("custom_source", ""));
 
-            lvHistory.setOnItemClickListener((parent, view1, position, id) -> {
-                String url = sourceHistoryList.get(position);
-                etSource.setText(url);
+            ArrayAdapter<String> ad = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, sourceHistoryList);
+            lv.setAdapter(ad);
+
+            lv.setOnItemClickListener((parent, view12, position, id1) -> {
+                et.setText(sourceHistoryList.get(position));
             });
 
-            lvHistory.setOnItemLongClickListener((parent, view1, position, id) -> {
+            lv.setOnItemLongClickListener((parent, view13, position, id12) -> {
                 sourceHistoryList.remove(position);
-                adapter.notifyDataSetChanged();
+                ad.notifyDataSetChanged();
                 sp.edit().putString("source_history_list", gson.toJson(sourceHistoryList)).apply();
                 Toast.makeText(this, "已删除", Toast.LENGTH_SHORT).show();
                 return true;
             });
 
-            tvClear.setOnClickListener(view12 -> {
+            clear.setOnClickListener(view14 -> {
                 sourceHistoryList.clear();
-                adapter.notifyDataSetChanged();
+                ad.notifyDataSetChanged();
                 sp.edit().remove("source_history_list").apply();
-                Toast.makeText(this, "已清空历史", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "已清空", Toast.LENGTH_SHORT).show();
             });
 
             new AlertDialog.Builder(this)
                     .setTitle("自定义订阅源")
-                    .setView(dialogView)
+                    .setView(dv)
                     .setPositiveButton("保存", (dialog, which) -> {
-                        String url = etSource.getText().toString().trim();
+                        String url = et.getText().toString().trim();
                         ed.putString("custom_source", url).apply();
                         saveSourceHistory(url);
                         Toast.makeText(this, "已保存，重启生效", Toast.LENGTH_SHORT).show();
@@ -428,12 +505,12 @@ public class MainActivity extends AppCompatActivity {
                     .show();
         });
 
-        btn_epg.setOnClickListener(v1 -> {
+        btn_epg.setOnClickListener(view1 -> {
             AlertDialog.Builder b = new AlertDialog.Builder(this);
             b.setTitle("自定义节目单");
             EditText edit = new EditText(this);
             edit.setText(sp.getString("custom_epg", ""));
-            edit.setHint("xml / xml.gz");
+            edit.setHint("xml/xml.gz");
             b.setView(edit);
             b.setPositiveButton("保存", (d, w) -> {
                 ed.putString("custom_epg", edit.getText().toString().trim()).apply();

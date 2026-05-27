@@ -8,31 +8,23 @@ jobs:
   build:
     runs-on: ubuntu-22.04
     steps:
-      - name: 拉取仓库代码
+      - name: 拉取代码
         uses: actions/checkout@v4
 
-      # 直接用系统包安装JDK，完全绕开 github 下载
-      - name: 手动安装 OpenJDK 17
+      - name: 安装 JDK 17
         run: |
           sudo apt update
           sudo apt install -y openjdk-17-jdk
           echo "JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64" >> $GITHUB_ENV
-          export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
-
-      - name: 自动生成 Gradle Wrapper
-        run: gradle wrapper --gradle-version 9.5.1
 
       - name: 赋予执行权限
-        run: chmod +x gradlew
+        run: chmod +x ./gradlew
 
-      - name: 清理并刷新依赖
-        run: ./gradlew clean --refresh-dependencies
-
-      - name: 编译 Release 签名版 APK
+      - name: 编译 Release 版
         run: ./gradlew assembleRelease --stacktrace
 
-      - name: 上传成品 APK
+      - name: 上传 APK
         uses: actions/upload-artifact@v4
         with:
-          name: TVLive-直播APP
+          name: TVLive-APP
           path: app/build/outputs/apk/release/*.apk

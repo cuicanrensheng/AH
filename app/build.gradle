@@ -5,6 +5,11 @@ plugins {
 android {
     namespace "com.tv.live"
     compileSdk 34
+    
+       // 关键：启用 buildConfig 生成
+    buildFeatures {
+        buildConfig true
+    }
 
     defaultConfig {
         applicationId "com.tv.live"

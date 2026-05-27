@@ -49,7 +49,6 @@ public class EpgManager {
 
         while (xml.getEventType() != XmlPullParser.END_DOCUMENT) {
             String tag = xml.getName();
-
             if (xml.getEventType() == XmlPullParser.START_TAG) {
                 if ("channel".equals(tag)) currentChannel = xml.getAttributeValue(null, "id");
                 if ("display-name".equals(tag)) currentChannel = xml.nextText().trim();
@@ -76,7 +75,6 @@ public class EpgManager {
                     items.get(items.size() - 1).title = xml.nextText().trim();
                 }
             }
-
             if (xml.getEventType() == XmlPullParser.END_TAG && "programme".equals(tag)) {
                 channelEpg.put(currentChannel, new ArrayList<>(items));
                 items.clear();
@@ -98,11 +96,9 @@ public class EpgManager {
         int today = todayCal.get(Calendar.DAY_OF_YEAR);
         int itemDay = itemCal.get(Calendar.DAY_OF_YEAR);
         int diff = itemDay - today;
-
         if (diff == 0) return "今天";
         if (diff == 1) return "明天";
         if (diff == 2) return "后天";
-
         String[] week = {"星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"};
         int w = itemCal.get(Calendar.DAY_OF_WEEK) - 1;
         return w < 0 ? week[0] : week[w];

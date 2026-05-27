@@ -1,128 +1,131 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="wrap_content"
-    android:orientation="vertical"
-    android:padding="16dp">
+    android:layout_height="wrap_content">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:padding="8dp">
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <!-- 原来的所有控件都保留在这里 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:padding="8dp">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="频道反向切换"
+                android:textSize="15sp" />
+
+            <Switch
+                android:id="@+id/switch_reverse"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:padding="8dp">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="开机自启"
+                android:textSize="15sp" />
+
+            <Switch
+                android:id="@+id/switch_boot"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:padding="8dp">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="自动更新"
+                android:textSize="15sp" />
+
+            <Switch
+                android:id="@+id/switch_update"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:padding="8dp">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="自动切换线路"
+                android:textSize="15sp" />
+
+            <Switch
+                android:id="@+id/switch_line"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content" />
+        </LinearLayout>
 
         <TextView
-            android:layout_width="0dp"
+            android:id="@+id/tv_ratio"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="频道反向切换"
+            android:layout_marginTop="10dp"
+            android:background="#eeeeee"
+            android:padding="10dp"
+            android:text="画面比例"
             android:textSize="15sp" />
-
-        <Switch
-            android:id="@+id/switch_reverse"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content" />
-    </LinearLayout>
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:padding="8dp">
 
         <TextView
-            android:layout_width="0dp"
+            android:id="@+id/btn_source"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="开机自启"
+            android:layout_marginTop="10dp"
+            android:background="#eeeeee"
+            android:padding="10dp"
+            android:text="自定义直播源"
             android:textSize="15sp" />
-
-        <Switch
-            android:id="@+id/switch_boot"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content" />
-    </LinearLayout>
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:padding="8dp">
 
         <TextView
-            android:layout_width="0dp"
+            android:id="@+id/btn_epg"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="自动更新"
+            android:layout_marginTop="10dp"
+            android:background="#eeeeee"
+            android:padding="10dp"
+            android:text="自定义EPG"
             android:textSize="15sp" />
-
-        <Switch
-            android:id="@+id/switch_update"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content" />
-    </LinearLayout>
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:padding="8dp">
 
         <TextView
-            android:layout_width="0dp"
+            android:id="@+id/btn_qr"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="自动切换线路"
-            android:textSize="15sp" />
-
-        <Switch
-            android:id="@+id/switch_line"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content" />
-    </LinearLayout>
-
-    <TextView
-        android:id="@+id/tv_ratio"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="10dp"
-        android:background="#eeeeee"
-        android:padding="10dp"
-        android:text="画面比例"
-        android:textSize="15sp" />
-
-    <TextView
-        android:id="@+id/btn_source"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="10dp"
-        android:background="#eeeeee"
-        android:padding="10dp"
-        android:text="自定义直播源"
-        android:textSize="15sp" />
-
-    <TextView
-        android:id="@+id/btn_epg"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="10dp"
-        android:background="#eeeeee"
-        android:padding="10dp"
-        android:text="自定义EPG"
-        android:textSize="15sp" />
-
-    <TextView
-        android:id="@+id/btn_qr"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="10dp"
-        android:background="#eeeeee"
-        android:padding="10dp"
-        android:text="扫码设置"
-        android:textSize="15sp" />
-
-</LinearLayout>
+            android:layout_marginTop="10dp"
+            android:background="#eeeeee"
+            android:padding="10dp"
+            android:text="扫码设置"
+ 

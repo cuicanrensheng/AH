@@ -1,5 +1,5 @@
 package com.tv.live;
-
+import android.widget.Switch;
 import android.app.AlertDialog;
 import android.content.DialogInterface;
 import android.content.SharedPreferences;
@@ -332,10 +332,10 @@ public class MainActivity extends AppCompatActivity {
     SharedPreferences sp = getSharedPreferences("tv_config", 0);
     SharedPreferences.Editor ed = sp.edit();
 
-    Switch switch_reverse = v.findViewById(R.id.switch_reverse);
-    Switch switch_boot = v.findViewById(R.id.switch_boot);
-    Switch switch_update = v.findViewById(R.id.switch_update);
-    Switch switch_line = v.findViewById(R.id.switch_line);
+    android.widget.Switch switch_reverse = v.findViewById(R.id.switch_reverse);
+    android.widget.Switch switch_boot = v.findViewById(R.id.switch_boot);
+    android.widget.Switch switch_update = v.findViewById(R.id.switch_update);
+    android.widget.Switch switch_line = v.findViewById(R.id.switch_line);
     TextView btn_source = v.findViewById(R.id.btn_source);
     TextView btn_epg = v.findViewById(R.id.btn_epg);
 

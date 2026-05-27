@@ -1,10 +1,14 @@
 package com.tv.live;
 
 import android.app.AlertDialog;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.Color;
+import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.provider.Settings;
 import android.text.TextUtils;
 import android.view.GestureDetector;
 import android.view.KeyEvent;
@@ -20,6 +24,7 @@ import android.widget.ListView;
 import android.widget.TextView;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
+import com.google.android.exoplayer2.C;
 import com.google.android.exoplayer2.ExoPlayer;
 import com.google.android.exoplayer2.MediaItem;
 import com.google.android.exoplayer2.PlaybackException;
@@ -31,9 +36,17 @@ import com.google.zxing.BarcodeFormat;
 import com.google.zxing.EncodeHintType;
 import com.google.zxing.qrcode.QRCodeWriter;
 import com.google.zxing.common.BitMatrix;
+import org.json.JSONObject;
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.lang.reflect.Type;
+import java.net.HttpURLConnection;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.HashMap;
@@ -87,10 +100,14 @@ public class MainActivity extends AppCompatActivity {
     private int currentRatioIndex = 0;
     private final String[] ratioNames = {"16:9", "4:3", "全屏"};
     private final int[] ratioModes = {
-    com.google.android.exoplayer2.C.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING,
-    com.google.android.exoplayer2.C.VIDEO_SCALING_MODE_SCALE_TO_FIT,
-    com.google.android.exoplayer2.C.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING
-};
+        C.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING,
+        C.VIDEO_SCALING_MODE_SCALE_TO_FIT,
+        C.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING
+    };
+
+    // 自动更新配置（使用你的仓库地址）
+    private final String UPDATE_URL = "https://raw.githubusercontent.com/cuicanrensheng/AH/main/update.json";
+    private static final int REQUEST_INSTALL_PACKAGES = 1001;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -139,6 +156,11 @@ public class MainActivity extends AppCompatActivity {
                 runOnUiThread(() -> Toast.makeText(MainActivity.this, "加载失败", Toast.LENGTH_SHORT).show());
             }
         }).start();
+
+        // 自动更新检查
+        if (sp.getBoolean("auto_update", true)) {
+            checkUpdate();
+        }
     }
 
     private void loadSourceHistory() {
@@ -524,6 +546,102 @@ public class MainActivity extends AppCompatActivity {
                 .setView(v)
                 .setNegativeButton("关闭", null)
                 .show();
+    }
+
+    // 自动更新逻辑
+    private void checkUpdate() {
+        new Thread(() -> {
+            try {
+                URL url = new URL(UPDATE_URL);
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("GET");
+                conn.connect();
+
+                BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+                StringBuilder sb = new StringBuilder();
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    sb.append(line);
+                }
+                reader.close();
+                conn.disconnect();
+
+                JSONObject json = new JSONObject(sb.toString());
+                int latestVersion = json.getInt("versionCode");
+                String downloadUrl = json.getString("downloadUrl");
+                String updateMsg = json.getString("message");
+
+                if (latestVersion > BuildConfig.VERSION_CODE) {
+                    runOnUiThread(() -> showUpdateDialog(updateMsg, downloadUrl));
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }).start();
+    }
+
+    private void showUpdateDialog(String msg, String url) {
+        new AlertDialog.Builder(this)
+                .setTitle("发现新版本")
+                .setMessage(msg)
+                .setPositiveButton("立即更新", (d, w) -> {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        if (!getPackageManager().canRequestPackageInstalls()) {
+                            Intent intent = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                                    Uri.parse("package:" + getPackageName()));
+                            startActivityForResult(intent, REQUEST_INSTALL_PACKAGES);
+                            return;
+                        }
+                    }
+                    downloadAndInstallApk(url);
+                })
+                .setNegativeButton("稍后再说", null)
+                .show();
+    }
+
+    private void downloadAndInstallApk(String url) {
+        Toast.makeText(this, "正在下载更新...", Toast.LENGTH_SHORT).show();
+        new Thread(() -> {
+            try {
+                URL apkUrl = new URL(url);
+                HttpURLConnection conn = (HttpURLConnection) apkUrl.openConnection();
+                conn.connect();
+                InputStream is = conn.getInputStream();
+                File apkFile = new File(getExternalCacheDir(), "update.apk");
+                FileOutputStream fos = new FileOutputStream(apkFile);
+                byte[] buffer = new byte[1024];
+                int len;
+                while ((len = is.read(buffer)) != -1) {
+                    fos.write(buffer, 0, len);
+                }
+                fos.close();
+                is.close();
+                conn.disconnect();
+
+                runOnUiThread(() -> {
+                    Intent intent = new Intent(Intent.ACTION_VIEW);
+                    intent.setDataAndType(Uri.fromFile(apkFile), "application/vnd.android.package-archive");
+                    intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(intent);
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> Toast.makeText(this, "更新失败：" + e.getMessage(), Toast.LENGTH_SHORT).show());
+            }
+        }).start();
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQUEST_INSTALL_PACKAGES) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                if (getPackageManager().canRequestPackageInstalls()) {
+                    downloadAndInstallApk(sp.getString("latest_apk_url", ""));
+                } else {
+                    Toast.makeText(this, "需要开启安装未知应用权限才能更新", Toast.LENGTH_SHORT).show();
+                }
+            }
+        }
     }
 
     @Override

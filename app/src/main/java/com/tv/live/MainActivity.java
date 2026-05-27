@@ -61,6 +61,20 @@ public class MainActivity extends AppCompatActivity {
     public static MainActivity mInstance;
     public int currentChannelIndex = 0;
     public int currentPlayIndex = 0;
+    // 线路切换配置类
+private Setting setting = new Setting();
+
+public static class Setting {
+    private int line = 0;
+
+    public int getLine() {
+        return line;
+    }
+
+    public void setLine(int line) {
+        this.line = line;
+    }
+}
 
     public static class Channel {
         public String name;

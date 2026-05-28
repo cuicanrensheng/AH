@@ -92,8 +92,7 @@ public class MainActivity extends AppCompatActivity {
     private final String LIVE_SOURCE_URL = "https://gitee.com/qf_1111/iptv/raw/master/playlist.m3u";
     private List<String> sourceHistoryList = new ArrayList<>();
     private Gson gson = new Gson();
-    private int currentRatioIndex = 0;
-    private final String[] ratioNames = {"全屏", "16:9", "4:3"};
+    public int currentRatioIndex = 2; // 默认全屏
     private void setFullScreenRatio() {
         playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
     }
@@ -413,54 +412,113 @@ public class MainActivity extends AppCompatActivity {
                 .show();
         dialog.setOnDismissListener(dialog1 -> playerView.requestFocus());
     }
+    
+        private void showSettingDialog() {
+    View v = LayoutInflater.from(this).inflate(R.layout.dialog_setting, null);
+    SharedPreferences.Editor ed = sp.edit();
 
-    private void showSettingDialog() {
-        View v = LayoutInflater.from(this).inflate(R.layout.dialog_setting, null);
-        SharedPreferences.Editor ed = sp.edit();
-        Switch switch_reverse = v.findViewById(R.id.switch_reverse);
-        Switch switch_boot = v.findViewById(R.id.switch_boot);
-        Switch switch_update = v.findViewById(R.id.switch_update);
-        Switch switch_line = v.findViewById(R.id.switch_line);
-        TextView tv_ratio = v.findViewById(R.id.tv_ratio);
-        TextView btn_source = v.findViewById(R.id.btn_source);
-        TextView btn_epg = v.findViewById(R.id.btn_epg);
-        TextView btn_qr = v.findViewById(R.id.btn_qr);
-        switch_reverse.setChecked(sp.getBoolean("reverse_channel", false));
-        switch_boot.setChecked(sp.getBoolean("boot_start", false));
-        switch_update.setChecked(sp.getBoolean("auto_update", true));
-        switch_line.setChecked(sp.getBoolean("auto_line", true));
-        tv_ratio.setText(ratioNames[currentRatioIndex]);
+    Switch switch_reverse = v.findViewById(R.id.switch_reverse);
+    Switch switch_boot = v.findViewById(R.id.switch_boot);
+    Switch switch_update = v.findViewById(R.id.switch_update);
+    Switch switch_line = v.findViewById(R.id.switch_line);
+    TextView tv_ratio = v.findViewById(R.id.tv_ratio);
+    TextView btn_source = v.findViewById(R.id.btn_source);
+    TextView btn_epg = v.findViewById(R.id.btn_epg);
+    TextView btn_qr = v.findViewById(R.id.btn_qr);
 
-        switch_reverse.setOnCheckedChangeListener((buttonView, isChecked) -> {
-            sp.edit().putBoolean("reverse_channel", isChecked).apply();
-        });
+    // 比例选项（你要的4个）
+    final String[] ratioNames = {"4:3", "16:9", "全屏", "填充"};
 
-        switch_boot.setOnCheckedChangeListener((buttonView, isChecked) -> ed.putBoolean("boot_start", isChecked).apply());
-        switch_update.setOnCheckedChangeListener((buttonView, isChecked) -> ed.putBoolean("auto_update", isChecked).apply());
-        switch_line.setOnCheckedChangeListener((buttonView, isChecked) -> ed.putBoolean("auto_line", isChecked).apply());
-        tv_ratio.setOnClickListener(view -> {
-            currentRatioIndex = (currentRatioIndex + 1) % ratioNames.length;
-            tv_ratio.setText(ratioNames[currentRatioIndex]);
-            setFullScreenRatio();
-            Toast.makeText(MainActivity.this, "已切换："+ratioNames[currentRatioIndex], Toast.LENGTH_SHORT).show();
-        });
-        btn_qr.setOnClickListener(view -> showDynamicQrCodeDialog());
-        btn_source.setOnClickListener(view -> {
-            View ev = LayoutInflater.from(this).inflate(R.layout.dialog_edit, null);
-            EditText et = ev.findViewById(R.id.et_input);
-            et.setText(sp.getString("custom_source", ""));
-            new AlertDialog.Builder(this)
-                .setTitle("自定义直播源")
-                .setView(ev)
-                .setPositiveButton("保存", (dialog, which) -> {
-                    String url = et.getText().toString().trim();
-                    ed.putString("custom_source", url).apply();
-                    saveSourceHistory(url);
-                    Toast.makeText(this, "已保存，重启生效", Toast.LENGTH_SHORT).show();
+    switch_reverse.setChecked(sp.getBoolean("reverse_channel", false));
+    switch_boot.setChecked(sp.getBoolean("boot_start", false));
+    switch_update.setChecked(sp.getBoolean("auto_update", true));
+    switch_line.setChecked(sp.getBoolean("auto_line", true));
+    tv_ratio.setText(ratioNames[currentRatioIndex]);
+
+    // 反向切换
+    switch_reverse.setOnCheckedChangeListener((buttonView, isChecked) -> {
+        sp.edit().putBoolean("reverse_channel", isChecked).apply();
+    });
+    switch_boot.setOnCheckedChangeListener((buttonView, isChecked) -> ed.putBoolean("boot_start", isChecked).apply());
+    switch_update.setOnCheckedChangeListener((buttonView, isChecked) -> ed.putBoolean("auto_update", isChecked).apply());
+    switch_line.setOnCheckedChangeListener((buttonView, isChecked) -> ed.putBoolean("auto_line", isChecked).apply());
+
+    // ====================== 【修复：画面比例点击弹窗】 ======================
+    tv_ratio.setOnClickListener(view -> {
+        new AlertDialog.Builder(MainActivity.this)
+                .setTitle("画面比例")
+                .setItems(ratioNames, (dialog, which) -> {
+                    currentRatioIndex = which;
+                    tv_ratio.setText(ratioNames[currentRatioIndex]);
+
+                    // 真正切换4种比例
+                    switch (which) {
+                        case 0: // 4:3
+                            playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
+                            playerView.setAspectRatio(4f / 3);
+                            break;
+                        case 1: // 16:9
+                            playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
+                            playerView.setAspectRatio(16f / 9);
+                            break;
+                        case 2: // 全屏（裁切，不变形）
+                            playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_ZOOM);
+                            break;
+                        case 3: // 填充（拉伸满屏）
+                            playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
+                            break;
+                    }
+
+                    sp.edit().putInt("play_ratio", currentRatioIndex).apply();
+                    Toast.makeText(MainActivity.this, "已切换："+ratioNames[which], Toast.LENGTH_SHORT).show();
                 })
                 .setNegativeButton("取消", null)
                 .show();
-        });
+    });
+    // ====================================================================
+
+    btn_qr.setOnClickListener(view -> showDynamicQrCodeDialog());
+
+    btn_source.setOnClickListener(view -> {
+        View ev = LayoutInflater.from(this).inflate(R.layout.dialog_edit, null);
+        EditText et = ev.findViewById(R.id.et_input);
+        et.setText(sp.getString("custom_source", ""));
+        new AlertDialog.Builder(this)
+            .setTitle("自定义直播源")
+            .setView(ev)
+            .setPositiveButton("保存", (dialog, which) -> {
+                String url = et.getText().toString().trim();
+                ed.putString("custom_source", url).apply();
+                saveSourceHistory(url);
+                Toast.makeText(this, "已保存，重启生效", Toast.LENGTH_SHORT).show();
+            })
+            .setNegativeButton("取消", null)
+            .show();
+    });
+
+    btn_epg.setOnClickListener(view -> {
+        View ev = LayoutInflater.from(this).inflate(R.layout.dialog_edit, null);
+        EditText et = ev.findViewById(R.id.et_input);
+        et.setText(sp.getString("custom_epg", ""));
+        new AlertDialog.Builder(this)
+            .setTitle("自定义EPG")
+            .setView(ev)
+            .setPositiveButton("保存", (dialog, which) -> {
+                String url = et.getText().toString().trim();
+                ed.putString("custom_epg", url).apply();
+                Toast.makeText(this, "已保存，重启生效", Toast.LENGTH_SHORT).show();
+            })
+            .setNegativeButton("取消", null)
+            .show();
+    });
+
+    AlertDialog dialog = new AlertDialog.Builder(this)
+            .setView(v)
+            .setNegativeButton("关闭", null)
+            .show();
+    dialog.setOnDismissListener(dialog1 -> playerView.requestFocus());
+}
+
         btn_epg.setOnClickListener(view -> {
             View ev = LayoutInflater.from(this).inflate(R.layout.dialog_edit, null);
             EditText et = ev.findViewById(R.id.et_input);

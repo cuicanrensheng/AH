@@ -233,8 +233,8 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         String qrContent = "http://"+ip+":10481";
-        // 二维码尺寸改为300，适配扫码
-        int qrSize = 300;
+        // 二维码尺寸改为250，适配扫码
+        int qrSize = 250;
         try {
             BitMatrix matrix = new MultiFormatWriter().encode(qrContent, BarcodeFormat.QR_CODE, qrSize, qrSize);
             Bitmap bmp = Bitmap.createBitmap(qrSize, qrSize, Bitmap.Config.ARGB_8888);

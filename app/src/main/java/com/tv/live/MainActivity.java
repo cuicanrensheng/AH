@@ -117,7 +117,7 @@ public class MainActivity extends AppCompatActivity {
     private Gson gson = new Gson();
     public int currentRatioIndex = 2;
     private final String[] ratioNames = {"4:3", "16:9", "全屏", "填充"};
-    private static final String UPDATE_URL = "https://raw.githubusercontent.com/cuicanrensheng/AH/main/update.json";
+    private static final String UPDATE_URL = "https://cdn.jsdelivr.net/gh/cuicanrensheng/AH/main/update.json";
     private static final int REQUEST_INSTALL_PACKAGES = 1001;
     private String latestApkUrl = "";
     private HttpServer httpServer;
@@ -386,21 +386,17 @@ public class MainActivity extends AppCompatActivity {
             Toast.makeText(this, "暂无频道", Toast.LENGTH_SHORT).show();
             return;
         }
-
         View v = LayoutInflater.from(this).inflate(R.layout.dialog_channel_list, null);
         ListView lvGroup = v.findViewById(R.id.lv_group);
         ListView lvChannel = v.findViewById(R.id.lv_channel);
         ListView lvEpg = v.findViewById(R.id.lv_epg);
-
         Channel curr = channelSourceList.get(currentPlayIndex);
-
         Set<String> groupSet = new LinkedHashSet<>();
         for (Channel ch : channelSourceList) {
             groupSet.add(ch.group);
         }
         List<String> groupList = new ArrayList<>(groupSet);
         int gPos = groupList.indexOf(curr.group);
-
         ArrayAdapter<String> gAdapter = new ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, groupList) {
             @Override
             public View getView(int pos, View cv, ViewGroup p) {
@@ -414,14 +410,12 @@ public class MainActivity extends AppCompatActivity {
         };
         lvGroup.setAdapter(gAdapter);
         lvGroup.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
-
         List<Channel> gChannels = new ArrayList<>();
         for (Channel ch : channelSourceList) {
             if (ch.group.equals(curr.group)) {
                 gChannels.add(ch);
             }
         }
-
         ArrayAdapter<Channel> cAdapter = new ArrayAdapter<Channel>(this, android.R.layout.simple_list_item_1, gChannels) {
             @Override
             public View getView(int pos, View cv, ViewGroup p) {
@@ -435,7 +429,6 @@ public class MainActivity extends AppCompatActivity {
         };
         lvChannel.setAdapter(cAdapter);
         lvChannel.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
-
         ArrayAdapter<Channel.EpgItem> eAdapter = new ArrayAdapter<Channel.EpgItem>(this, R.layout.item_epg, new ArrayList<Channel.EpgItem>()) {
             @Override
             public View getView(int pos, View cv, ViewGroup p) {
@@ -458,7 +451,6 @@ public class MainActivity extends AppCompatActivity {
             }
         };
         lvEpg.setAdapter(eAdapter);
-
         lvGroup.post(new Runnable() {
             @Override
             public void run() {
@@ -472,7 +464,6 @@ public class MainActivity extends AppCompatActivity {
                 eAdapter.notifyDataSetChanged();
             }
         });
-
         lvGroup.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> parent, View view, int pos, long id) {
@@ -487,7 +478,6 @@ public class MainActivity extends AppCompatActivity {
                 eAdapter.clear();
             }
         });
-
         lvChannel.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> parent, View view, int pos, long id) {
@@ -499,7 +489,6 @@ public class MainActivity extends AppCompatActivity {
                 eAdapter.notifyDataSetChanged();
             }
         });
-
         lvEpg.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> parent, View view, int pos, long id) {
@@ -507,7 +496,6 @@ public class MainActivity extends AppCompatActivity {
                 playEpgItem(item);
             }
         });
-
         AlertDialog dialog = new AlertDialog.Builder(this)
                 .setView(v)
                 .setCancelable(true)
@@ -523,7 +511,6 @@ public class MainActivity extends AppCompatActivity {
     private void showSettingDialog() {
         View v = LayoutInflater.from(this).inflate(R.layout.dialog_setting, null);
         SharedPreferences.Editor ed = sp.edit();
-
         Switch switch_reverse = v.findViewById(R.id.switch_reverse);
         Switch switch_boot = v.findViewById(R.id.switch_boot);
         Switch switch_update = v.findViewById(R.id.switch_update);
@@ -531,12 +518,10 @@ public class MainActivity extends AppCompatActivity {
         TextView btn_source = v.findViewById(R.id.btn_source);
         TextView btn_epg = v.findViewById(R.id.btn_epg);
         TextView btn_qr = v.findViewById(R.id.btn_qr);
-
         switch_reverse.setChecked(sp.getBoolean("reverse_channel", false));
         switch_boot.setChecked(sp.getBoolean("boot_start", false));
         switch_update.setChecked(sp.getBoolean("auto_update", true));
         tv_ratio.setText(ratioNames[currentRatioIndex]);
-
         switch_reverse.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             @Override
             public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
@@ -556,7 +541,6 @@ public class MainActivity extends AppCompatActivity {
                 if (isChecked) checkUpdate();
             }
         });
-
         tv_ratio.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
@@ -575,14 +559,12 @@ public class MainActivity extends AppCompatActivity {
                         .show();
             }
         });
-
         btn_qr.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
                 showDynamicQrCodeDialog();
             }
         });
-
         btn_source.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
@@ -605,7 +587,6 @@ public class MainActivity extends AppCompatActivity {
                     .show();
             }
         });
-
         btn_epg.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
@@ -627,7 +608,6 @@ public class MainActivity extends AppCompatActivity {
                     .show();
             }
         });
-
         AlertDialog dialog = new AlertDialog.Builder(this)
                 .setView(v)
                 .setNegativeButton("关闭", null)
@@ -646,7 +626,7 @@ public class MainActivity extends AppCompatActivity {
         editor.putString("custom_epg", epgUrl);
         editor.apply();
         customSource = liveUrl;
-        customEpg = epgUrl;
+        customEpg = epg;
         runOnUiThread(new Runnable() {
             @Override
             public void run() {
@@ -656,83 +636,77 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void checkUpdate() {
-    new Thread(new Runnable() {
-        @Override
-        public void run() {
-            HttpURLConnection conn = null;
-            BufferedReader reader = null;
-            try {
-                URL url = new URL(UPDATE_URL);
-                conn = (HttpURLConnection) url.openConnection();
-                conn.setRequestMethod("GET");
-                conn.setConnectTimeout(10000);
-                conn.setReadTimeout(10000);
-                conn.connect();
-
-                int responseCode = conn.getResponseCode();
-                if (responseCode != 200) {
-                    return;
-                }
-
-                reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
-                StringBuilder sb = new StringBuilder();
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    sb.append(line);
-                }
-
-                JSONObject json = new JSONObject(sb.toString());
-                int serverVersionCode = json.getInt("versionCode");
-                String serverVersionName = json.getString("versionName");
-                String serverMessage = json.getString("message");
-                latestApkUrl = json.getString("downloadUrl");
-
-                // 直接从 BuildConfig 取当前版本号，不用自己写死
-                int currentVersionCode = BuildConfig.VERSION_CODE;
-
-                if (serverVersionCode > currentVersionCode) {
-                    final String finalServerVersionName = serverVersionName;
-                    final String finalServerMessage = serverMessage;
-                    runOnUiThread(new Runnable() {
-                        @Override
-                        public void run() {
-                            new AlertDialog.Builder(MainActivity.this)
-                                    .setTitle("发现新版本 v" + finalServerVersionName)
-                                    .setMessage(finalServerMessage)
-                                    .setPositiveButton("立即更新", new DialogInterface.OnClickListener() {
-                                        @Override
-                                        public void onClick(DialogInterface dialog, int which) {
-                                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                                if (!getPackageManager().canRequestPackageInstalls()) {
-                                                    Intent intent = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                                                            Uri.parse("package:" + getPackageName()));
-                                                    startActivityForResult(intent, REQUEST_INSTALL_PACKAGES);
-                                                    return;
-                                                }
-                                            }
-                                            startDownload();
-                                        }
-                                    })
-                                    .setNegativeButton("稍后再说", null)
-                                    .show();
-                        }
-                    });
-                }
-
-            } catch (Exception e) {
-                e.printStackTrace();
-            } finally {
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                HttpURLConnection conn = null;
+                BufferedReader reader = null;
                 try {
-                    if (reader != null) reader.close();
-                    if (conn != null) conn.disconnect();
-                } catch (IOException e) {
+                    URL url = new URL(UPDATE_URL);
+                    conn = (HttpURLConnection) url.openConnection();
+                    conn.setRequestMethod("GET");
+                    conn.setConnectTimeout(10000);
+                    conn.setReadTimeout(10000);
+                    conn.connect();
+                    int responseCode = conn.getResponseCode();
+                    if (responseCode != 200) {
+                        return;
+                    }
+                    reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+                    StringBuilder sb = new StringBuilder();
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        sb.append(line);
+                    }
+                    JSONObject json = new JSONObject(sb.toString());
+                    int serverVersionCode = json.getInt("versionCode");
+                    String serverVersionName = json.getString("versionName");
+                    String serverMessage = json.getString("message");
+                    latestApkUrl = json.getString("downloadUrl");
+                    int currentVersionCode = BuildConfig.VERSION_CODE;
+                    if (serverVersionCode > currentVersionCode) {
+                        final String finalServerVersionName = serverVersionName;
+                        final String finalServerMessage = serverMessage;
+                        runOnUiThread(new Runnable() {
+                            @Override
+                            public void run() {
+                                new AlertDialog.Builder(MainActivity.this)
+                                        .setTitle("发现新版本 v" + finalServerVersionName)
+                                        .setMessage(finalServerMessage)
+                                        .setPositiveButton("立即更新", new DialogInterface.OnClickListener() {
+                                            @Override
+                                            public void onClick(DialogInterface dialog, int which) {
+                                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                                    if (!getPackageManager().canRequestPackageInstalls()) {
+                                                        Intent intent = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                                                                Uri.parse("package:" + getPackageName()));
+                                                        startActivityForResult(intent, REQUEST_INSTALL_PACKAGES);
+                                                        return;
+                                                    }
+                                                }
+                                                startDownload();
+                                            }
+                                        })
+                                        .setNegativeButton("稍后再说", null)
+                                        .show();
+                            }
+                        });
+                    }
+                } catch (Exception e) {
                     e.printStackTrace();
+                } finally {
+                    try {
+                        if (reader != null) reader.close();
+                        if (conn != null) conn.disconnect();
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
                 }
             }
-        }
-    }).start();
-}
+        }).start();
+    }
 
+    // ====================== 修复闪退：最终版下载安装 ======================
     private void startDownload() {
         Toast.makeText(this, "开始下载更新…", Toast.LENGTH_SHORT).show();
         new Thread(new Runnable() {
@@ -746,21 +720,44 @@ public class MainActivity extends AppCompatActivity {
                     conn = (HttpURLConnection) url.openConnection();
                     conn.connect();
                     is = conn.getInputStream();
-                    File outFile = new File(getExternalCacheDir(), "update.apk");
+
+                    File outFile = new File(getExternalFilesDir("update"), "update.apk");
+                    if (!outFile.getParentFile().exists()) {
+                        outFile.getParentFile().mkdirs();
+                    }
+
                     fos = new FileOutputStream(outFile);
                     byte[] buf = new byte[8192];
                     int len;
-                    while ((len = is.read(buf)) != -1) fos.write(buf, 0, len);
+                    while ((len = is.read(buf)) != -1) {
+                        fos.write(buf, 0, len);
+                    }
+
                     runOnUiThread(new Runnable() {
                         @Override
                         public void run() {
-                            Intent intent = new Intent(Intent.ACTION_VIEW);
-                            intent.setDataAndType(Uri.fromFile(outFile), "application/vnd.android.package-archive");
-                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-                            startActivity(intent);
+                            try {
+                                Intent intent = new Intent(Intent.ACTION_VIEW);
+                                Uri uri;
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                                    uri = androidx.core.content.FileProvider.getUriForFile(
+                                        MainActivity.this,
+                                        getPackageName() + ".fileprovider",
+                                        outFile
+                                    );
+                                    intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                                } else {
+                                    uri = Uri.fromFile(outFile);
+                                }
+                                intent.setDataAndType(uri, "application/vnd.android.package-archive");
+                                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                                startActivity(intent);
+                            } catch (Exception e) {
+                                Toast.makeText(MainActivity.this, "安装失败", Toast.LENGTH_SHORT).show();
+                            }
                         }
                     });
+
                 } catch (Exception e) {
                     runOnUiThread(new Runnable() {
                         @Override

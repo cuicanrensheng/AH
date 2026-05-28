@@ -1,5 +1,5 @@
 package com.tv.live;
-import android.widget.CompoundButton;
+
 import android.app.AlertDialog;
 import android.content.DialogInterface;
 import android.content.Intent;
@@ -18,9 +18,11 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.ArrayAdapter;
+import android.widget.CompoundButton;
 import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.ListView;
+import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
@@ -54,7 +56,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import android.view.ViewGroup;
-import android.widget.Switch;
 import android.widget.AdapterView;
 
 public class MainActivity extends AppCompatActivity {
@@ -105,11 +106,9 @@ public class MainActivity extends AppCompatActivity {
         switch (index) {
             case 0:
                 playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
-                playerView.setAspectRatio(4f/3);
                 break;
             case 1:
                 playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
-                playerView.setAspectRatio(16f/9);
                 break;
             case 2:
                 playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_ZOOM);
@@ -499,25 +498,25 @@ public class MainActivity extends AppCompatActivity {
         switch_line.setChecked(sp.getBoolean("auto_line", true));
         tv_ratio.setText(ratioNames[currentRatioIndex]);
 
-        switch_reverse.setOnCheckedChangeListener(new Switch.OnCheckedChangeListener() {
+        switch_reverse.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             @Override
             public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
                 sp.edit().putBoolean("reverse_channel", isChecked).apply();
             }
         });
-        switch_boot.setOnCheckedChangeListener(new Switch.OnCheckedChangeListener() {
+        switch_boot.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             @Override
             public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
                 ed.putBoolean("boot_start", isChecked).apply();
             }
         });
-        switch_update.setOnCheckedChangeListener(new Switch.OnCheckedChangeListener() {
+        switch_update.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             @Override
             public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
                 ed.putBoolean("auto_update", isChecked).apply();
             }
         });
-        switch_line.setOnCheckedChangeListener(new Switch.OnCheckedChangeListener() {
+        switch_line.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             @Override
             public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
                 ed.putBoolean("auto_line", isChecked).apply();
@@ -603,6 +602,20 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onDismiss(DialogInterface dialog1) {
                 playerView.requestFocus();
+            }
+        });
+    }
+
+    public void onReceiveNewConfig(String liveUrl, String epgUrl) {
+        SharedPreferences.Editor ed = sp.edit();
+        ed.putString("custom_source", liveUrl);
+        ed.putString("custom_epg", epgUrl);
+        ed.apply();
+
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                Toast.makeText(MainActivity.this, "已保存配置，重启生效", Toast.LENGTH_SHORT).show();
             }
         });
     }

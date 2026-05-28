@@ -656,57 +656,82 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void checkUpdate() {
-        new Thread(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    URL url = new URL(UPDATE_URL);
-                    HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                    conn.setRequestMethod("GET");
-                    conn.connect();
-                    BufferedReader r = new BufferedReader(new InputStreamReader(conn.getInputStream()));
-                    StringBuilder sb = new StringBuilder();
-                    String line;
-                    while ((line = r.readLine()) != null) sb.append(line);
-                    r.close();
-                    conn.disconnect();
-                    JSONObject json = new JSONObject(sb.toString());
-                    int newCode = json.getInt("versionCode");
-                    String newName = json.getString("versionName");
-                    String msg = json.getString("message");
-                    latestApkUrl = json.getString("downloadUrl");
-                    int currentCode = getPackageManager().getPackageInfo(getPackageName(), 0).versionCode;
-                    if (newCode > currentCode) {
-                        runOnUiThread(new Runnable() {
-                            @Override
-                            public void run() {
-                                new AlertDialog.Builder(MainActivity.this)
-                                        .setTitle("更新：v" + newName)
-                                        .setMessage(msg)
-                                        .setPositiveButton("立即更新", new DialogInterface.OnClickListener() {
-                                            @Override
-                                            public void onClick(DialogInterface d, int w) {
-                                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                                    if (!getPackageManager().canRequestPackageInstalls()) {
-                                                        Intent intent = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + getPackageName()));
-                                                        startActivityForResult(intent, REQUEST_INSTALL_PACKAGES);
-                                                        return;
-                                                    }
+    new Thread(new Runnable() {
+        @Override
+        public void run() {
+            HttpURLConnection conn = null;
+            BufferedReader reader = null;
+            try {
+                URL url = new URL(UPDATE_URL);
+                conn = (HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("GET");
+                conn.setConnectTimeout(10000);
+                conn.setReadTimeout(10000);
+                conn.connect();
+
+                int responseCode = conn.getResponseCode();
+                if (responseCode != 200) {
+                    return;
+                }
+
+                reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+                StringBuilder sb = new StringBuilder();
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    sb.append(line);
+                }
+
+                JSONObject json = new JSONObject(sb.toString());
+                int serverVersionCode = json.getInt("versionCode");
+                String serverVersionName = json.getString("versionName");
+                String serverMessage = json.getString("message");
+                latestApkUrl = json.getString("downloadUrl");
+
+                // 直接从 BuildConfig 取当前版本号，不用自己写死
+                int currentVersionCode = BuildConfig.VERSION_CODE;
+
+                if (serverVersionCode > currentVersionCode) {
+                    final String finalServerVersionName = serverVersionName;
+                    final String finalServerMessage = serverMessage;
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            new AlertDialog.Builder(MainActivity.this)
+                                    .setTitle("发现新版本 v" + finalServerVersionName)
+                                    .setMessage(finalServerMessage)
+                                    .setPositiveButton("立即更新", new DialogInterface.OnClickListener() {
+                                        @Override
+                                        public void onClick(DialogInterface dialog, int which) {
+                                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                                if (!getPackageManager().canRequestPackageInstalls()) {
+                                                    Intent intent = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                                                            Uri.parse("package:" + getPackageName()));
+                                                    startActivityForResult(intent, REQUEST_INSTALL_PACKAGES);
+                                                    return;
                                                 }
-                                                startDownload();
                                             }
-                                        })
-                                        .setNegativeButton("稍后", null)
-                                        .show();
-                            }
-                        });
-                    }
-                } catch (Exception e) {
+                                            startDownload();
+                                        }
+                                    })
+                                    .setNegativeButton("稍后再说", null)
+                                    .show();
+                        }
+                    });
+                }
+
+            } catch (Exception e) {
+                e.printStackTrace();
+            } finally {
+                try {
+                    if (reader != null) reader.close();
+                    if (conn != null) conn.disconnect();
+                } catch (IOException e) {
                     e.printStackTrace();
                 }
             }
-        }).start();
-    }
+        }
+    }).start();
+}
 
     private void startDownload() {
         Toast.makeText(this, "开始下载更新…", Toast.LENGTH_SHORT).show();

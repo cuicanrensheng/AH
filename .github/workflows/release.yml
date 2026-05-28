@@ -2,7 +2,7 @@ name: Build & Release
 
 on:
   push:
-    branches: [ main ]  # 或你实际的主分支名
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
@@ -18,48 +18,40 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
           cache: gradle
-          
 
-      - name: 构建 APK
-       run: |
-        chmod +x ./gradlew
-        ./gradlew assembleRelease
+      - name: 赋予 Gradle 执行权限
+        run: chmod +x gradlew
 
-      - name: 上传构建产物（给后续步骤使用）
+      - name: 构建 Release APK
+        run: ./gradlew assembleRelease --stacktrace
+
+      - name: 生成 update.json
+        run: |
+          VERSION_CODE=${{ github.run_number }}
+          VERSION_NAME="1.0.$VERSION_CODE"
+          DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/v$VERSION_CODE/app-release.apk"
+          cat > update.json << EOF
+          {
+            "versionCode": $VERSION_CODE,
+            "versionName": "$VERSION_NAME",
+            "message": "自动更新版本",
+            "downloadUrl": "$DOWNLOAD_URL"
+          }
+          EOF
+
+      - name: 上传 APK 成品
         uses: actions/upload-artifact@v4
         with:
           name: TVLive-直播APP
           path: app/build/outputs/apk/release/app-release.apk
-          retention-days: 30
 
-  release:
-    needs: build
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: 下载构建产物
-        uses: actions/download-artifact@v4
-        with:
-          name: TVLive-直播APP
-
-      - name: 生成 update.json
-        run: |
-          cat > update.json <<EOF
-          {
-            "versionCode": ${{ github.run_number }},
-            "versionName": "1.${{ github.run_number }}",
-            "message": "修复了EPG显示问题，新增二维码扫码设置和画面比例切换",
-            "downloadUrl": "https://github.com/${{ github.repository }}/releases/download/v${{ github.run_number }}/app-release.apk"
-          }
-          EOF
-
-      - name: 创建 Release
+      - name: 创建并发布 Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ github.run_number }}
-          name: Release v${{ github.run_number }}
-          body: "版本 v${{ github.run_number }} 发布"
+          name: 自动发布 v${{ github.run_number }}
           files: |
-            app-release.apk
+            app/build/outputs/apk/release/app-release.apk
             update.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

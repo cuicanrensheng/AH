@@ -158,21 +158,37 @@ public class MainActivity extends AppCompatActivity {
             e.printStackTrace();
         }
 
-        new Thread(() -> {
-            try {
-                String playUrl = TextUtils.isEmpty(customSource) ? LIVE_SOURCE_URL : customSource;
-                channelSourceList = PlaylistParser.parse(playUrl);
-                String epgUrl = TextUtils.isEmpty(customEpg) ? "https://e.erw.cc/all.xml.gz" : customEpg;
-                EpgManager.getInstance().setEpgUrl(epgUrl);
-                EpgManager.getInstance().loadEpg(() -> runOnUiThread(() -> {
-                    for (Channel ch : channelSourceList) {
-                        ch.epgList = EpgManager.getInstance().getEpg(ch.name);
-                    }
-                    int playIdx = Math.min(lastPlayIndex, channelSourceList.size() - 1);
-                    playChannel(playIdx);
-                }));
-            } catch (Exception e) {
-                runOnUiThread(() -> Toast.makeText(MainActivity.this, "加载失败", Toast.LENGTH_SHORT).show());
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    String playUrl = TextUtils.isEmpty(customSource) ? LIVE_SOURCE_URL : customSource;
+                    channelSourceList = PlaylistParser.parse(playUrl);
+                    String epgUrl = TextUtils.isEmpty(customEpg) ? "https://e.erw.cc/all.xml.gz" : customEpg;
+                    EpgManager.getInstance().setEpgUrl(epgUrl);
+                    EpgManager.getInstance().loadEpg(new Runnable() {
+                        @Override
+                        public void run() {
+                            runOnUiThread(new Runnable() {
+                                @Override
+                                public void run() {
+                                    for (Channel ch : channelSourceList) {
+                                        ch.epgList = EpgManager.getInstance().getEpg(ch.name);
+                                    }
+                                    int playIdx = Math.min(lastPlayIndex, channelSourceList.size() - 1);
+                                    playChannel(playIdx);
+                                }
+                            });
+                        }
+                    });
+                } catch (Exception e) {
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            Toast.makeText(MainActivity.this, "加载失败", Toast.LENGTH_SHORT).show();
+                        }
+                    });
+                }
             }
         }).start();
 
@@ -308,7 +324,12 @@ public class MainActivity extends AppCompatActivity {
                 return true;
             }
         });
-        playerView.setOnTouchListener((v, event) -> gestureDetector.onTouchEvent(event));
+        playerView.setOnTouchListener(new View.OnTouchListener() {
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                return gestureDetector.onTouchEvent(event);
+            }
+        });
     }
 
     private void changeChannel(int delta) {
@@ -360,9 +381,6 @@ public class MainActivity extends AppCompatActivity {
         Toast.makeText(this, "回看：" + item.title, Toast.LENGTH_SHORT).show();
     }
 
-    // ————————————————————————————————————————————————————
-    // 【已修复：Java8 兼容，无钻石运算符，编译100%成功】
-    // ————————————————————————————————————————————————————
     private void showChannelListDialog() {
         if (channelSourceList.isEmpty()) {
             Toast.makeText(this, "暂无频道", Toast.LENGTH_SHORT).show();
@@ -441,48 +459,65 @@ public class MainActivity extends AppCompatActivity {
         };
         lvEpg.setAdapter(eAdapter);
 
-        lvGroup.post(() -> {
-            lvGroup.setItemChecked(gPos, true);
-            lvGroup.setSelection(gPos);
-            int cPos = gChannels.indexOf(curr);
-            lvChannel.setItemChecked(cPos, true);
-            lvChannel.setSelection(cPos);
-            eAdapter.clear();
-            eAdapter.addAll(curr.epgList);
-            eAdapter.notifyDataSetChanged();
-        });
-
-        lvGroup.setOnItemClickListener((parent, view, pos, id) -> {
-            String g = groupList.get(pos);
-            gChannels.clear();
-            for (Channel ch : channelSourceList) {
-                if (ch.group.equals(g)) {
-                    gChannels.add(ch);
-                }
+        lvGroup.post(new Runnable() {
+            @Override
+            public void run() {
+                lvGroup.setItemChecked(gPos, true);
+                lvGroup.setSelection(gPos);
+                int cPos = gChannels.indexOf(curr);
+                lvChannel.setItemChecked(cPos, true);
+                lvChannel.setSelection(cPos);
+                eAdapter.clear();
+                eAdapter.addAll(curr.epgList);
+                eAdapter.notifyDataSetChanged();
             }
-            cAdapter.notifyDataSetChanged();
-            eAdapter.clear();
         });
 
-        lvChannel.setOnItemClickListener((parent, view, pos, id) -> {
-            Channel ch = gChannels.get(pos);
-            int real = channelSourceList.indexOf(ch);
-            playChannel(real);
-            eAdapter.clear();
-            eAdapter.addAll(ch.epgList);
-            eAdapter.notifyDataSetChanged();
+        lvGroup.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+            @Override
+            public void onItemClick(AdapterView<?> parent, View view, int pos, long id) {
+                String g = groupList.get(pos);
+                gChannels.clear();
+                for (Channel ch : channelSourceList) {
+                    if (ch.group.equals(g)) {
+                        gChannels.add(ch);
+                    }
+                }
+                cAdapter.notifyDataSetChanged();
+                eAdapter.clear();
+            }
         });
 
-        lvEpg.setOnItemClickListener((parent, view, pos, id) -> {
-            Channel.EpgItem item = eAdapter.getItem(pos);
-            playEpgItem(item);
+        lvChannel.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+            @Override
+            public void onItemClick(AdapterView<?> parent, View view, int pos, long id) {
+                Channel ch = gChannels.get(pos);
+                int real = channelSourceList.indexOf(ch);
+                playChannel(real);
+                eAdapter.clear();
+                eAdapter.addAll(ch.epgList);
+                eAdapter.notifyDataSetChanged();
+            }
+        });
+
+        lvEpg.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+            @Override
+            public void onItemClick(AdapterView<?> parent, View view, int pos, long id) {
+                Channel.EpgItem item = eAdapter.getItem(pos);
+                playEpgItem(item);
+            }
         });
 
         AlertDialog dialog = new AlertDialog.Builder(this)
                 .setView(v)
                 .setCancelable(true)
                 .show();
-        dialog.setOnDismissListener(dialog1 -> playerView.requestFocus());
+        dialog.setOnDismissListener(new DialogInterface.OnDismissListener() {
+            @Override
+            public void onDismiss(DialogInterface dialog1) {
+                playerView.requestFocus();
+            }
+        });
     }
 
     private void showSettingDialog() {
@@ -502,70 +537,107 @@ public class MainActivity extends AppCompatActivity {
         switch_update.setChecked(sp.getBoolean("auto_update", true));
         tv_ratio.setText(ratioNames[currentRatioIndex]);
 
-        switch_reverse.setOnCheckedChangeListener((buttonView, isChecked) -> {
-            sp.edit().putBoolean("reverse_channel", isChecked).apply();
+        switch_reverse.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                sp.edit().putBoolean("reverse_channel", isChecked).apply();
+            }
         });
-        switch_boot.setOnCheckedChangeListener((buttonView, isChecked) -> {
-            ed.putBoolean("boot_start", isChecked).apply();
+        switch_boot.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                ed.putBoolean("boot_start", isChecked).apply();
+            }
         });
-        switch_update.setOnCheckedChangeListener((buttonView, isChecked) => {
-            ed.putBoolean("auto_update", isChecked).apply();
-            if (isChecked) checkUpdate();
+        switch_update.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                ed.putBoolean("auto_update", isChecked).apply();
+                if (isChecked) checkUpdate();
+            }
         });
 
-        tv_ratio.setOnClickListener(view -> {
-            new AlertDialog.Builder(MainActivity.this)
-                    .setTitle("画面比例")
-                    .setItems(ratioNames, (dialog, which) => {
-                        currentRatioIndex = which;
-                        tv_ratio.setText(ratioNames[currentRatioIndex]);
-                        setRatio(which);
-                        Toast.makeText(MainActivity.this, "已切换："+ratioNames[which], Toast.LENGTH_SHORT).show();
+        tv_ratio.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                new AlertDialog.Builder(MainActivity.this)
+                        .setTitle("画面比例")
+                        .setItems(ratioNames, new DialogInterface.OnClickListener() {
+                            @Override
+                            public void onClick(DialogInterface dialog, int which) {
+                                currentRatioIndex = which;
+                                tv_ratio.setText(ratioNames[currentRatioIndex]);
+                                setRatio(which);
+                                Toast.makeText(MainActivity.this, "已切换："+ratioNames[which], Toast.LENGTH_SHORT).show();
+                            }
+                        })
+                        .setNegativeButton("取消", null)
+                        .show();
+            }
+        });
+
+        btn_qr.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                showDynamicQrCodeDialog();
+            }
+        });
+
+        btn_source.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                View ev = LayoutInflater.from(MainActivity.this).inflate(R.layout.dialog_edit, null);
+                EditText et = ev.findViewById(R.id.et_input);
+                et.setText(sp.getString("custom_source", ""));
+                new AlertDialog.Builder(MainActivity.this)
+                    .setTitle("自定义直播源")
+                    .setView(ev)
+                    .setPositiveButton("保存", new DialogInterface.OnClickListener() {
+                        @Override
+                        public void onClick(DialogInterface dialog, int which) {
+                            String url = et.getText().toString().trim();
+                            ed.putString("custom_source", url).apply();
+                            saveSourceHistory(url);
+                            Toast.makeText(MainActivity.this, "已保存，重启生效", Toast.LENGTH_SHORT).show();
+                        }
                     })
                     .setNegativeButton("取消", null)
                     .show();
+            }
         });
 
-        btn_qr.setOnClickListener(view -> showDynamicQrCodeDialog());
-
-        btn_source.setOnClickListener(view -> {
-            View ev = LayoutInflater.from(MainActivity.this).inflate(R.layout.dialog_edit, null);
-            EditText et = ev.findViewById(R.id.et_input);
-            et.setText(sp.getString("custom_source", ""));
-            new AlertDialog.Builder(MainActivity.this)
-                .setTitle("自定义直播源")
-                .setView(ev)
-                .setPositiveButton("保存", (dialog, which) => {
-                    String url = et.getText().toString().trim();
-                    ed.putString("custom_source", url).apply();
-                    saveSourceHistory(url);
-                    Toast.makeText(MainActivity.this, "已保存，重启生效", Toast.LENGTH_SHORT).show();
-                })
-                .setNegativeButton("取消", null)
-                .show();
-        });
-
-        btn_epg.setOnClickListener(view -> {
-            View ev = LayoutInflater.from(MainActivity.this).inflate(R.layout.dialog_edit, null);
-            EditText et = ev.findViewById(R.id.et_input);
-            et.setText(sp.getString("custom_epg", ""));
-            new AlertDialog.Builder(MainActivity.this)
-                .setTitle("自定义EPG")
-                .setView(ev)
-                .setPositiveButton("保存", (dialog, which) => {
-                    String url = et.getText().toString().trim();
-                    ed.putString("custom_epg", url).apply();
-                    Toast.makeText(MainActivity.this, "已保存，重启生效", Toast.LENGTH_SHORT).show();
-                })
-                .setNegativeButton("取消", null)
-                .show();
+        btn_epg.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                View ev = LayoutInflater.from(MainActivity.this).inflate(R.layout.dialog_edit, null);
+                EditText et = ev.findViewById(R.id.et_input);
+                et.setText(sp.getString("custom_epg", ""));
+                new AlertDialog.Builder(MainActivity.this)
+                    .setTitle("自定义EPG")
+                    .setView(ev)
+                    .setPositiveButton("保存", new DialogInterface.OnClickListener() {
+                        @Override
+                        public void onClick(DialogInterface dialog, int which) {
+                            String url = et.getText().toString().trim();
+                            ed.putString("custom_epg", url).apply();
+                            Toast.makeText(MainActivity.this, "已保存，重启生效", Toast.LENGTH_SHORT).show();
+                        }
+                    })
+                    .setNegativeButton("取消", null)
+                    .show();
+            }
         });
 
         AlertDialog dialog = new AlertDialog.Builder(this)
                 .setView(v)
                 .setNegativeButton("关闭", null)
                 .show();
-        dialog.setOnDismissListener(dialog1 -> playerView.requestFocus());
+        dialog.setOnDismissListener(new DialogInterface.OnDismissListener() {
+            @Override
+            public void onDismiss(DialogInterface dialog1) {
+                playerView.requestFocus();
+            }
+        });
     }
 
     public void onReceiveNewConfig(String liveUrl, String epgUrl) {
@@ -575,84 +647,109 @@ public class MainActivity extends AppCompatActivity {
         editor.apply();
         customSource = liveUrl;
         customEpg = epgUrl;
-        runOnUiThread(() -> Toast.makeText(this, "配置已保存，重启生效", Toast.LENGTH_SHORT).show());
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                Toast.makeText(MainActivity.this, "配置已保存，重启生效", Toast.LENGTH_SHORT).show();
+            }
+        });
     }
 
     private void checkUpdate() {
-        new Thread(() -> {
-            try {
-                URL url = new URL(UPDATE_URL);
-                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                conn.setRequestMethod("GET");
-                conn.connect();
-                BufferedReader r = new BufferedReader(new InputStreamReader(conn.getInputStream()));
-                StringBuilder sb = new StringBuilder();
-                String line;
-                while ((line = r.readLine()) != null) sb.append(line);
-                r.close();
-                conn.disconnect();
-                JSONObject json = new JSONObject(sb.toString());
-                int newCode = json.getInt("versionCode");
-                String newName = json.getString("versionName");
-                String msg = json.getString("message");
-                latestApkUrl = json.getString("downloadUrl");
-                int currentCode = getPackageManager().getPackageInfo(getPackageName(), 0).versionCode;
-                if (newCode > currentCode) {
-                    runOnUiThread(() -> {
-                        new AlertDialog.Builder(MainActivity.this)
-                                .setTitle("更新：v" + newName)
-                                .setMessage(msg)
-                                .setPositiveButton("立即更新", (d, w) => {
-                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                        if (!getPackageManager().canRequestPackageInstalls()) {
-                                            Intent intent = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + getPackageName()));
-                                            startActivityForResult(intent, REQUEST_INSTALL_PACKAGES);
-                                            return;
-                                        }
-                                    }
-                                    startDownload();
-                                })
-                                .setNegativeButton("稍后", null)
-                                .show();
-                    });
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    URL url = new URL(UPDATE_URL);
+                    HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                    conn.setRequestMethod("GET");
+                    conn.connect();
+                    BufferedReader r = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+                    StringBuilder sb = new StringBuilder();
+                    String line;
+                    while ((line = r.readLine()) != null) sb.append(line);
+                    r.close();
+                    conn.disconnect();
+                    JSONObject json = new JSONObject(sb.toString());
+                    int newCode = json.getInt("versionCode");
+                    String newName = json.getString("versionName");
+                    String msg = json.getString("message");
+                    latestApkUrl = json.getString("downloadUrl");
+                    int currentCode = getPackageManager().getPackageInfo(getPackageName(), 0).versionCode;
+                    if (newCode > currentCode) {
+                        runOnUiThread(new Runnable() {
+                            @Override
+                            public void run() {
+                                new AlertDialog.Builder(MainActivity.this)
+                                        .setTitle("更新：v" + newName)
+                                        .setMessage(msg)
+                                        .setPositiveButton("立即更新", new DialogInterface.OnClickListener() {
+                                            @Override
+                                            public void onClick(DialogInterface d, int w) {
+                                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                                    if (!getPackageManager().canRequestPackageInstalls()) {
+                                                        Intent intent = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + getPackageName()));
+                                                        startActivityForResult(intent, REQUEST_INSTALL_PACKAGES);
+                                                        return;
+                                                    }
+                                                }
+                                                startDownload();
+                                            }
+                                        })
+                                        .setNegativeButton("稍后", null)
+                                        .show();
+                            }
+                        });
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
                 }
-            } catch (Exception e) {
-                e.printStackTrace();
             }
         }).start();
     }
 
     private void startDownload() {
         Toast.makeText(this, "开始下载更新…", Toast.LENGTH_SHORT).show();
-        new Thread(() -> {
-            HttpURLConnection conn = null;
-            InputStream is = null;
-            FileOutputStream fos = null;
-            try {
-                URL url = new URL(latestApkUrl);
-                conn = (HttpURLConnection) url.openConnection();
-                conn.connect();
-                is = conn.getInputStream();
-                File outFile = new File(getExternalCacheDir(), "update.apk");
-                fos = new FileOutputStream(outFile);
-                byte[] buf = new byte[8192];
-                int len;
-                while ((len = is.read(buf)) != -1) fos.write(buf, 0, len);
-                runOnUiThread(() -> {
-                    Intent intent = new Intent(Intent.ACTION_VIEW);
-                    intent.setDataAndType(Uri.fromFile(outFile), "application/vnd.android.package-archive");
-                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                    intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-                    startActivity(intent);
-                });
-            } catch (Exception e) {
-                runOnUiThread(() -> Toast.makeText(MainActivity.this, "下载失败", Toast.LENGTH_SHORT).show());
-            } finally {
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                HttpURLConnection conn = null;
+                InputStream is = null;
+                FileOutputStream fos = null;
                 try {
-                    if (fos != null) fos.close();
-                    if (is != null) is.close();
-                    if (conn != null) conn.disconnect();
-                } catch (Exception ignored) {}
+                    URL url = new URL(latestApkUrl);
+                    conn = (HttpURLConnection) url.openConnection();
+                    conn.connect();
+                    is = conn.getInputStream();
+                    File outFile = new File(getExternalCacheDir(), "update.apk");
+                    fos = new FileOutputStream(outFile);
+                    byte[] buf = new byte[8192];
+                    int len;
+                    while ((len = is.read(buf)) != -1) fos.write(buf, 0, len);
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            Intent intent = new Intent(Intent.ACTION_VIEW);
+                            intent.setDataAndType(Uri.fromFile(outFile), "application/vnd.android.package-archive");
+                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                            startActivity(intent);
+                        }
+                    });
+                } catch (Exception e) {
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            Toast.makeText(MainActivity.this, "下载失败", Toast.LENGTH_SHORT).show();
+                        }
+                    });
+                } finally {
+                    try {
+                        if (fos != null) fos.close();
+                        if (is != null) is.close();
+                        if (conn != null) conn.disconnect();
+                    } catch (Exception ignored) {}
+                }
             }
         }).start();
     }

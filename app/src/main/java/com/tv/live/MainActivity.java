@@ -393,14 +393,62 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void initExoPlayer() {
-        exoPlayer = new ExoPlayer.Builder(this).build();
-        playerView.setPlayer(exoPlayer);
-        setRatio(currentRatioIndex);
-        exoPlayer.addListener(new Player.Listener() {
-            @Override
-            public void onPlayerError(PlaybackException error) {}
-        });
+    // 支持所有直播源：虎牙/斗鱼/B站/IPTV/影视/轮播
+    exoPlayer = new ExoPlayer.Builder(this)
+        .setUseLazyPreparation(false)
+        .build();
+
+    playerView.setPlayer(exoPlayer);
+    setRatio(currentRatioIndex);
+
+    exoPlayer.addListener(new Player.Listener() {
+        @Override
+        public void onPlaybackStateChanged(int state) {
+            if (state == Player.STATE_IDLE || state == Player.STATE_ENDED) {
+                // 播放失败自动重试
+                if (!isPlayingPlayback) {
+                    tryAutoRetry();
+                }
+            }
+        }
+
+        @Override
+        public void onPlayerError(PlaybackException error) {
+            // 任何错误都自动切源 + 重试
+            runOnUiThread(() -> {
+                Toast.makeText(MainActivity.this, "播放失败，自动切换线路", Toast.LENGTH_SHORT).show();
+            });
+            tryNextSource();
+        }
+    });
+}
+
+// 自动重试播放
+private void tryAutoRetry() {
+    try {
+        exoPlayer.prepare();
+        exoPlayer.play();
+    } catch (Exception e) {
+        tryNextSource();
     }
+}
+
+// 自动切换下一条线路
+private void tryNextSource() {
+    if (channelSourceList == null || channelSourceList.isEmpty()) return;
+
+    Channel ch = channelSourceList.get(currentPlayIndex);
+    int nextLine = setting.getLine() + 1;
+    if (nextLine >= ch.urls.size()) {
+        nextLine = 0;
+    }
+    setting.setLine(nextLine);
+
+    runOnUiThread(() -> {
+        playChannel(currentPlayIndex);
+    });
+}
+
 
     private void playChannel(int index) {
         if (channelSourceList.isEmpty()) return;

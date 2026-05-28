@@ -1,6 +1,6 @@
 {
-  "versionCode": 2,
-  "versionName": "1.1",
-  "message": "修复EPG和更新功能",
-  "downloadUrl": "https://github.com/cuicanrensheng/AH/releases/download/v2/app-release.apk"
+  "versionCode": 135,
+  "versionName": "1.0.135",
+  "message": "自动更新版本",
+  "downloadUrl": "https://github.com/cuicanrensheng/AH/releases/download/v135/app-release.apk"
 }

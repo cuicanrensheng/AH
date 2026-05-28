@@ -20,10 +20,12 @@ public class XmlParser {
             SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMddHHmmss");
             String currentChannel = null;
             List<MainActivity.Channel.EpgItem> items = new ArrayList<>();
+            String tag = null;
 
             while (xml.getEventType() != XmlPullParser.END_DOCUMENT) {
-                String tag = xml.getName();
                 if (xml.getEventType() == XmlPullParser.START_TAG) {
+                    tag = xml.getName();
+
                     if ("channel".equals(tag)) {
                         currentChannel = xml.getAttributeValue(null, "id");
                     }
@@ -37,16 +39,24 @@ public class XmlParser {
 
                         Calendar sCal = Calendar.getInstance();
                         sCal.setTime(sdf.parse(start));
+                        
+                        // 已修复：getDayName 改为 public
                         String dayName = EpgManager.getInstance().getDayName(sCal, today);
                         String time = start.substring(8, 10) + ":" + start.substring(10, 12)
                                 + " - " + stop.substring(8, 10) + ":" + stop.substring(10, 12);
+                        
+                        // 回看地址（官方格式）
                         String playUrl = "http://epg.51zmt.top:8000/" + channelId + "/"
                                 + start.substring(0, 8) + "/" + start.substring(8, 14) + ".m3u8";
 
-                        MainActivity.Channel.EpgItem item = new MainActivity.Channel.EpgItem();
-                        item.dayName = dayName;
-                        item.time = time;
-                        item.playUrl = playUrl;
+                        // 已修复：使用有参构造，不再报错
+                        MainActivity.Channel.EpgItem item = new MainActivity.Channel.EpgItem(
+                                dayName,
+                                time,
+                                "",
+                                playUrl,
+                                false
+                        );
                         items.add(item);
                     }
                     if ("title".equals(tag)) {
@@ -57,7 +67,9 @@ public class XmlParser {
                 }
                 xml.next();
             }
-            callback.onParsed(currentChannel, items);
+            if (callback != null) {
+                callback.onParsed(currentChannel, items);
+            }
         } catch (Exception e) {
             e.printStackTrace();
         }

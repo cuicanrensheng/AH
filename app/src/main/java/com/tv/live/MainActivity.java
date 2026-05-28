@@ -255,32 +255,45 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    // ========== 修复后的反向切换按键逻辑 ==========
     @Override
     public boolean onKeyUp(int keyCode, KeyEvent event) {
-        boolean reverse = sp.getBoolean("reverse_channel", false);
+        // 每次按键都实时读取开关状态
+        boolean reverseEnabled = sp.getBoolean("reverse_channel", false);
+
         if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
-            changeChannel(reverse ? 1 : -1);
+            // 反向开启：上键 = 下一个频道
+            // 反向关闭：上键 = 上一个频道
+            changeChannel(reverseEnabled ? 1 : -1);
             return true;
         }
+
         if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
-            changeChannel(reverse ? -1 : 1);
+            // 反向开启：下键 = 上一个频道
+            // 反向关闭：下键 = 下一个频道
+            changeChannel(reverseEnabled ? -1 : 1);
             return true;
         }
+
         if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER) {
             showChannelListDialog();
             return true;
         }
+
         if (keyCode == KeyEvent.KEYCODE_MENU || keyCode == KeyEvent.KEYCODE_HELP) {
             showSettingDialog();
             return true;
         }
+
         if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
             showDynamicQrCodeDialog();
             return true;
         }
+
         return super.onKeyUp(keyCode, event);
     }
 
+    // ========== 修复后的手势滑动反向逻辑 ==========
     private void initGesture() {
         gestureDetector = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
             @Override public boolean onDown(MotionEvent e) { return true; }
@@ -295,7 +308,16 @@ public class MainActivity extends AppCompatActivity {
             @Override public boolean onFling(MotionEvent e1, MotionEvent e2, float vx, float vy) {
                 float dy = e2.getY() - e1.getY();
                 if (Math.abs(dy) > 60) {
-                    changeChannel(dy > 0 ? 1 : -1);
+                    boolean reverseEnabled = sp.getBoolean("reverse_channel", false);
+                    int delta;
+                    if (dy > 0) {
+                        // 手指向下滑
+                        delta = reverseEnabled ? -1 : 1;
+                    } else {
+                        // 手指向上滑
+                        delta = reverseEnabled ? 1 : -1;
+                    }
+                    changeChannel(delta);
                 }
                 return true;
             }

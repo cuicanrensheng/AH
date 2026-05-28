@@ -3,7 +3,8 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:padding="12dp">
+    android:padding="12dp"
+    android:background="?android:attr/selectableItemBackground">
 
     <!-- 日期 + 时间 行 -->
     <LinearLayout

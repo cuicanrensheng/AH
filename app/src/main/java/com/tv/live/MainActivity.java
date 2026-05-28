@@ -55,6 +55,7 @@ import java.util.List;
 import java.util.Set;
 import android.view.ViewGroup;
 import android.widget.Switch;
+import android.widget.AdapterView;
 
 public class MainActivity extends AppCompatActivity {
     public static MainActivity mInstance;
@@ -103,9 +104,7 @@ public class MainActivity extends AppCompatActivity {
         currentRatioIndex = index;
         if (index == 0) {
             playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_ZOOM);
-        } else if (index == 1) {
-            playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
-        } else if (index == 2) {
+        } else {
             playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
         }
         sp.edit().putInt("play_ratio", currentRatioIndex).apply();
@@ -513,7 +512,7 @@ public class MainActivity extends AppCompatActivity {
         ed.putString("custom_source", liveUrl);
         ed.putString("custom_epg", epgUrl);
         ed.apply();
-        runOnUiThread(() -> Toast.makeText(MainActivity.this, "收到新配置，刷新频道", Toast.LENGTH_SHORT).show());
+        runOnUiThread(() -> Toast.makeText(this, "收到新配置，刷新频道", Toast.LENGTH_SHORT).show());
         new Thread(() -> {
             try {
                 if (exoPlayer != null) exoPlayer.stop();

@@ -3,8 +3,8 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:padding="20dp"
-    android:background="#FF333333">
+    android:padding="16dp"
+    android:background="#FF222222">
 
     <Switch
         android:id="@+id/switch_reverse"
@@ -12,6 +12,7 @@
         android:layout_height="wrap_content"
         android:text="频道反向切换"
         android:textColor="#FFFFFF"
+        android:textSize="16sp"
         android:padding="10dp"/>
 
     <Switch
@@ -20,6 +21,7 @@
         android:layout_height="wrap_content"
         android:text="开机自启"
         android:textColor="#FFFFFF"
+        android:textSize="16sp"
         android:padding="10dp"/>
 
     <Switch
@@ -28,6 +30,7 @@
         android:layout_height="wrap_content"
         android:text="自动更新"
         android:textColor="#FFFFFF"
+        android:textSize="16sp"
         android:padding="10dp"/>
 
     <TextView
@@ -36,7 +39,8 @@
         android:layout_height="wrap_content"
         android:text="画面比例"
         android:textColor="#FFFFFF"
-        android:padding="10dp"
+        android:textSize="16sp"
+        android:padding="14dp"
         android:clickable="true"
         android:focusable="true"/>
 
@@ -46,7 +50,8 @@
         android:layout_height="wrap_content"
         android:text="自定义直播源"
         android:textColor="#FFFFFF"
-        android:padding="10dp"
+        android:textSize="16sp"
+        android:padding="14dp"
         android:clickable="true"
         android:focusable="true"/>
 
@@ -56,7 +61,8 @@
         android:layout_height="wrap_content"
         android:text="自定义EPG"
         android:textColor="#FFFFFF"
-        android:padding="10dp"
+        android:textSize="16sp"
+        android:padding="14dp"
         android:clickable="true"
         android:focusable="true"/>
 
@@ -66,9 +72,11 @@
         android:layout_height="wrap_content"
         android:text="扫码设置"
         android:textColor="#FFFFFF"
-        android:padding="10dp"
+        android:textSize="16sp"
+        android:padding="14dp"
         android:clickable="true"
         android:focusable="true"/>
 
 </LinearLayout>
+
 </ScrollView>

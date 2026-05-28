@@ -8,8 +8,8 @@
 
     <ImageView
         android:id="@+id/iv_qrcode"
-        android:layout_width="350dp"
-        android:layout_height="350dp"
+        android:layout_width="300dp"
+        android:layout_height="300dp"
         android:scaleType="fitCenter" />
 
     <TextView

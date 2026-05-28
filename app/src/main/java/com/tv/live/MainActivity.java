@@ -626,7 +626,7 @@ public class MainActivity extends AppCompatActivity {
         editor.putString("custom_epg", epgUrl);
         editor.apply();
         customSource = liveUrl;
-        customEpg = epg;
+        customEpg = epgUrl;
         runOnUiThread(new Runnable() {
             @Override
             public void run() {

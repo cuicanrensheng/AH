@@ -11,7 +11,6 @@ jobs:
       - name: 拉取仓库代码
         uses: actions/checkout@v4
 
-      # 直接用系统包安装JDK，完全绕开 github 下载
       - name: 手动安装 OpenJDK 17
         run: |
           sudo apt update
@@ -31,8 +30,46 @@ jobs:
       - name: 编译 Release 签名版 APK
         run: ./gradlew assembleRelease --stacktrace
 
+      # ====================== 自动生成 update.json（核心）======================
+      - name: 生成自动更新配置文件
+        run: |
+          VERSION_CODE=${{ github.run_number }}
+          VERSION_NAME="1.0.$VERSION_CODE"
+          DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/v$VERSION_CODE/app-release.apk"
+          cat > update.json << EOF
+          {
+            "versionCode": $VERSION_CODE,
+            "versionName": "$VERSION_NAME",
+            "message": "优化播放、修复画面比例、完善自动更新",
+            "downloadUrl": "$DOWNLOAD_URL"
+          }
+          EOF
+
+      # ====================== 上传APK ======================
       - name: 上传成品 APK
         uses: actions/upload-artifact@v4
         with:
           name: TVLive-直播APP
           path: app/build/outputs/apk/release/*.apk
+
+      # ====================== 上传更新配置 ======================
+      - name: 上传 update.json
+        uses: actions/upload-artifact@v4
+        with:
+          name: update-config
+          path: update.json
+
+      # ====================== 自动发布 Release（APP可更新）======================
+      - name: 创建并发布新版本
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ github.run_number }}
+          name: 自动发布 v${{ github.run_number }}
+          body: |
+            自动构建版本
+            版本号：${{ github.run_number }}
+          files: |
+            app/build/outputs/apk/release/app-release.apk
+            update.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

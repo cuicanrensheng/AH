@@ -9,8 +9,7 @@
     <ImageView
         android:id="@+id/iv_qrcode"
         android:layout_width="250dp"
-        android:layout_height="250dp"
-        android:scaleType="fitCenter" />
+        android:layout_height="250dp"/>
 
     <TextView
         android:id="@+id/tv_tip"
@@ -18,7 +17,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="12dp"
         android:text="扫码添加直播源/EPG"
-        android:textColor="#666"
+        android:textColor="#666666"
         android:textSize="14sp"
         android:gravity="center"/>
 

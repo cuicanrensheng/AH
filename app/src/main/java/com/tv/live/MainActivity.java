@@ -85,6 +85,9 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    // ====================== 修复缺失变量 ======================
+    private String customSource;
+    private String customEpg;
     public List<Channel> channelSourceList = new ArrayList<>();
     private ExoPlayer exoPlayer;
     private ExoPlayer playbackPlayer;
@@ -97,10 +100,77 @@ public class MainActivity extends AppCompatActivity {
     private final String LIVE_SOURCE_URL = "https://gitee.com/qf_1111/iptv/raw/master/playlist.m3u";
     private List<String> sourceHistoryList = new ArrayList<>();
     private Gson gson = new Gson();
-
     public int currentRatioIndex = 2;
     private final String[] ratioNames = {"4:3", "16:9", "全屏", "填充"};
 
+    private static final String UPDATE_URL = "https://raw.githubusercontent.com/cuicanrensheng/AH/main/update.json";
+    private static final int REQUEST_INSTALL_PACKAGES = 1001;
+    private String latestApkUrl = "";
+    private HttpServer httpServer;
+
+    // ====================== 初始化 ======================
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        setContentView(R.layout.activity_main);
+        mInstance = this;
+
+        sp = getSharedPreferences("tv_config", MODE_PRIVATE);
+
+        epgEnabled = sp.getBoolean("epgEnabled", true);
+        lastPlayIndex = sp.getInt("last_play", 0);
+        currentRatioIndex = sp.getInt("play_ratio", 2);
+        customSource = sp.getString("custom_source", "");
+        customEpg = sp.getString("custom_epg", "");
+
+        loadSourceHistory();
+
+        playerView = findViewById(R.id.player_view);
+        playerView.setUseController(false);
+        playerView.setFocusable(false);
+        playerView.setClickable(false);
+        playerView.setFocusableInTouchMode(true);
+        playerView.requestFocus();
+
+        initExoPlayer();
+        initGesture();
+
+        // 启动HTTP服务（扫码用）
+        try {
+            httpServer = new HttpServer(10481, this);
+            httpServer.start();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        // 加载直播源
+        new Thread(() -> {
+            try {
+                String playUrl = TextUtils.isEmpty(customSource) ? LIVE_SOURCE_URL : customSource;
+                channelSourceList = PlaylistParser.parse(playUrl);
+
+                String epgUrl = TextUtils.isEmpty(customEpg) ? "http://epg.51zmt.top:8000/e.xml.gz" : customEpg;
+                EpgManager.getInstance().setEpgUrl(epgUrl);
+                EpgManager.getInstance().loadEpg(() -> runOnUiThread(() -> {
+                    for (Channel ch : channelSourceList) {
+                        ch.epgList = EpgManager.getInstance().getEpg(ch.name);
+                    }
+                    int playIdx = Math.min(lastPlayIndex, channelSourceList.size()-1);
+                    playChannel(playIdx);
+                }));
+            } catch (Exception e) {
+                runOnUiThread(() -> Toast.makeText(MainActivity.this, "加载失败", Toast.LENGTH_SHORT).show());
+            }
+        }).start();
+
+        if (sp.getBoolean("auto_update", true)) {
+            checkUpdate();
+        }
+    }
+
+    // ====================== 画面比例 ======================
     private void setRatio(int index) {
         currentRatioIndex = index;
         switch (index) {
@@ -120,90 +190,7 @@ public class MainActivity extends AppCompatActivity {
         sp.edit().putInt("play_ratio", currentRatioIndex).apply();
     }
 
-    private static final String UPDATE_URL = "https://raw.githubusercontent.com/cuicanrensheng/AH/main/update.json";
-    private static final int REQUEST_INSTALL_PACKAGES = 1001;
-    private String latestApkUrl = "";
-    private HttpServer httpServer;
-
-     @Override
-    protected void onCreate(Bundle savedInstanceState) {
-    super.onCreate(savedInstanceState);
-    getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
-    getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-    setContentView(R.layout.activity_main);
-    mInstance = this;
-
-    // 初始化 SharedPreferences
-    sp = getSharedPreferences("tv_config", MODE_PRIVATE);
-
-    // ✅ 关键：读取持久化的配置，并赋值给成员变量
-    epgEnabled = sp.getBoolean("epgEnabled", true);
-    lastPlayIndex = sp.getInt("last_play", 0);
-    currentRatioIndex = sp.getInt("play_ratio", 2);
-    customSource = sp.getString("custom_source", "");
-    customEpg = sp.getString("custom_epg", "");
-
-    loadSourceHistory();
-
-    // 初始化播放器和界面
-    playerView = findViewById(R.id.player_view);
-    playerView.setUseController(false);
-    playerView.setFocusable(false);
-    playerView.setClickable(false);
-    playerView.setFocusableInTouchMode(true);
-    playerView.requestFocus();
-
-    // ✅ 关键：用读取到的配置加载直播源
-    initPlayer();
-    initGesture();
-    loadChannels();
-    startHttpServer();
-}
-
-        try {
-            httpServer = new HttpServer(10481, this);
-            httpServer.start();
-        } catch (Exception e) { e.printStackTrace(); }
-
-        new Thread(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    String playUrl = TextUtils.isEmpty(customSource) ? LIVE_SOURCE_URL : customSource;
-                    channelSourceList = PlaylistParser.parse(playUrl);
-                    String epgUrl = TextUtils.isEmpty(customEpg) ? "http://epg.51zmt.top:8000/e.xml.gz" : customEpg;
-                    EpgManager.getInstance().setEpgUrl(epgUrl);
-                    EpgManager.getInstance().loadEpg(new Runnable() {
-                        @Override
-                        public void run() {
-                            runOnUiThread(new Runnable() {
-                                @Override
-                                public void run() {
-                                    for (Channel ch : channelSourceList) {
-                                        ch.epgList = EpgManager.getInstance().getEpg(ch.name);
-                                    }
-                                    int playIdx = Math.min(lastPlayIndex, channelSourceList.size()-1);
-                                    playChannel(playIdx);
-                                }
-                            });
-                        }
-                    });
-                } catch (Exception e) {
-                    runOnUiThread(new Runnable() {
-                        @Override
-                        public void run() {
-                            Toast.makeText(MainActivity.this, "加载失败", Toast.LENGTH_SHORT).show();
-                        }
-                    });
-                }
-            }
-        }).start();
-
-        if (sp.getBoolean("auto_update", true)) {
-            checkUpdate();
-        }
-    }
-
+    // ====================== 历史源 ======================
     private void loadSourceHistory() {
         String json = sp.getString("source_history_list", "");
         Type type = new TypeToken<List<String>>(){}.getType();
@@ -221,6 +208,7 @@ public class MainActivity extends AppCompatActivity {
         sp.edit().putString("source_history_list", gson.toJson(sourceHistoryList)).apply();
     }
 
+    // ====================== 扫码设置 ======================
     private String getLocalIpAddress() {
         try {
             for (Enumeration<NetworkInterface> en = NetworkInterface.getNetworkInterfaces(); en.hasMoreElements(); ) {
@@ -243,7 +231,6 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         String qrContent = "http://"+ip+":10481";
-        // 二维码尺寸改为250，适配扫码
         int qrSize = 250;
         try {
             BitMatrix matrix = new MultiFormatWriter().encode(qrContent, BarcodeFormat.QR_CODE, qrSize, qrSize);
@@ -267,6 +254,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    // ====================== 按键 ======================
     @Override
     public boolean onKeyUp(int keyCode, KeyEvent event) {
         boolean rev = sp.getBoolean("reverse_channel", false);
@@ -293,6 +281,7 @@ public class MainActivity extends AppCompatActivity {
         return super.onKeyUp(keyCode, event);
     }
 
+    // ====================== 手势 ======================
     private void initGesture() {
         gestureDetector = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
             @Override public boolean onDown(MotionEvent e) { return true; }
@@ -313,12 +302,7 @@ public class MainActivity extends AppCompatActivity {
                 return true;
             }
         });
-        playerView.setOnTouchListener(new View.OnTouchListener() {
-            @Override
-            public boolean onTouch(View v, MotionEvent event) {
-                return gestureDetector.onTouchEvent(event);
-            }
-        });
+        playerView.setOnTouchListener((v, event) -> gestureDetector.onTouchEvent(event));
     }
 
     private void changeChannel(int delta) {
@@ -330,15 +314,15 @@ public class MainActivity extends AppCompatActivity {
         Toast.makeText(this, channelSourceList.get(idx).name, Toast.LENGTH_SHORT).show();
     }
 
+    // ====================== 播放器 ======================
     private void initExoPlayer() {
         exoPlayer = new ExoPlayer.Builder(this).build();
         playerView.setPlayer(exoPlayer);
         setRatio(currentRatioIndex);
-
         exoPlayer.addListener(new Player.Listener() {
             @Override
             public void onPlayerError(PlaybackException error) {
-                // 已删除自动切换线路逻辑
+                // 已删除自动切换线路
             }
         });
     }
@@ -357,6 +341,7 @@ public class MainActivity extends AppCompatActivity {
         sp.edit().putInt("last_play", index).apply();
     }
 
+    // ====================== 频道列表 ======================
     private void showChannelListDialog() {
         if (channelSourceList.isEmpty()) {
             Toast.makeText(this, "暂无频道", Toast.LENGTH_SHORT).show();
@@ -367,6 +352,7 @@ public class MainActivity extends AppCompatActivity {
         ListView lvChannel = v.findViewById(R.id.lv_channel);
         ListView lvEpg = v.findViewById(R.id.lv_epg);
         Channel curr = channelSourceList.get(currentPlayIndex);
+
         Set<String> groupSet = new LinkedHashSet<>();
         for (Channel ch : channelSourceList) groupSet.add(ch.group);
         List<String> groupList = new ArrayList<>(groupSet);
@@ -418,57 +404,44 @@ public class MainActivity extends AppCompatActivity {
         };
         lvEpg.setAdapter(eAdapter);
 
-        lvGroup.post(new Runnable() {
-            @Override
-            public void run() {
-                lvGroup.setItemChecked(gPos, true);
-                lvGroup.setSelection(gPos);
-                int cPos = gChannels.indexOf(curr);
-                lvChannel.setItemChecked(cPos, true);
-                lvChannel.setSelection(cPos);
-                eAdapter.clear();
-                eAdapter.addAll(curr.epgList);
-                eAdapter.notifyDataSetChanged();
-            }
+        lvGroup.post(() -> {
+            lvGroup.setItemChecked(gPos, true);
+            lvGroup.setSelection(gPos);
+            int cPos = gChannels.indexOf(curr);
+            lvChannel.setItemChecked(cPos, true);
+            lvChannel.setSelection(cPos);
+            eAdapter.clear();
+            eAdapter.addAll(curr.epgList);
+            eAdapter.notifyDataSetChanged();
         });
 
-        lvGroup.setOnItemClickListener(new AdapterView.OnItemClickListener() {
-            @Override
-            public void onItemClick(AdapterView<?> parent, View view, int pos, long id) {
-                String g = groupList.get(pos);
-                gChannels.clear();
-                for (Channel ch : channelSourceList) {
-                    if (ch.group.equals(g)) gChannels.add(ch);
-                }
-                cAdapter.notifyDataSetChanged();
-                eAdapter.clear();
+        lvGroup.setOnItemClickListener((parent, view, pos, id) -> {
+            String g = groupList.get(pos);
+            gChannels.clear();
+            for (Channel ch : channelSourceList) {
+                if (ch.group.equals(g)) gChannels.add(ch);
             }
+            cAdapter.notifyDataSetChanged();
+            eAdapter.clear();
         });
 
-        lvChannel.setOnItemClickListener(new AdapterView.OnItemClickListener() {
-            @Override
-            public void onItemClick(AdapterView<?> parent, View view, int pos, long id) {
-                Channel ch = gChannels.get(pos);
-                int real = channelSourceList.indexOf(ch);
-                playChannel(real);
-                eAdapter.clear();
-                eAdapter.addAll(ch.epgList);
-                eAdapter.notifyDataSetChanged();
-            }
+        lvChannel.setOnItemClickListener((parent, view, pos, id) -> {
+            Channel ch = gChannels.get(pos);
+            int real = channelSourceList.indexOf(ch);
+            playChannel(real);
+            eAdapter.clear();
+            eAdapter.addAll(ch.epgList);
+            eAdapter.notifyDataSetChanged();
         });
 
         AlertDialog dialog = new AlertDialog.Builder(this)
                 .setView(v)
                 .setCancelable(true)
                 .show();
-        dialog.setOnDismissListener(new DialogInterface.OnDismissListener() {
-            @Override
-            public void onDismiss(DialogInterface dialog1) {
-                playerView.requestFocus();
-            }
-        });
+        dialog.setOnDismissListener(dialog1 -> playerView.requestFocus());
     }
 
+    // ====================== 设置界面 ======================
     private void showSettingDialog() {
         View v = LayoutInflater.from(this).inflate(R.layout.dialog_setting, null);
         SharedPreferences.Editor ed = sp.edit();
@@ -486,124 +459,86 @@ public class MainActivity extends AppCompatActivity {
         switch_update.setChecked(sp.getBoolean("auto_update", true));
         tv_ratio.setText(ratioNames[currentRatioIndex]);
 
-        switch_reverse.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
-            @Override
-            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-                sp.edit().putBoolean("reverse_channel", isChecked).apply();
-            }
+        switch_reverse.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            sp.edit().putBoolean("reverse_channel", isChecked).apply();
         });
-        switch_boot.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
-            @Override
-            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-                ed.putBoolean("boot_start", isChecked).apply();
-            }
+        switch_boot.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            ed.putBoolean("boot_start", isChecked).apply();
         });
-        switch_update.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
-            @Override
-            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-                ed.putBoolean("auto_update", isChecked).apply();
-                if (isChecked) checkUpdate();
-            }
+        switch_update.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            ed.putBoolean("auto_update", isChecked).apply();
+            if (isChecked) checkUpdate();
         });
 
-        tv_ratio.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                new AlertDialog.Builder(MainActivity.this)
-                        .setTitle("画面比例")
-                        .setItems(ratioNames, new DialogInterface.OnClickListener() {
-                            @Override
-                            public void onClick(DialogInterface dialog, int which) {
-                                currentRatioIndex = which;
-                                tv_ratio.setText(ratioNames[currentRatioIndex]);
-                                setRatio(which);
-                                Toast.makeText(MainActivity.this, "已切换："+ratioNames[which], Toast.LENGTH_SHORT).show();
-                            }
-                        })
-                        .setNegativeButton("取消", null)
-                        .show();
-            }
-        });
-
-        btn_qr.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                showDynamicQrCodeDialog();
-            }
-        });
-
-        btn_source.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                View ev = LayoutInflater.from(MainActivity.this).inflate(R.layout.dialog_edit, null);
-                EditText et = ev.findViewById(R.id.et_input);
-                et.setText(sp.getString("custom_source", ""));
-                new AlertDialog.Builder(MainActivity.this)
-                    .setTitle("自定义直播源")
-                    .setView(ev)
-                    .setPositiveButton("保存", new DialogInterface.OnClickListener() {
-                        @Override
-                        public void onClick(DialogInterface dialog, int which) {
-                            String url = et.getText().toString().trim();
-                            ed.putString("custom_source", url).apply();
-                            saveSourceHistory(url);
-                            Toast.makeText(MainActivity.this, "已保存，重启生效", Toast.LENGTH_SHORT).show();
-                        }
+        tv_ratio.setOnClickListener(view -> {
+            new AlertDialog.Builder(MainActivity.this)
+                    .setTitle("画面比例")
+                    .setItems(ratioNames, (dialog, which) -> {
+                        currentRatioIndex = which;
+                        tv_ratio.setText(ratioNames[currentRatioIndex]);
+                        setRatio(which);
+                        Toast.makeText(MainActivity.this, "已切换："+ratioNames[which], Toast.LENGTH_SHORT).show();
                     })
                     .setNegativeButton("取消", null)
                     .show();
-            }
         });
 
-        btn_epg.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                View ev = LayoutInflater.from(MainActivity.this).inflate(R.layout.dialog_edit, null);
-                EditText et = ev.findViewById(R.id.et_input);
-                et.setText(sp.getString("custom_epg", ""));
-                new AlertDialog.Builder(MainActivity.this)
-                    .setTitle("自定义EPG")
-                    .setView(ev)
-                    .setPositiveButton("保存", new DialogInterface.OnClickListener() {
-                        @Override
-                        public void onClick(DialogInterface dialog, int which) {
-                            String url = et.getText().toString().trim();
-                            ed.putString("custom_epg", url).apply();
-                            Toast.makeText(MainActivity.this, "已保存，重启生效", Toast.LENGTH_SHORT).show();
-                        }
-                    })
-                    .setNegativeButton("取消", null)
-                    .show();
-            }
+        btn_qr.setOnClickListener(view -> showDynamicQrCodeDialog());
+
+        btn_source.setOnClickListener(view -> {
+            View ev = LayoutInflater.from(MainActivity.this).inflate(R.layout.dialog_edit, null);
+            EditText et = ev.findViewById(R.id.et_input);
+            et.setText(sp.getString("custom_source", ""));
+            new AlertDialog.Builder(MainActivity.this)
+                .setTitle("自定义直播源")
+                .setView(ev)
+                .setPositiveButton("保存", (dialog, which) -> {
+                    String url = et.getText().toString().trim();
+                    ed.putString("custom_source", url).apply();
+                    saveSourceHistory(url);
+                    Toast.makeText(MainActivity.this, "已保存，重启生效", Toast.LENGTH_SHORT).show();
+                })
+                .setNegativeButton("取消", null)
+                .show();
+        });
+
+        btn_epg.setOnClickListener(view -> {
+            View ev = LayoutInflater.from(MainActivity.this).inflate(R.layout.dialog_edit, null);
+            EditText et = ev.findViewById(R.id.et_input);
+            et.setText(sp.getString("custom_epg", ""));
+            new AlertDialog.Builder(MainActivity.this)
+                .setTitle("自定义EPG")
+                .setView(ev)
+                .setPositiveButton("保存", (dialog, which) -> {
+                    String url = et.getText().toString().trim();
+                    ed.putString("custom_epg", url).apply();
+                    Toast.makeText(MainActivity.this, "已保存，重启生效", Toast.LENGTH_SHORT).show();
+                })
+                .setNegativeButton("取消", null)
+                .show();
         });
 
         AlertDialog dialog = new AlertDialog.Builder(this)
                 .setView(v)
                 .setNegativeButton("关闭", null)
                 .show();
-        dialog.setOnDismissListener(new DialogInterface.OnDismissListener() {
-            @Override
-            public void onDismiss(DialogInterface dialog1) {
-                playerView.requestFocus();
-            }
-        });
+        dialog.setOnDismissListener(dialog1 -> playerView.requestFocus());
     }
 
+    // ====================== 扫码接收配置（核心修复） ======================
     public void onReceiveNewConfig(String liveUrl, String epgUrl) {
-    // 写入 SharedPreferences 持久化保存
-    SharedPreferences sp = getSharedPreferences("tv_config", MODE_PRIVATE);
-    SharedPreferences.Editor editor = sp.edit();
-    editor.putString("custom_source", liveUrl);
-    editor.putString("custom_epg", epgUrl);
-    editor.apply(); // 必须 apply() 提交，否则数据不会保存
+        SharedPreferences.Editor editor = sp.edit();
+        editor.putString("custom_source", liveUrl);
+        editor.putString("custom_epg", epgUrl);
+        editor.apply();
 
-    // 同时更新内存中的变量
-    this.customSource = liveUrl;
-    this.customEpg = epgUrl;
+        this.customSource = liveUrl;
+        this.customEpg = epgUrl;
 
-    Toast.makeText(this, "配置已保存，重启生效", Toast.LENGTH_SHORT).show();
-}
+        runOnUiThread(() -> Toast.makeText(this, "配置已保存，重启生效", Toast.LENGTH_SHORT).show());
+    }
 
+    // ====================== 自动更新 ======================
     private void checkUpdate() {
         new Thread(() -> {
             try {
@@ -623,6 +558,7 @@ public class MainActivity extends AppCompatActivity {
                 String newName = json.getString("versionName");
                 String msg = json.getString("message");
                 latestApkUrl = json.getString("downloadUrl");
+
                 int currentCode = getPackageManager().getPackageInfo(getPackageName(), 0).versionCode;
 
                 if (newCode > currentCode) {
@@ -668,11 +604,10 @@ public class MainActivity extends AppCompatActivity {
                 while ((len = is.read(buf)) != -1) fos.write(buf, 0, len);
 
                 runOnUiThread(() -> {
-                 Intent intent = new Intent(Intent.ACTION_VIEW);
-                 intent.setDataAndType(Uri.fromFile(outFile), "application/vnd.android.package-archive");
-                 // 这里是关键修复：把 addFlags 改成正确的整数标志
-                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                 intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                    Intent intent = new Intent(Intent.ACTION_VIEW);
+                    intent.setDataAndType(Uri.fromFile(outFile), "application/vnd.android.package-archive");
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
                     startActivity(intent);
                 });
             } catch (Exception e) {
@@ -697,6 +632,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    // ====================== 生命周期 ======================
     @Override
     public void onBackPressed() {
         if (isPlayingPlayback) {

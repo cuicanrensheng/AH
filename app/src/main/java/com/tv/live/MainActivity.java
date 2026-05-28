@@ -96,26 +96,20 @@ public class MainActivity extends AppCompatActivity {
     private List<String> sourceHistoryList = new ArrayList<>();
     private Gson gson = new Gson();
 
-    // ====================== 【重写：画面比例 100%正确】 ======================
-    private int currentRatioIndex = 0; // 默认：全屏
+    private int currentRatioIndex = 0;
     private final String[] ratioNames = {"全屏", "16:9", "4:3"};
 
-    // 正确模式
     private void setRatio(int index) {
         currentRatioIndex = index;
         if (index == 0) {
-            // 全屏（填满屏幕，裁边，不变形）
             playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_ZOOM);
         } else if (index == 1) {
-            // 16:9 等比，带黑边，不拉伸
             playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
         } else if (index == 2) {
-            // 4:3 等比，带黑边，不拉伸
             playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
         }
         sp.edit().putInt("play_ratio", currentRatioIndex).apply();
     }
-    // ====================================================================
 
     private final String UPDATE_URL = "https://raw.githubusercontent.com/cuicanrensheng/AH/main/update.json";
     private static final int REQUEST_INSTALL_PACKAGES = 1001;
@@ -291,11 +285,10 @@ public class MainActivity extends AppCompatActivity {
         Toast.makeText(this, channelSourceList.get(idx).name, Toast.LENGTH_SHORT).show();
     }
 
-    // ====================== 初始化播放器（正确） ======================
     private void initExoPlayer() {
         exoPlayer = new ExoPlayer.Builder(this).build();
         playerView.setPlayer(exoPlayer);
-        setRatio(currentRatioIndex); // 应用正确比例
+        setRatio(currentRatioIndex);
 
         exoPlayer.addListener(new Player.Listener() {
             @Override
@@ -306,7 +299,6 @@ public class MainActivity extends AppCompatActivity {
             }
         });
     }
-    // =================================================================
 
     private void playChannel(int index) {
         if (channelSourceList.isEmpty()) return;
@@ -396,45 +388,54 @@ public class MainActivity extends AppCompatActivity {
         };
         lvEpg.setAdapter(eAdapter);
 
-        lvGroup.post(() -> {
-            lvGroup.setItemChecked(gPos, true);
-            lvGroup.setSelection(gPos);
-            int cPos = gChannels.indexOf(curr);
-            lvChannel.setItemChecked(cPos, true);
-            lvChannel.setSelection(cPos);
-            eAdapter.clear();
-            eAdapter.addAll(curr.epgList);
-            eAdapter.notifyDataSetChanged();
-        });
-
-        lvGroup.setOnItemClickListener((pp, vv, pos, id) -> {
-            String g = groupList.get(pos);
-            gChannels.clear();
-            for (Channel ch : channelSourceList) {
-                if (ch.group.equals(g))
-                    gChannels.add(ch);
+        lvGroup.post(new Runnable() {
+            @Override
+            public void run() {
+                lvGroup.setItemChecked(gPos, true);
+                lvGroup.setSelection(gPos);
+                int cPos = gChannels.indexOf(curr);
+                lvChannel.setItemChecked(cPos, true);
+                lvChannel.setSelection(cPos);
+                eAdapter.clear();
+                eAdapter.addAll(curr.epgList);
+                eAdapter.notifyDataSetChanged();
             }
-            cAdapter.notifyDataSetChanged();
-            eAdapter.clear();
         });
 
-        lvChannel.setOnItemClickListener((pp, vv, pos, id) => {
-            Channel ch = gChannels.get(pos);
-            int real = channelSourceList.indexOf(ch);
-            playChannel(real);
-            eAdapter.clear();
-            eAdapter.addAll(ch.epgList);
-            eAdapter.notifyDataSetChanged();
+        lvGroup.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+            @Override
+            public void onItemClick(AdapterView<?> parent, View view, int pos, long id) {
+                String g = groupList.get(pos);
+                gChannels.clear();
+                for (Channel ch : channelSourceList) {
+                    if (ch.group.equals(g)) {
+                        gChannels.add(ch);
+                    }
+                }
+                cAdapter.notifyDataSetChanged();
+                eAdapter.clear();
+            }
         });
 
-        new AlertDialog.Builder(this)
-            .setView(v)
-            .setCancelable(true)
-            .show()
-            .setOnDismissListener(d -> playerView.requestFocus());
+        lvChannel.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+            @Override
+            public void onItemClick(AdapterView<?> parent, View view, int pos, long id) {
+                Channel ch = gChannels.get(pos);
+                int real = channelSourceList.indexOf(ch);
+                playChannel(real);
+                eAdapter.clear();
+                eAdapter.addAll(ch.epgList);
+                eAdapter.notifyDataSetChanged();
+            }
+        });
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setView(v)
+                .setCancelable(true)
+                .show();
+        dialog.setOnDismissListener(dialog1 -> playerView.requestFocus());
     }
 
-    // ====================== 设置界面（正确切换） ======================
     private void showSettingDialog() {
         View v = LayoutInflater.from(this).inflate(R.layout.dialog_setting, null);
         SharedPreferences.Editor ed = sp.edit();
@@ -453,17 +454,16 @@ public class MainActivity extends AppCompatActivity {
         switch_line.setChecked(sp.getBoolean("auto_line", true));
         tv_ratio.setText(ratioNames[currentRatioIndex]);
 
-        switch_reverse.setOnCheckedChangeListener((b, c) -> ed.putBoolean("reverse_channel", c).apply());
-        switch_boot.setOnCheckedChangeListener((b, c) -> ed.putBoolean("boot_start", c).apply());
-        switch_update.setOnCheckedChangeListener((b, c) -> ed.putBoolean("auto_update", c).apply());
-        switch_line.setOnCheckedChangeListener((b, c) -> ed.putBoolean("auto_line", c).apply());
+        switch_reverse.setOnCheckedChangeListener((buttonView, isChecked) -> ed.putBoolean("reverse_channel", isChecked).apply());
+        switch_boot.setOnCheckedChangeListener((buttonView, isChecked) -> ed.putBoolean("boot_start", isChecked).apply());
+        switch_update.setOnCheckedChangeListener((buttonView, isChecked) -> ed.putBoolean("auto_update", isChecked).apply());
+        switch_line.setOnCheckedChangeListener((buttonView, isChecked) -> ed.putBoolean("auto_line", isChecked).apply());
 
-        // 点击切换比例（正常，不拉伸）
         tv_ratio.setOnClickListener(view -> {
             currentRatioIndex = (currentRatioIndex + 1) % ratioNames.length;
             tv_ratio.setText(ratioNames[currentRatioIndex]);
             setRatio(currentRatioIndex);
-            Toast.makeText(this, "已切换："+ratioNames[currentRatioIndex], Toast.LENGTH_SHORT).show();
+            Toast.makeText(MainActivity.this, "已切换："+ratioNames[currentRatioIndex], Toast.LENGTH_SHORT).show();
         });
 
         btn_qr.setOnClickListener(view -> showDynamicQrCodeDialog());
@@ -475,11 +475,11 @@ public class MainActivity extends AppCompatActivity {
             new AlertDialog.Builder(this)
                 .setTitle("自定义直播源")
                 .setView(ev)
-                .setPositiveButton("保存", (d, w) -> {
+                .setPositiveButton("保存", (dialog, which) -> {
                     String url = et.getText().toString().trim();
                     ed.putString("custom_source", url).apply();
                     saveSourceHistory(url);
-                    Toast.makeText(this, "已保存，重启生效", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(MainActivity.this, "已保存，重启生效", Toast.LENGTH_SHORT).show();
                 })
                 .setNegativeButton("取消", null)
                 .show();
@@ -492,29 +492,28 @@ public class MainActivity extends AppCompatActivity {
             new AlertDialog.Builder(this)
                 .setTitle("自定义EPG")
                 .setView(ev)
-                .setPositiveButton("保存", (d, w) -> {
+                .setPositiveButton("保存", (dialog, which) -> {
                     String url = et.getText().toString().trim();
                     ed.putString("custom_epg", url).apply();
-                    Toast.makeText(this, "已保存，重启生效", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(MainActivity.this, "已保存，重启生效", Toast.LENGTH_SHORT).show();
                 })
                 .setNegativeButton("取消", null)
                 .show();
         });
 
-        new AlertDialog.Builder(this)
-            .setView(v)
-            .setNegativeButton("关闭", null)
-            .show()
-            .setOnDismissListener(d -> playerView.requestFocus());
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setView(v)
+                .setNegativeButton("关闭", null)
+                .show();
+        dialog.setOnDismissListener(dialog1 -> playerView.requestFocus());
     }
-    // ====================================================================
 
     public void onReceiveNewConfig(String liveUrl, String epgUrl) {
         SharedPreferences.Editor ed = sp.edit();
         ed.putString("custom_source", liveUrl);
         ed.putString("custom_epg", epgUrl);
         ed.apply();
-        runOnUiThread(() -> Toast.makeText(this, "收到新配置，刷新频道", Toast.LENGTH_SHORT).show());
+        runOnUiThread(() -> Toast.makeText(MainActivity.this, "收到新配置，刷新频道", Toast.LENGTH_SHORT).show());
         new Thread(() -> {
             try {
                 if (exoPlayer != null) exoPlayer.stop();
@@ -530,7 +529,7 @@ public class MainActivity extends AppCompatActivity {
                     Toast.makeText(MainActivity.this, "刷新完成", Toast.LENGTH_SHORT).show();
                 }));
             } catch (Exception ex) {
-                runOnUiThread(() -> Toast.makeText(this, "刷新失败", Toast.LENGTH_SHORT).show());
+                runOnUiThread(() -> Toast.makeText(MainActivity.this, "刷新失败", Toast.LENGTH_SHORT).show());
                 ex.printStackTrace();
             }
         }).start();
@@ -564,7 +563,7 @@ public class MainActivity extends AppCompatActivity {
         new AlertDialog.Builder(this)
             .setTitle("发现新版本")
             .setMessage(msg)
-            .setPositiveButton("立即更新", (d, w) -> {
+            .setPositiveButton("立即更新", (dialog, which) -> {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     if (!getPackageManager().canRequestPackageInstalls()) {
                         Intent intent = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
@@ -607,7 +606,7 @@ public class MainActivity extends AppCompatActivity {
                     startActivity(intent);
                 });
             } catch (Exception e) {
-                runOnUiThread(() -> Toast.makeText(this, "更新失败：" + e.getMessage(), Toast.LENGTH_SHORT).show());
+                runOnUiThread(() -> Toast.makeText(MainActivity.this, "更新失败：" + e.getMessage(), Toast.LENGTH_SHORT).show());
             } finally {
                 try {
                     if (fos != null) fos.close();
@@ -628,7 +627,7 @@ public class MainActivity extends AppCompatActivity {
                 if (getPackageManager().canRequestPackageInstalls()) {
                     downloadAndInstallApk(sp.getString("latest_apk_url", ""));
                 } else {
-                    Toast.makeText(this, "需要开启安装未知应用权限", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(MainActivity.this, "需要开启安装未知应用权限", Toast.LENGTH_SHORT).show();
                 }
             }
         }

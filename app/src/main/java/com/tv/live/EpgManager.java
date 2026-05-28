@@ -38,7 +38,6 @@ public class EpgManager {
                 conn.connect();
                 in = conn.getInputStream();
 
-                // 自动解压gzip文件
                 if (epgUrl.endsWith(".gz")) {
                     in = new GZIPInputStream(in);
                 }
@@ -49,10 +48,7 @@ public class EpgManager {
             } catch (Exception e) {
                 Log.e("EPG", "EPG加载失败", e);
             } finally {
-                try {
-                    if (in != null) in.close();
-                    if (conn != null) conn.disconnect();
-                } catch (Exception ignored) {}
+                try { if (in != null) in.close(); if (conn != null) conn.disconnect(); } catch (Exception ignored) {}
             }
 
             if (callback != null) {
@@ -112,7 +108,6 @@ public class EpgManager {
 
             if (xml.getEventType() == XmlPullParser.END_TAG && "programme".equals(xml.getName())) {
                 if (currentChannelName != null && !tempPrograms.isEmpty()) {
-                    // 按开始时间排序，保证节目顺序正确
                     tempPrograms.sort(Comparator.comparing(item -> item.time));
                     channelEpgMap.put(currentChannelName, new ArrayList<>(tempPrograms));
                 }
@@ -127,7 +122,6 @@ public class EpgManager {
             return new ArrayList<>();
         }
 
-        // 模糊匹配频道名，兼容不同格式
         String cleanName = channelName.replaceAll("(?i)高清|HD|超清|4K| |-", "").toLowerCase();
         for (Map.Entry<String, List<MainActivity.Channel.EpgItem>> entry : channelEpgMap.entrySet()) {
             String key = entry.getKey().replaceAll("(?i)高清|HD|超清|4K| |-", "").toLowerCase();

@@ -233,7 +233,8 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         String qrContent = "http://"+ip+":10481";
-        int qrSize = 400;
+        // 二维码尺寸改为300，适配扫码
+        int qrSize = 300;
         try {
             BitMatrix matrix = new MultiFormatWriter().encode(qrContent, BarcodeFormat.QR_CODE, qrSize, qrSize);
             Bitmap bmp = Bitmap.createBitmap(qrSize, qrSize, Bitmap.Config.ARGB_8888);
@@ -252,7 +253,7 @@ public class MainActivity extends AppCompatActivity {
                 .show();
         } catch (WriterException e) {
             e.printStackTrace();
-            Toast.makeText(this, "二维码失败", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "二维码生成失败", Toast.LENGTH_SHORT).show();
         }
     }
 
@@ -327,9 +328,7 @@ public class MainActivity extends AppCompatActivity {
         exoPlayer.addListener(new Player.Listener() {
             @Override
             public void onPlayerError(PlaybackException error) {
-                if (sp.getBoolean("auto_line", true)) {
-                    autoSwitchLine();
-                }
+                // 已删除自动切换线路逻辑
             }
         });
     }
@@ -346,16 +345,6 @@ public class MainActivity extends AppCompatActivity {
         exoPlayer.play();
         lastPlayIndex = index;
         sp.edit().putInt("last_play", index).apply();
-    }
-
-    private void autoSwitchLine() {
-        if (isPlayingPlayback) return;
-        Channel ch = channelSourceList.get(currentPlayIndex);
-        int now = setting.getLine();
-        if (now + 1 < ch.urls.size()) {
-            setting.setLine(now + 1);
-            playChannel(currentPlayIndex);
-        }
     }
 
     private void showChannelListDialog() {
@@ -477,7 +466,6 @@ public class MainActivity extends AppCompatActivity {
         Switch switch_reverse = v.findViewById(R.id.switch_reverse);
         Switch switch_boot = v.findViewById(R.id.switch_boot);
         Switch switch_update = v.findViewById(R.id.switch_update);
-        Switch switch_line = v.findViewById(R.id.switch_line);
         TextView tv_ratio = v.findViewById(R.id.tv_ratio);
         TextView btn_source = v.findViewById(R.id.btn_source);
         TextView btn_epg = v.findViewById(R.id.btn_epg);
@@ -486,7 +474,6 @@ public class MainActivity extends AppCompatActivity {
         switch_reverse.setChecked(sp.getBoolean("reverse_channel", false));
         switch_boot.setChecked(sp.getBoolean("boot_start", false));
         switch_update.setChecked(sp.getBoolean("auto_update", true));
-        switch_line.setChecked(sp.getBoolean("auto_line", true));
         tv_ratio.setText(ratioNames[currentRatioIndex]);
 
         switch_reverse.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
@@ -506,12 +493,6 @@ public class MainActivity extends AppCompatActivity {
             public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
                 ed.putBoolean("auto_update", isChecked).apply();
                 if (isChecked) checkUpdate();
-            }
-        });
-        switch_line.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
-            @Override
-            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-                ed.putBoolean("auto_line", isChecked).apply();
             }
         });
 
@@ -672,7 +653,7 @@ public class MainActivity extends AppCompatActivity {
                 runOnUiThread(() -> {
                     Intent intent = new Intent(Intent.ACTION_VIEW);
                     intent.setDataAndType(Uri.fromFile(outFile), "application/vnd.android.package-archive");
-                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    intent.addFlags(Intent.ACTION_VIEW);
                     intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
                     startActivity(intent);
                 });

@@ -125,30 +125,40 @@ public class MainActivity extends AppCompatActivity {
     private String latestApkUrl = "";
     private HttpServer httpServer;
 
-    @Override
+     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        setContentView(R.layout.activity_main);
-        mInstance = this;
-        sp = getSharedPreferences("tv_config", MODE_PRIVATE);
-        epgEnabled = sp.getBoolean("epgEnabled", true);
-        lastPlayIndex = sp.getInt("last_play", 0);
-        currentRatioIndex = sp.getInt("play_ratio", 2);
-        String customSource = sp.getString("custom_source", "");
-        String customEpg = sp.getString("custom_epg", "");
-        loadSourceHistory();
+    super.onCreate(savedInstanceState);
+    getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
+    getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+    setContentView(R.layout.activity_main);
+    mInstance = this;
 
-        playerView = findViewById(R.id.player_view);
-        playerView.setUseController(false);
-        playerView.setFocusable(false);
-        playerView.setClickable(false);
-        playerView.setFocusableInTouchMode(true);
-        playerView.requestFocus();
+    // 初始化 SharedPreferences
+    sp = getSharedPreferences("tv_config", MODE_PRIVATE);
 
-        initGesture();
-        initExoPlayer();
+    // ✅ 关键：读取持久化的配置，并赋值给成员变量
+    epgEnabled = sp.getBoolean("epgEnabled", true);
+    lastPlayIndex = sp.getInt("last_play", 0);
+    currentRatioIndex = sp.getInt("play_ratio", 2);
+    customSource = sp.getString("custom_source", "");
+    customEpg = sp.getString("custom_epg", "");
+
+    loadSourceHistory();
+
+    // 初始化播放器和界面
+    playerView = findViewById(R.id.player_view);
+    playerView.setUseController(false);
+    playerView.setFocusable(false);
+    playerView.setClickable(false);
+    playerView.setFocusableInTouchMode(true);
+    playerView.requestFocus();
+
+    // ✅ 关键：用读取到的配置加载直播源
+    initPlayer();
+    initGesture();
+    loadChannels();
+    startHttpServer();
+}
 
         try {
             httpServer = new HttpServer(10481, this);
@@ -580,12 +590,19 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public void onReceiveNewConfig(String liveUrl, String epgUrl) {
-        SharedPreferences.Editor ed = sp.edit();
-        ed.putString("custom_source", liveUrl);
-        ed.putString("custom_epg", epgUrl);
-        ed.apply();
-        runOnUiThread(() -> Toast.makeText(this, "已保存，重启生效", Toast.LENGTH_SHORT).show());
-    }
+    // 写入 SharedPreferences 持久化保存
+    SharedPreferences sp = getSharedPreferences("tv_config", MODE_PRIVATE);
+    SharedPreferences.Editor editor = sp.edit();
+    editor.putString("custom_source", liveUrl);
+    editor.putString("custom_epg", epgUrl);
+    editor.apply(); // 必须 apply() 提交，否则数据不会保存
+
+    // 同时更新内存中的变量
+    this.customSource = liveUrl;
+    this.customEpg = epgUrl;
+
+    Toast.makeText(this, "配置已保存，重启生效", Toast.LENGTH_SHORT).show();
+}
 
     private void checkUpdate() {
         new Thread(() -> {

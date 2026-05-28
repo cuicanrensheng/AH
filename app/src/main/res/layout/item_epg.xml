@@ -4,10 +4,8 @@
     android:layout_height="wrap_content"
     android:orientation="horizontal"
     android:padding="12dp"
-    android:gravity="center_vertical"
-    android:background="?android:attr/selectableItemBackground">
+    android:gravity="center_vertical">
 
-    <!-- 左侧：日期 + 时间 -->
     <LinearLayout
         android:layout_width="0dp"
         android:layout_height="wrap_content"
@@ -34,12 +32,11 @@
                 android:layout_height="wrap_content"
                 android:textSize="15sp"
                 android:textColor="#cccccc"
-                android:layout_marginStart="12dp"
+                android:layout_marginLeft="12dp"
                 android:minWidth="70dp"/>
 
         </LinearLayout>
 
-        <!-- 节目名称 -->
         <TextView
             android:id="@+id/tv_title"
             android:layout_width="match_parent"
@@ -50,16 +47,17 @@
 
     </LinearLayout>
 
-    <!-- 右侧：状态按钮（回看/直播/未开始） -->
-<Button
-    android:id="@+id/tv_action"
-    android:layout_width="wrap_content"
-    android:layout_height="wrap_content"
-    android:textSize="13sp"
-    android:paddingHorizontal="12dp"
-    android:paddingVertical="4dp"
-    android:layout_marginStart="12dp"
-    android:background="#FF2196F3"
-    android:textColor="#FFFFFF"/>
+    <TextView
+        android:id="@+id/tv_action"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textSize="13sp"
+        android:paddingLeft="12dp"
+        android:paddingRight="12dp"
+        android:paddingTop="4dp"
+        android:paddingBottom="4dp"
+        android:layout_marginLeft="12dp"
+        android:background="#FF2196F3"
+        android:textColor="#FFFFFF"/>
 
 </LinearLayout>

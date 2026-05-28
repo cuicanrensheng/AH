@@ -10,14 +10,12 @@
         android:orientation="vertical"
         android:padding="16dp">
 
-        <!-- 频道反向切换 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:gravity="center_vertical"
             android:padding="12dp">
-
             <TextView
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
@@ -25,21 +23,18 @@
                 android:text="频道反向切换"
                 android:textSize="18sp"
                 android:textColor="#333333"/>
-
             <Switch
                 android:id="@+id/switch_reverse"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"/>
         </LinearLayout>
 
-        <!-- 开机自启 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:gravity="center_vertical"
             android:padding="12dp">
-
             <TextView
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
@@ -47,21 +42,18 @@
                 android:text="开机自启"
                 android:textSize="18sp"
                 android:textColor="#333333"/>
-
             <Switch
                 android:id="@+id/switch_boot"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"/>
         </LinearLayout>
 
-        <!-- 自动更新 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:gravity="center_vertical"
             android:padding="12dp">
-
             <TextView
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
@@ -69,14 +61,12 @@
                 android:text="自动更新"
                 android:textSize="18sp"
                 android:textColor="#333333"/>
-
             <Switch
                 android:id="@+id/switch_update"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"/>
         </LinearLayout>
 
-        <!-- 画面比例 -->
         <TextView
             android:id="@+id/tv_ratio"
             android:layout_width="match_parent"
@@ -89,7 +79,6 @@
             android:layout_marginTop="8dp"
             android:layout_marginBottom="8dp"/>
 
-        <!-- 自定义直播源 -->
         <TextView
             android:id="@+id/btn_source"
             android:layout_width="match_parent"
@@ -102,7 +91,6 @@
             android:layout_marginTop="8dp"
             android:layout_marginBottom="8dp"/>
 
-        <!-- 自定义EPG -->
         <TextView
             android:id="@+id/btn_epg"
             android:layout_width="match_parent"
@@ -115,7 +103,6 @@
             android:layout_marginTop="8dp"
             android:layout_marginBottom="8dp"/>
 
-        <!-- 扫码设置 -->
         <TextView
             android:id="@+id/btn_qr"
             android:layout_width="match_parent"
@@ -129,5 +116,4 @@
             android:layout_marginBottom="8dp"/>
 
     </LinearLayout>
-
 </ScrollView>

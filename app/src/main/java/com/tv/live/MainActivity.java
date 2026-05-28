@@ -1,8 +1,5 @@
 package com.tv.live;
 
-import com.google.android.exoplayer2.ui.AspectRatioFrameLayout;
-import java.io.IOException;
-import java.util.Enumeration;
 import android.app.AlertDialog;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -31,6 +28,7 @@ import com.google.android.exoplayer2.ExoPlayer;
 import com.google.android.exoplayer2.MediaItem;
 import com.google.android.exoplayer2.PlaybackException;
 import com.google.android.exoplayer2.Player;
+import com.google.android.exoplayer2.ui.AspectRatioFrameLayout;
 import com.google.android.exoplayer2.ui.PlayerView;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
@@ -42,6 +40,7 @@ import org.json.JSONObject;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.lang.reflect.Type;
@@ -50,6 +49,7 @@ import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.net.URL;
 import java.util.ArrayList;
+import java.util.Enumeration;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -97,23 +97,11 @@ public class MainActivity extends AppCompatActivity {
     private List<String> sourceHistoryList = new ArrayList<>();
     private Gson gson = new Gson();
 
-    // 画面比例（100% 实现你截图里的全屏裁切效果）
-    private int currentRatioIndex = 0; // 默认全屏
+    private int currentRatioIndex = 0;
     private final String[] ratioNames = {"全屏", "16:9", "4:3"};
 
-    private void setRatio(int index) {
-        currentRatioIndex = index;
-        if (index == 0) {
-            // 全屏模式：填满屏幕，自动裁切多余部分，不变形（和你截图效果一致）
-            playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_ZOOM);
-        } else if (index == 1) {
-            // 16:9：标准比例，等比缩放，带黑边
-            playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
-        } else if (index == 2) {
-            // 4:3：传统比例，等比缩放，带黑边
-            playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
-        }
-        sp.edit().putInt("play_ratio", currentRatioIndex).apply();
+    private void setFullScreenRatio() {
+        playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
     }
 
     private final String UPDATE_URL = "https://raw.githubusercontent.com/cuicanrensheng/AH/main/update.json";
@@ -290,11 +278,10 @@ public class MainActivity extends AppCompatActivity {
         Toast.makeText(this, channelSourceList.get(idx).name, Toast.LENGTH_SHORT).show();
     }
 
-    // 播放器初始化时，必须调用一次 setRatio，确保全屏生效
     private void initExoPlayer() {
         exoPlayer = new ExoPlayer.Builder(this).build();
         playerView.setPlayer(exoPlayer);
-        setRatio(currentRatioIndex); // 关键：初始化时应用比例
+        setFullScreenRatio();
 
         exoPlayer.addListener(new Player.Listener() {
             @Override
@@ -468,7 +455,7 @@ public class MainActivity extends AppCompatActivity {
         tv_ratio.setOnClickListener(view -> {
             currentRatioIndex = (currentRatioIndex + 1) % ratioNames.length;
             tv_ratio.setText(ratioNames[currentRatioIndex]);
-            setRatio(currentRatioIndex);
+            setFullScreenRatio();
             Toast.makeText(MainActivity.this, "已切换："+ratioNames[currentRatioIndex], Toast.LENGTH_SHORT).show();
         });
 

@@ -8,6 +8,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: 拉取代码
         uses: actions/checkout@v4
@@ -18,6 +20,11 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
           cache: gradle
+
+      # 👇 关键步骤：自动生成 Gradle Wrapper
+      - name: 生成 Gradle Wrapper
+        run: |
+          gradle wrapper --gradle-version 8.7 --distribution-type all
 
       - name: 赋予 Gradle 执行权限
         run: chmod +x gradlew

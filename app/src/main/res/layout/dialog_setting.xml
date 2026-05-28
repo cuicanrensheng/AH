@@ -78,5 +78,4 @@
         android:focusable="true"/>
 
 </LinearLayout>
-
 </ScrollView>

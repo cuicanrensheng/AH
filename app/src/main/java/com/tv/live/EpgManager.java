@@ -16,7 +16,7 @@ import org.xmlpull.v1.XmlPullParserFactory;
 public class EpgManager {
     private static EpgManager instance;
     private final Map<String, List<MainActivity.Channel.EpgItem>> channelEpg = new HashMap<>();
-    private String epgUrl = "http://epg.51zmt.top:8000/e.xml.gz";
+    private String epgUrl = "https://e.erw.cc/all.xml.gz";
 
     public static EpgManager getInstance() {
         if (instance == null) {

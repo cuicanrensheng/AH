@@ -37,19 +37,15 @@ public class EpgManager {
                 conn.setConnectTimeout(15000);
                 conn.setReadTimeout(15000);
                 InputStream in = conn.getInputStream();
-
-                // ✅ 修复 GZIP 解析崩溃
                 if (epgUrl != null && epgUrl.endsWith(".gz")) {
                     in = new GZIPInputStream(in);
                 }
-
                 parseXml(in);
                 in.close();
                 conn.disconnect();
             } catch (Exception e) {
                 e.printStackTrace();
             }
-
             if (callback != null) {
                 callback.run();
             }
@@ -66,47 +62,40 @@ public class EpgManager {
 
         String currentChannel = null;
         List<MainActivity.Channel.EpgItem> items = new ArrayList<>();
+        String tag = null;
 
         while (xml.getEventType() != XmlPullParser.END_DOCUMENT) {
             if (xml.getEventType() == XmlPullParser.START_TAG) {
-                String tag = xml.getName();
+                tag = xml.getName();
 
                 if ("channel".equals(tag)) {
                     currentChannel = xml.getAttributeValue(null, "id");
                 }
-
                 if ("display-name".equals(tag)) {
                     currentChannel = xml.nextText().trim();
                 }
-
                 if ("programme".equals(tag)) {
                     String start = xml.getAttributeValue(null, "start");
                     String stop = xml.getAttributeValue(null, "stop");
-
                     Calendar itemCal = Calendar.getInstance();
                     itemCal.setTime(sdf.parse(start));
-
                     String dayName = getDayName(itemCal, today);
                     String time = start.substring(8, 10) + ":" + start.substring(10, 12)
                             + " - " + stop.substring(8, 10) + ":" + stop.substring(10, 12);
 
                     MainActivity.Channel.EpgItem item = new MainActivity.Channel.EpgItem(
-                            dayName,
-                            time,
-                            "",
-                            "",
-                            false
+                            dayName, time, "", "", false
                     );
                     items.add(item);
                 }
-
                 if ("title".equals(tag) && !items.isEmpty()) {
                     String title = xml.nextText().trim();
                     items.get(items.size() - 1).title = title;
                 }
             }
 
-            if (xml.getEventType() == XmlPullParser.END_TAG && "programme".equals(tag)) {
+            // ✅ 修复错误：tag 未定义
+            if (xml.getEventType() == XmlPullParser.END_TAG && "programme".equals(xml.getName())) {
                 if (currentChannel != null && !items.isEmpty()) {
                     channelEpg.put(currentChannel, new ArrayList<>(items));
                     items.clear();
@@ -116,14 +105,11 @@ public class EpgManager {
         }
     }
 
-    // ✅ 获取节目单（模糊匹配频道名，支持高清/HD/超清）
     public List<MainActivity.Channel.EpgItem> getEpg(String channelName) {
         if (channelName == null || channelName.isEmpty()) {
             return new ArrayList<>();
         }
-
         String cleanName = channelName.replaceAll("(?i)高清|hd|超清|4k| |-", "").toLowerCase();
-
         for (String key : channelEpg.keySet()) {
             String cleanKey = key.replaceAll("(?i)高清|hd|超清|4k| |-", "").toLowerCase();
             if (cleanName.contains(cleanKey) || cleanKey.contains(cleanName)) {
@@ -133,13 +119,12 @@ public class EpgManager {
         return new ArrayList<>();
     }
 
-    // ✅ 显示：今天/明天/后天/周一~周日
-    private String getDayName(Calendar itemCal, Calendar todayCal) {
+    // ✅ 改为 public，给外部调用
+    public String getDayName(Calendar itemCal, Calendar todayCal) {
         int dayDiff = itemCal.get(Calendar.DAY_OF_YEAR) - todayCal.get(Calendar.DAY_OF_YEAR);
         if (dayDiff == 0) return "今天";
         if (dayDiff == 1) return "明天";
         if (dayDiff == 2) return "后天";
-
         String[] week = {"周日", "周一", "周二", "周三", "周四", "周五", "周六"};
         int w = itemCal.get(Calendar.DAY_OF_WEEK) - 1;
         return (w >= 0) ? week[w] : week[0];

@@ -8,8 +8,8 @@
 
     <ImageView
         android:id="@+id/iv_qrcode"
-        android:layout_width="320dp"
-        android:layout_height="320dp"/>
+        android:layout_width="300dp"
+        android:layout_height="300dp"/>
 
     <TextView
         android:id="@+id/tv_tip"

@@ -2,5 +2,5 @@
   "versionCode": 2,
   "versionName": "1.1",
   "message": "修复了EPG显示问题，新增二维码扫码设置和画面比例切换",
-  "downloadUrl": "https://github.com/cuicanrensheng/AH/releases/download/v${{ github.run_number }}/app-release.apk"
+  "downloadUrl": "https://github.com/cuicanrensheng/AH/releases/latest/download/update.json"
 }

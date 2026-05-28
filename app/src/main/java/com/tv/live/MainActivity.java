@@ -512,41 +512,52 @@ public class MainActivity extends AppCompatActivity {
             .setNegativeButton("稍后再说",null)
             .show();
     }
-
     private void downloadAndInstallApk(String url) {
-        Toast.makeText(this,"正在下载更新...",Toast.LENGTH_SHORT).show();
-        new Thread(()->{
-            HttpURLConnection conn = null;
-            InputStream is = null; FileOutputStream fos = null;
-            try {
-                URL u = new URL(url);
-                conn = (HttpURLConnection)u.openConnection();
-                conn.setInstanceFollowRedirects(true);
-                conn.setConnectTimeout(15000);
-                conn.setReadTimeout(15000);
-                conn.connect();
-                is = conn.getInputStream();
-                File apk = new File(getExternalCacheDir(),"update.apk");
-                fos = new FileOutputStream(apk);
-                byte[] buf = new byte[2048]; int len;
-                while ((len=is.read(buf))!=-1) fos.write(buf,0,len);
-                runOnUiThread(()->{
-                    Intent intent = new Intent(Intent.ACTION_VIEW);
-                    intent.setDataAndType(Uri.fromFile(apk),"application/vnd.android.package-archive");
-                    intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_GRANT_READ_URI_PERMISSION);
-                    startActivity(intent);
-                });
-            } catch (Exception e) {
-                runOnUiThread(()->Toast.makeText(this,"更新失败："+e.getMessage(),Toast.LENGTH_SHORT).show());
-            } finally {
-                try {
-                    if (fos!=null) fos.close();
-                    if (is!=null) is.close();
-                    if (conn!=null) conn.disconnect();
-                } catch (IOException e) { e.printStackTrace(); }
+    Toast.makeText(this, "正在下载更新...", Toast.LENGTH_SHORT).show();
+    new Thread(() -> {
+        HttpURLConnection conn = null;
+        InputStream is = null;
+        FileOutputStream fos = null;
+        try {
+            // 1. 处理 GitHub 重定向
+            URL apkUrl = new URL(url);
+            conn = (HttpURLConnection) apkUrl.openConnection();
+            conn.setInstanceFollowRedirects(true); // 关键：允许跟随重定向
+            conn.setConnectTimeout(20000);
+            conn.setReadTimeout(20000);
+            conn.connect();
+
+            // 2. 下载文件
+            is = conn.getInputStream();
+            File apkFile = new File(getExternalCacheDir(), "update.apk");
+            fos = new FileOutputStream(apkFile);
+            byte[] buffer = new byte[4096];
+            int len;
+            while ((len = is.read(buffer)) != -1) {
+                fos.write(buffer, 0, len);
             }
-        }).start();
-    }
+
+            // 3. 安装APK
+            runOnUiThread(() -> {
+                Intent intent = new Intent(Intent.ACTION_VIEW);
+                intent.setDataAndType(Uri.fromFile(apkFile), "application/vnd.android.package-archive");
+                intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                startActivity(intent);
+            });
+        } catch (Exception e) {
+            runOnUiThread(() -> Toast.makeText(this, "更新失败：" + e.getMessage(), Toast.LENGTH_SHORT).show());
+        } finally {
+            // 4. 关闭资源
+            try {
+                if (fos != null) fos.close();
+                if (is != null) is.close();
+                if (conn != null) conn.disconnect();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    }).start();
+}
 
     @Override
     protected void onActivityResult(int req,int res,Intent data) {

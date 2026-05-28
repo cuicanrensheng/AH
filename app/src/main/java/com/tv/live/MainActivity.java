@@ -2,6 +2,7 @@ package com.tv.live;
 
 import com.google.android.exoplayer2.ui.AspectRatioFrameLayout;
 import java.io.IOException;
+import java.util.Enumeration;
 import android.app.AlertDialog;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -185,7 +186,7 @@ public class MainActivity extends AppCompatActivity {
         try {
             for (Enumeration<NetworkInterface> en = NetworkInterface.getNetworkInterfaces(); en.hasMoreElements(); ) {
                 NetworkInterface intf = en.nextElement();
-                for (Enumeration<InetAddress> enumIpAddr = intf.getInAddresses(); enumIpAddr.hasMoreElements(); ) {
+                for (Enumeration<InetAddress> enumIpAddr = intf.getInetAddresses(); enumIpAddr.hasMoreElements(); ) {
                     InetAddress inetAddress = enumIpAddr.nextElement();
                     if (!inetAddress.isLoopbackAddress() && inetAddress.isSiteLocalAddress()) {
                         return inetAddress.getHostAddress();

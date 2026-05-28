@@ -18,9 +18,12 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
           cache: gradle
+          
 
       - name: 构建 APK
-        run: ./gradlew assembleRelease
+       run: |
+        chmod +x ./gradlew
+        ./gradlew assembleRelease
 
       - name: 上传构建产物（给后续步骤使用）
         uses: actions/upload-artifact@v4

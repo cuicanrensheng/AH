@@ -51,15 +51,15 @@
     </LinearLayout>
 
     <!-- 右侧：状态按钮（回看/直播/未开始） -->
-    <Button
-        android:id="@+id/btn_action"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:textSize="13sp"
-        android:paddingHorizontal="12dp"
-        android:paddingVertical="4dp"
-        android:layout_marginStart="12dp"
-        android:background="#FF2196F3"
-        android:textColor="#FFFFFF"/>
+<Button
+    android:id="@+id/tv_action"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:textSize="13sp"
+    android:paddingHorizontal="12dp"
+    android:paddingVertical="4dp"
+    android:layout_marginStart="12dp"
+    android:background="#FF2196F3"
+    android:textColor="#FFFFFF"/>
 
 </LinearLayout>

@@ -5,10 +5,18 @@ plugins {
 android {
     namespace "com.tv.live"
     compileSdk 34
-    
-       // 关键：启用 buildConfig 生成
+
     buildFeatures {
         buildConfig true
+    }
+
+    // 只禁用 layout，保留 layout-land（你要的效果）
+    sourceSets {
+        main {
+            res {
+                exclude "layout/**"
+            }
+        }
     }
 
     defaultConfig {
@@ -18,25 +26,7 @@ android {
         versionCode 1
         versionName "1.0"
         multiDexEnabled true
-        
-        // 只禁用 layout 目录，layout‑land 完全不动
-    sourceSets {
-        main {
-            res {
-                exclude "layout/**"
-            }
-        }
-    }
 
-    buildTypes {
-        release {
-            minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-        }
-    }
-}
-       
-        // 关键：强制生成 BuildConfig
         buildConfigField "int", "VERSION_CODE", "${versionCode}"
         buildConfigField "String", "VERSION_NAME", "\"${versionName}\""
 
@@ -78,7 +68,7 @@ android {
             pickFirsts += ['META-INF/com.android.tools/proguard/coroutines.pro']
         }
     }
-
+}
 
 dependencies {
     implementation "androidx.appcompat:appcompat:1.6.1"
@@ -103,7 +93,5 @@ dependencies {
 
     implementation "org.apache.commons:commons-lang3:3.14.0"
     implementation "com.blankj:utilcodex:1.31.1"
-        // 本地网页服务（扫码设置）
     implementation 'org.nanohttpd:nanohttpd:2.3.1'
 }
-

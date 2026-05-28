@@ -1,5 +1,4 @@
 package com.tv.live;
-
 import android.app.AlertDialog;
 import android.content.DialogInterface;
 import android.content.Intent;
@@ -18,7 +17,6 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.ArrayAdapter;
-import android.widget.Button;
 import android.widget.CompoundButton;
 import android.widget.EditText;
 import android.widget.ImageView;
@@ -26,9 +24,7 @@ import android.widget.ListView;
 import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
-
 import androidx.appcompat.app.AppCompatActivity;
-
 import com.google.android.exoplayer2.ExoPlayer;
 import com.google.android.exoplayer2.MediaItem;
 import com.google.android.exoplayer2.PlaybackException;
@@ -41,9 +37,7 @@ import com.google.zxing.BarcodeFormat;
 import com.google.zxing.MultiFormatWriter;
 import com.google.zxing.WriterException;
 import com.google.zxing.common.BitMatrix;
-
 import org.json.JSONObject;
-
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileOutputStream;
@@ -61,26 +55,25 @@ import java.util.Enumeration;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import android.view.ViewGroup;
+import android.widget.AdapterView;
+import android.widget.Button;
 
 public class MainActivity extends AppCompatActivity {
-
     public static MainActivity mInstance;
     public int currentChannelIndex = 0;
     public int currentPlayIndex = 0;
     private Setting setting = new Setting();
-
     public static class Setting {
         private int line = 0;
         public int getLine() { return line; }
         public void setLine(int line) { this.line = line; }
     }
-
     public static class Channel {
         public String name;
         public String group;
         public List<String> urls;
         public List<EpgItem> epgList;
-
         public static class EpgItem {
             public String dayName;
             public String time;
@@ -88,7 +81,6 @@ public class MainActivity extends AppCompatActivity {
             public String playUrl;
             public boolean isNow;
             public boolean isPast;
-
             public EpgItem(String dayName, String time, String title, String playUrl, boolean isNow) {
                 this.dayName = dayName;
                 this.time = time;
@@ -98,20 +90,17 @@ public class MainActivity extends AppCompatActivity {
                 this.isPast = false;
             }
         }
-
         public Channel(String name, String group, List<String> urls) {
             this.name = name;
             this.group = group;
             this.urls = urls;
             this.epgList = new ArrayList<>();
         }
-
         @Override
         public String toString() {
             return name;
         }
     }
-
     public List<Channel> channelSourceList = new ArrayList<>();
     private ExoPlayer exoPlayer;
     private ExoPlayer playbackPlayer;
@@ -140,40 +129,32 @@ public class MainActivity extends AppCompatActivity {
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         setContentView(R.layout.activity_main);
         mInstance = this;
-
         sp = getSharedPreferences("tv_config", MODE_PRIVATE);
         lastPlayIndex = sp.getInt("last_play", 0);
         currentRatioIndex = sp.getInt("play_ratio", 2);
         customSource = sp.getString("custom_source", "");
         customEpg = sp.getString("custom_epg", "");
-
         loadSourceHistory();
         initWeekList();
-
         playerView = findViewById(R.id.player_view);
         playerView.setUseController(false);
         playerView.setFocusable(false);
         playerView.setClickable(false);
         playerView.setFocusableInTouchMode(true);
         playerView.requestFocus();
-
         initExoPlayer();
         initGesture();
-
         try {
             httpServer = new HttpServer(10481, this);
             httpServer.start();
         } catch (Exception e) {
             e.printStackTrace();
         }
-
         loadChannels();
-
         if (sp.getBoolean("auto_update", true)) {
             checkUpdate();
         }
     }
-
     private void initWeekList() {
         weekNames = new ArrayList<>();
         Calendar cal = Calendar.getInstance();
@@ -184,7 +165,6 @@ public class MainActivity extends AppCompatActivity {
             weekNames.add(weeks[index]);
         }
     }
-
     private void markProgramStatus(List<Channel.EpgItem> list) {
         if (list == null || list.isEmpty()) return;
         long now = System.currentTimeMillis();
@@ -211,12 +191,10 @@ public class MainActivity extends AppCompatActivity {
             } catch (Exception ignored) {}
         }
     }
-
     private void initExoPlayer() {
         exoPlayer = new ExoPlayer.Builder(this).build();
         playerView.setPlayer(exoPlayer);
         setRatio(currentRatioIndex);
-
         exoPlayer.addListener(new Player.Listener() {
             @Override
             public void onPlayerError(PlaybackException error) {
@@ -225,7 +203,6 @@ public class MainActivity extends AppCompatActivity {
             }
         });
     }
-
     private void tryNextSource() {
         if (channelSourceList.isEmpty()) return;
         Channel ch = channelSourceList.get(currentPlayIndex);
@@ -234,7 +211,6 @@ public class MainActivity extends AppCompatActivity {
         setting.setLine(nextLine);
         playChannel(currentPlayIndex);
     }
-
     private void setRatio(int index) {
         currentRatioIndex = index;
         switch (index) {
@@ -245,14 +221,12 @@ public class MainActivity extends AppCompatActivity {
         }
         sp.edit().putInt("play_ratio", currentRatioIndex).apply();
     }
-
     private void loadSourceHistory() {
         String json = sp.getString("source_history_list", "");
         Type type = new TypeToken<List<String>>(){}.getType();
         List<String> list = gson.fromJson(json, type);
         sourceHistoryList = list == null ? new ArrayList<>() : list;
     }
-
     private void saveSourceHistory(String url) {
         if (TextUtils.isEmpty(url)) return;
         sourceHistoryList.remove(url);
@@ -260,7 +234,6 @@ public class MainActivity extends AppCompatActivity {
         if (sourceHistoryList.size() > 10) sourceHistoryList = sourceHistoryList.subList(0, 10);
         sp.edit().putString("source_history_list", gson.toJson(sourceHistoryList)).apply();
     }
-
     private String getLocalIpAddress() {
         try {
             for (Enumeration<NetworkInterface> en = NetworkInterface.getNetworkInterfaces(); en.hasMoreElements(); ) {
@@ -273,7 +246,6 @@ public class MainActivity extends AppCompatActivity {
         } catch (Exception e) { e.printStackTrace(); }
         return null;
     }
-
     private void showDynamicQrCodeDialog() {
         String ip = getLocalIpAddress();
         if (TextUtils.isEmpty(ip)) {
@@ -303,7 +275,6 @@ public class MainActivity extends AppCompatActivity {
             Toast.makeText(this, "二维码生成失败", Toast.LENGTH_SHORT).show();
         }
     }
-
     @Override
     public boolean onKeyUp(int keyCode, KeyEvent event) {
         boolean rev = sp.getBoolean("reverse_channel", false);
@@ -329,7 +300,6 @@ public class MainActivity extends AppCompatActivity {
         }
         return super.onKeyUp(keyCode, event);
     }
-
     private void initGesture() {
         gestureDetector = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
             @Override public boolean onDown(MotionEvent e) { return true; }
@@ -352,7 +322,6 @@ public class MainActivity extends AppCompatActivity {
         });
         playerView.setOnTouchListener((v, event) -> gestureDetector.onTouchEvent(event));
     }
-
     private void changeChannel(int delta) {
         if (channelSourceList.isEmpty()) return;
         int idx = currentPlayIndex + delta;
@@ -361,7 +330,6 @@ public class MainActivity extends AppCompatActivity {
         playChannel(idx);
         Toast.makeText(this, channelSourceList.get(idx).name, Toast.LENGTH_SHORT).show();
     }
-
     private void playChannel(int index) {
         if (channelSourceList.isEmpty()) return;
         currentPlayIndex = index;
@@ -375,7 +343,6 @@ public class MainActivity extends AppCompatActivity {
         lastPlayIndex = index;
         sp.edit().putInt("last_play", index).apply();
     }
-
     private void playEpgItem(Channel.EpgItem item) {
         if (TextUtils.isEmpty(item.playUrl)) {
             Toast.makeText(this, "暂无回看", Toast.LENGTH_SHORT).show();
@@ -389,7 +356,6 @@ public class MainActivity extends AppCompatActivity {
         isPlayingPlayback = true;
         Toast.makeText(this, "回看：" + item.title, Toast.LENGTH_SHORT).show();
     }
-
     private void loadChannels() {
         new Thread(() -> {
             try {
@@ -412,7 +378,6 @@ public class MainActivity extends AppCompatActivity {
             }
         }).start();
     }
-
     private void showChannelListDialog() {
         if (channelSourceList.isEmpty()) {
             Toast.makeText(this, "暂无频道", Toast.LENGTH_SHORT).show();
@@ -423,7 +388,6 @@ public class MainActivity extends AppCompatActivity {
         ListView lvWeek = v.findViewById(R.id.lv_channel);
         ListView lvEpg = v.findViewById(R.id.lv_epg);
         Channel curr = channelSourceList.get(currentPlayIndex);
-
         Set<String> groupSet = new LinkedHashSet<>();
         for (Channel ch : channelSourceList) groupSet.add(ch.group);
         List<String> groupList = new ArrayList<>(groupSet);
@@ -519,7 +483,6 @@ public class MainActivity extends AppCompatActivity {
         AlertDialog dialog = new AlertDialog.Builder(this).setView(v).setCancelable(true).show();
         dialog.setOnDismissListener(dialog1 -> playerView.requestFocus());
     }
-
     private void showSettingDialog() {
         View v = LayoutInflater.from(this).inflate(R.layout.dialog_setting, null);
         SharedPreferences.Editor ed = sp.edit();
@@ -530,12 +493,10 @@ public class MainActivity extends AppCompatActivity {
         TextView btn_source = v.findViewById(R.id.btn_source);
         TextView btn_epg = v.findViewById(R.id.btn_epg);
         TextView btn_qr = v.findViewById(R.id.btn_qr);
-
         switch_reverse.setChecked(sp.getBoolean("reverse_channel", false));
         switch_boot.setChecked(sp.getBoolean("boot_start", false));
         switch_update.setChecked(sp.getBoolean("auto_update", true));
         tv_ratio.setText(ratioNames[currentRatioIndex]);
-
         switch_reverse.setOnCheckedChangeListener((buttonView, isChecked) ->
                 sp.edit().putBoolean("reverse_channel", isChecked).apply());
         switch_boot.setOnCheckedChangeListener((buttonView, isChecked) ->
@@ -544,7 +505,6 @@ public class MainActivity extends AppCompatActivity {
             ed.putBoolean("auto_update", isChecked).apply();
             if (isChecked) checkUpdate();
         });
-
         tv_ratio.setOnClickListener(view -> new AlertDialog.Builder(MainActivity.this)
                 .setTitle("画面比例")
                 .setItems(ratioNames, (dialog, which) -> {
@@ -555,7 +515,6 @@ public class MainActivity extends AppCompatActivity {
                 })
                 .setNegativeButton("取消", null)
                 .show());
-
         btn_qr.setOnClickListener(view -> showDynamicQrCodeDialog());
         btn_source.setOnClickListener(view -> {
             View ev = LayoutInflater.from(this).inflate(R.layout.dialog_edit, null);
@@ -588,11 +547,9 @@ public class MainActivity extends AppCompatActivity {
                 .setNegativeButton("取消", null)
                 .show();
         });
-
         AlertDialog dialog = new AlertDialog.Builder(this).setView(v).setNegativeButton("关闭", null).show();
         dialog.setOnDismissListener(dialog1 -> playerView.requestFocus());
     }
-
     public void onReceiveNewConfig(String liveUrl, String epgUrl) {
         SharedPreferences.Editor editor = sp.edit();
         editor.putString("custom_source", liveUrl);
@@ -602,7 +559,6 @@ public class MainActivity extends AppCompatActivity {
         customEpg = epgUrl;
         runOnUiThread(() -> Toast.makeText(MainActivity.this, "配置已保存，重启生效", Toast.LENGTH_SHORT).show());
     }
-
     private void checkUpdate() {
         new Thread(() -> {
             HttpURLConnection conn = null;
@@ -616,7 +572,6 @@ public class MainActivity extends AppCompatActivity {
                 conn.connect();
                 int code = conn.getResponseCode();
                 if (code != 200) return;
-
                 reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
                 StringBuilder sb = new StringBuilder();
                 String line;
@@ -651,7 +606,6 @@ public class MainActivity extends AppCompatActivity {
             }
         }).start();
     }
-
     private void startDownload() {
         Toast.makeText(this, "开始下载更新…", Toast.LENGTH_SHORT).show();
         new Thread(() -> {
@@ -669,7 +623,6 @@ public class MainActivity extends AppCompatActivity {
                 byte[] buf = new byte[8192];
                 int len;
                 while ((len = is.read(buf)) != -1) fos.write(buf, 0, len);
-
                 runOnUiThread(() -> {
                     try {
                         Intent intent = new Intent(Intent.ACTION_VIEW);
@@ -694,7 +647,6 @@ public class MainActivity extends AppCompatActivity {
             }
         }).start();
     }
-
     @Override
     protected void onActivityResult(int req, int res, Intent data) {
         super.onActivityResult(req, res, data);
@@ -704,7 +656,6 @@ public class MainActivity extends AppCompatActivity {
             }
         }
     }
-
     @Override
     public void onBackPressed() {
         if (isPlayingPlayback) {
@@ -715,7 +666,6 @@ public class MainActivity extends AppCompatActivity {
         }
         super.onBackPressed();
     }
-
     @Override
     protected void onDestroy() {
         super.onDestroy();

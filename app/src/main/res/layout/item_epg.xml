@@ -3,32 +3,41 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:padding="8dp">
+    android:padding="12dp">
 
+    <!-- 日期 + 时间 行 -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal">
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
 
         <TextView
             android:id="@+id/tv_dayName"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:textSize="13sp" />
+            android:textSize="15sp"
+            android:textColor="#ffffff"
+            android:minWidth="60dp"/>
 
         <TextView
             android:id="@+id/tv_time"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="10dp"
-            android:textSize="13sp" />
+            android:textSize="15sp"
+            android:textColor="#cccccc"
+            android:layout_marginStart="12dp"
+            android:minWidth="70dp"/>
+
     </LinearLayout>
 
+    <!-- 节目名称 -->
     <TextView
         android:id="@+id/tv_title"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
-        android:textSize="14sp" />
+        android:textSize="16sp"
+        android:textColor="#ffffff"
+        android:layout_marginTop="6dp"/>
 
 </LinearLayout>

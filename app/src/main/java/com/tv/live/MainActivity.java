@@ -221,32 +221,49 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @Override
-    public boolean onKeyUp(int keyCode, KeyEvent event) {
-        boolean rev = sp.getBoolean("reverse_channel", false);
-        int up = rev ? 1 : -1;
-        int down = rev ? -1 : 1;
-        if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
-            changeChannel(up);
-            return true;
+public boolean onKeyUp(int keyCode, KeyEvent event) {
+    // 读取反向切换设置
+    boolean reverseChannel = sp.getBoolean("reverse_channel", false);
+
+    if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
+        if (reverseChannel) {
+            // 反向开启：上键切到下一个频道
+            changeChannel(1);
+        } else {
+            // 正常：上键切到上一个频道
+            changeChannel(-1);
         }
-        if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
-            changeChannel(down);
-            return true;
-        }
-        if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER) {
-            showChannelListDialog();
-            return true;
-        }
-        if (keyCode == KeyEvent.KEYCODE_MENU || keyCode == KeyEvent.KEYCODE_HELP) {
-            showSettingDialog();
-            return true;
-        }
-        if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
-            showDynamicQrCodeDialog();
-            return true;
-        }
-        return super.onKeyUp(keyCode, event);
+        return true;
     }
+
+    if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
+        if (reverseChannel) {
+            // 反向开启：下键切到上一个频道
+            changeChannel(-1);
+        } else {
+            // 正常：下键切到下一个频道
+            changeChannel(1);
+        }
+        return true;
+    }
+
+    if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER) {
+        showChannelListDialog();
+        return true;
+    }
+
+    if (keyCode == KeyEvent.KEYCODE_MENU || keyCode == KeyEvent.KEYCODE_HELP) {
+        showSettingDialog();
+        return true;
+    }
+
+    if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
+        showDynamicQrCodeDialog();
+        return true;
+    }
+
+    return super.onKeyUp(keyCode, event);
+}
 
     private void initGesture() {
         gestureDetector = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {

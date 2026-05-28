@@ -1,5 +1,4 @@
 package com.tv.live;
-
 import android.app.AlertDialog;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -61,14 +60,12 @@ public class MainActivity extends AppCompatActivity {
     public static MainActivity mInstance;
     public int currentChannelIndex = 0;
     public int currentPlayIndex = 0;
-
     private Setting setting = new Setting();
     public static class Setting {
         private int line = 0;
         public int getLine() { return line; }
         public void setLine(int line) { this.line = line; }
     }
-
     public static class Channel {
         public String name;
         public String group;
@@ -83,7 +80,6 @@ public class MainActivity extends AppCompatActivity {
             this.epgList = new ArrayList<>();
         }
     }
-
     public List<Channel> channelSourceList = new ArrayList<>();
     private ExoPlayer exoPlayer;
     private ExoPlayer playbackPlayer;
@@ -96,15 +92,12 @@ public class MainActivity extends AppCompatActivity {
     private final String LIVE_SOURCE_URL = "https://gitee.com/qf_1111/iptv/raw/master/playlist.m3u";
     private List<String> sourceHistoryList = new ArrayList<>();
     private Gson gson = new Gson();
-
     private int currentRatioIndex = 0;
     private final String[] ratioNames = {"全屏", "16:9", "4:3"};
-
     private void setFullScreenRatio() {
         playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
     }
-
-    private final String UPDATE_URL = "https://raw.githubusercontent.com/cuicanrensheng/AH/main/update.json";
+    private final String UPDATE_URL = "https://github.com/cuicanrensheng/AH/releases/latest/download/update.json";
     private static final int REQUEST_INSTALL_PACKAGES = 1001;
     private HttpServer httpServer;
 
@@ -122,22 +115,18 @@ public class MainActivity extends AppCompatActivity {
         String customSource = sp.getString("custom_source", "");
         String customEpg = sp.getString("custom_epg", "");
         loadSourceHistory();
-
         playerView = findViewById(R.id.player_view);
         playerView.setUseController(false);
         playerView.setFocusable(false);
         playerView.setClickable(false);
         playerView.setFocusableInTouchMode(true);
         playerView.requestFocus();
-
         initGesture();
         initExoPlayer();
-
         try {
             httpServer = new HttpServer(10481, this);
             httpServer.start();
         } catch (Exception e) { e.printStackTrace(); }
-
         new Thread(() -> {
             try {
                 String playUrl = TextUtils.isEmpty(customSource) ? LIVE_SOURCE_URL : customSource;
@@ -154,7 +143,6 @@ public class MainActivity extends AppCompatActivity {
                 runOnUiThread(() -> Toast.makeText(MainActivity.this, "加载失败", Toast.LENGTH_SHORT).show());
             }
         }).start();
-
         if (sp.getBoolean("auto_update", true))
             checkUpdate();
     }
@@ -179,7 +167,7 @@ public class MainActivity extends AppCompatActivity {
         try {
             for (Enumeration<NetworkInterface> en = NetworkInterface.getNetworkInterfaces(); en.hasMoreElements(); ) {
                 NetworkInterface intf = en.nextElement();
-                for (Enumeration<InetAddress> enumIpAddr = intf.getInetAddresses(); enumIpAddr.hasMoreElements(); ) {
+                for (Enumeration<InetAddress> enumIpAddr = intf.getInAddresses(); enumIpAddr.hasMoreElements(); ) {
                     InetAddress inetAddress = enumIpAddr.nextElement();
                     if (!inetAddress.isLoopbackAddress() && inetAddress.isSiteLocalAddress()) {
                         return inetAddress.getHostAddress();
@@ -221,49 +209,38 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @Override
-public boolean onKeyUp(int keyCode, KeyEvent event) {
-    // 读取反向切换设置
-    boolean reverseChannel = sp.getBoolean("reverse_channel", false);
-
-    if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
-        if (reverseChannel) {
-            // 反向开启：上键切到下一个频道
-            changeChannel(1);
-        } else {
-            // 正常：上键切到上一个频道
-            changeChannel(-1);
+    public boolean onKeyUp(int keyCode, KeyEvent event) {
+        boolean reverseChannel = sp.getBoolean("reverse_channel", false);
+        if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
+            if (reverseChannel) {
+                changeChannel(-1);
+            } else {
+                changeChannel(1);
+            }
+            return true;
         }
-        return true;
-    }
-
-    if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
-        if (reverseChannel) {
-            // 反向开启：下键切到上一个频道
-            changeChannel(-1);
-        } else {
-            // 正常：下键切到下一个频道
-            changeChannel(1);
+        if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
+            if (reverseChannel) {
+                changeChannel(1);
+            } else {
+                changeChannel(-1);
+            }
+            return true;
         }
-        return true;
+        if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER) {
+            showChannelListDialog();
+            return true;
+        }
+        if (keyCode == KeyEvent.KEYCODE_MENU || keyCode == KeyEvent.KEYCODE_HELP) {
+            showSettingDialog();
+            return true;
+        }
+        if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
+            showDynamicQrCodeDialog();
+            return true;
+        }
+        return super.onKeyUp(keyCode, event);
     }
-
-    if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER) {
-        showChannelListDialog();
-        return true;
-    }
-
-    if (keyCode == KeyEvent.KEYCODE_MENU || keyCode == KeyEvent.KEYCODE_HELP) {
-        showSettingDialog();
-        return true;
-    }
-
-    if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
-        showDynamicQrCodeDialog();
-        return true;
-    }
-
-    return super.onKeyUp(keyCode, event);
-}
 
     private void initGesture() {
         gestureDetector = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
@@ -299,7 +276,6 @@ public boolean onKeyUp(int keyCode, KeyEvent event) {
         exoPlayer = new ExoPlayer.Builder(this).build();
         playerView.setPlayer(exoPlayer);
         setFullScreenRatio();
-
         exoPlayer.addListener(new Player.Listener() {
             @Override
             public void onPlayerError(PlaybackException error) {
@@ -349,7 +325,6 @@ public boolean onKeyUp(int keyCode, KeyEvent event) {
             groupSet.add(ch.group);
         List<String> groupList = new ArrayList<>(groupSet);
         int gPos = groupList.indexOf(curr.group);
-
         ArrayAdapter<String> gAdapter = new ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, groupList) {
             @Override
             public View getView(int pos, View cv, ViewGroup p) {
@@ -363,13 +338,11 @@ public boolean onKeyUp(int keyCode, KeyEvent event) {
         };
         lvGroup.setAdapter(gAdapter);
         lvGroup.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
-
         List<Channel> gChannels = new ArrayList<>();
         for (Channel ch : channelSourceList) {
             if (ch.group.equals(curr.group))
                 gChannels.add(ch);
         }
-
         ArrayAdapter<Channel> cAdapter = new ArrayAdapter<Channel>(this, android.R.layout.simple_list_item_1, gChannels) {
             @Override
             public View getView(int pos, View cv, ViewGroup p) {
@@ -383,7 +356,6 @@ public boolean onKeyUp(int keyCode, KeyEvent event) {
         };
         lvChannel.setAdapter(cAdapter);
         lvChannel.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
-
         ArrayAdapter<Channel.EpgItem> eAdapter = new ArrayAdapter<Channel.EpgItem>(this, R.layout.item_epg, new ArrayList<>()) {
             @Override
             public View getView(int pos, View cv, ViewGroup p) {
@@ -397,7 +369,6 @@ public boolean onKeyUp(int keyCode, KeyEvent event) {
             }
         };
         lvEpg.setAdapter(eAdapter);
-
         lvGroup.post(new Runnable() {
             @Override
             public void run() {
@@ -411,7 +382,6 @@ public boolean onKeyUp(int keyCode, KeyEvent event) {
                 eAdapter.notifyDataSetChanged();
             }
         });
-
         lvGroup.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> parent, View view, int pos, long id) {
@@ -426,7 +396,6 @@ public boolean onKeyUp(int keyCode, KeyEvent event) {
                 eAdapter.clear();
             }
         });
-
         lvChannel.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> parent, View view, int pos, long id) {
@@ -438,7 +407,6 @@ public boolean onKeyUp(int keyCode, KeyEvent event) {
                 eAdapter.notifyDataSetChanged();
             }
         });
-
         AlertDialog dialog = new AlertDialog.Builder(this)
                 .setView(v)
                 .setCancelable(true)
@@ -457,27 +425,26 @@ public boolean onKeyUp(int keyCode, KeyEvent event) {
         TextView btn_source = v.findViewById(R.id.btn_source);
         TextView btn_epg = v.findViewById(R.id.btn_epg);
         TextView btn_qr = v.findViewById(R.id.btn_qr);
-
         switch_reverse.setChecked(sp.getBoolean("reverse_channel", false));
         switch_boot.setChecked(sp.getBoolean("boot_start", false));
         switch_update.setChecked(sp.getBoolean("auto_update", true));
         switch_line.setChecked(sp.getBoolean("auto_line", true));
         tv_ratio.setText(ratioNames[currentRatioIndex]);
 
-        switch_reverse.setOnCheckedChangeListener((buttonView, isChecked) -> ed.putBoolean("reverse_channel", isChecked).apply());
+        switch_reverse.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            sp.edit().putBoolean("reverse_channel", isChecked).apply();
+        });
+
         switch_boot.setOnCheckedChangeListener((buttonView, isChecked) -> ed.putBoolean("boot_start", isChecked).apply());
         switch_update.setOnCheckedChangeListener((buttonView, isChecked) -> ed.putBoolean("auto_update", isChecked).apply());
         switch_line.setOnCheckedChangeListener((buttonView, isChecked) -> ed.putBoolean("auto_line", isChecked).apply());
-
         tv_ratio.setOnClickListener(view -> {
             currentRatioIndex = (currentRatioIndex + 1) % ratioNames.length;
             tv_ratio.setText(ratioNames[currentRatioIndex]);
             setFullScreenRatio();
             Toast.makeText(MainActivity.this, "已切换："+ratioNames[currentRatioIndex], Toast.LENGTH_SHORT).show();
         });
-
         btn_qr.setOnClickListener(view -> showDynamicQrCodeDialog());
-
         btn_source.setOnClickListener(view -> {
             View ev = LayoutInflater.from(this).inflate(R.layout.dialog_edit, null);
             EditText et = ev.findViewById(R.id.et_input);
@@ -489,12 +456,11 @@ public boolean onKeyUp(int keyCode, KeyEvent event) {
                     String url = et.getText().toString().trim();
                     ed.putString("custom_source", url).apply();
                     saveSourceHistory(url);
-                    Toast.makeText(MainActivity.this, "已保存，重启生效", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, "已保存，重启生效", Toast.LENGTH_SHORT).show();
                 })
                 .setNegativeButton("取消", null)
                 .show();
         });
-
         btn_epg.setOnClickListener(view -> {
             View ev = LayoutInflater.from(this).inflate(R.layout.dialog_edit, null);
             EditText et = ev.findViewById(R.id.et_input);
@@ -505,12 +471,11 @@ public boolean onKeyUp(int keyCode, KeyEvent event) {
                 .setPositiveButton("保存", (dialog, which) -> {
                     String url = et.getText().toString().trim();
                     ed.putString("custom_epg", url).apply();
-                    Toast.makeText(MainActivity.this, "已保存，重启生效", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, "已保存，重启生效", Toast.LENGTH_SHORT).show();
                 })
                 .setNegativeButton("取消", null)
                 .show();
         });
-
         AlertDialog dialog = new AlertDialog.Builder(this)
                 .setView(v)
                 .setNegativeButton("关闭", null)
@@ -536,10 +501,10 @@ public boolean onKeyUp(int keyCode, KeyEvent event) {
                         ch.epgList = EpgManager.getInstance().getEpg(ch.name);
                     if (!channelSourceList.isEmpty())
                         playChannel(0);
-                    Toast.makeText(MainActivity.this, "刷新完成", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, "刷新完成", Toast.LENGTH_SHORT).show();
                 }));
             } catch (Exception ex) {
-                runOnUiThread(() -> Toast.makeText(MainActivity.this, "刷新失败", Toast.LENGTH_SHORT).show());
+                runOnUiThread(() -> Toast.makeText(this, "刷新失败", Toast.LENGTH_SHORT).show());
                 ex.printStackTrace();
             }
         }).start();
@@ -637,7 +602,7 @@ public boolean onKeyUp(int keyCode, KeyEvent event) {
                 if (getPackageManager().canRequestPackageInstalls()) {
                     downloadAndInstallApk(sp.getString("latest_apk_url", ""));
                 } else {
-                    Toast.makeText(MainActivity.this, "需要开启安装未知应用权限", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, "需要开启安装未知应用权限", Toast.LENGTH_SHORT).show();
                 }
             }
         }

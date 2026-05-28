@@ -651,10 +651,11 @@ public class MainActivity extends AppCompatActivity {
                 while ((len = is.read(buf)) != -1) fos.write(buf, 0, len);
 
                 runOnUiThread(() -> {
-                    Intent intent = new Intent(Intent.ACTION_VIEW);
-                    intent.setDataAndType(Uri.fromFile(outFile), "application/vnd.android.package-archive");
-                    intent.addFlags(Intent.ACTION_VIEW);
-                    intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                 Intent intent = new Intent(Intent.ACTION_VIEW);
+                 intent.setDataAndType(Uri.fromFile(outFile), "application/vnd.android.package-archive");
+                 // 这里是关键修复：把 addFlags 改成正确的整数标志
+                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                 intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
                     startActivity(intent);
                 });
             } catch (Exception e) {

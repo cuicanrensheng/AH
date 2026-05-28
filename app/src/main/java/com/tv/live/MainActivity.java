@@ -256,6 +256,13 @@ public class MainActivity extends AppCompatActivity {
     }
     
     private void initExoPlayer() {
+    exoPlayer = new ExoPlayer.Builder(this).build();
+    playerView.setPlayer(exoPlayer);
+
+    // 👇 这一行：代码设置全屏，无任何报错
+    playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_ZOOM);
+
+    updatePlayerRatio();   
     // 关键：禁用 HDR 自动适配，强制使用 SDR 渲染，解决花屏
     ExoPlayer.Builder builder = new ExoPlayer.Builder(this);
     builder.setRenderersFactory(new DefaultRenderersFactory(this) {

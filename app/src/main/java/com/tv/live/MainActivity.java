@@ -57,7 +57,6 @@ import java.util.List;
 import java.util.Set;
 import android.view.ViewGroup;
 import android.widget.AdapterView;
-import android.widget.Button;
 
 public class MainActivity extends AppCompatActivity {
     public static MainActivity mInstance;
@@ -434,7 +433,7 @@ public class MainActivity extends AppCompatActivity {
                 TextView day = cv.findViewById(R.id.tv_dayName);
                 TextView time = cv.findViewById(R.id.tv_time);
                 TextView title = cv.findViewById(R.id.tv_title);
-                Button btn = cv.findViewById(R.id.btn_action);
+                TextView btn = cv.findViewById(R.id.tv_action);
 
                 day.setText(item.dayName);
                 time.setText(item.time);

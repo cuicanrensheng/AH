@@ -75,19 +75,36 @@ public class MainActivity extends AppCompatActivity {
         public String group;
         public List<String> urls;
         public List<EpgItem> epgList;
+
         public static class EpgItem {
-            public String dayName; public String time; public String title;
-            public String playUrl; public boolean isNow;
+            public String dayName;
+            public String time;
+            public String title;
+            public String playUrl;
+            public boolean isNow;
+
+            public EpgItem(String dayName, String time, String title, String playUrl, boolean isNow) {
+                this.dayName = dayName;
+                this.time = time;
+                this.title = title;
+                this.playUrl = playUrl;
+                this.isNow = isNow;
+            }
         }
+
         public Channel(String name, String group, List<String> urls) {
-            this.name = name; this.group = group; this.urls = urls;
+            this.name = name;
+            this.group = group;
+            this.urls = urls;
             this.epgList = new ArrayList<>();
+        }
+
+        @Override
+        public String toString() {
+            return name;
         }
     }
 
-    // ====================== 修复缺失变量 ======================
-    private String customSource;
-    private String customEpg;
     public List<Channel> channelSourceList = new ArrayList<>();
     private ExoPlayer exoPlayer;
     private ExoPlayer playbackPlayer;
@@ -108,7 +125,9 @@ public class MainActivity extends AppCompatActivity {
     private String latestApkUrl = "";
     private HttpServer httpServer;
 
-    // ====================== 初始化 ======================
+    private String customSource;
+    private String customEpg;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -137,7 +156,6 @@ public class MainActivity extends AppCompatActivity {
         initExoPlayer();
         initGesture();
 
-        // 启动HTTP服务（扫码用）
         try {
             httpServer = new HttpServer(10481, this);
             httpServer.start();
@@ -145,7 +163,6 @@ public class MainActivity extends AppCompatActivity {
             e.printStackTrace();
         }
 
-        // 加载直播源
         new Thread(() -> {
             try {
                 String playUrl = TextUtils.isEmpty(customSource) ? LIVE_SOURCE_URL : customSource;
@@ -157,7 +174,7 @@ public class MainActivity extends AppCompatActivity {
                     for (Channel ch : channelSourceList) {
                         ch.epgList = EpgManager.getInstance().getEpg(ch.name);
                     }
-                    int playIdx = Math.min(lastPlayIndex, channelSourceList.size()-1);
+                    int playIdx = Math.min(lastPlayIndex, channelSourceList.size() - 1);
                     playChannel(playIdx);
                 }));
             } catch (Exception e) {
@@ -170,7 +187,6 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // ====================== 画面比例 ======================
     private void setRatio(int index) {
         currentRatioIndex = index;
         switch (index) {
@@ -190,7 +206,6 @@ public class MainActivity extends AppCompatActivity {
         sp.edit().putInt("play_ratio", currentRatioIndex).apply();
     }
 
-    // ====================== 历史源 ======================
     private void loadSourceHistory() {
         String json = sp.getString("source_history_list", "");
         Type type = new TypeToken<List<String>>(){}.getType();
@@ -208,7 +223,6 @@ public class MainActivity extends AppCompatActivity {
         sp.edit().putString("source_history_list", gson.toJson(sourceHistoryList)).apply();
     }
 
-    // ====================== 扫码设置 ======================
     private String getLocalIpAddress() {
         try {
             for (Enumeration<NetworkInterface> en = NetworkInterface.getNetworkInterfaces(); en.hasMoreElements(); ) {
@@ -254,7 +268,6 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // ====================== 按键 ======================
     @Override
     public boolean onKeyUp(int keyCode, KeyEvent event) {
         boolean rev = sp.getBoolean("reverse_channel", false);
@@ -281,7 +294,6 @@ public class MainActivity extends AppCompatActivity {
         return super.onKeyUp(keyCode, event);
     }
 
-    // ====================== 手势 ======================
     private void initGesture() {
         gestureDetector = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
             @Override public boolean onDown(MotionEvent e) { return true; }
@@ -314,16 +326,13 @@ public class MainActivity extends AppCompatActivity {
         Toast.makeText(this, channelSourceList.get(idx).name, Toast.LENGTH_SHORT).show();
     }
 
-    // ====================== 播放器 ======================
     private void initExoPlayer() {
         exoPlayer = new ExoPlayer.Builder(this).build();
         playerView.setPlayer(exoPlayer);
         setRatio(currentRatioIndex);
         exoPlayer.addListener(new Player.Listener() {
             @Override
-            public void onPlayerError(PlaybackException error) {
-                // 已删除自动切换线路
-            }
+            public void onPlayerError(PlaybackException error) {}
         });
     }
 
@@ -341,12 +350,28 @@ public class MainActivity extends AppCompatActivity {
         sp.edit().putInt("last_play", index).apply();
     }
 
-    // ====================== 频道列表 ======================
+    private void playEpgItem(Channel.EpgItem item) {
+        if (TextUtils.isEmpty(item.playUrl)) {
+            Toast.makeText(this, "暂无回看", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (playbackPlayer == null) {
+            playbackPlayer = new ExoPlayer.Builder(this).build();
+        }
+        playerView.setPlayer(playbackPlayer);
+        playbackPlayer.setMediaItem(MediaItem.fromUri(item.playUrl));
+        playbackPlayer.prepare();
+        playbackPlayer.play();
+        isPlayingPlayback = true;
+        Toast.makeText(this, "回看：" + item.title, Toast.LENGTH_SHORT).show();
+    }
+
     private void showChannelListDialog() {
         if (channelSourceList.isEmpty()) {
             Toast.makeText(this, "暂无频道", Toast.LENGTH_SHORT).show();
             return;
         }
+
         View v = LayoutInflater.from(this).inflate(R.layout.dialog_channel_list, null);
         ListView lvGroup = v.findViewById(R.id.lv_group);
         ListView lvChannel = v.findViewById(R.id.lv_channel);
@@ -377,7 +402,7 @@ public class MainActivity extends AppCompatActivity {
             if (ch.group.equals(curr.group)) gChannels.add(ch);
         }
 
-        ArrayAdapter<Channel> cAdapter = new ArrayAdapter<Channel>(this, android.R.layout.simple_list_item_1, gChannels) {
+        ArrayAdapter<Channel> cAdapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, gChannels) {
             @Override
             public View getView(int pos, View cv, ViewGroup p) {
                 View view = super.getView(pos, cv, p);
@@ -391,14 +416,25 @@ public class MainActivity extends AppCompatActivity {
         lvChannel.setAdapter(cAdapter);
         lvChannel.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
 
-        ArrayAdapter<Channel.EpgItem> eAdapter = new ArrayAdapter<Channel.EpgItem>(this, R.layout.item_epg, new ArrayList<>()) {
+        ArrayAdapter<Channel.EpgItem> eAdapter = new ArrayAdapter<>(this, R.layout.item_epg, new ArrayList<>()) {
             @Override
             public View getView(int pos, View cv, ViewGroup p) {
                 if (cv == null) cv = LayoutInflater.from(getContext()).inflate(R.layout.item_epg, p, false);
                 Channel.EpgItem item = getItem(pos);
-                ((TextView) cv.findViewById(R.id.tv_dayName)).setText(item.dayName);
-                ((TextView) cv.findViewById(R.id.tv_time)).setText(item.time);
-                ((TextView) cv.findViewById(R.id.tv_title)).setText(item.title);
+
+                TextView day = cv.findViewById(R.id.tv_dayName);
+                TextView time = cv.findViewById(R.id.tv_time);
+                TextView title = cv.findViewById(R.id.tv_title);
+
+                day.setText(item.dayName);
+                time.setText(item.time);
+                title.setText(item.title);
+
+                if (item.isNow) {
+                    title.setTextColor(0xFFFF9900);
+                } else {
+                    title.setTextColor(Color.WHITE);
+                }
                 return cv;
             }
         };
@@ -434,6 +470,11 @@ public class MainActivity extends AppCompatActivity {
             eAdapter.notifyDataSetChanged();
         });
 
+        lvEpg.setOnItemClickListener((parent, view, pos, id) -> {
+            Channel.EpgItem item = eAdapter.getItem(pos);
+            playEpgItem(item);
+        });
+
         AlertDialog dialog = new AlertDialog.Builder(this)
                 .setView(v)
                 .setCancelable(true)
@@ -441,7 +482,6 @@ public class MainActivity extends AppCompatActivity {
         dialog.setOnDismissListener(dialog1 -> playerView.requestFocus());
     }
 
-    // ====================== 设置界面 ======================
     private void showSettingDialog() {
         View v = LayoutInflater.from(this).inflate(R.layout.dialog_setting, null);
         SharedPreferences.Editor ed = sp.edit();
@@ -525,20 +565,16 @@ public class MainActivity extends AppCompatActivity {
         dialog.setOnDismissListener(dialog1 -> playerView.requestFocus());
     }
 
-    // ====================== 扫码接收配置（核心修复） ======================
     public void onReceiveNewConfig(String liveUrl, String epgUrl) {
         SharedPreferences.Editor editor = sp.edit();
         editor.putString("custom_source", liveUrl);
         editor.putString("custom_epg", epgUrl);
         editor.apply();
-
-        this.customSource = liveUrl;
-        this.customEpg = epgUrl;
-
+        customSource = liveUrl;
+        customEpg = epgUrl;
         runOnUiThread(() -> Toast.makeText(this, "配置已保存，重启生效", Toast.LENGTH_SHORT).show());
     }
 
-    // ====================== 自动更新 ======================
     private void checkUpdate() {
         new Thread(() -> {
             try {
@@ -632,7 +668,6 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // ====================== 生命周期 ======================
     @Override
     public void onBackPressed() {
         if (isPlayingPlayback) {

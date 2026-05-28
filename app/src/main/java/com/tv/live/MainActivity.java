@@ -97,7 +97,7 @@ public class MainActivity extends AppCompatActivity {
     private void setFullScreenRatio() {
         playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
     }
-    private final String UPDATE_URL = "https://github.com/cuicanrensheng/AH/releases/latest/download/update.json";
+    private final String UPDATE_URL = "https://raw.githubusercontent.com/cuicanrensheng/AH/main/update.json";
     private static final int REQUEST_INSTALL_PACKAGES = 1001;
     private HttpServer httpServer;
 
@@ -167,7 +167,7 @@ public class MainActivity extends AppCompatActivity {
         try {
             for (Enumeration<NetworkInterface> en = NetworkInterface.getNetworkInterfaces(); en.hasMoreElements(); ) {
                 NetworkInterface intf = en.nextElement();
-                for (Enumeration<InetAddress> enumIpAddr = intf.getInAddresses(); enumIpAddr.hasMoreElements(); ) {
+                for (Enumeration<InetAddress> enumIpAddr = intf.getInetAddresses(); enumIpAddr.hasMoreElements(); ) {
                     InetAddress inetAddress = enumIpAddr.nextElement();
                     if (!inetAddress.isLoopbackAddress() && inetAddress.isSiteLocalAddress()) {
                         return inetAddress.getHostAddress();

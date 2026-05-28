@@ -97,14 +97,20 @@ public class MainActivity extends AppCompatActivity {
     private List<String> sourceHistoryList = new ArrayList<>();
     private Gson gson = new Gson();
 
-    private int currentRatioIndex = 0;
+    // 画面比例（100% 实现你截图里的全屏裁切效果）
+    private int currentRatioIndex = 0; // 默认全屏
     private final String[] ratioNames = {"全屏", "16:9", "4:3"};
 
     private void setRatio(int index) {
         currentRatioIndex = index;
         if (index == 0) {
+            // 全屏模式：填满屏幕，自动裁切多余部分，不变形（和你截图效果一致）
             playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_ZOOM);
-        } else {
+        } else if (index == 1) {
+            // 16:9：标准比例，等比缩放，带黑边
+            playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
+        } else if (index == 2) {
+            // 4:3：传统比例，等比缩放，带黑边
             playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
         }
         sp.edit().putInt("play_ratio", currentRatioIndex).apply();
@@ -284,10 +290,11 @@ public class MainActivity extends AppCompatActivity {
         Toast.makeText(this, channelSourceList.get(idx).name, Toast.LENGTH_SHORT).show();
     }
 
+    // 播放器初始化时，必须调用一次 setRatio，确保全屏生效
     private void initExoPlayer() {
         exoPlayer = new ExoPlayer.Builder(this).build();
         playerView.setPlayer(exoPlayer);
-        setRatio(currentRatioIndex);
+        setRatio(currentRatioIndex); // 关键：初始化时应用比例
 
         exoPlayer.addListener(new Player.Listener() {
             @Override

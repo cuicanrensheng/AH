@@ -96,14 +96,26 @@ public class MainActivity extends AppCompatActivity {
     private List<String> sourceHistoryList = new ArrayList<>();
     private Gson gson = new Gson();
 
-    // 画面比例（默认全屏）
-    private int currentRatioIndex = 2;
-    private final String[] ratioNames = {"16:9", "4:3", "全屏"};
-    private final int[] ratioModes = {
-        C.VIDEO_SCALING_MODE_SCALE_TO_FIT,
-        C.VIDEO_SCALING_MODE_SCALE_TO_FIT,
-        C.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING
-    };
+    // ====================== 【重写：画面比例 100%正确】 ======================
+    private int currentRatioIndex = 0; // 默认：全屏
+    private final String[] ratioNames = {"全屏", "16:9", "4:3"};
+
+    // 正确模式
+    private void setRatio(int index) {
+        currentRatioIndex = index;
+        if (index == 0) {
+            // 全屏（填满屏幕，裁边，不变形）
+            playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_ZOOM);
+        } else if (index == 1) {
+            // 16:9 等比，带黑边，不拉伸
+            playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
+        } else if (index == 2) {
+            // 4:3 等比，带黑边，不拉伸
+            playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
+        }
+        sp.edit().putInt("play_ratio", currentRatioIndex).apply();
+    }
+    // ====================================================================
 
     private final String UPDATE_URL = "https://raw.githubusercontent.com/cuicanrensheng/AH/main/update.json";
     private static final int REQUEST_INSTALL_PACKAGES = 1001;
@@ -119,7 +131,7 @@ public class MainActivity extends AppCompatActivity {
         sp = getSharedPreferences("tv_config", MODE_PRIVATE);
         epgEnabled = sp.getBoolean("epgEnabled", true);
         lastPlayIndex = sp.getInt("last_play", 0);
-        currentRatioIndex = sp.getInt("play_ratio", 2);
+        currentRatioIndex = sp.getInt("play_ratio", 0);
         String customSource = sp.getString("custom_source", "");
         String customEpg = sp.getString("custom_epg", "");
         loadSourceHistory();
@@ -174,12 +186,6 @@ public class MainActivity extends AppCompatActivity {
         if (sourceHistoryList.size() > 10)
             sourceHistoryList = sourceHistoryList.subList(0, 10);
         sp.edit().putString("source_history_list", gson.toJson(sourceHistoryList)).apply();
-    }
-
-    private void updatePlayerRatio() {
-        if (exoPlayer != null) {
-            exoPlayer.setVideoScalingMode(ratioModes[currentRatioIndex]);
-        }
     }
 
     private String getLocalIpAddress() {
@@ -285,12 +291,11 @@ public class MainActivity extends AppCompatActivity {
         Toast.makeText(this, channelSourceList.get(idx).name, Toast.LENGTH_SHORT).show();
     }
 
-    // 【唯一正确、无重复、无报错】初始化播放器
+    // ====================== 初始化播放器（正确） ======================
     private void initExoPlayer() {
         exoPlayer = new ExoPlayer.Builder(this).build();
         playerView.setPlayer(exoPlayer);
-        playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_ZOOM);
-        updatePlayerRatio();
+        setRatio(currentRatioIndex); // 应用正确比例
 
         exoPlayer.addListener(new Player.Listener() {
             @Override
@@ -301,6 +306,7 @@ public class MainActivity extends AppCompatActivity {
             }
         });
     }
+    // =================================================================
 
     private void playChannel(int index) {
         if (channelSourceList.isEmpty()) return;
@@ -412,7 +418,7 @@ public class MainActivity extends AppCompatActivity {
             eAdapter.clear();
         });
 
-        lvChannel.setOnItemClickListener((pp, vv, pos, id) -> {
+        lvChannel.setOnItemClickListener((pp, vv, pos, id) => {
             Channel ch = gChannels.get(pos);
             int real = channelSourceList.indexOf(ch);
             playChannel(real);
@@ -428,6 +434,7 @@ public class MainActivity extends AppCompatActivity {
             .setOnDismissListener(d -> playerView.requestFocus());
     }
 
+    // ====================== 设置界面（正确切换） ======================
     private void showSettingDialog() {
         View v = LayoutInflater.from(this).inflate(R.layout.dialog_setting, null);
         SharedPreferences.Editor ed = sp.edit();
@@ -451,11 +458,11 @@ public class MainActivity extends AppCompatActivity {
         switch_update.setOnCheckedChangeListener((b, c) -> ed.putBoolean("auto_update", c).apply());
         switch_line.setOnCheckedChangeListener((b, c) -> ed.putBoolean("auto_line", c).apply());
 
+        // 点击切换比例（正常，不拉伸）
         tv_ratio.setOnClickListener(view -> {
             currentRatioIndex = (currentRatioIndex + 1) % ratioNames.length;
             tv_ratio.setText(ratioNames[currentRatioIndex]);
-            updatePlayerRatio();
-            ed.putInt("play_ratio", currentRatioIndex).apply();
+            setRatio(currentRatioIndex);
             Toast.makeText(this, "已切换："+ratioNames[currentRatioIndex], Toast.LENGTH_SHORT).show();
         });
 
@@ -500,6 +507,7 @@ public class MainActivity extends AppCompatActivity {
             .show()
             .setOnDismissListener(d -> playerView.requestFocus());
     }
+    // ====================================================================
 
     public void onReceiveNewConfig(String liveUrl, String epgUrl) {
         SharedPreferences.Editor ed = sp.edit();

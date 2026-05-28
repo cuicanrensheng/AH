@@ -254,17 +254,30 @@ public class MainActivity extends AppCompatActivity {
         playChannel(idx);
         Toast.makeText(this, channelSourceList.get(idx).name, Toast.LENGTH_SHORT).show();
     }
-
+    
     private void initExoPlayer() {
-        exoPlayer = new ExoPlayer.Builder(this).build();
-        playerView.setPlayer(exoPlayer);
-        updatePlayerRatio(); // 应用默认全屏
-        exoPlayer.addListener(new Player.Listener() {
-            @Override public void onPlayerError(PlaybackException error) {
-                if (sp.getBoolean("auto_line",true)) autoSwitchLine();
-            }
-        });
-    }
+    // 关键：禁用 HDR 自动适配，强制使用 SDR 渲染，解决花屏
+    ExoPlayer.Builder builder = new ExoPlayer.Builder(this);
+    builder.setRenderersFactory(new DefaultRenderersFactory(this) {
+        @Override
+        protected void buildVideoRenderers(Context context, @DefaultVideoDecoderMode int videoDecoderMode,
+                                            boolean enableDecoderFallback, Handler eventHandler,
+                                            VideoRendererEventListener eventListener,
+                                            List<Renderer> outRenderers) {
+            // 强制使用软件解码（可尝试，解决部分硬解码兼容问题）
+            super.buildVideoRenderers(context, VIDEO_DECODER_MODE_SW_ONLY, enableDecoderFallback, eventHandler, eventListener, outRenderers);
+        }
+    });
+
+    exoPlayer = builder.build();
+    playerView.setPlayer(exoPlayer);
+    updatePlayerRatio(); // 应用默认全屏
+    exoPlayer.addListener(new Player.Listener() {
+        @Override public void onPlayerError(PlaybackException error) {
+            if (sp.getBoolean("auto_line",true)) autoSwitchLine();
+        }
+    });
+}
 
     private void playChannel(int index) {
         if (channelSourceList.isEmpty()) return;

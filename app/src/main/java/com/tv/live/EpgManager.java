@@ -12,7 +12,7 @@ import java.util.zip.GZIPInputStream;
 
 public class EpgManager {
     private static EpgManager instance;
-    private final Map<String, List<MainActivity.Channel.EpgItem>> channelEpgMap = new HashMap<>();
+    private final Map<String, List<Channel.EpgItem>> channelEpgMap = new HashMap<>();
     private String epgUrl = "https://e.erw.cc/all.xml.gz";
 
     public static EpgManager getInstance() {
@@ -117,7 +117,7 @@ public class EpgManager {
         }
     }
 
-    public List<MainActivity.Channel.EpgItem> getEpg(String channelName) {
+   public List<Channel.EpgItem> getEpg(String channelName) {
         if (channelName == null || channelName.isEmpty()) {
             return new ArrayList<>();
         }

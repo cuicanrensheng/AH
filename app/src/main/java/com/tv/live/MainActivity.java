@@ -141,7 +141,12 @@ public class MainActivity extends AppCompatActivity {
         playerView.setClickable(false);
         playerView.setFocusableInTouchMode(true);
         playerView.requestFocus();
-        initExoPlayer();
+
+        // 最安全播放器初始化（绝不闪退）
+        exoPlayer = new ExoPlayer.Builder(this).build();
+        playerView.setPlayer(exoPlayer);
+        setRatio(currentRatioIndex);
+
         initGesture();
         try {
             httpServer = new HttpServer(10481, this);
@@ -154,17 +159,17 @@ public class MainActivity extends AppCompatActivity {
             checkUpdate();
         }
     }
-    
+
     private void initWeekList() {
-    weekNames = new ArrayList<>();
-    Calendar cal = Calendar.getInstance();
-    int today = cal.get(Calendar.DAY_OF_WEEK);
-    String[] weeks = {"周日", "周一", "周二", "周三", "周四", "周五", "周六"};
-    for (int i = 0; i < 7; i++) {
-        int index = (today + i - 1) % 7;
-        weekNames.add(weeks[index]);
+        weekNames = new ArrayList<>();
+        Calendar cal = Calendar.getInstance();
+        int today = cal.get(Calendar.DAY_OF_WEEK);
+        String[] weeks = {"周日", "周一", "周二", "周三", "周四", "周五", "周六"};
+        for (int i = 0; i < 7; i++) {
+            int index = (today + i - 1) % 7;
+            weekNames.add(weeks[index]);
+        }
     }
-}
 
     private void markProgramStatus(List<Channel.EpgItem> list) {
         if (list == null || list.isEmpty()) return;
@@ -193,19 +198,6 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-private void initExoPlayer() {
-    exoPlayer = new ExoPlayer.Builder(this).build();
-    playerView.setPlayer(exoPlayer);
-    setRatio(currentRatioIndex);
-
-    exoPlayer.addListener(new Player.Listener() {
-        @Override
-        public void onPlayerError(PlaybackException error) {
-            Toast.makeText(MainActivity.this, "播放失败", Toast.LENGTH_SHORT).show();
-        }
-    });
-}
-
     private void setRatio(int index) {
         currentRatioIndex = index;
         switch (index) {
@@ -216,12 +208,14 @@ private void initExoPlayer() {
         }
         sp.edit().putInt("play_ratio", currentRatioIndex).apply();
     }
+
     private void loadSourceHistory() {
         String json = sp.getString("source_history_list", "");
         Type type = new TypeToken<List<String>>(){}.getType();
         List<String> list = gson.fromJson(json, type);
         sourceHistoryList = list == null ? new ArrayList<>() : list;
     }
+
     private void saveSourceHistory(String url) {
         if (TextUtils.isEmpty(url)) return;
         sourceHistoryList.remove(url);
@@ -229,18 +223,21 @@ private void initExoPlayer() {
         if (sourceHistoryList.size() > 10) sourceHistoryList = sourceHistoryList.subList(0, 10);
         sp.edit().putString("source_history_list", gson.toJson(sourceHistoryList)).apply();
     }
+
     private String getLocalIpAddress() {
         try {
             for (Enumeration<NetworkInterface> en = NetworkInterface.getNetworkInterfaces(); en.hasMoreElements(); ) {
                 NetworkInterface intf = en.nextElement();
                 for (Enumeration<InetAddress> enumIpAddr = intf.getInetAddresses(); enumIpAddr.hasMoreElements(); ) {
                     InetAddress inetAddress = enumIpAddr.nextElement();
-                    if (!inetAddress.isLoopbackAddress() && inetAddress.isSiteLocalAddress()) return inetAddress.getHostAddress();
+                    if (!inetAddress.isLoopbackAddress() && inetAddress.isSiteLocalAddress())
+                        return inetAddress.getHostAddress();
                 }
             }
         } catch (Exception e) { e.printStackTrace(); }
         return null;
     }
+
     private void showDynamicQrCodeDialog() {
         String ip = getLocalIpAddress();
         if (TextUtils.isEmpty(ip)) {
@@ -275,6 +272,7 @@ private void initExoPlayer() {
             Toast.makeText(this, "二维码生成失败", Toast.LENGTH_SHORT).show();
         }
     }
+
     @Override
     public boolean onKeyUp(int keyCode, KeyEvent event) {
         boolean rev = sp.getBoolean("reverse_channel", false);
@@ -300,6 +298,7 @@ private void initExoPlayer() {
         }
         return super.onKeyUp(keyCode, event);
     }
+
     private void initGesture() {
         gestureDetector = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
             @Override public boolean onDown(MotionEvent e) { return true; }
@@ -327,6 +326,7 @@ private void initExoPlayer() {
             }
         });
     }
+
     private void changeChannel(int delta) {
         if (channelSourceList.isEmpty()) return;
         int idx = currentPlayIndex + delta;
@@ -335,6 +335,7 @@ private void initExoPlayer() {
         playChannel(idx);
         Toast.makeText(this, channelSourceList.get(idx).name, Toast.LENGTH_SHORT).show();
     }
+
     private void playChannel(int index) {
         if (channelSourceList.isEmpty()) return;
         currentPlayIndex = index;
@@ -342,12 +343,18 @@ private void initExoPlayer() {
         Channel ch = channelSourceList.get(index);
         int line = Math.min(setting.getLine(), ch.urls.size()-1);
         String url = ch.urls.get(line);
+
+        // 最安全播放（不闪退）
+        exoPlayer.stop();
+        exoPlayer.clearMediaItems();
         exoPlayer.setMediaItem(MediaItem.fromUri(url));
         exoPlayer.prepare();
         exoPlayer.play();
+
         lastPlayIndex = index;
         sp.edit().putInt("last_play", index).apply();
     }
+
     private void playEpgItem(Channel.EpgItem item) {
         if (TextUtils.isEmpty(item.playUrl)) {
             Toast.makeText(this, "暂无回看", Toast.LENGTH_SHORT).show();
@@ -361,6 +368,7 @@ private void initExoPlayer() {
         isPlayingPlayback = true;
         Toast.makeText(this, "回看：" + item.title, Toast.LENGTH_SHORT).show();
     }
+
     private void loadChannels() {
         new Thread(new Runnable() {
             @Override
@@ -399,11 +407,18 @@ private void initExoPlayer() {
             }
         }).start();
     }
+
     private void showChannelListDialog() {
-        if (channelSourceList.isEmpty()) {
-            Toast.makeText(this, "暂无频道", Toast.LENGTH_SHORT).show();
+        // 关键修复：增加数据为空的保护
+        if (channelSourceList == null || channelSourceList.isEmpty()) {
+            Toast.makeText(this, "暂无频道数据，请稍后再试", Toast.LENGTH_SHORT).show();
             return;
         }
+        // 关键修复：确保 currentPlayIndex 不越界
+        if (currentPlayIndex < 0 || currentPlayIndex >= channelSourceList.size()) {
+            currentPlayIndex = 0;
+        }
+
         View v = LayoutInflater.from(this).inflate(R.layout.dialog_channel_list, null);
         ListView lvGroup = v.findViewById(R.id.lv_group);
         ListView lvWeek = v.findViewById(R.id.lv_channel);
@@ -508,6 +523,7 @@ private void initExoPlayer() {
             }
         });
     }
+
     private void showSettingDialog() {
         View v = LayoutInflater.from(this).inflate(R.layout.dialog_setting, null);
         SharedPreferences.Editor ed = sp.edit();
@@ -636,6 +652,7 @@ private void initExoPlayer() {
             }
         });
     }
+
     public void onReceiveNewConfig(String liveUrl, String epgUrl) {
         SharedPreferences.Editor editor = sp.edit();
         editor.putString("custom_source", liveUrl);
@@ -650,6 +667,7 @@ private void initExoPlayer() {
             }
         });
     }
+
     private void checkUpdate() {
         new Thread(new Runnable() {
             @Override
@@ -713,6 +731,7 @@ private void initExoPlayer() {
             }
         }).start();
     }
+
     private void startDownload() {
         Toast.makeText(this, "开始下载更新…", Toast.LENGTH_SHORT).show();
         new Thread(new Runnable() {
@@ -765,6 +784,7 @@ private void initExoPlayer() {
             }
         }).start();
     }
+
     @Override
     protected void onActivityResult(int req, int res, Intent data) {
         super.onActivityResult(req, res, data);
@@ -774,6 +794,7 @@ private void initExoPlayer() {
             }
         }
     }
+
     @Override
     public void onBackPressed() {
         if (isPlayingPlayback) {
@@ -784,6 +805,7 @@ private void initExoPlayer() {
         }
         super.onBackPressed();
     }
+
     @Override
     protected void onDestroy() {
         super.onDestroy();

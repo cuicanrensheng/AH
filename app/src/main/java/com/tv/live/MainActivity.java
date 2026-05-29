@@ -219,6 +219,13 @@ public class MainActivity extends AppCompatActivity {
                         channelSourceList.clear();
                         channelSourceList.addAll(channels);
                         Toast.makeText(MainActivity.this, "直播源加载完成：" + channelSourceList.size() + "个频道", Toast.LENGTH_SHORT).show();
+                        Set<String> groupSet = new HashSet<>();
+        for (Channel c : channelSourceList) {
+            groupSet.add(c.getGroup());
+        }
+        List<String> groupList = new ArrayList<>(groupSet);
+        lvGroup.setAdapter(new android.widget.ArrayAdapter<>(MainActivity.this,
+                android.R.layout.simple_list_item_1, groupList));
                         playChannel(currentPlayIndex);
                     }
                 });

@@ -19,21 +19,20 @@ public class Channel {
     public String getChannelId() { return channelId; }
 
     public static class EpgItem {
-        private String startTime;
-        private String stopTime;
-        private String title;
+        public String dayName;
+        public String time;
+        public String title;
+        public boolean isPlaying;
 
-        public EpgItem(String startTime, String stopTime, String title) {
-            this.startTime = startTime;
-            this.stopTime = stopTime;
+        public EpgItem(String dayName, String time, String title, boolean isPlaying) {
+            this.dayName = dayName;
+            this.time = time;
             this.title = title;
+            this.isPlaying = isPlaying;
         }
 
-        public String getDisplayTime() {
-            if (startTime == null || startTime.length() < 12) return "";
-            return startTime.substring(8, 10) + ":" + startTime.substring(10, 12);
+        public String getReplayUrl() {
+            return null;
         }
-
-        public String getTitle() { return title; }
     }
 }

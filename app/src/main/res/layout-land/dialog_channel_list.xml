@@ -4,32 +4,33 @@
     android:layout_height="wrap_content"
     android:orientation="horizontal">
 
-    <!-- 1. 频道分组 -->
+    <!-- 分组栏 -->
     <ListView
         android:id="@+id/lv_group"
         android:layout_width="120dp"
-        android:layout_height="400dp"
+        android:layout_height="450dp"
         android:background="#333333" />
 
-    <!-- 2. 频道列表 -->
+    <!-- 频道列表 -->
     <ListView
         android:id="@+id/lv_channel_list"
         android:layout_width="150dp"
-        android:layout_height="400dp"
+        android:layout_height="450dp"
         android:background="#444444" />
 
-    <!-- 3. 日期列表 -->
+    <!-- 日期栏 -->
     <ListView
         android:id="@+id/lv_date"
         android:layout_width="120dp"
-        android:layout_height="400dp"
+        android:layout_height="450dp"
         android:background="#555555" />
 
-    <!-- 4. 节目单：加宽为 match_parent，占满剩余空间 -->
+    <!-- 节目单：占满剩余宽度 -->
     <ListView
         android:id="@+id/lv_epg"
-        android:layout_width="match_parent"
-        android:layout_height="400dp"
+        android:layout_width="0dp"
+        android:layout_height="450dp"
+        android:layout_weight="1"
         android:background="#666666" />
 
 </LinearLayout>

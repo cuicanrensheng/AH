@@ -116,31 +116,111 @@ public class TVPlayerManager {
         }
     }
 
-    // ========== 关键修复：空指针保护 ==========
-    public void playUrl(String url) {
-        if (mExoPlayer == null) return;
-        if (url == null || url.isEmpty()) return;
+    // 关键修复：支持 PHP 接口 + 防盗链请求头
+public void playUrl(String url) {
+    if (mExoPlayer == null) return;
+    if (url == null || url.isEmpty()) return;
 
-        mCurrentPlayUrl = url;
-        MediaItem mediaItem = new MediaItem.Builder()
-                .setUri(Uri.parse(url))
-                .setMimeType(MimeTypes.APPLICATION_M3U8)
-                .build();
+    // 1. 后台线程解析 PHP 接口，拿到真实 m3u8 地址
+    new Thread(() -> {
+        final String realUrl = resolveStreamUrl(url);
 
-        DefaultHttpDataSource.Factory factory = new DefaultHttpDataSource.Factory()
-                .setConnectTimeoutMs(CONNECT_TIMEOUT)
-                .setReadTimeoutMs(READ_TIMEOUT)
-                .setUserAgent("Mozilla/5.0 (Linux; Android 10; TV) AppleWebKit/537.36 Chrome/114.0.0.0 Safari/537.36")
-                .setDefaultRequestProperties(getHuyaHeaders());
+        // 切回主线程播放
+        new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+            try {
+                MediaItem mediaItem = new MediaItem.Builder()
+                        .setUri(Uri.parse(realUrl))
+                        .setMimeType(MimeTypes.APPLICATION_M3U8)
+                        .build();
 
-        MediaSource mediaSource = new HlsMediaSource.Factory(factory)
-                .createMediaSource(mediaItem);
+                DefaultHttpDataSource.Factory factory = new DefaultHttpDataSource.Factory()
+                        .setConnectTimeoutMs(CONNECT_TIMEOUT)
+                        .setReadTimeoutMs(READ_TIMEOUT)
+                        .setUserAgent("Mozilla/5.0 (Linux; Android 10; TV) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36")
+                        .setDefaultRequestProperties(getHuyaHeaders());
 
-        mExoPlayer.setMediaSource(mediaSource);
-        mExoPlayer.prepare();
-        mExoPlayer.play();
+                MediaSource mediaSource = new HlsMediaSource.Factory(factory)
+                        .createMediaSource(mediaItem);
+
+                mExoPlayer.setMediaSource(mediaSource);
+                mExoPlayer.prepare();
+                mExoPlayer.play();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        });
+    }).start();
+}
+
+// 解析 PHP 接口，返回真实流地址
+private String resolveStreamUrl(String url) {
+    if (url == null || url.isEmpty()) return url;
+
+    // 标准 m3u8/ts 链接直接返回
+    if (url.endsWith(".m3u8") || url.endsWith(".ts")) {
+        return url;
     }
 
+    // PHP 接口解析
+    if (url.contains(".php") || url.contains("?id=")) {
+        HttpURLConnection conn = null;
+        BufferedReader br = null;
+        try {
+            URL targetUrl = new URL(url);
+            conn = (HttpURLConnection) targetUrl.openConnection();
+            conn.setRequestMethod("GET");
+            conn.setConnectTimeout(15000);
+            conn.setReadTimeout(15000);
+            conn.setInstanceFollowRedirects(false);
+
+            // 防盗链请求头
+            conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36");
+            conn.setRequestProperty("Referer", url.substring(0, url.indexOf("/", 8)));
+            conn.setRequestProperty("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
+
+            int responseCode = conn.getResponseCode();
+
+            // 处理 301/302 跳转
+            if (responseCode == 301 || responseCode == 302) {
+                String location = conn.getHeaderField("Location");
+                if (location != null && location.startsWith("http")) {
+                    return location;
+                }
+            }
+
+            // 处理接口返回的文本内容，提取 m3u8 地址
+            br = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while ((line = br.readLine()) != null) {
+                sb.append(line);
+            }
+            String content = sb.toString();
+
+            java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("(https?://.*?\\.m3u8)");
+            java.util.regex.Matcher matcher = pattern.matcher(content);
+            if (matcher.find()) {
+                return matcher.group(1);
+            }
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            try { if (br != null) br.close(); } catch (Exception ignored) {}
+            try { if (conn != null) conn.disconnect(); } catch (Exception ignored) {}
+        }
+    }
+    return url;
+}
+
+// 虎牙防盗链请求头（示例，可根据实际接口调整）
+private Map<String, String> getHuyaHeaders() {
+    Map<String, String> headers = new HashMap<>();
+    headers.put("Referer", "http://cdn.jdshipin.com:8880/");
+    headers.put("Origin", "http://cdn.jdshipin.com:8880");
+    return headers;
+}
+    
     private Map<String, String> getHuyaHeaders() {
         Map<String, String> headers = new HashMap<>();
         headers.put("User-Agent", "Mozilla/5.0 (Linux; Android 10; TV) AppleWebKit/537.36 Chrome/114.0.0.0 Safari/537.36");

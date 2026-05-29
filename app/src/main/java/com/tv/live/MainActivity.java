@@ -52,6 +52,13 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
         sp = getSharedPreferences("app_settings", MODE_PRIVATE);
+
+        // 读取保存的直播源 / EPG
+        String customLive = sp.getString("custom_live_url", null);
+        String customEpg = sp.getString("custom_epg_url", null);
+        if (customLive != null) UrlConfig.LIVE_URL = customLive;
+        if (customEpg != null) UrlConfig.EPG_URL = customEpg;
+
         PlayerView playerView = findViewById(R.id.player_view);
         panel_layout = findViewById(R.id.panel_layout);
         lvGroup = findViewById(R.id.lv_group);
@@ -107,7 +114,6 @@ public class MainActivity extends AppCompatActivity {
         loadLiveAndEpg();
         initListViewClick();
 
-        // 启动后台服务
         try {
             nanoHTTPD = new NanoHTTPD(10481);
             nanoHTTPD.start();
@@ -178,6 +184,7 @@ public class MainActivity extends AppCompatActivity {
                         playChannel(currentPlayIndex);
                     }
                 });
+
                 EpgManager.getInstance().setEpgUrl(UrlConfig.EPG_URL);
                 EpgManager.getInstance().loadEpg(() -> {
                     runOnUiThread(() -> {
@@ -220,12 +227,6 @@ public class MainActivity extends AppCompatActivity {
         if (channelSourceList.isEmpty()) return;
         int i = (currentPlayIndex + 1) % channelSourceList.size();
         playChannel(i);
-    }
-
-    private void openChannelList() {
-        currentChannelIndex = currentPlayIndex;
-        Intent intent = new Intent(this, ChannelListActivity.class);
-        startActivity(intent);
     }
 
     private void openSettings() {
@@ -286,14 +287,18 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // 网页后台调用这个方法
     public void onReceiveConfig(String liveUrl, String epgUrl) {
+        SharedPreferences.Editor edit = sp.edit();
         if (liveUrl != null && !liveUrl.isEmpty()) {
             UrlConfig.LIVE_URL = liveUrl;
+            edit.putString("custom_live_url", liveUrl);
         }
         if (epgUrl != null && !epgUrl.isEmpty()) {
             UrlConfig.EPG_URL = epgUrl;
+            edit.putString("custom_epg_url", epgUrl);
         }
+        edit.apply();
+
         runOnUiThread(() -> {
             Toast.makeText(this, "配置已保存，重新加载中…", Toast.LENGTH_LONG).show();
             loadLiveAndEpg();
@@ -323,12 +328,8 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        if (nanoHTTPD != null) {
-            nanoHTTPD.stop();
-        }
-        if (mPlayerManager != null) {
-            mPlayerManager.release();
-        }
+        if (nanoHTTPD != null) nanoHTTPD.stop();
+        if (mPlayerManager != null) mPlayerManager.release();
         mInstance = null;
     }
 }

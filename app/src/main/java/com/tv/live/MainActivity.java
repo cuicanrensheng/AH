@@ -181,6 +181,15 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    // 修复：添加 onTouchEvent 让手势能正常工作
+    @Override
+    public boolean onTouchEvent(MotionEvent event) {
+        if (gestureDetector != null) {
+            gestureDetector.onTouchEvent(event);
+        }
+        return super.onTouchEvent(event);
+    }
+
     private void initWeekList() {
         weekNames = new ArrayList<>();
         Calendar cal = Calendar.getInstance();
@@ -341,6 +350,7 @@ public class MainActivity extends AppCompatActivity {
         return super.onKeyUp(keyCode, event);
     }
 
+    // 修复：手势初始化和触摸监听
     private void initGesture() {
         gestureDetector = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
             @Override
@@ -361,11 +371,17 @@ public class MainActivity extends AppCompatActivity {
                 if (Math.abs(dy) > 60) {
                     boolean reverse = sp.getBoolean("reverse_channel", false);
                     changeChannel(dy > 0 ? (reverse ? -1 : 1) : (reverse ? 1 : -1));
+                    return true;
                 }
-                return true;
+                return false;
             }
         });
-        playerView.setOnTouchListener((v, event) -> gestureDetector.onTouchEvent(event));
+
+        // 关键：设置触摸监听并返回 true，让手势能被消费
+        playerView.setOnTouchListener((v, event) -> {
+            gestureDetector.onTouchEvent(event);
+            return true;
+        });
     }
 
     private void changeChannel(int delta) {

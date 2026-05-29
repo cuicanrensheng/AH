@@ -10,14 +10,6 @@ android {
         buildConfig true
     }
 
-    // 只禁用 layout，保留 layout-land（你要的效果）
-    sourceSets {
-        main {
-            res {
-                exclude "layout/**"
-            }
-        }
-    }
 
     defaultConfig {
         applicationId "com.tv.live"

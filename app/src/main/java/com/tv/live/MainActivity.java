@@ -167,10 +167,13 @@ public class MainActivity extends AppCompatActivity {
         playChannel(i);
     }
 
-    private void openChannelList() {
-        Intent intent = new Intent(this, ChannelListActivity.class);
-        startActivity(intent);
-    }
+    // 找到你原来的 openChannelList() 方法，替换成这个
+private void openChannelList() {
+    // 进入列表前强制同步一次当前播放下标，保证起点正确
+    currentChannelIndex = currentPlayIndex;
+    Intent intent = new Intent(this, ChannelListActivity.class);
+    startActivity(intent);
+}
 
     private void openSettings() {
         Intent intent = new Intent(this, SettingsActivity.class);

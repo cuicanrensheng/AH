@@ -2,5 +2,5 @@
   "versionCode": 264,
   "versionName": "1.0.264",
   "message": "自动更新版本",
-  "downloadUrl": "https://github.com/cuicanrensheng/AH/releases/download/v264/app-release.apk"
-}
+  "downloadUrl": "private static final String UPDATE_JSON_URL = "https://raw.githubusercontent.com/cuicanrensheng/AH/main/update.json";
+"}

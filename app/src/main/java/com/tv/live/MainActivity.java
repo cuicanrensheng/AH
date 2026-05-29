@@ -6,12 +6,10 @@ import android.os.Bundle;
 import android.text.TextUtils;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
-import android.view.View;
 import android.widget.ListView;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import com.google.android.exoplayer2.ui.PlayerView;
-import com.tv.live.util.HuyaParser;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -75,17 +73,52 @@ public class MainActivity extends AppCompatActivity {
             @Override public void onIdle() {}
             @Override public void onBuffering() { Toast.makeText(MainActivity.this,"缓冲中...",Toast.LENGTH_SHORT).show(); }
             @Override public void onPlayReady() {}
-            @Override public void onPlayEnd() { Toast.makeText(MainActivity.this,"播放结束",Toast.LENGTH_SHORT).show(); }
-            @Override public void onPlayError(String msg) { Toast.makeText(MainActivity.this,"错误："+msg,Toast.LENGTH_SHORT).show(); }
+            @Override public void onPlayEnd() { Toast.makeText(MainActivity.this,"播放结束，自动重试",Toast.LENGTH_SHORT).show(); }
+            @Override public void onPlayError(String msg) { Toast.makeText(MainActivity.this,"播放异常："+msg,Toast.LENGTH_SHORT).show(); }
         });
 
+        // ========== 自动加载直播源和EPG（使用UrlConfig） ==========
+        loadLiveAndEpg();
+
         initGesture();
-        loadChannels();
         initChannelList();
         initListViewClick();
     }
 
-    // ========== 遥控器 ==========
+    // ========== 加载直播源和EPG ==========
+    private void loadLiveAndEpg() {
+        new Thread(() -> {
+            try {
+                // 1. 加载直播源
+                List<Channel> channels = PlaylistParser.parse(UrlConfig.LIVE_URL);
+                runOnUiThread(() -> {
+                    if (channels != null && !channels.isEmpty()) {
+                        channelSourceList.clear();
+                        channelSourceList.addAll(channels);
+                        Toast.makeText(MainActivity.this, "直播源加载完成：" + channelSourceList.size() + "个频道", Toast.LENGTH_SHORT).show();
+                        initChannelList();
+                        playChannel(0);
+                    }
+                });
+
+                // 2. 加载EPG（支持.gz解压）
+                EpgManager.getInstance().setEpgUrl(UrlConfig.EPG_URL);
+                EpgManager.getInstance().loadEpg(() -> {
+                    runOnUiThread(() -> {
+                        Toast.makeText(MainActivity.this, "EPG节目单加载完成", Toast.LENGTH_SHORT).show();
+                    });
+                });
+
+            } catch (Exception e) {
+                e.printStackTrace();
+                runOnUiThread(() -> {
+                    Toast.makeText(MainActivity.this, "加载失败：" + e.getMessage(), Toast.LENGTH_SHORT).show();
+                });
+            }
+        }).start();
+    }
+
+    // ========== 遥控器按键 ==========
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         switch (keyCode) {
@@ -101,22 +134,24 @@ public class MainActivity extends AppCompatActivity {
 
     private void playPrev() {
         if (channelSourceList.isEmpty()) return;
-        int i = (currentPlayIndex -1 + channelSourceList.size()) % channelSourceList.size();
+        int i = (currentPlayIndex - 1 + channelSourceList.size()) % channelSourceList.size();
         playChannel(i);
     }
 
     private void playNext() {
         if (channelSourceList.isEmpty()) return;
-        int i = (currentPlayIndex +1) % channelSourceList.size();
+        int i = (currentPlayIndex + 1) % channelSourceList.size();
         playChannel(i);
     }
 
     private void openChannelList() {
         Toast.makeText(this,"频道列表",Toast.LENGTH_SHORT).show();
+        // 这里可以添加你的频道列表弹出逻辑
     }
 
     private void openSettings() {
         Toast.makeText(this,"设置页面",Toast.LENGTH_SHORT).show();
+        // 这里可以添加你的设置页面跳转逻辑
     }
 
     // ========== 播放核心 ==========
@@ -126,7 +161,7 @@ public class MainActivity extends AppCompatActivity {
         currentChannelIndex = index;
         Channel ch = channelSourceList.get(index);
         if (TextUtils.isEmpty(ch.getPlayUrl())) {
-            Toast.makeText(this,"地址为空",Toast.LENGTH_SHORT).show();
+            Toast.makeText(this,"播放地址为空",Toast.LENGTH_SHORT).show();
             return;
         }
         mPlayerManager.playUrl(ch.getPlayUrl());
@@ -136,12 +171,12 @@ public class MainActivity extends AppCompatActivity {
 
     private void playEpgItem(Channel.EpgItem epg) {
         if (epg==null || TextUtils.isEmpty(epg.getReplayUrl())) {
-            Toast.makeText(this,"暂无回看",Toast.LENGTH_SHORT).show();
+            Toast.makeText(this,"暂无回看地址",Toast.LENGTH_SHORT).show();
             return;
         }
         mPlayerManager.playUrl(epg.getReplayUrl());
         isPlayingPlayback = true;
-        Toast.makeText(this,"播放回看",Toast.LENGTH_SHORT).show();
+        Toast.makeText(this,"正在播放回看",Toast.LENGTH_SHORT).show();
     }
 
     private void setRatio(int index) {
@@ -182,12 +217,10 @@ public class MainActivity extends AppCompatActivity {
     protected void onDestroy() {
         super.onDestroy();
         if (mPlayerManager!=null) mPlayerManager.release();
-        HuyaParser.release();
         mInstance = null;
     }
 
     private void initGesture() {}
-    private void loadChannels() {}
     private void initChannelList() {}
     public void onReceiveConfig(String u1,String u2){}
 }

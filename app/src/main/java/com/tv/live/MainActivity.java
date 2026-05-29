@@ -407,122 +407,211 @@ public class MainActivity extends AppCompatActivity {
             }
         }).start();
     }
-
     private void showChannelListDialog() {
-        // 关键修复：增加数据为空的保护
-        if (channelSourceList == null || channelSourceList.isEmpty()) {
-            Toast.makeText(this, "暂无频道数据，请稍后再试", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        // 关键修复：确保 currentPlayIndex 不越界
-        if (currentPlayIndex < 0 || currentPlayIndex >= channelSourceList.size()) {
-            currentPlayIndex = 0;
-        }
-
-        View v = LayoutInflater.from(this).inflate(R.layout.dialog_channel_list, null);
-        ListView lvGroup = v.findViewById(R.id.lv_group);
-        ListView lvWeek = v.findViewById(R.id.lv_channel);
-        ListView lvEpg = v.findViewById(R.id.lv_epg);
-        Channel curr = channelSourceList.get(currentPlayIndex);
-        Set<String> groupSet = new LinkedHashSet<>();
-        for (Channel ch : channelSourceList) groupSet.add(ch.group);
-        List<String> groupList = new ArrayList<>(groupSet);
-        int gPos = groupList.indexOf(curr.group);
-        ArrayAdapter<String> gAdapter = new ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, groupList) {
-            @Override
-            public View getView(int pos, View cv, ViewGroup p) {
-                View view = super.getView(pos, cv, p);
-                TextView tv = view.findViewById(android.R.id.text1);
-                tv.setTextColor(Color.WHITE);
-                tv.setTextSize(17);
-                tv.setPadding(15, 18, 15, 18);
-                return view;
-            }
-        };
-        lvGroup.setAdapter(gAdapter);
-        lvGroup.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
-        List<Channel> gChannels = new ArrayList<>();
-        for (Channel ch : channelSourceList) {
-            if (ch.group.equals(curr.group)) gChannels.add(ch);
-        }
-        ArrayAdapter<String> weekAdapter = new ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, weekNames) {
-            @Override
-            public View getView(int pos, View cv, ViewGroup p) {
-                View view = super.getView(pos, cv, p);
-                TextView tv = view.findViewById(android.R.id.text1);
-                tv.setTextColor(Color.WHITE);
-                tv.setTextSize(16);
-                tv.setPadding(15, 18, 15, 18);
-                return view;
-            }
-        };
-        lvWeek.setAdapter(weekAdapter);
-        lvWeek.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
-        ArrayAdapter<Channel.EpgItem> eAdapter = new ArrayAdapter<Channel.EpgItem>(this, R.layout.item_epg, new ArrayList<>()) {
-            @Override
-            public View getView(int pos, View cv, ViewGroup p) {
-                if (cv == null) cv = LayoutInflater.from(getContext()).inflate(R.layout.item_epg, p, false);
-                Channel.EpgItem item = getItem(pos);
-                TextView day = cv.findViewById(R.id.tv_dayName);
-                TextView time = cv.findViewById(R.id.tv_time);
-                TextView title = cv.findViewById(R.id.tv_title);
-                TextView btn = cv.findViewById(R.id.tv_action);
-                day.setText(item.dayName);
-                time.setText(item.time);
-                title.setText(item.title);
-                if (item.isNow) {
-                    btn.setText("直播中");
-                    btn.setBackgroundColor(0xFFFF6600);
-                } else if (item.isPast) {
-                    btn.setText("回看");
-                    btn.setBackgroundColor(0xFF4CAF50);
-                } else {
-                    btn.setText("未播");
-                    btn.setBackgroundColor(0xFF666666);
-                }
-                title.setTextColor(item.isNow ? 0xFFFF9900 : Color.WHITE);
-                return cv;
-            }
-        };
-        lvEpg.setAdapter(eAdapter);
-        lvGroup.post(new Runnable() {
-            @Override
-            public void run() {
-                lvGroup.setItemChecked(gPos, true);
-                lvWeek.setItemChecked(0, true);
-                eAdapter.clear();
-                for (Channel.EpgItem item : curr.epgList) {
-                    if (item.dayName.equals(weekNames.get(0))) eAdapter.add(item);
-                }
-                eAdapter.notifyDataSetChanged();
-            }
-        });
-        lvWeek.setOnItemClickListener(new AdapterView.OnItemClickListener() {
-            @Override
-            public void onItemClick(AdapterView<?> parent, View view, int pos, long id) {
-                String day = weekNames.get(pos);
-                eAdapter.clear();
-                for (Channel.EpgItem item : curr.epgList) {
-                    if (item.dayName.equals(day)) eAdapter.add(item);
-                }
-                eAdapter.notifyDataSetChanged();
-            }
-        });
-        lvEpg.setOnItemClickListener(new AdapterView.OnItemClickListener() {
-            @Override
-            public void onItemClick(AdapterView<?> parent, View view, int pos, long id) {
-                Channel.EpgItem item = eAdapter.getItem(pos);
-                if (item.isPast || item.isNow) playEpgItem(item);
-            }
-        });
-        AlertDialog dialog = new AlertDialog.Builder(this).setView(v).setCancelable(true).show();
-        dialog.setOnDismissListener(new DialogInterface.OnDismissListener() {
-            @Override
-            public void onDismiss(DialogInterface dialog) {
-                playerView.requestFocus();
-            }
-        });
+    // 基础数据保护
+    if (channelSourceList == null || channelSourceList.isEmpty()) {
+        Toast.makeText(this, "暂无频道数据，请稍后再试", Toast.LENGTH_SHORT).show();
+        return;
     }
+    if (currentPlayIndex < 0 || currentPlayIndex >= channelSourceList.size()) {
+        currentPlayIndex = 0;
+    }
+
+    // 加载布局
+    View v;
+    try {
+        v = LayoutInflater.from(this).inflate(R.layout.dialog_channel_list, null);
+    } catch (Exception e) {
+        Toast.makeText(this, "加载频道列表失败", Toast.LENGTH_SHORT).show();
+        return;
+    }
+
+    // 绑定四栏控件
+    ListView lvGroup = v.findViewById(R.id.lv_group);
+    ListView lvChannelList = v.findViewById(R.id.lv_channel_list);
+    ListView lvDate = v.findViewById(R.id.lv_date);
+    ListView lvEpg = v.findViewById(R.id.lv_epg);
+
+    if (lvGroup == null || lvChannelList == null || lvDate == null || lvEpg == null) {
+        Toast.makeText(this, "频道列表控件加载失败", Toast.LENGTH_SHORT).show();
+        return;
+    }
+
+    // 当前频道信息
+    Channel curr = channelSourceList.get(currentPlayIndex);
+
+    // 1. 频道分组数据
+    Set<String> groupSet = new LinkedHashSet<>();
+    for (Channel ch : channelSourceList) groupSet.add(ch.group);
+    List<String> groupList = new ArrayList<>(groupSet);
+    int gPos = groupList.indexOf(curr.group);
+
+    // 2. 当前分组下的频道列表
+    List<Channel> currentGroupChannels = new ArrayList<>();
+    for (Channel ch : channelSourceList) {
+        if (ch.group.equals(curr.group)) {
+            currentGroupChannels.add(ch);
+        }
+    }
+    int channelPos = currentGroupChannels.indexOf(curr);
+
+    // 3. 频道分组适配器
+    ArrayAdapter<String> groupAdapter = new ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, groupList) {
+        @Override
+        public View getView(int pos, View cv, ViewGroup p) {
+            View view = super.getView(pos, cv, p);
+            TextView tv = view.findViewById(android.R.id.text1);
+            tv.setTextColor(Color.WHITE);
+            tv.setTextSize(17);
+            tv.setPadding(15, 18, 15, 18);
+            return view;
+        }
+    };
+    lvGroup.setAdapter(groupAdapter);
+    lvGroup.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
+
+    // 4. 频道列表适配器
+    ArrayAdapter<Channel> channelAdapter = new ArrayAdapter<Channel>(this, android.R.layout.simple_list_item_1, currentGroupChannels) {
+        @Override
+        public View getView(int pos, View cv, ViewGroup p) {
+            View view = super.getView(pos, cv, p);
+            TextView tv = view.findViewById(android.R.id.text1);
+            tv.setTextColor(Color.WHITE);
+            tv.setTextSize(16);
+            tv.setPadding(15, 18, 15, 18);
+            tv.setText(getItem(pos).name);
+            return view;
+        }
+    };
+    lvChannelList.setAdapter(channelAdapter);
+    lvChannelList.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
+
+    // 5. 日期列表适配器
+    ArrayAdapter<String> dateAdapter = new ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, weekNames) {
+        @Override
+        public View getView(int pos, View cv, ViewGroup p) {
+            View view = super.getView(pos, cv, p);
+            TextView tv = view.findViewById(android.R.id.text1);
+            tv.setTextColor(Color.WHITE);
+            tv.setTextSize(16);
+            tv.setPadding(15, 18, 15, 18);
+            return view;
+        }
+    };
+    lvDate.setAdapter(dateAdapter);
+    lvDate.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
+
+    // 6. 节目单适配器
+    ArrayAdapter<Channel.EpgItem> epgAdapter = new ArrayAdapter<Channel.EpgItem>(this, R.layout.item_epg, new ArrayList<>()) {
+        @Override
+        public View getView(int pos, View cv, ViewGroup p) {
+            if (cv == null) cv = LayoutInflater.from(getContext()).inflate(R.layout.item_epg, p, false);
+            Channel.EpgItem item = getItem(pos);
+            TextView day = cv.findViewById(R.id.tv_dayName);
+            TextView time = cv.findViewById(R.id.tv_time);
+            TextView title = cv.findViewById(R.id.tv_title);
+            TextView btn = cv.findViewById(R.id.tv_action);
+            day.setText(item.dayName);
+            time.setText(item.time);
+            title.setText(item.title);
+            if (item.isNow) {
+                btn.setText("直播中");
+                btn.setBackgroundColor(0xFFFF6600);
+            } else if (item.isPast) {
+                btn.setText("回看");
+                btn.setBackgroundColor(0xFF4CAF50);
+            } else {
+                btn.setText("未播");
+                btn.setBackgroundColor(0xFF666666);
+            }
+            title.setTextColor(item.isNow ? 0xFFFF9900 : Color.WHITE);
+            return cv;
+        }
+    };
+    lvEpg.setAdapter(epgAdapter);
+
+    // 初始化选中状态
+    lvGroup.post(() -> {
+        lvGroup.setItemChecked(gPos, true);
+        lvChannelList.setItemChecked(channelPos, true);
+        lvDate.setItemChecked(0, true);
+
+        // 加载当天节目单
+        epgAdapter.clear();
+        for (Channel.EpgItem item : curr.epgList) {
+            if (item.dayName.equals(weekNames.get(0))) {
+                epgAdapter.add(item);
+            }
+        }
+        epgAdapter.notifyDataSetChanged();
+    });
+
+    // 1. 分组点击事件：联动频道列表
+    lvGroup.setOnItemClickListener((parent, view, pos, id) -> {
+        String selectedGroup = groupList.get(pos);
+        List<Channel> newChannels = new ArrayList<>();
+        for (Channel ch : channelSourceList) {
+            if (ch.group.equals(selectedGroup)) {
+                newChannels.add(ch);
+            }
+        }
+        channelAdapter.clear();
+        channelAdapter.addAll(newChannels);
+        channelAdapter.notifyDataSetChanged();
+        lvChannelList.setItemChecked(0, true);
+
+        // 默认选中第一个频道
+        if (!newChannels.isEmpty()) {
+            curr = newChannels.get(0);
+            epgAdapter.clear();
+            for (Channel.EpgItem item : curr.epgList) {
+                if (item.dayName.equals(weekNames.get(0))) {
+                    epgAdapter.add(item);
+                }
+            }
+            epgAdapter.notifyDataSetChanged();
+        }
+    });
+
+    // 2. 频道列表点击事件：联动节目单
+    lvChannelList.setOnItemClickListener((parent, view, pos, id) -> {
+        curr = channelAdapter.getItem(pos);
+        epgAdapter.clear();
+        for (Channel.EpgItem item : curr.epgList) {
+            if (item.dayName.equals(weekNames.get(lvDate.getCheckedItemPosition()))) {
+                epgAdapter.add(item);
+            }
+        }
+        epgAdapter.notifyDataSetChanged();
+    });
+
+    // 3. 日期列表点击事件：联动节目单
+    lvDate.setOnItemClickListener((parent, view, pos, id) -> {
+        String selectedDay = weekNames.get(pos);
+        epgAdapter.clear();
+        for (Channel.EpgItem item : curr.epgList) {
+            if (item.dayName.equals(selectedDay)) {
+                epgAdapter.add(item);
+            }
+        }
+        epgAdapter.notifyDataSetChanged();
+    });
+
+    // 4. 节目单点击事件：回看功能
+    lvEpg.setOnItemClickListener((parent, view, pos, id) -> {
+        Channel.EpgItem item = epgAdapter.getItem(pos);
+        if (item.isPast || item.isNow) {
+            playEpgItem(item);
+        }
+    });
+
+    // 创建弹窗
+    AlertDialog dialog = new AlertDialog.Builder(this)
+            .setView(v)
+            .setCancelable(true)
+            .show();
+    dialog.setOnDismissListener(dialog1 -> playerView.requestFocus());
+}
 
     private void showSettingDialog() {
         View v = LayoutInflater.from(this).inflate(R.layout.dialog_setting, null);

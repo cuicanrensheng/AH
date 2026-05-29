@@ -1,6 +1,5 @@
 package com.tv.live;
 
-import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.widget.Switch;
@@ -19,11 +18,11 @@ public class SettingsActivity extends AppCompatActivity {
         setContentView(R.layout.activity_settings);
         sp = getSharedPreferences("app_settings", MODE_PRIVATE);
 
-        // 绑定控件
+        // 绑定控件（和你的布局完全对应）
         sw_boot = findViewById(R.id.sw_boot);
         sw_epg = findViewById(R.id.sw_epg);
         sw_auto_update = findViewById(R.id.sw_auto_update);
-        sw_reverse = findViewById(R.id.sw_reverse_channel);
+        sw_reverse = findViewById(R.id.sw_reverse);
         sw_num_channel = findViewById(R.id.sw_num_channel);
 
         tv_screen_ratio = findViewById(R.id.tv_screen_ratio);
@@ -45,11 +44,9 @@ public class SettingsActivity extends AppCompatActivity {
         // 屏幕比例
         tv_screen_ratio.setOnClickListener(v -> showRatioDialog());
 
-        // 自定义设置提示
+        // 提示
         tv_custom_source.setOnClickListener(v -> showWebTip());
         tv_custom_epg.setOnClickListener(v -> showWebTip());
-
-        // 多订阅源/多节目单提示
         tv_multi_source.setOnClickListener(v -> Toast.makeText(this, "多订阅源：短按切换，长按清除", Toast.LENGTH_SHORT).show());
         tv_multi_epg.setOnClickListener(v -> Toast.makeText(this, "多节目单：短按切换，长按清除", Toast.LENGTH_SHORT).show());
     }

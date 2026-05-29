@@ -67,7 +67,7 @@ public class EpgManager {
 
         String currentChannelId = null;
         String currentChannelName = null;
-        List<MainActivity.Channel.EpgItem> tempPrograms = new ArrayList<>();
+        List<Channel.EpgItem> tempPrograms = new ArrayList<>();
 
         while (xml.getEventType() != XmlPullParser.END_DOCUMENT) {
             if (xml.getEventType() == XmlPullParser.START_TAG) {
@@ -94,7 +94,7 @@ public class EpgManager {
                     String timeStr = start.substring(8, 10) + ":" + start.substring(10, 12)
                             + " - " + stop.substring(8, 10) + ":" + stop.substring(10, 12);
 
-                    MainActivity.Channel.EpgItem item = new MainActivity.Channel.EpgItem(
+                   Channel.EpgItem item = new Channel.EpgItem(
                             dayName, timeStr, "", "", false
                     );
                     tempPrograms.add(item);

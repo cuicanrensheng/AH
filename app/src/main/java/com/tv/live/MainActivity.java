@@ -17,6 +17,9 @@ import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
 
+    // ==================== 新增：单例实例 ====================
+    public static MainActivity mInstance;
+
     // ==================== 原有全局变量（全部保留） ====================
     private List<Channel> channelSourceList = new ArrayList<>();
     private int currentPlayIndex = 0;
@@ -35,25 +38,29 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        // ==================== 新增：绑定单例 ====================
+        mInstance = this;
+
         setContentView(R.layout.activity_main);
 
-        // 绑定控件
+        // 绑定控件（原有代码）
         PlayerView playerView = findViewById(R.id.player_view);
         lvGroup = findViewById(R.id.lv_group);
         lvChannelList = findViewById(R.id.lv_channel_list);
         lvDate = findViewById(R.id.lv_date);
         lvEpg = findViewById(R.id.lv_epg);
 
-        // 读取本地配置
+        // 读取本地配置（原有代码）
         SharedPreferences sp = getSharedPreferences("play_config", Context.MODE_PRIVATE);
         currentRatioIndex = sp.getInt("play_ratio", 2);
         currentPlayIndex = sp.getInt("last_play_index", 0);
 
-        // ========== 初始化独立播放器 ==========
+        // ========== 初始化独立播放器（原有代码） ==========
         mPlayerManager = TVPlayerManager.getInstance(this);
         mPlayerManager.attachPlayerView(playerView);
 
-        // 初始化画面比例
+        // 初始化画面比例（原有代码）
         switch (currentRatioIndex) {
             case 0:
                 mPlayerManager.setScaleMode(TVPlayerManager.ScaleMode.FIT);
@@ -69,7 +76,7 @@ public class MainActivity extends AppCompatActivity {
                 break;
         }
 
-        // 播放器状态监听
+        // 播放器状态监听（原有代码）
         mPlayerManager.setOnPlayStateListener(new TVPlayerManager.OnPlayStateListener() {
             @Override
             public void onIdle() {
@@ -218,6 +225,8 @@ public class MainActivity extends AppCompatActivity {
         }
         // 释放解析工具线程池
         HuyaParser.release();
+        // 清空单例
+        mInstance = null;
     }
 
     // ========== 以下为你原有方法，原样保留 ==========

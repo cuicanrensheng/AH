@@ -8,6 +8,8 @@ import android.graphics.Color;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.widget.ImageView;
 import android.widget.Switch;
 import android.widget.TextView;
@@ -17,14 +19,22 @@ import com.google.zxing.BarcodeFormat;
 import com.google.zxing.WriterException;
 import com.google.zxing.common.BitMatrix;
 import com.google.zxing.qrcode.QRCodeWriter;
+import org.json.JSONObject;
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 
 public class SettingsActivity extends AppCompatActivity {
     private Switch sw_boot, sw_epg, sw_auto_update, sw_reverse, sw_num_channel;
     private TextView tv_screen_ratio, tv_custom_source, tv_custom_epg, tv_multi_source, tv_multi_epg, tv_qr_code;
     private SharedPreferences sp;
-
-    // 自动生成二维码用
     private String currentWebUrl;
+    private ServerSocket serverSocket;
+    private final Handler handler = new Handler(Looper.getMainLooper());
+    private static final int PORT = 10481;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -32,7 +42,6 @@ public class SettingsActivity extends AppCompatActivity {
         setContentView(R.layout.activity_settings);
         sp = getSharedPreferences("app_settings", MODE_PRIVATE);
 
-        // 绑定控件（和你的布局完全对应）
         sw_boot = findViewById(R.id.sw_boot);
         sw_epg = findViewById(R.id.sw_epg);
         sw_auto_update = findViewById(R.id.sw_auto_update);
@@ -44,85 +53,120 @@ public class SettingsActivity extends AppCompatActivity {
         tv_custom_epg = findViewById(R.id.tv_custom_epg);
         tv_multi_source = findViewById(R.id.tv_multi_source);
         tv_multi_epg = findViewById(R.id.tv_multi_epg);
-        tv_qr_code = findViewById(R.id.tv_qr_code); // 新增二维码按钮
+        tv_qr_code = findViewById(R.id.tv_qr_code);
 
-        // 加载配置
         loadConfig();
 
-        // 开关监听
         sw_boot.setOnCheckedChangeListener((button, isChecked) -> save("boot_auto_start", isChecked));
         sw_epg.setOnCheckedChangeListener((button, isChecked) -> save("epg_enable", isChecked));
         sw_auto_update.setOnCheckedChangeListener((button, isChecked) -> save("auto_update_source", isChecked));
         sw_reverse.setOnCheckedChangeListener((button, isChecked) -> save("channel_reverse", isChecked));
         sw_num_channel.setOnCheckedChangeListener((button, isChecked) -> save("number_channel_enable", isChecked));
 
-        // 屏幕比例
         tv_screen_ratio.setOnClickListener(v -> showRatioDialog());
-
-        // 提示
         tv_custom_source.setOnClickListener(v -> showWebTip());
         tv_custom_epg.setOnClickListener(v -> showWebTip());
         tv_multi_source.setOnClickListener(v -> Toast.makeText(this, "多订阅源：短按切换，长按清除", Toast.LENGTH_SHORT).show());
         tv_multi_epg.setOnClickListener(v -> Toast.makeText(this, "多节目单：短按切换，长按清除", Toast.LENGTH_SHORT).show());
 
-        // ============== 自动生成二维码 + 点击弹出 ==============
-        currentWebUrl = "http://" + getDeviceIPAddress() + ":10481";
+        // 自动生成二维码
+        currentWebUrl = "http://" + getDeviceIPAddress() + ":" + PORT;
         tv_qr_code.setOnClickListener(v -> showQRCodeDialog());
+
+        // 启动网页推送接收服务
+        startPushServer();
     }
 
-    // ============== 弹出二维码弹窗 ==============
+    // ====================== 二维码 250×250 ======================
     private void showQRCodeDialog() {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("扫码添加直播源 / EPG节目单");
-
-        ImageView imageView = new ImageView(this);
-        Bitmap qrCode = createQRCode(currentWebUrl, 500);
-        if (qrCode != null) {
-            imageView.setImageBitmap(qrCode);
-        } else {
-            Toast.makeText(this, "二维码生成失败", Toast.LENGTH_SHORT).show();
-        }
-
-        builder.setView(imageView);
+        builder.setTitle("扫码管理直播源/EPG");
+        ImageView iv = new ImageView(this);
+        iv.setImageBitmap(createQRCode(currentWebUrl, 250));
+        builder.setView(iv);
         builder.setPositiveButton("关闭", null);
         builder.show();
     }
 
-    // ============== 生成二维码 ==============
     private Bitmap createQRCode(String content, int size) {
         try {
-            QRCodeWriter writer = new QRCodeWriter();
-            BitMatrix matrix = writer.encode(content, BarcodeFormat.QR_CODE, size, size);
-            Bitmap bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.RGB_565);
-            for (int x = 0; x < size; x++) {
-                for (int y = 0; y < size; y++) {
-                    bitmap.setPixel(x, y, matrix.get(x, y) ? Color.BLACK : Color.WHITE);
-                }
-            }
-            return bitmap;
-        } catch (WriterException e) {
-            e.printStackTrace();
+            BitMatrix matrix = new QRCodeWriter().encode(content, BarcodeFormat.QR_CODE, 250, 250);
+            Bitmap bmp = Bitmap.createBitmap(250, 250, Bitmap.Config.RGB_565);
+            for (int x = 0; x < 250; x++)
+                for (int y = 0; y < 250; y++)
+                    bmp.setPixel(x, y, matrix.get(x, y) ? Color.BLACK : Color.WHITE);
+            return bmp;
+        } catch (Exception e) {
             return null;
         }
     }
 
-    // ============== 自动获取本机IP ==============
+    // ====================== 网页推送接收（核心） ======================
+    private void startPushServer() {
+        new Thread(() -> {
+            try {
+                serverSocket = new ServerSocket();
+                serverSocket.setReuseAddress(true);
+                serverSocket.bind(new InetSocketAddress(PORT));
+                while (!serverSocket.isClosed()) {
+                    Socket socket = serverSocket.accept();
+                    handlePush(socket);
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }).start();
+    }
+
+    private void handlePush(Socket socket) {
+        new Thread(() -> {
+            try {
+                InputStream is = socket.getInputStream();
+                InputStreamReader reader = new InputStreamReader(is);
+                char[] buf = new char[2048];
+                int len = reader.read(buf);
+                String data = new String(buf, 0, len);
+                socket.close();
+
+                // 解析推送
+                JSONObject json = new JSONObject(data);
+                String liveUrl = json.optString("live_url");
+                String epgUrl = json.optString("epg_url");
+
+                handler.post(() -> {
+                    if (!liveUrl.isEmpty()) {
+                        sp.edit().putString("custom_live_url", liveUrl).apply();
+                        Toast.makeText(this, "直播源已更新", Toast.LENGTH_SHORT).show();
+                    }
+                    if (!epgUrl.isEmpty()) {
+                        sp.edit().putString("custom_epg_url", epgUrl).apply();
+                        Toast.makeText(this, "EPG节目单已更新", Toast.LENGTH_SHORT).show();
+                    }
+                    // 通知主页刷新
+                    if (MainActivity.mInstance != null) {
+                        MainActivity.mInstance.loadLiveAndEpg();
+                    }
+                });
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }).start();
+    }
+
+    // ====================== 工具方法 ======================
     private String getDeviceIPAddress() {
         try {
-            WifiManager wifiManager = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
-            WifiInfo wifiInfo = wifiManager.getConnectionInfo();
-            int ip = wifiInfo.getIpAddress();
-            return (ip & 0xFF) + "." +
-                   ((ip >> 8) & 0xFF) + "." +
-                   ((ip >> 16) & 0xFF) + "." +
-                   ((ip >> 24) & 0xFF);
+            WifiManager wm = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+            WifiInfo info = wm.getConnectionInfo();
+            int ip = info.getIpAddress();
+            return (ip & 0xFF) + "." + ((ip >> 8) & 0xFF) + "." + ((ip >> 16) & 0xFF) + "." + ((ip >> 24) & 0xFF);
         } catch (Exception e) {
             return "192.168.1.100";
         }
     }
 
-    private void save(String key, boolean value) {
-        sp.edit().putBoolean(key, value).apply();
+    private void save(String k, boolean v) {
+        sp.edit().putBoolean(k, v).apply();
     }
 
     private void loadConfig() {
@@ -134,16 +178,24 @@ public class SettingsActivity extends AppCompatActivity {
     }
 
     private void showRatioDialog() {
-        String[] ratios = {"全屏", "填充", "原始"};
-        new android.app.AlertDialog.Builder(this)
+        String[] r = {"全屏", "填充", "原始"};
+        new AlertDialog.Builder(this)
                 .setTitle("屏幕比例")
-                .setItems(ratios, (dialog, which) -> {
-                    sp.edit().putString("screen_ratio", ratios[which]).apply();
-                    Toast.makeText(this, "已设置：" + ratios[which], Toast.LENGTH_SHORT).show();
+                .setItems(r, (d, w) -> {
+                    sp.edit().putString("screen_ratio", r[w]).apply();
+                    Toast.makeText(this, "已设置：" + r[w], Toast.LENGTH_SHORT).show();
                 }).show();
     }
 
     private void showWebTip() {
-        Toast.makeText(this, "请在浏览器打开：" + currentWebUrl, Toast.LENGTH_LONG).show();
+        Toast.makeText(this, currentWebUrl, Toast.LENGTH_LONG).show();
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        try {
+            if (serverSocket != null) serverSocket.close();
+        } catch (IOException e) {}
     }
 }

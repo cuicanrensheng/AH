@@ -32,6 +32,7 @@ public class MainActivity extends AppCompatActivity {
     private View panel_layout;
     private TextView btn_show_epg;
 
+    private NanoHTTPD nanoHTTPD;
     public TVPlayerManager mPlayerManager;
     private PlayerGestureHelper gestureHelper;
     private SharedPreferences sp;
@@ -106,10 +107,13 @@ public class MainActivity extends AppCompatActivity {
         loadLiveAndEpg();
         initListViewClick();
 
-        // 启动后台管理服务器
-        HttpServer server = HttpServer.getInstance(this);
-        server.setMainActivity(this);
-        server.start();
+        // 启动后台服务
+        try {
+            nanoHTTPD = new NanoHTTPD(10481);
+            nanoHTTPD.start();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     private void initDateList() {
@@ -149,26 +153,8 @@ public class MainActivity extends AppCompatActivity {
                     java.util.Collections.singletonList("暂无节目")));
             return;
         }
-
-        Channel ch = channelSourceList.get(currentPlayIndex);
-        List<Channel.EpgItem> epgItems = new ArrayList<>();
-
-        // 兼容写法，不依赖不存在的 getEpgMap()
-        if (EpgManager.getInstance().getChannelEpg(ch.getName()) != null) {
-            epgItems.addAll(EpgManager.getInstance().getChannelEpg(ch.getName()));
-        }
-
-        List<String> showList = new ArrayList<>();
-        if (epgItems.isEmpty()) {
-            showList.add("暂无节目数据");
-        } else {
-            for (Channel.EpgItem e : epgItems) {
-                showList.add(e.time + " | " + e.title);
-            }
-        }
-
-        lvEpg.setAdapter(new android.widget.ArrayAdapter<>(this,
-                android.R.layout.simple_list_item_1, showList));
+        lvEpg.setAdapter(new android.widget.ArrayAdapter<>(this, android.R.layout.simple_list_item_1,
+                java.util.Collections.singletonList("加载节目单中...")));
     }
 
     private void applyScreenRatioFromSettings() {
@@ -192,7 +178,6 @@ public class MainActivity extends AppCompatActivity {
                         playChannel(currentPlayIndex);
                     }
                 });
-
                 EpgManager.getInstance().setEpgUrl(UrlConfig.EPG_URL);
                 EpgManager.getInstance().loadEpg(() -> {
                     runOnUiThread(() -> {
@@ -301,6 +286,20 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    // 网页后台调用这个方法
+    public void onReceiveConfig(String liveUrl, String epgUrl) {
+        if (liveUrl != null && !liveUrl.isEmpty()) {
+            UrlConfig.LIVE_URL = liveUrl;
+        }
+        if (epgUrl != null && !epgUrl.isEmpty()) {
+            UrlConfig.EPG_URL = epgUrl;
+        }
+        runOnUiThread(() -> {
+            Toast.makeText(this, "配置已保存，重新加载中…", Toast.LENGTH_LONG).show();
+            loadLiveAndEpg();
+        });
+    }
+
     @Override
     protected void onResume() {
         super.onResume();
@@ -324,25 +323,12 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        // 停止后台服务器
-        HttpServer.getInstance(this).stop();
+        if (nanoHTTPD != null) {
+            nanoHTTPD.stop();
+        }
         if (mPlayerManager != null) {
             mPlayerManager.release();
         }
         mInstance = null;
-    }
-
-    // 给 HttpServer 调用，接收扫码配置（解决编译错误）
-    public void onReceiveConfig(String liveUrl, String epgUrl) {
-        if (!TextUtils.isEmpty(liveUrl)) {
-            UrlConfig.LIVE_URL = liveUrl;
-        }
-        if (!TextUtils.isEmpty(epgUrl)) {
-            UrlConfig.EPG_URL = epgUrl;
-        }
-        runOnUiThread(() -> {
-            Toast.makeText(this, "配置已更新，正在重新加载...", Toast.LENGTH_SHORT).show();
-            loadLiveAndEpg();
-        });
     }
 }

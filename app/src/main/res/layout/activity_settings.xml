@@ -11,95 +11,156 @@
         android:orientation="vertical"
         android:padding="18dp">
 
-        <LinearLayout android:layout_width="match_parent" android:layout_height="55dp" android:gravity="center_vertical">
-            <TextView android:layout_width="0dp" android:layout_weight="1" android:text="开机自启" android:textColor="#fff" android:textSize="16sp"/>
-            <Switch 
+        <!-- 开机自启 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="55dp"
+            android:gravity="center_vertical">
+            <TextView
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:text="开机自启"
+                android:textColor="#fff"
+                android:textSize="16sp"/>
+            <Switch
                 android:id="@+id/sw_boot"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"/>
         </LinearLayout>
 
-        <LinearLayout android:layout_width="match_parent" android:layout_height="55dp" android:gravity="center_vertical">
-            <TextView android:layout_width="0dp" android:layout_weight="1" android:text="节目单开关" android:textColor="#fff" android:textSize="16sp"/>
-            <Switch 
+        <!-- 节目单开关 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="55dp"
+            android:gravity="center_vertical">
+            <TextView
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:text="节目单开关"
+                android:textColor="#fff"
+                android:textSize="16sp"/>
+            <Switch
                 android:id="@+id/sw_epg"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"/>
         </LinearLayout>
 
-        <LinearLayout android:layout_width="match_parent" android:layout_height="55dp" android:gravity="center_vertical">
-            <TextView android:layout_width="0dp" android:layout_weight="1" android:text="自动更新" android:textColor="#fff" android:textSize="16sp"/>
-            <Switch 
+        <!-- 自动更新 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="55dp"
+            android:gravity="center_vertical">
+            <TextView
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:text="自动更新"
+                android:textColor="#fff"
+                android:textSize="16sp"/>
+            <Switch
                 android:id="@+id/sw_auto_update"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"/>
         </LinearLayout>
 
-        <LinearLayout android:layout_width="match_parent" android:layout_height="55dp" android:gravity="center_vertical">
-            <TextView android:layout_width="0dp" android:layout_weight="1" android:text="换台反转" android:textColor="#fff" android:textSize="16sp"/>
-            <Switch 
+        <!-- 换台反转 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="55dp"
+            android:gravity="center_vertical">
+            <TextView
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:text="换台反转"
+                android:textColor="#fff"
+                android:textSize="16sp"/>
+            <Switch
                 android:id="@+id/sw_reverse"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"/>
         </LinearLayout>
 
-        <LinearLayout android:layout_width="match_parent" android:layout_height="55dp" android:gravity="center_vertical">
-            <TextView android:layout_width="0dp" android:layout_weight="1" android:text="数字选台" android:textColor="#fff" android:textSize="16sp"/>
-            <Switch 
+        <!-- 数字选台 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="55dp"
+            android:gravity="center_vertical">
+            <TextView
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:text="数字选台"
+                android:textColor="#fff"
+                android:textSize="16sp"/>
+            <Switch
                 android:id="@+id/sw_num_channel"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"/>
         </LinearLayout>
 
+        <!-- 屏幕比例 -->
         <TextView
             android:id="@+id/tv_screen_ratio"
             android:layout_width="match_parent"
             android:layout_height="55dp"
+            android:clickable="true"
+            android:focusable="true"
             android:gravity="center_vertical"
             android:text="屏幕比例"
             android:textColor="#fff"
             android:textSize="16sp"/>
 
+        <!-- 自定义订阅源 -->
         <TextView
             android:id="@+id/tv_custom_source"
             android:layout_width="match_parent"
             android:layout_height="55dp"
+            android:clickable="true"
+            android:focusable="true"
             android:gravity="center_vertical"
             android:text="自定义订阅源"
             android:textColor="#fff"
             android:textSize="16sp"/>
 
+        <!-- 自定义节目单 -->
         <TextView
             android:id="@+id/tv_custom_epg"
             android:layout_width="match_parent"
             android:layout_height="55dp"
+            android:clickable="true"
+            android:focusable="true"
             android:gravity="center_vertical"
             android:text="自定义节目单"
             android:textColor="#fff"
             android:textSize="16sp"/>
 
+        <!-- 多订阅源 -->
         <TextView
             android:id="@+id/tv_multi_source"
             android:layout_width="match_parent"
             android:layout_height="55dp"
+            android:clickable="true"
+            android:focusable="true"
             android:gravity="center_vertical"
             android:text="多订阅源"
             android:textColor="#fff"
             android:textSize="16sp"/>
 
+        <!-- 多节目单 -->
         <TextView
             android:id="@+id/tv_multi_epg"
             android:layout_width="match_parent"
             android:layout_height="55dp"
+            android:clickable="true"
+            android:focusable="true"
             android:gravity="center_vertical"
             android:text="多节目单"
             android:textColor="#fff"
             android:textSize="16sp"/>
 
+        <!-- 提示文本 -->
         <TextView
             android:layout_width="match_parent"
             android:layout_height="60dp"
-            android:gravity="center_vertical"
+            android:gravity="center"
             android:text="网页设置：http://&lt;设备IP&gt;:10481"
             android:textColor="#999"
             android:textSize="14sp"/>

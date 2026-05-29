@@ -8,7 +8,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class PlaylistParser {
-    public static List<MainActivity.Channel> parse(String m3uUrl) throws Exception {
+   public static List<Channel> parse(String m3uUrl) throws Exception {
         List<MainActivity.Channel> list = new ArrayList<>();
         HttpURLConnection conn = (HttpURLConnection) new URL(m3uUrl).openConnection();
         conn.setConnectTimeout(10000);

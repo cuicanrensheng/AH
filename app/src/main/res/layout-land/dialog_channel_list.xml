@@ -4,25 +4,22 @@
     android:layout_height="wrap_content"
     android:orientation="horizontal">
 
-    <!-- 频道组列表（保持原背景色） -->
     <ListView
         android:id="@+id/lv_group"
         android:layout_width="120dp"
         android:layout_height="400dp"
         android:background="#333333" />
 
-    <!-- 新增日期列（用你原频道列表的背景色） -->
     <ListView
-        android:id="@+id/lv_date"
+        android:id="@+id/lv_channel"
         android:layout_width="150dp"
         android:layout_height="400dp"
         android:background="#444444" />
 
-    <!-- 节目单列表（保持原背景色） -->
     <ListView
         android:id="@+id/lv_epg"
-        android:layout_width="match_parent"
         android:layout_height="400dp"
+        android:layout_width="match_parent"
         android:background="#555555" />
 
 </LinearLayout>

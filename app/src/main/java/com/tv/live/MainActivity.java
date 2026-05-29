@@ -154,16 +154,18 @@ public class MainActivity extends AppCompatActivity {
             checkUpdate();
         }
     }
+    
     private void initWeekList() {
-        weekNames = new ArrayList<>();
-        Calendar cal = Calendar.getInstance();
-        int today = cal.get(DAY_OF_WEEK);
-        String[] weeks = {"周日", "周一", "周二", "周三", "周四", "周五", "周六"};
-        for (int i = 0; i < 7; i++) {
-            int index = (today + i - 1) % 7;
-            weekNames.add(weeks[index]);
-        }
+    weekNames = new ArrayList<>();
+    Calendar cal = Calendar.getInstance();
+    int today = cal.get(Calendar.DAY_OF_WEEK);
+    String[] weeks = {"周日", "周一", "周二", "周三", "周四", "周五", "周六"};
+    for (int i = 0; i < 7; i++) {
+        int index = (today + i - 1) % 7;
+        weekNames.add(weeks[index]);
     }
+}
+
     private void markProgramStatus(List<Channel.EpgItem> list) {
         if (list == null || list.isEmpty()) return;
         long now = System.currentTimeMillis();

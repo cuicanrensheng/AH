@@ -1,48 +1,226 @@
-<?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.tv.live">
+package com.tv.live;
 
-    <!-- 网络权限 -->
-    <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+import android.app.AlertDialog;
+import android.content.Context;
+import android.content.SharedPreferences;
+import android.graphics.Bitmap;
+import android.graphics.Color;
+import android.net.wifi.WifiInfo;
+import android.net.wifi.WifiManager;
+import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.widget.EditText;
+import android.widget.ImageView;
+import android.widget.Switch;
+import android.widget.TextView;
+import android.widget.Toast;
+import androidx.appcompat.app.AppCompatActivity;
+import com.google.zxing.BarcodeFormat;
+import com.google.zxing.common.BitMatrix;
+import com.google.zxing.qrcode.QRCodeWriter;
+import org.json.JSONObject;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.net.InetSocketAddress;
+import java.net.ServerSocket;
+import java.net.Socket;
 
-    <!-- 存储权限 -->
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+public class SettingsActivity extends AppCompatActivity {
+    private Switch sw_boot, sw_epg, sw_auto_update, sw_reverse, sw_num_channel;
+    private TextView tv_screen_ratio, tv_custom_source, tv_custom_epg, tv_multi_source, tv_multi_epg, tv_qr_code;
+    private SharedPreferences sp;
+    private String currentWebUrl;
+    private ServerSocket serverSocket;
+    private final Handler handler = new Handler(Looper.getMainLooper());
+    private static final int PORT = 10481;
 
-    <!-- 开机自启权限 -->
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_settings);
+        sp = getSharedPreferences("app_settings", MODE_PRIVATE);
 
-    <application
-        android:allowBackup="true"
-        android:icon="@mipmap/ic_launcher"
-        android:label="@string/app_name"
-        android:roundIcon="@mipmap/ic_launcher_round"
-        android:supportsRtl="true"
-        android:theme="@style/Theme.AppCompat.NoActionBar"
-        android:networkSecurityConfig="@xml/network_security_config">
+        sw_boot = findViewById(R.id.sw_boot);
+        sw_epg = findViewById(R.id.sw_epg);
+        sw_auto_update = findViewById(R.id.sw_auto_update);
+        sw_reverse = findViewById(R.id.sw_reverse);
+        sw_num_channel = findViewById(R.id.sw_num_channel);
 
-        <activity
-            android:name=".MainActivity"
-            android:exported="true"
-            android:screenOrientation="landscape">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
+        tv_screen_ratio = findViewById(R.id.tv_screen_ratio);
+        tv_custom_source = findViewById(R.id.tv_custom_source);
+        tv_custom_epg = findViewById(R.id.tv_custom_epg);
+        tv_multi_source = findViewById(R.id.tv_multi_source);
+        tv_multi_epg = findViewById(R.id.tv_multi_epg);
+        tv_qr_code = findViewById(R.id.tv_qr_code);
 
-        <activity
-            android:name=".SettingsActivity"
-            android:exported="false"
-            android:screenOrientation="landscape" />
+        loadConfig();
 
-        <activity
-            android:name=".ChannelListActivity"
-            android:exported="false"
-            android:screenOrientation="landscape" />
+        sw_boot.setOnCheckedChangeListener((button, isChecked) -> save("boot_auto_start", isChecked));
+        sw_epg.setOnCheckedChangeListener((button, isChecked) -> save("epg_enable", isChecked));
+        sw_auto_update.setOnCheckedChangeListener((button, isChecked) -> save("auto_update_source", isChecked));
+        sw_reverse.setOnCheckedChangeListener((button, isChecked) -> save("channel_reverse", isChecked));
+        sw_num_channel.setOnCheckedChangeListener((button, isChecked) -> save("number_channel_enable", isChecked));
 
-    </application>
+        tv_screen_ratio.setOnClickListener(v -> showRatioDialog());
 
-</manifest>
+        // 三个按钮改为输入框，保存后立刻生效
+        tv_custom_source.setOnClickListener(v -> showInputDialog("自定义订阅源", "请输入直播源地址", "custom_live_url"));
+        tv_custom_epg.setOnClickListener(v -> showInputDialog("自定义节目单", "请输入EPG节目单地址", "custom_epg_url"));
+        tv_multi_source.setOnClickListener(v -> showInputDialog("多订阅源", "请输入多直播源地址（用|分隔）", "multi_live_url"));
+
+        tv_multi_epg.setOnClickListener(v -> Toast.makeText(this, "多节目单：短按切换，长按清除", Toast.LENGTH_SHORT).show());
+
+        // 自动生成二维码
+        currentWebUrl = "http://" + getDeviceIPAddress() + ":" + PORT;
+        tv_qr_code.setOnClickListener(v -> showQRCodeDialog());
+
+        // 启动网页推送接收服务
+        startPushServer();
+    }
+
+    // 通用输入框对话框，保存后立刻刷新
+    private void showInputDialog(String title, String hint, String key) {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle(title);
+
+        final EditText input = new EditText(this);
+        input.setHint(hint);
+        // 读取已保存的链接并显示
+        String savedUrl = sp.getString(key, "");
+        input.setText(savedUrl);
+        builder.setView(input);
+
+        builder.setPositiveButton("确定", (dialog, which) -> {
+            String url = input.getText().toString().trim();
+            if (!url.isEmpty()) {
+                sp.edit().putString(key, url).apply();
+                Toast.makeText(this, title + "已保存，正在刷新...", Toast.LENGTH_SHORT).show();
+                // 关键：通知主页立刻刷新列表，无需重启APP
+                if (MainActivity.mInstance != null) {
+                    MainActivity.mInstance.loadLiveAndEpg();
+                }
+            }
+        });
+        builder.setNegativeButton("取消", null);
+        builder.show();
+    }
+
+    // 二维码弹窗（250x250）
+    private void showQRCodeDialog() {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("扫码管理直播源/EPG");
+        ImageView iv = new ImageView(this);
+        iv.setImageBitmap(createQRCode(currentWebUrl, 250));
+        builder.setView(iv);
+        builder.setPositiveButton("关闭", null);
+        builder.show();
+    }
+
+    private Bitmap createQRCode(String content, int size) {
+        try {
+            BitMatrix matrix = new QRCodeWriter().encode(content, BarcodeFormat.QR_CODE, 250, 250);
+            Bitmap bmp = Bitmap.createBitmap(250, 250, Bitmap.Config.RGB_565);
+            for (int x = 0; x < 250; x++)
+                for (int y = 0; y < 250; y++)
+                    bmp.setPixel(x, y, matrix.get(x, y) ? Color.BLACK : Color.WHITE);
+            return bmp;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    // 网页推送接收
+    private void startPushServer() {
+        new Thread(() -> {
+            try {
+                serverSocket = new ServerSocket();
+                serverSocket.setReuseAddress(true);
+                serverSocket.bind(new InetSocketAddress(PORT));
+                while (!serverSocket.isClosed()) {
+                    Socket socket = serverSocket.accept();
+                    handlePush(socket);
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }).start();
+    }
+
+    private void handlePush(Socket socket) {
+        new Thread(() -> {
+            try {
+                InputStream is = socket.getInputStream();
+                InputStreamReader reader = new InputStreamReader(is);
+                char[] buf = new char[2048];
+                int len = reader.read(buf);
+                String data = new String(buf, 0, len);
+                socket.close();
+
+                JSONObject json = new JSONObject(data);
+                String liveUrl = json.optString("live_url");
+                String epgUrl = json.optString("epg_url");
+
+                handler.post(() -> {
+                    if (!liveUrl.isEmpty()) {
+                        sp.edit().putString("custom_live_url", liveUrl).apply();
+                        Toast.makeText(this, "直播源已更新，正在刷新...", Toast.LENGTH_SHORT).show();
+                    }
+                    if (!epgUrl.isEmpty()) {
+                        sp.edit().putString("custom_epg_url", epgUrl).apply();
+                        Toast.makeText(this, "EPG节目单已更新，正在刷新...", Toast.LENGTH_SHORT).show();
+                    }
+                    // 推送后也立刻刷新
+                    if (MainActivity.mInstance != null) {
+                        MainActivity.mInstance.loadLiveAndEpg();
+                    }
+                });
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }).start();
+    }
+
+    // 工具方法：获取IP
+    private String getDeviceIPAddress() {
+        try {
+            WifiManager wm = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+            WifiInfo info = wm.getConnectionInfo();
+            int ip = info.getIpAddress();
+            return (ip & 0xFF) + "." + ((ip >> 8) & 0xFF) + "." + ((ip >> 16) & 0xFF) + "." + ((ip >> 24) & 0xFF);
+        } catch (Exception e) {
+            return "192.168.1.100";
+        }
+    }
+
+    private void save(String k, boolean v) {
+        sp.edit().putBoolean(k, v).apply();
+    }
+
+    private void loadConfig() {
+        sw_boot.setChecked(sp.getBoolean("boot_auto_start", false));
+        sw_epg.setChecked(sp.getBoolean("epg_enable", true));
+        sw_auto_update.setChecked(sp.getBoolean("auto_update_source", true));
+        sw_reverse.setChecked(sp.getBoolean("channel_reverse", false));
+        sw_num_channel.setChecked(sp.getBoolean("number_channel_enable", true));
+    }
+
+    private void showRatioDialog() {
+        String[] r = {"全屏", "填充", "原始"};
+        new AlertDialog.Builder(this)
+                .setTitle("屏幕比例")
+                .setItems(r, (d, w) -> {
+                    sp.edit().putString("screen_ratio", r[w]).apply();
+                    Toast.makeText(this, "已设置：" + r[w], Toast.LENGTH_SHORT).show();
+                }).show();
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        try {
+            if (serverSocket != null) serverSocket.close();
+        } catch (IOException e) {}
+    }
+}

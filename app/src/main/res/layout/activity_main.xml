@@ -66,6 +66,13 @@
             android:layout_height="match_parent"
             android:background="#CC000000"
             android:textColor="#ffffff"/>
+        
+        <!-- 新增：控制条开关按钮 -->
+    <Button
+        android:id="@+id/btn_toggle_controller"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="开关控制条" />
 
     </LinearLayout>
 

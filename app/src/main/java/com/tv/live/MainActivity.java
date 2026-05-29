@@ -190,26 +190,25 @@ public class MainActivity extends AppCompatActivity {
             } catch (Exception ignored) {}
         }
     }
+    
     private void initExoPlayer() {
-        exoPlayer = new ExoPlayer.Builder(this).build();
-        playerView.setPlayer(exoPlayer);
-        setRatio(currentRatioIndex);
-        exoPlayer.addListener(new Player.Listener() {
-            @Override
-            public void onPlayerError(PlaybackException error) {
-                Toast.makeText(MainActivity.this, "播放失败，自动切换线路", Toast.LENGTH_SHORT).show();
-                tryNextSource();
-            }
-        });
-    }
-    private void tryNextSource() {
-        if (channelSourceList.isEmpty()) return;
-        Channel ch = channelSourceList.get(currentPlayIndex);
-        int nextLine = setting.getLine() + 1;
-        if (nextLine >= ch.urls.size()) nextLine = 0;
-        setting.setLine(nextLine);
-        playChannel(currentPlayIndex);
-    }
+    exoPlayer = new ExoPlayer.Builder(this).build();
+    playerView.setPlayer(exoPlayer);
+    setRatio(currentRatioIndex);
+
+    // 只留最干净的错误监听，不循环、不自闭、不卡死
+    exoPlayer.addListener(new Player.Listener() {
+        @Override
+        public void onPlayerError(PlaybackException error) {
+            // 只提示，不自动重试、不自动切源
+            Toast.makeText(MainActivity.this, "播放失败", Toast.LENGTH_SHORT).show();
+        }
+    });
+}
+
+// 删掉你原来的 tryNextSource、tryAutoRetry，不要留！
+
+
     private void setRatio(int index) {
         currentRatioIndex = index;
         switch (index) {

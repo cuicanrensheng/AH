@@ -2,266 +2,351 @@ package com.tv.live;
 
 import android.app.AlertDialog;
 import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
-import android.graphics.Bitmap;
-import android.graphics.Color;
-import android.net.wifi.WifiInfo;
-import android.net.wifi.WifiManager;
+import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
+import android.net.Uri;
+import android.os.AsyncTask;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.Log;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.widget.ArrayAdapter;
+import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ImageView;
+import android.widget.Spinner;
 import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
+
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.FileProvider;
+
 import com.google.zxing.BarcodeFormat;
+import com.google.zxing.EncodeHintType;
+import com.google.zxing.MultiFormatWriter;
 import com.google.zxing.common.BitMatrix;
-import com.google.zxing.qrcode.QRCodeWriter;
+import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel;
+
 import org.json.JSONObject;
-import java.io.IOException;
-import java.io.InputStream;
+
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.InputStreamReader;
-import java.net.InetSocketAddress;
-import java.net.ServerSocket;
-import java.net.Socket;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.util.HashMap;
+import java.util.Map;
 
 public class SettingsActivity extends AppCompatActivity {
-    private Switch sw_boot, sw_epg, sw_auto_update, sw_reverse, sw_num_channel;
-    private TextView tv_screen_ratio, tv_custom_source, tv_custom_epg, tv_multi_source, tv_multi_epg, tv_qr_code;
+
+    private Switch swBoot, swEpg, swUpdate, swReverse, swNumKey;
+    private Spinner spRatio;
+    private EditText etLive, etEpg;
+    private Button btnSave, btnLiveHistory, btnEpgHistory, btnQr, btnCheckUpdate;
+    private TextView tvVersion;
+
     private SharedPreferences sp;
-    private String currentWebUrl;
-    private ServerSocket serverSocket;
-    private final Handler handler = new Handler(Looper.getMainLooper());
-    private static final int PORT = 10481;
+    private Handler mainHandler = new Handler(Looper.getMainLooper());
+
+    // 已替换为你的仓库地址
+    private static final String UPDATE_JSON_URL = "https://raw.githubusercontent.com/cuicanrensheng/AH/main/update.json";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_settings);
+
         sp = getSharedPreferences("app_settings", MODE_PRIVATE);
-
-        sw_boot = findViewById(R.id.sw_boot);
-        sw_epg = findViewById(R.id.sw_epg);
-        sw_auto_update = findViewById(R.id.sw_auto_update);
-        sw_reverse = findViewById(R.id.sw_reverse);
-        sw_num_channel = findViewById(R.id.sw_num_channel);
-
-        tv_screen_ratio = findViewById(R.id.tv_screen_ratio);
-        tv_custom_source = findViewById(R.id.tv_custom_source);
-        tv_custom_epg = findViewById(R.id.tv_custom_epg);
-        tv_multi_source = findViewById(R.id.tv_multi_source);
-        tv_multi_epg = findViewById(R.id.tv_multi_epg);
-        tv_qr_code = findViewById(R.id.tv_qr_code);
-
-        loadConfig();
-
-        sw_boot.setOnCheckedChangeListener((button, isChecked) -> save("boot_auto_start", isChecked));
-        sw_epg.setOnCheckedChangeListener((button, isChecked) -> save("epg_enable", isChecked));
-        sw_auto_update.setOnCheckedChangeListener((button, isChecked) -> save("auto_update_source", isChecked));
-        sw_reverse.setOnCheckedChangeListener((button, isChecked) -> save("channel_reverse", isChecked));
-        sw_num_channel.setOnCheckedChangeListener((button, isChecked) -> save("number_channel_enable", isChecked));
-
-        tv_screen_ratio.setOnClickListener(v -> showRatioDialog());
-
-        // 手动输入
-        tv_custom_source.setOnClickListener(v -> showInputDialog("自定义订阅源", "请输入直播源地址", "custom_live_url"));
-        tv_custom_epg.setOnClickListener(v -> showInputDialog("自定义节目单", "请输入EPG节目单地址", "custom_epg_url"));
-
-        // 历史记录（查看 + 删除 + 选择）
-        tv_multi_source.setOnClickListener(v -> showHistoryDialog("直播源历史记录", "live_history"));
-        tv_multi_epg.setOnClickListener(v -> showHistoryDialog("节目单历史记录", "epg_history"));
-
-        currentWebUrl = "http://" + getDeviceIPAddress() + ":" + PORT;
-        tv_qr_code.setOnClickListener(v -> showQRCodeDialog());
-        startPushServer();
+        initViews();
+        loadSettings();
+        initListeners();
     }
 
-    // ================== 手动输入链接 ==================
-    private void showInputDialog(String title, String hint, String key) {
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle(title);
-        final EditText input = new EditText(this);
-        input.setHint(hint);
-        input.setText(sp.getString(key, ""));
-        builder.setView(input);
+    private void initViews() {
+        swBoot = findViewById(R.id.sw_boot);
+        swEpg = findViewById(R.id.sw_epg);
+        swUpdate = findViewById(R.id.sw_update);
+        swReverse = findViewById(R.id.sw_reverse);
+        swNumKey = findViewById(R.id.sw_num_key);
 
-        builder.setPositiveButton("确定", (dialog, which) -> {
-            String url = input.getText().toString().trim();
-            if (!url.isEmpty()) {
-                sp.edit().putString(key, url).apply();
-                addToHistory(key.contains("live") ? "live_history" : "epg_history", url);
-                Toast.makeText(this, "已保存，正在刷新...", Toast.LENGTH_SHORT).show();
-                if (MainActivity.mInstance != null) MainActivity.mInstance.loadLiveAndEpg();
+        spRatio = findViewById(R.id.sp_ratio);
+        String[] ratios = {"全屏", "填充", "原始"};
+        ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, ratios);
+        spRatio.setAdapter(adapter);
+
+        etLive = findViewById(R.id.et_live_url);
+        etEpg = findViewById(R.id.et_epg_url);
+
+        btnSave = findViewById(R.id.btn_save);
+        btnLiveHistory = findViewById(R.id.btn_live_history);
+        btnEpgHistory = findViewById(R.id.btn_epg_history);
+        btnQr = findViewById(R.id.btn_qr);
+        btnCheckUpdate = findViewById(R.id.btn_check_update);
+
+        tvVersion = findViewById(R.id.tv_version);
+        try {
+            PackageInfo pi = getPackageManager().getPackageInfo(getPackageName(), 0);
+            tvVersion.setText("版本：" + pi.versionName + " (" + pi.versionCode + ")");
+        } catch (Exception e) {
+            tvVersion.setText("版本未知");
+        }
+    }
+
+    private void loadSettings() {
+        swBoot.setChecked(sp.getBoolean("boot_start", false));
+        swEpg.setChecked(sp.getBoolean("epg_enable", true));
+        swUpdate.setChecked(sp.getBoolean("auto_update", false));
+        swReverse.setChecked(sp.getBoolean("channel_reverse", false));
+        swNumKey.setChecked(sp.getBoolean("num_key_enable", true));
+
+        String ratio = sp.getString("screen_ratio", "全屏");
+        if ("填充".equals(ratio)) spRatio.setSelection(1);
+        else if ("原始".equals(ratio)) spRatio.setSelection(2);
+        else spRatio.setSelection(0);
+
+        etLive.setText(sp.getString("live_url", ""));
+        etEpg.setText(sp.getString("epg_url", ""));
+    }
+
+    private void initListeners() {
+        btnSave.setOnClickListener(v -> saveSettings());
+        btnLiveHistory.setOnClickListener(v -> showHistoryDialog("live_history", "选择直播源地址"));
+        btnEpgHistory.setOnClickListener(v -> showHistoryDialog("epg_history", "选择EPG地址"));
+        btnQr.setOnClickListener(v -> showQrDialog());
+        btnCheckUpdate.setOnClickListener(v -> checkUpdate());
+    }
+
+    private void saveSettings() {
+        String liveUrl = etLive.getText().toString().trim();
+        String epgUrl = etEpg.getText().toString().trim();
+        String ratio = (String) spRatio.getSelectedItem();
+
+        SharedPreferences.Editor editor = sp.edit();
+        editor.putBoolean("boot_start", swBoot.isChecked());
+        editor.putBoolean("epg_enable", swEpg.isChecked());
+        editor.putBoolean("auto_update", swUpdate.isChecked());
+        editor.putBoolean("channel_reverse", swReverse.isChecked());
+        editor.putBoolean("num_key_enable", swNumKey.isChecked());
+        editor.putString("screen_ratio", ratio);
+        editor.putString("live_url", liveUrl);
+        editor.putString("epg_url", epgUrl);
+        editor.apply();
+
+        saveHistory("live_history", liveUrl);
+        saveHistory("epg_history", epgUrl);
+
+        Toast.makeText(this, "设置已保存，重启后生效", Toast.LENGTH_SHORT).show();
+        setResult(RESULT_OK);
+        finish();
+    }
+
+    private void saveHistory(String key, String url) {
+        if (url.isEmpty()) return;
+        String history = sp.getString(key, "");
+        if (!history.contains(url)) {
+            String newHistory = history.isEmpty() ? url : url + "|" + history;
+            String[] list = newHistory.split("\\|");
+            if (list.length > 10) {
+                StringBuilder sb = new StringBuilder();
+                for (int i = 0; i < 10; i++) {
+                    sb.append(list[i]).append("|");
+                }
+                newHistory = sb.toString();
             }
-        });
-        builder.setNegativeButton("取消", null);
-        builder.show();
+            sp.edit().putString(key, newHistory).apply();
+        }
     }
 
-    // ================== 历史记录：查看 + 选择 + 删除 ==================
-    private void showHistoryDialog(String title, String historyKey) {
-        List<String> list = getHistory(historyKey);
-        if (list.isEmpty()) {
+    private void showHistoryDialog(String key, String title) {
+        String history = sp.getString(key, "");
+        if (history.isEmpty()) {
             Toast.makeText(this, "暂无历史记录", Toast.LENGTH_SHORT).show();
             return;
         }
-
-        String[] items = list.toArray(new String[0]);
-        new AlertDialog.Builder(this)
-            .setTitle(title)
-            .setItems(items, (d, i) -> {
-                String selected = items[i];
-                String saveKey = historyKey.equals("live_history") ? "custom_live_url" : "custom_epg_url";
-                sp.edit().putString(saveKey, selected).apply();
-                Toast.makeText(this, "已切换：" + selected, Toast.LENGTH_SHORT).show();
-                if (MainActivity.mInstance != null) MainActivity.mInstance.loadLiveAndEpg();
-            })
-            .setNeutralButton("删除选中", (d, i) -> {
-                new AlertDialog.Builder(this)
-                    .setMessage("确定删除这条记录？")
-                    .setPositiveButton("删除", (dl, ii) -> {
-                        removeHistory(historyKey, items[i]);
-                        Toast.makeText(this, "已删除", Toast.LENGTH_SHORT).show();
-                    })
-                    .setNegativeButton("取消", null)
-                    .show();
-            })
-            .setNegativeButton("关闭", null)
-            .show();
-    }
-
-    // ================== 历史记录存储 ==================
-    private List<String> getHistory(String key) {
-        String str = sp.getString(key, "");
-        if (str.isEmpty()) return new ArrayList<>();
-        return new ArrayList<>(Arrays.asList(str.split("\\|")));
-    }
-
-    private void addToHistory(String key, String url) {
-        List<String> list = getHistory(key);
-        if (list.contains(url)) list.remove(url);
-        list.add(0, url);
-        while (list.size() > 10) list.remove(list.size() - 1);
-        sp.edit().putString(key, String.join("|", list)).apply();
-    }
-
-    private void removeHistory(String key, String url) {
-        List<String> list = getHistory(key);
-        list.remove(url);
-        sp.edit().putString(key, String.join("|", list)).apply();
-    }
-
-    // ================== 二维码 250×250 ==================
-    private void showQRCodeDialog() {
+        String[] list = history.split("\\|");
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("扫码管理直播源/EPG");
-        ImageView iv = new ImageView(this);
-        iv.setImageBitmap(createQRCode(currentWebUrl, 250));
-        builder.setView(iv);
+        builder.setTitle(title);
+        builder.setItems(list, (dialog, which) -> {
+            String url = list[which];
+            if ("live_history".equals(key)) etLive.setText(url);
+            else etEpg.setText(url);
+        });
+        builder.setNeutralButton("清空", (dialog, which) -> {
+            sp.edit().putString(key, "").apply();
+            Toast.makeText(this, "已清空历史", Toast.LENGTH_SHORT).show();
+        });
+        builder.show();
+    }
+
+    private void showQrDialog() {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        View view = LayoutInflater.from(this).inflate(R.layout.dialog_qr, null);
+        ImageView ivQr = view.findViewById(R.id.iv_qr);
+        TextView tvInfo = view.findViewById(R.id.tv_qr_info);
+
+        String qrText = "TVLive:推送地址";
+        try {
+            BitMatrix bitMatrix = new MultiFormatWriter().encode(qrText, BarcodeFormat.QR_CODE, 400, 400, getEncodeHint());
+            int width = bitMatrix.getWidth();
+            int height = bitMatrix.getHeight();
+            int[] pixels = new int[width * height];
+            for (int y = 0; y < height; y++) {
+                for (int x = 0; x < width; x++) {
+                    pixels[y * width + x] = bitMatrix.get(x, y) ? 0xFF000000 : 0xFFFFFFFF;
+                }
+            }
+            android.graphics.Bitmap bmp = android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.ARGB_8888);
+            bmp.setPixels(pixels, 0, width, 0, 0, width, height);
+            ivQr.setImageBitmap(bmp);
+        } catch (Exception e) {
+            Toast.makeText(this, "生成二维码失败", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        tvInfo.setText("扫码推送直播源地址");
+        builder.setView(view);
         builder.setPositiveButton("关闭", null);
         builder.show();
     }
 
-    private Bitmap createQRCode(String content, int size) {
-        try {
-            BitMatrix matrix = new QRCodeWriter().encode(content, BarcodeFormat.QR_CODE, 250, 250);
-            Bitmap bmp = Bitmap.createBitmap(250, 250, Bitmap.Config.RGB_565);
-            for (int x = 0; x < 250; x++)
-                for (int y = 0; y < 250; y++)
-                    bmp.setPixel(x, y, matrix.get(x, y) ? Color.BLACK : Color.WHITE);
-            return bmp;
-        } catch (Exception e) {
-            return null;
-        }
+    private Map<EncodeHintType, Object> getEncodeHint() {
+        Map<EncodeHintType, Object> map = new HashMap<>();
+        map.put(EncodeHintType.CHARACTER_SET, "utf-8");
+        map.put(EncodeHintType.ERROR_CORRECTION, ErrorCorrectionLevel.H);
+        return map;
     }
 
-    // ================== 网页推送 ==================
-    private void startPushServer() {
-        new Thread(() -> {
+    // -------------------------- 更新功能核心 --------------------------
+    private void checkUpdate() {
+        Toast.makeText(this, "正在检查更新...", Toast.LENGTH_SHORT).show();
+        new CheckUpdateTask().execute();
+    }
+
+    private class CheckUpdateTask extends AsyncTask<Void, Void, JSONObject> {
+        @Override
+        protected JSONObject doInBackground(Void... voids) {
             try {
-                serverSocket = new ServerSocket();
-                serverSocket.setReuseAddress(true);
-                serverSocket.bind(new InetSocketAddress(PORT));
-                while (!serverSocket.isClosed()) {
-                    Socket socket = serverSocket.accept();
-                    handlePush(socket);
+                URL url = new URL(UPDATE_JSON_URL);
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("GET");
+                conn.setConnectTimeout(10000);
+                conn.setReadTimeout(10000);
+
+                BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+                StringBuilder sb = new StringBuilder();
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    sb.append(line);
                 }
-            } catch (Exception e) { e.printStackTrace(); }
-        }).start();
-    }
+                reader.close();
+                return new JSONObject(sb.toString());
+            } catch (Exception e) {
+                Log.e("UpdateHelper", "checkUpdate error", e);
+                return null;
+            }
+        }
 
-    private void handlePush(Socket socket) {
-        new Thread(() -> {
+        @Override
+        protected void onPostExecute(JSONObject json) {
+            if (json == null) {
+                Toast.makeText(SettingsActivity.this, "获取更新信息失败，请稍后重试", Toast.LENGTH_SHORT).show();
+                return;
+            }
             try {
-                InputStream is = socket.getInputStream();
-                InputStreamReader reader = new InputStreamReader(is);
-                char[] buf = new char[2048];
-                int len = reader.read(buf);
-                String data = new String(buf, 0, len);
-                socket.close();
+                int versionCode = json.getInt("versionCode");
+                String versionName = json.getString("versionName");
+                String downloadUrl = json.getString("downloadUrl");
 
-                JSONObject json = new JSONObject(data);
-                String liveUrl = json.optString("live_url");
-                String epgUrl = json.optString("epg_url");
+                PackageInfo pi = getPackageManager().getPackageInfo(getPackageName(), 0);
+                int currentVersionCode = pi.versionCode;
 
-                handler.post(() -> {
-                    if (!liveUrl.isEmpty()) {
-                        sp.edit().putString("custom_live_url", liveUrl).apply();
-                        addToHistory("live_history", liveUrl);
-                    }
-                    if (!epgUrl.isEmpty()) {
-                        sp.edit().putString("custom_epg_url", epgUrl).apply();
-                        addToHistory("epg_history", epgUrl);
-                    }
-                    Toast.makeText(this, "已更新并保存到历史记录", Toast.LENGTH_SHORT).show();
-                    if (MainActivity.mInstance != null) MainActivity.mInstance.loadLiveAndEpg();
-                });
-            } catch (Exception e) { e.printStackTrace(); }
-        }).start();
-    }
-
-    // ================== 工具 ==================
-    private String getDeviceIPAddress() {
-        try {
-            WifiManager wm = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
-            WifiInfo info = wm.getConnectionInfo();
-            int ip = info.getIpAddress();
-            return (ip & 0xFF) + "." + ((ip >> 8) & 0xFF) + "." + ((ip >> 16) & 0xFF) + "." + ((ip >> 24) & 0xFF);
-        } catch (Exception e) {
-            return "192.168.1.100";
+                if (versionCode > currentVersionCode) {
+                    showUpdateDialog(versionName, downloadUrl);
+                } else {
+                    Toast.makeText(SettingsActivity.this, "当前已是最新版本", Toast.LENGTH_SHORT).show();
+                }
+            } catch (Exception e) {
+                Toast.makeText(SettingsActivity.this, "解析更新信息失败", Toast.LENGTH_SHORT).show();
+            }
         }
     }
 
-    private void save(String k, boolean v) {
-        sp.edit().putBoolean(k, v).apply();
-    }
-
-    private void loadConfig() {
-        sw_boot.setChecked(sp.getBoolean("boot_auto_start", false));
-        sw_epg.setChecked(sp.getBoolean("epg_enable", true));
-        sw_auto_update.setChecked(sp.getBoolean("auto_update_source", true));
-        sw_reverse.setChecked(sp.getBoolean("channel_reverse", false));
-        sw_num_channel.setChecked(sp.getBoolean("number_channel_enable", true));
-    }
-
-    private void showRatioDialog() {
-        String[] r = {"全屏", "填充", "原始"};
+    private void showUpdateDialog(String versionName, String downloadUrl) {
         new AlertDialog.Builder(this)
-            .setTitle("屏幕比例")
-            .setItems(r, (d, w) -> {
-                sp.edit().putString("screen_ratio", r[w]).apply();
-                Toast.makeText(this, "已设置：" + r[w], Toast.LENGTH_SHORT).show();
-            }).show();
+                .setTitle("发现新版本")
+                .setMessage("当前版本：" + getVersionName() + "\n最新版本：" + versionName)
+                .setPositiveButton("立即更新", (dialog, which) -> {
+                    downloadAndInstallApk(downloadUrl);
+                })
+                .setNegativeButton("稍后再说", null)
+                .show();
     }
 
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        try { if (serverSocket != null) serverSocket.close(); } catch (IOException e) {}
+    private String getVersionName() {
+        try {
+            PackageInfo pi = getPackageManager().getPackageInfo(getPackageName(), 0);
+            return pi.versionName;
+        } catch (Exception e) {
+            return "未知";
+        }
+    }
+
+    private void downloadAndInstallApk(String url) {
+        Toast.makeText(this, "正在下载更新...", Toast.LENGTH_SHORT).show();
+        new DownloadApkTask().execute(url);
+    }
+
+    private class DownloadApkTask extends AsyncTask<String, Integer, File> {
+        @Override
+        protected File doInBackground(String... strings) {
+            try {
+                URL apkUrl = new URL(strings[0]);
+                HttpURLConnection conn = (HttpURLConnection) apkUrl.openConnection();
+                conn.setRequestMethod("GET");
+                conn.connect();
+
+                File apkFile = new File(getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "app-release.apk");
+                FileOutputStream fos = new FileOutputStream(apkFile);
+                byte[] buffer = new byte[1024];
+                int len;
+                while ((len = conn.getInputStream().read(buffer)) != -1) {
+                    fos.write(buffer, 0, len);
+                }
+                fos.close();
+                return apkFile;
+            } catch (Exception e) {
+                Log.e("UpdateHelper", "download apk error", e);
+                return null;
+            }
+        }
+
+        @Override
+        protected void onPostExecute(File apkFile) {
+            if (apkFile == null || !apkFile.exists()) {
+                Toast.makeText(SettingsActivity.this, "下载更新失败", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            installApk(apkFile);
+        }
+    }
+
+    private void installApk(File apkFile) {
+        Intent intent = new Intent(Intent.ACTION_VIEW);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            Uri apkUri = FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", apkFile);
+            intent.setDataAndType(apkUri, "application/vnd.android.package-archive");
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        } else {
+            intent.setDataAndType(Uri.fromFile(apkFile), "application/vnd.android.package-archive");
+        }
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        startActivity(intent);
     }
 }

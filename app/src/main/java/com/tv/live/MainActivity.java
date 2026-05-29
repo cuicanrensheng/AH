@@ -72,8 +72,8 @@ public class MainActivity extends AppCompatActivity {
             @Override public void onOk() { togglePanel(); }
             @Override public void onLongOk() { openSettings(); }
             @Override public void onMenu() { openSettings(); }
-            @Override public void onPrevChannel() { playPrev(); }
-            @Override public void onNextChannel() { playNext(); }
+            @Override public void onPrevChannel() { playPret(); }
+            @Override public void onNextChannel() { playNexv(); }
         });
 
         playerView.setOnTouchListener((v, event) -> {

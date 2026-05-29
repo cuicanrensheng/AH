@@ -1,5 +1,74 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ListView xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/channel_list"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"/>
+    android:layout_height="match_parent"
+    android:orientation="horizontal"
+    android:background="#CC000000">
+
+    <!-- 频道分组 -->
+    <ListView
+        android:id="@+id/lv_group"
+        android:layout_width="120dp"
+        android:layout_height="match_parent"
+        android:divider="#333"
+        android:dividerHeight="1dp"
+        android:background="#111"/>
+
+    <!-- 频道列表 + 按钮 -->
+    <RelativeLayout
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1">
+
+        <ListView
+            android:id="@+id/lv_channel"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:divider="#333"
+            android:dividerHeight="1dp"
+            android:background="#222"/>
+
+        <TextView
+            android:id="@+id/tv_go_epg"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentRight="true"
+            android:layout_centerVertical="true"
+            android:padding="10dp"
+            android:text="向右查看节目单"
+            android:textColor="#fff"
+            android:background="#333"/>
+    </RelativeLayout>
+
+    <!-- EPG 节目单 -->
+    <LinearLayout
+        android:id="@+id/ll_epg_container"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1.5"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <!-- 日期栏 -->
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="40dp"
+            android:background="#333">
+            <LinearLayout
+                android:id="@+id/ll_date"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:orientation="horizontal"/>
+        </HorizontalScrollView>
+
+        <!-- 节目列表 -->
+        <ListView
+            android:id="@+id/lv_epg"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:divider="#333"
+            android:dividerHeight="1dp"
+            android:background="#222"/>
+    </LinearLayout>
+
+</LinearLayout>

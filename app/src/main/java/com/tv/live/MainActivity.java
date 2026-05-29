@@ -33,6 +33,8 @@ public class MainActivity extends AppCompatActivity {
     public TVPlayerManager mPlayerManager;
     private PlayerGestureHelper gestureHelper;
     private SharedPreferences sp;
+    private Button btnToggleController;
+    private boolean isControllerVisible = false; // 默认隐藏
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -60,7 +62,16 @@ public class MainActivity extends AppCompatActivity {
         lvDate = findViewById(R.id.lv_date);
         lvEpg = findViewById(R.id.lv_epg);
         btn_show_epg = findViewById(R.id.btn_show_epg);
-
+        btnToggleController = findViewById(R.id.btn_toggle_controller);
+        // 初始化隐藏控制条
+        playerView.setUseController(isControllerVisible);
+        // 按钮点击事件
+        btnToggleController.setOnClickListener(v -> {
+        isControllerVisible = !isControllerVisible;
+        playerView.setUseController(isControllerVisible);
+        Toast.makeText(this, isControllerVisible ? "已显示控制条" : "已隐藏控制条", Toast.LENGTH_SHORT).show();
+});
+        
         playerView.setOnClickListener(v -> togglePanel());
         btn_show_epg.setOnClickListener(v -> {
             lvEpg.post(() -> lvEpg.smoothScrollToPosition(0));

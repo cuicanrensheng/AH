@@ -124,12 +124,14 @@ public class EpgManager {
     }
 
     public String getDayName(Calendar itemCal, Calendar todayCal) {
-        int dayDiff = itemCal.get(Calendar.DAY_OF_YEAR) - todayCal.get(DayOfWeek.DAY_OF_YEAR);
-        if (dayDiff == 0) return "今天";
-        if (dayDiff == 1) return "明天";
-        if (dayDiff == 2) return "后天";
-        String[] weekDays = {"周日", "周一", "周二", "周三", "周四", "周五", "周六"};
-        int dayOfWeek = itemCal.get(Calendar.DAY_OF_WEEK) - 1;
-        return weekDays[dayOfWeek];
-    }
+    // 只修复这一行：把 DayOfWeek 改成 Calendar
+    int dayDiff = itemCal.get(Calendar.DAY_OF_YEAR) - todayCal.get(Calendar.DAY_OF_YEAR);
+    
+    if (dayDiff == 0) return "今天";
+    if (dayDiff == 1) return "明天";
+    if (dayDiff == 2) return "后天";
+    String[] weekDays = {"周日", "周一", "周二", "周三", "周四", "周五", "周六"};
+    int dayOfWeek = itemCal.get(Calendar.DAY_OF_WEEK) - 1;
+    return weekDays[dayOfWeek];
+   }
 }

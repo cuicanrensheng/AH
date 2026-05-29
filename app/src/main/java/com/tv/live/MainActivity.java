@@ -1,5 +1,6 @@
 package com.tv.live;
 
+import android.content.pm.ActivityInfo;
 import android.util.Log;
 import android.content.Context;
 import android.content.Intent;
@@ -24,7 +25,6 @@ public class MainActivity extends AppCompatActivity {
     public int currentChannelIndex = 0;
     public boolean isPlayingPlayback = false;
     public int currentRatioIndex = 2;
-
     public ListView lvGroup;
     public ListView lvChannelList;
     public ListView lvDate;
@@ -36,6 +36,9 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        // ========== 强制横屏 + 可左右旋转 + 永不竖屏 ==========
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
 
         // ========== 隐藏状态栏 + 全屏 ==========
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
@@ -50,7 +53,6 @@ public class MainActivity extends AppCompatActivity {
         mInstance = this;
         setContentView(R.layout.activity_main);
         sp = getSharedPreferences("app_settings", MODE_PRIVATE);
-
         PlayerView playerView = findViewById(R.id.player_view);
         lvGroup = findViewById(R.id.lv_group);
         lvChannelList = findViewById(R.id.lv_channel_list);
@@ -79,8 +81,6 @@ public class MainActivity extends AppCompatActivity {
 
         mPlayerManager.setOnPlayStateListener(new TVPlayerManager.OnPlayStateListener() {
             @Override public void onIdle() {}
-
-            // ========== 缓冲时显示当前频道名，不弹Toast ==========
             @Override public void onBuffering() {
                 try {
                     if (channelSourceList != null && !channelSourceList.isEmpty()) {
@@ -89,7 +89,6 @@ public class MainActivity extends AppCompatActivity {
                     }
                 } catch (Exception e) {}
             }
-
             @Override public void onPlayReady() {}
             @Override public void onPlayEnd() { Toast.makeText(MainActivity.this,"播放结束，自动重试",Toast.LENGTH_SHORT).show(); }
             @Override public void onPlayError(String msg) { Toast.makeText(MainActivity.this,"播放异常："+msg,Toast.LENGTH_SHORT).show(); }
@@ -125,7 +124,6 @@ public class MainActivity extends AppCompatActivity {
                         playChannel(0);
                     }
                 });
-
                 EpgManager.getInstance().setEpgUrl(UrlConfig.EPG_URL);
                 EpgManager.getInstance().loadEpg(() -> {
                     runOnUiThread(() -> {
@@ -184,17 +182,14 @@ public class MainActivity extends AppCompatActivity {
         currentPlayIndex = index;
         currentChannelIndex = index;
         Channel ch = channelSourceList.get(index);
-
         if (TextUtils.isEmpty(ch.getPlayUrl())) {
             Toast.makeText(this,"播放地址为空",Toast.LENGTH_SHORT).show();
             return;
         }
-
         if (mPlayerManager != null) {
             mPlayerManager.playUrl(ch.getPlayUrl());
             applyScreenRatioFromSettings();
         }
-
         isPlayingPlayback = false;
         getSharedPreferences("play_config",0).edit().putInt("last_play_index",index).apply();
     }

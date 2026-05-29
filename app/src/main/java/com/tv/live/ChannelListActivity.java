@@ -29,9 +29,9 @@ public class ChannelListActivity extends AppCompatActivity {
             return;
         }
 
-        final List<MainActivity.Channel> channelList = MainActivity.mInstance.channelSourceList;
+       final List<Channel> channelList = MainActivity.mInstance.channelSourceList;
         List<String> names = new ArrayList<>();
-        for (MainActivity.Channel c : channelList) {
+        for (Channel c : channelList) {
             names.add(c.name);
         }
 
@@ -42,7 +42,7 @@ public class ChannelListActivity extends AppCompatActivity {
             public View getView(int position, View convertView, ViewGroup parent) {
                 View view = super.getView(position, convertView, parent);
                 // 当前播放频道高亮显示
-                if (position == MainActivity.mInstance.currentChannelIndex) {
+               if (position == MainActivity.mInstance.currentChannelIndex) {
                     view.setBackgroundColor(Color.parseColor("#FFE0E0E0"));
                 } else {
                     view.setBackgroundColor(Color.TRANSPARENT);

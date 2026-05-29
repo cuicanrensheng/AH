@@ -9,7 +9,7 @@ import java.util.List;
 
 public class PlaylistParser {
    public static List<Channel> parse(String m3uUrl) throws Exception {
-        List<MainActivity.Channel> list = new ArrayList<>();
+        List<Channel> list = new ArrayList<>();
         HttpURLConnection conn = (HttpURLConnection) new URL(m3uUrl).openConnection();
         conn.setConnectTimeout(10000);
         conn.setReadTimeout(10000);
@@ -31,7 +31,7 @@ public class PlaylistParser {
             if (line.startsWith("#EXTINF")) {
                 // 先把上一个频道保存
                 if (!urls.isEmpty()) {
-                    list.add(new MainActivity.Channel(name, group, new ArrayList<>(urls)));
+                    list.add(new Channel(name, group, new ArrayList<>(urls)));
                     urls.clear();
                 }
 
@@ -58,7 +58,7 @@ public class PlaylistParser {
 
         // 保存最后一个频道
         if (!urls.isEmpty()) {
-            list.add(new MainActivity.Channel(name, group, urls));
+            list.add(new Channel(name, group, urls));
         }
 
         br.close();

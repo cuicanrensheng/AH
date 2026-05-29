@@ -190,24 +190,21 @@ public class MainActivity extends AppCompatActivity {
             } catch (Exception ignored) {}
         }
     }
-    
-    private void initExoPlayer() {
+
+// ====================== 【唯一修复：播放器】======================
+private void initExoPlayer() {
     exoPlayer = new ExoPlayer.Builder(this).build();
     playerView.setPlayer(exoPlayer);
     setRatio(currentRatioIndex);
 
-    // 只留最干净的错误监听，不循环、不自闭、不卡死
     exoPlayer.addListener(new Player.Listener() {
         @Override
         public void onPlayerError(PlaybackException error) {
-            // 只提示，不自动重试、不自动切源
             Toast.makeText(MainActivity.this, "播放失败", Toast.LENGTH_SHORT).show();
         }
     });
 }
-
-// 删掉你原来的 tryNextSource、tryAutoRetry，不要留！
-
+// ===============================================================
 
     private void setRatio(int index) {
         currentRatioIndex = index;
@@ -390,7 +387,6 @@ public class MainActivity extends AppCompatActivity {
         for (Channel ch : channelSourceList) groupSet.add(ch.group);
         List<String> groupList = new ArrayList<>(groupSet);
         int gPos = groupList.indexOf(curr.group);
-
         ArrayAdapter<String> gAdapter = new ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, groupList) {
             @Override
             public View getView(int pos, View cv, ViewGroup p) {
@@ -404,12 +400,10 @@ public class MainActivity extends AppCompatActivity {
         };
         lvGroup.setAdapter(gAdapter);
         lvGroup.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
-
         List<Channel> gChannels = new ArrayList<>();
         for (Channel ch : channelSourceList) {
             if (ch.group.equals(curr.group)) gChannels.add(ch);
         }
-
         ArrayAdapter<String> weekAdapter = new ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, weekNames) {
             @Override
             public View getView(int pos, View cv, ViewGroup p) {
@@ -423,7 +417,6 @@ public class MainActivity extends AppCompatActivity {
         };
         lvWeek.setAdapter(weekAdapter);
         lvWeek.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
-
         ArrayAdapter<Channel.EpgItem> eAdapter = new ArrayAdapter<Channel.EpgItem>(this, R.layout.item_epg, new ArrayList<>()) {
             @Override
             public View getView(int pos, View cv, ViewGroup p) {
@@ -433,11 +426,9 @@ public class MainActivity extends AppCompatActivity {
                 TextView time = cv.findViewById(R.id.tv_time);
                 TextView title = cv.findViewById(R.id.tv_title);
                 TextView btn = cv.findViewById(R.id.tv_action);
-
                 day.setText(item.dayName);
                 time.setText(item.time);
                 title.setText(item.title);
-
                 if (item.isNow) {
                     btn.setText("直播中");
                     btn.setBackgroundColor(0xFFFF6600);
@@ -453,7 +444,6 @@ public class MainActivity extends AppCompatActivity {
             }
         };
         lvEpg.setAdapter(eAdapter);
-
         lvGroup.post(() -> {
             lvGroup.setItemChecked(gPos, true);
             lvWeek.setItemChecked(0, true);
@@ -463,8 +453,7 @@ public class MainActivity extends AppCompatActivity {
             }
             eAdapter.notifyDataSetChanged();
         });
-
-        lvWeek.setOnItemClickListener((parent, view, pos, id) -> {
+        lvWeek.setOnItemClickListener((parent, view, pos, id) => {
             String day = weekNames.get(pos);
             eAdapter.clear();
             for (Channel.EpgItem item : curr.epgList) {
@@ -472,12 +461,10 @@ public class MainActivity extends AppCompatActivity {
             }
             eAdapter.notifyDataSetChanged();
         });
-
-        lvEpg.setOnItemClickListener((parent, view, pos, id) -> {
+        lvEpg.setOnItemClickListener((parent, view, pos, id) => {
             Channel.EpgItem item = eAdapter.getItem(pos);
             if (item.isPast || item.isNow) playEpgItem(item);
         });
-
         AlertDialog dialog = new AlertDialog.Builder(this).setView(v).setCancelable(true).show();
         dialog.setOnDismissListener(dialog1 -> playerView.requestFocus());
     }
@@ -499,7 +486,7 @@ public class MainActivity extends AppCompatActivity {
                 sp.edit().putBoolean("reverse_channel", isChecked).apply());
         switch_boot.setOnCheckedChangeListener((buttonView, isChecked) ->
                 ed.putBoolean("boot_start", isChecked).apply());
-        switch_update.setOnCheckedChangeListener((buttonView, isChecked) -> {
+        switch_update.setOnCheckedChangeListener((buttonView, isChecked) => {
             ed.putBoolean("auto_update", isChecked).apply();
             if (isChecked) checkUpdate();
         });
@@ -518,10 +505,10 @@ public class MainActivity extends AppCompatActivity {
             View ev = LayoutInflater.from(this).inflate(R.layout.dialog_edit, null);
             EditText et = ev.findViewById(R.id.et_input);
             et.setText(sp.getString("custom_source", ""));
-            new AlertDialog.Builder(MainActivity.this)
+            new AlertDialog.Builder(this)
                 .setTitle("自定义直播源")
                 .setView(ev)
-                .setPositiveButton("保存", (dialog, which) -> {
+                .setPositiveButton("保存", (dialog, which) => {
                     String url = et.getText().toString().trim();
                     ed.putString("custom_source", url).apply();
                     saveSourceHistory(url);
@@ -534,10 +521,10 @@ public class MainActivity extends AppCompatActivity {
             View ev = LayoutInflater.from(this).inflate(R.layout.dialog_edit, null);
             EditText et = ev.findViewById(R.id.et_input);
             et.setText(sp.getString("custom_epg", ""));
-            new AlertDialog.Builder(MainActivity.this)
+            new AlertDialog.Builder(this)
                 .setTitle("自定义EPG")
                 .setView(ev)
-                .setPositiveButton("保存", (dialog, which) -> {
+                .setPositiveButton("保存", (dialog, which) => {
                     String url = et.getText().toString().trim();
                     ed.putString("custom_epg", url).apply();
                     Toast.makeText(MainActivity.this, "已保存，重启生效", Toast.LENGTH_SHORT).show();
@@ -584,7 +571,7 @@ public class MainActivity extends AppCompatActivity {
                     runOnUiThread(() -> new AlertDialog.Builder(this)
                             .setTitle("发现新版本 v" + svn)
                             .setMessage(msg)
-                            .setPositiveButton("立即更新", (dialog, which) -> {
+                            .setPositiveButton("立即更新", (dialog, which) => {
                                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                                     if (!getPackageManager().canRequestPackageInstalls()) {
                                         Intent intent = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + getPackageName()));

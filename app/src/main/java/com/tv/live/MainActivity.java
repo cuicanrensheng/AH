@@ -1,4 +1,5 @@
 package com.tv.live;
+
 import android.util.Log;
 import android.content.Context;
 import android.content.Intent;
@@ -7,6 +8,8 @@ import android.os.Bundle;
 import android.text.TextUtils;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
+import android.view.View;
+import android.view.WindowManager;
 import android.widget.ListView;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
@@ -33,10 +36,21 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        // ========== 隐藏状态栏 + 全屏 ==========
+        getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
+                WindowManager.LayoutParams.FLAG_FULLSCREEN);
+        getWindow().getDecorView().setSystemUiVisibility(
+                View.SYSTEM_UI_FLAG_FULLSCREEN
+                        | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                        | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                        | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+        );
+
         mInstance = this;
         setContentView(R.layout.activity_main);
-
         sp = getSharedPreferences("app_settings", MODE_PRIVATE);
+
         PlayerView playerView = findViewById(R.id.player_view);
         lvGroup = findViewById(R.id.lv_group);
         lvChannelList = findViewById(R.id.lv_channel_list);
@@ -65,7 +79,17 @@ public class MainActivity extends AppCompatActivity {
 
         mPlayerManager.setOnPlayStateListener(new TVPlayerManager.OnPlayStateListener() {
             @Override public void onIdle() {}
-            @Override public void onBuffering() { Toast.makeText(MainActivity.this,"缓冲中...",Toast.LENGTH_SHORT).show(); }
+
+            // ========== 缓冲时显示当前频道名，不弹Toast ==========
+            @Override public void onBuffering() {
+                try {
+                    if (channelSourceList != null && !channelSourceList.isEmpty()) {
+                        String name = channelSourceList.get(currentPlayIndex).getName();
+                        Toast.makeText(MainActivity.this, "正在播放：" + name, Toast.LENGTH_SHORT).show();
+                    }
+                } catch (Exception e) {}
+            }
+
             @Override public void onPlayReady() {}
             @Override public void onPlayEnd() { Toast.makeText(MainActivity.this,"播放结束，自动重试",Toast.LENGTH_SHORT).show(); }
             @Override public void onPlayError(String msg) { Toast.makeText(MainActivity.this,"播放异常："+msg,Toast.LENGTH_SHORT).show(); }
@@ -77,7 +101,6 @@ public class MainActivity extends AppCompatActivity {
         initListViewClick();
     }
 
-    // ========== 从设置页同步比例 ==========
     private void applyScreenRatioFromSettings() {
         String ratio = sp.getString("screen_ratio", "全屏");
         switch (ratio) {
@@ -156,7 +179,6 @@ public class MainActivity extends AppCompatActivity {
         startActivity(intent);
     }
 
-    // ========== 切台时自动应用比例 ==========
     public void playChannel(int index) {
         if (channelSourceList.isEmpty()) return;
         currentPlayIndex = index;
@@ -212,7 +234,6 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        // ========== 从设置页返回时自动刷新比例 ==========
         applyScreenRatioFromSettings();
     }
 

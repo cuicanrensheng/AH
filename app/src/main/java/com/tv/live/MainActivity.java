@@ -63,6 +63,28 @@ public class MainActivity extends AppCompatActivity {
         lvEpg = findViewById(R.id.lv_epg);
         btn_show_epg = findViewById(R.id.btn_show_epg);
         btnToggleController = findViewById(R.id.btn_toggle_controller);
+        
+        // 初始化分组列表的适配器（先给个空的，等加载完直播源再更新数据）
+        lvGroup.setAdapter(new android.widget.ArrayAdapter<>(this,
+        android.R.layout.simple_list_item_1, new ArrayList<>()));
+
+        // 分组点击事件：点击分组，过滤显示对应频道
+        lvGroup.setOnItemClickListener((p, v, pos, id) -> {
+        String selectedGroup = (String) p.getItemAtPosition(pos);
+        List<Channel> filteredChannels = new ArrayList<>();
+        for (Channel channel : channelSourceList) {
+        if (selectedGroup.equals(channel.getGroup())) {
+            filteredChannels.add(channel);
+        }
+    }
+         // 更新频道列表
+         List<String> channelNames = new ArrayList<>();
+         for (Channel c : filteredChannels) {
+         channelNames.add(c.getName());
+    }
+         lvChannelList.setAdapter(new android.widget.ArrayAdapter<>(this,
+            android.R.layout.simple_list_item_1, channelNames));
+});
         // 初始化隐藏控制条
         playerView.setUseController(isControllerVisible);
         // 按钮点击事件

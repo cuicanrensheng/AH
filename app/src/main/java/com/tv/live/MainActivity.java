@@ -1,5 +1,4 @@
 package com.tv.live;
-
 import android.content.pm.ActivityInfo;
 import android.content.Context;
 import android.content.Intent;
@@ -24,14 +23,12 @@ public class MainActivity extends AppCompatActivity {
     public int currentChannelIndex = 0;
     public boolean isPlayingPlayback = false;
     public int currentRatioIndex = 2;
-
     public ListView lvGroup;
     public ListView lvChannelList;
     public ListView lvDate;
     public ListView lvEpg;
     private View panel_layout;
     private TextView btn_show_epg;
-
     private NanoHTTPD nanoHTTPD;
     public TVPlayerManager mPlayerManager;
     private PlayerGestureHelper gestureHelper;
@@ -47,13 +44,10 @@ public class MainActivity extends AppCompatActivity {
                         | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
                         | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
         );
-
         mInstance = this;
         setContentView(R.layout.activity_main);
-
         sp = getSharedPreferences("app_settings", MODE_PRIVATE);
 
-        // 读取保存的直播源 / EPG
         String customLive = sp.getString("custom_live_url", null);
         String customEpg = sp.getString("custom_epg_url", null);
         if (customLive != null) UrlConfig.LIVE_URL = customLive;
@@ -68,7 +62,6 @@ public class MainActivity extends AppCompatActivity {
         btn_show_epg = findViewById(R.id.btn_show_epg);
 
         playerView.setOnClickListener(v -> togglePanel());
-
         btn_show_epg.setOnClickListener(v -> {
             lvEpg.post(() -> lvEpg.smoothScrollToPosition(0));
         });
@@ -153,14 +146,27 @@ public class MainActivity extends AppCompatActivity {
         lvChannelList.setSelection(currentPlayIndex);
     }
 
+    // ====================== 已修复：节目单不再一直加载 ======================
     private void refreshCurrentEpg() {
         if (channelSourceList == null || channelSourceList.isEmpty()) {
             lvEpg.setAdapter(new android.widget.ArrayAdapter<>(this, android.R.layout.simple_list_item_1,
                     java.util.Collections.singletonList("暂无节目")));
             return;
         }
-        lvEpg.setAdapter(new android.widget.ArrayAdapter<>(this, android.R.layout.simple_list_item_1,
-                java.util.Collections.singletonList("加载节目单中...")));
+
+        Channel currentChannel = channelSourceList.get(currentPlayIndex);
+        List<Channel.EpgItem> epgList = EpgManager.getInstance().getEpg(currentChannel.getName());
+
+        List<String> data = new ArrayList<>();
+        if (epgList != null && !epgList.isEmpty()) {
+            for (Channel.EpgItem item : epgList) {
+                data.add(item.dayName + " " + item.time + " " + item.title);
+            }
+        } else {
+            data.add("暂无节目单");
+        }
+
+        lvEpg.setAdapter(new android.widget.ArrayAdapter<>(this, android.R.layout.simple_list_item_1, data));
     }
 
     private void applyScreenRatioFromSettings() {

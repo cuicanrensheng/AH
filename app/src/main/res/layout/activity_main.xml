@@ -5,10 +5,69 @@
     android:layout_height="match_parent"
     android:background="#000">
 
+    <!-- 播放器 -->
     <com.google.android.exoplayer2.ui.PlayerView
         android:id="@+id/player_view"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:layout_gravity="center"/>
+
+    <!-- 弹出式菜单容器（默认隐藏，点击屏幕后显示） -->
+    <LinearLayout
+        android:id="@+id/menu_container"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="horizontal"
+        android:visibility="gone">
+
+        <!-- 1. 频道分组 -->
+        <ListView
+            android:id="@+id/lv_group"
+            android:layout_width="150dp"
+            android:layout_height="match_parent"
+            android:background="#80000000"
+            android:padding="8dp"/>
+
+        <!-- 2. 频道列表（带“向右查看节目单”按钮） -->
+        <FrameLayout
+            android:layout_width="250dp"
+            android:layout_height="match_parent">
+
+            <ListView
+                android:id="@+id/lv_channel"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="#80000000"
+                android:padding="8dp"/>
+
+            <!-- 向右查看节目单按钮 -->
+            <TextView
+                android:id="@+id/tv_open_epg"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="end|center_vertical"
+                android:background="#CC000000"
+                android:padding="12dp"
+                android:text="向右查看节目单"
+                android:textColor="#fff"/>
+        </FrameLayout>
+
+        <!-- 3. 日期列表（今天优先） -->
+        <ListView
+            android:id="@+id/lv_date"
+            android:layout_width="100dp"
+            android:layout_height="match_parent"
+            android:background="#80000000"
+            android:padding="8dp"/>
+
+        <!-- 4. 节目单列表 -->
+        <ListView
+            android:id="@+id/lv_epg"
+            android:layout_width="250dp"
+            android:layout_height="match_parent"
+            android:background="#80000000"
+            android:padding="8dp"/>
+
+    </LinearLayout>
 
 </FrameLayout>

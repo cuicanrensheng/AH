@@ -26,9 +26,9 @@ public class MainActivity extends AppCompatActivity {
     public ListView lvChannelList;
     public ListView lvDate;
     public ListView lvEpg;
-
     public TVPlayerManager mPlayerManager;
     private PlayerGestureHelper gestureHelper;
+    private SharedPreferences sp;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -36,13 +36,13 @@ public class MainActivity extends AppCompatActivity {
         mInstance = this;
         setContentView(R.layout.activity_main);
 
+        sp = getSharedPreferences("app_settings", MODE_PRIVATE);
         PlayerView playerView = findViewById(R.id.player_view);
         lvGroup = findViewById(R.id.lv_group);
         lvChannelList = findViewById(R.id.lv_channel_list);
         lvDate = findViewById(R.id.lv_date);
         lvEpg = findViewById(R.id.lv_epg);
 
-        // 手势
         gestureHelper = new PlayerGestureHelper(this, new PlayerGestureHelper.GestureCallback() {
             @Override public void onOk() { openChannelList(); }
             @Override public void onLongOk() { openSettings(); }
@@ -50,26 +50,18 @@ public class MainActivity extends AppCompatActivity {
             @Override public void onPrevChannel() { playPrev(); }
             @Override public void onNextChannel() { playNext(); }
         });
-
         playerView.setOnTouchListener((v, event) -> {
             gestureHelper.handleTouch(event);
             return true;
         });
 
-        // 播放器初始化
-        SharedPreferences sp = getSharedPreferences("play_config", Context.MODE_PRIVATE);
-        currentRatioIndex = sp.getInt("play_ratio", 2);
-        currentPlayIndex = sp.getInt("last_play_index", 0);
+        SharedPreferences spPlay = getSharedPreferences("play_config", Context.MODE_PRIVATE);
+        currentRatioIndex = spPlay.getInt("play_ratio", 2);
+        currentPlayIndex = spPlay.getInt("last_play_index", 0);
 
         mPlayerManager = TVPlayerManager.getInstance(this);
         mPlayerManager.attachPlayerView(playerView);
-
-        switch (currentRatioIndex) {
-            case 0: mPlayerManager.setScaleMode(TVPlayerManager.ScaleMode.FIT); break;
-            case 1: mPlayerManager.setScaleMode(TVPlayerManager.ScaleMode.FIT); break;
-            case 2: mPlayerManager.setScaleMode(TVPlayerManager.ScaleMode.ZOOM); break;
-            case 3: mPlayerManager.setScaleMode(TVPlayerManager.ScaleMode.FILL); break;
-        }
+        applyScreenRatioFromSettings();
 
         mPlayerManager.setOnPlayStateListener(new TVPlayerManager.OnPlayStateListener() {
             @Override public void onIdle() {}
@@ -79,43 +71,61 @@ public class MainActivity extends AppCompatActivity {
             @Override public void onPlayError(String msg) { Toast.makeText(MainActivity.this,"播放异常："+msg,Toast.LENGTH_SHORT).show(); }
         });
 
-        // 加载直播源和EPG
         loadLiveAndEpg();
         initGesture();
         initChannelList();
         initListViewClick();
     }
 
-    // 加载直播源和EPG
-    private void loadLiveAndEpg() {
-    new Thread(() -> {
-        try {
-            Log.i("MainActivity", "加载直播源...");
-            List<Channel> channels = PlaylistParser.parse(UrlConfig.LIVE_URL);
-            runOnUiThread(() -> {
-                Log.i("MainActivity", "解析到频道数：" + (channels == null ? "null" : channels.size()));
-                if (channels != null && !channels.isEmpty()) {
-                    channelSourceList.clear();
-                    channelSourceList.addAll(channels);
-                    Toast.makeText(this, "加载完成：" + channelSourceList.size() + "个频道", Toast.LENGTH_SHORT).show();
-                    playChannel(0);
-                } else {
-                    Toast.makeText(this, "未获取到频道", Toast.LENGTH_SHORT).show();
-                }
-            });
-        } catch (Exception e) {
-            e.printStackTrace();
-            runOnUiThread(() -> Toast.makeText(this, "加载失败：" + e.getMessage(), Toast.LENGTH_SHORT).show());
+    // ========== 从设置页同步比例 ==========
+    private void applyScreenRatioFromSettings() {
+        String ratio = sp.getString("screen_ratio", "全屏");
+        switch (ratio) {
+            case "原始": mPlayerManager.setScaleMode(TVPlayerManager.ScaleMode.FIT); break;
+            case "填充": mPlayerManager.setScaleMode(TVPlayerManager.ScaleMode.FILL); break;
+            default: mPlayerManager.setScaleMode(TVPlayerManager.ScaleMode.ZOOM); break;
         }
-    }).start();
-}
+    }
 
-    // 遥控器
+    private void loadLiveAndEpg() {
+        new Thread(() -> {
+            try {
+                Log.i("MainActivity", "加载直播源...");
+                List<Channel> channels = PlaylistParser.parse(UrlConfig.LIVE_URL);
+                runOnUiThread(() -> {
+                    Log.i("MainActivity", "解析到频道数：" + (channels == null ? "null" : channels.size()));
+                    if (channels != null && !channels.isEmpty()) {
+                        channelSourceList.clear();
+                        channelSourceList.addAll(channels);
+                        Toast.makeText(MainActivity.this, "直播源加载完成：" + channelSourceList.size() + "个频道", Toast.LENGTH_SHORT).show();
+                        initChannelList();
+                        playChannel(0);
+                    }
+                });
+
+                EpgManager.getInstance().setEpgUrl(UrlConfig.EPG_URL);
+                EpgManager.getInstance().loadEpg(() -> {
+                    runOnUiThread(() -> {
+                        Toast.makeText(MainActivity.this, "EPG节目单加载完成", Toast.LENGTH_SHORT).show();
+                    });
+                });
+            } catch (Exception e) {
+                e.printStackTrace();
+                runOnUiThread(() -> {
+                    Toast.makeText(MainActivity.this, "加载失败：" + e.getMessage(), Toast.LENGTH_SHORT).show();
+                });
+            }
+        }).start();
+    }
+
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
+        boolean reverse = sp.getBoolean("channel_reverse", false);
         switch (keyCode) {
-            case KeyEvent.KEYCODE_DPAD_UP: playPrev(); return true;
-            case KeyEvent.KEYCODE_DPAD_DOWN: playNext(); return true;
+            case KeyEvent.KEYCODE_DPAD_UP:
+                if (reverse) playNext(); else playPrev(); return true;
+            case KeyEvent.KEYCODE_DPAD_DOWN:
+                if (reverse) playPrev(); else playNext(); return true;
             case KeyEvent.KEYCODE_DPAD_CENTER:
             case KeyEvent.KEYCODE_ENTER: openChannelList(); return true;
             case KeyEvent.KEYCODE_MENU:
@@ -137,20 +147,16 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void openChannelList() {
-        Toast.makeText(this,"频道列表",Toast.LENGTH_SHORT).show();
+        Intent intent = new Intent(this, ChannelListActivity.class);
+        startActivity(intent);
     }
 
-    // ======================
-    // 修复：打开设置（跳转）
-    // ======================
     private void openSettings() {
-        Toast.makeText(this,"设置页面",Toast.LENGTH_SHORT).show();
-        startActivity(new Intent(MainActivity.this, SettingsActivity.class));
+        Intent intent = new Intent(this, SettingsActivity.class);
+        startActivity(intent);
     }
 
-    // ======================
-    // 修复：播放空指针保护
-    // ======================
+    // ========== 切台时自动应用比例 ==========
     public void playChannel(int index) {
         if (channelSourceList.isEmpty()) return;
         currentPlayIndex = index;
@@ -162,9 +168,9 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
-        // 安全播放
         if (mPlayerManager != null) {
             mPlayerManager.playUrl(ch.getPlayUrl());
+            applyScreenRatioFromSettings();
         }
 
         isPlayingPlayback = false;
@@ -178,20 +184,10 @@ public class MainActivity extends AppCompatActivity {
         }
         if (mPlayerManager != null) {
             mPlayerManager.playUrl(epg.getReplayUrl());
+            applyScreenRatioFromSettings();
         }
         isPlayingPlayback = true;
         Toast.makeText(this,"正在播放回看",Toast.LENGTH_SHORT).show();
-    }
-
-    private void setRatio(int index) {
-        currentRatioIndex = index;
-        switch (index) {
-            case 0: mPlayerManager.setScaleMode(TVPlayerManager.ScaleMode.FIT); break;
-            case 1: mPlayerManager.setScaleMode(TVPlayerManager.ScaleMode.FIT); break;
-            case 2: mPlayerManager.setScaleMode(TVPlayerManager.ScaleMode.ZOOM); break;
-            case 3: mPlayerManager.setScaleMode(TVPlayerManager.ScaleMode.FILL); break;
-        }
-        getSharedPreferences("play_config",0).edit().putInt("play_ratio",index).apply();
     }
 
     private void initListViewClick() {
@@ -211,6 +207,13 @@ public class MainActivity extends AppCompatActivity {
                 }
             });
         }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // ========== 从设置页返回时自动刷新比例 ==========
+        applyScreenRatioFromSettings();
     }
 
     @Override

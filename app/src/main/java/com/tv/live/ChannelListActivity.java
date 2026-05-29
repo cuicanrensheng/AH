@@ -22,7 +22,7 @@ public class ChannelListActivity extends AppCompatActivity {
 
         List<Channel> channelList = MainActivity.mInstance.channelSourceList;
         List<String> names = new ArrayList<>();
-        for (Channel c : channelList) names.add(c.getName);
+        for (Channel c : channelList) names.add(c.getName());
 
         ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, names);
         listView.setAdapter(adapter);

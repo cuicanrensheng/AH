@@ -1,6 +1,6 @@
 {
   "versionCode": 20,
   "versionName": "2.0",
-  "message": "2.0版本更新日志：\n1. 新增四栏频道/EPG布局\n2. 修复编译报错与逻辑问题\n3. 优化设置界面，恢复自定义直播源、EPG、扫码功能\n4. 优化节目回看与联动体验",
+  "message": "2.0版本更新日志：新增四栏频道/EPG布局. 修复编译报错与逻辑问题. 优化设置界面，恢复自定义直播源、EPG、扫码功能. 优化节目回看与联动体验",
   "downloadUrl": "https://github.com/cuicanrensheng/AH/releases/download/v182/app-release.apk"
 }

@@ -1,4 +1,5 @@
 package com.tv.live;
+import com.tv.live.Channel;
 
 import android.content.Context;
 import android.content.SharedPreferences;

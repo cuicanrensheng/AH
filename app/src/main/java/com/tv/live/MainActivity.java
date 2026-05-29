@@ -146,7 +146,6 @@ public class MainActivity extends AppCompatActivity {
         lvChannelList.setSelection(currentPlayIndex);
     }
 
-    // ====================== 已修复：节目单不再一直加载 ======================
     private void refreshCurrentEpg() {
         if (channelSourceList == null || channelSourceList.isEmpty()) {
             lvEpg.setAdapter(new android.widget.ArrayAdapter<>(this, android.R.layout.simple_list_item_1,
@@ -264,16 +263,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void playEpgItem(Channel.EpgItem epg) {
-        if (epg == null || TextUtils.isEmpty(epg.getReplayUrl())) {
-            Toast.makeText(this,"暂无回看地址",Toast.LENGTH_SHORT).show();
-            return;
-        }
-        if (mPlayerManager != null) {
-            mPlayerManager.playUrl(epg.getReplayUrl());
-            applyScreenRatioFromSettings();
-        }
-        isPlayingPlayback = true;
-        Toast.makeText(this,"正在播放回看",Toast.LENGTH_SHORT).show();
+        Toast.makeText(this,"暂无回看",Toast.LENGTH_SHORT).show();
     }
 
     private void initListViewClick() {

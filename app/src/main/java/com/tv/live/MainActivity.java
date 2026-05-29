@@ -110,7 +110,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private void loadLiveAndEpg() {
+    public void loadLiveAndEpg() {
         new Thread(() -> {
             try {
                 Log.i("MainActivity", "加载直播源...");

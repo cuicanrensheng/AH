@@ -28,7 +28,7 @@
 
         <LinearLayout android:layout_width="match_parent" android:layout_height="55dp" android:gravity="center_vertical">
             <TextView android:layout_width="0dp" android:layout_weight="1" android:text="换台反转" android:textColor="#fff" android:textSize="16sp"/>
-            <Switch android:id="@+id/sw_reverse_channel"/>
+            <Switch android:id="@+id/sw_reverse"/>
         </LinearLayout>
 
         <LinearLayout android:layout_width="match_parent" android:layout_height="55dp" android:gravity="center_vertical">

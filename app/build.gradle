@@ -95,6 +95,5 @@ dependencies {
     implementation "org.apache.commons:commons-lang3:3.14.0"
     implementation "com.blankj:utilcodex:1.31.1"
     implementation 'org.nanohttpd:nanohttpd:2.3.1'
-    implementation "com.google.android.exoplayer:exoplayer-flv:2.19.1"
-
+  
 }

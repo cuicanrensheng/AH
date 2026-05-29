@@ -10,22 +10,25 @@ import android.net.wifi.WifiManager;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import com.google.zxing.BarcodeFormat;
-import com.google.zxing.WriterException;
 import com.google.zxing.common.BitMatrix;
 import com.google.zxing.qrcode.QRCodeWriter;
 import org.json.JSONObject;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.io.InputStream;
-import java.io.InputStreamReader;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 
 public class SettingsActivity extends AppCompatActivity {
     private Switch sw_boot, sw_epg, sw_auto_update, sw_reverse, sw_num_channel;
@@ -64,20 +67,96 @@ public class SettingsActivity extends AppCompatActivity {
         sw_num_channel.setOnCheckedChangeListener((button, isChecked) -> save("number_channel_enable", isChecked));
 
         tv_screen_ratio.setOnClickListener(v -> showRatioDialog());
-        tv_custom_source.setOnClickListener(v -> showWebTip());
-        tv_custom_epg.setOnClickListener(v -> showWebTip());
-        tv_multi_source.setOnClickListener(v -> Toast.makeText(this, "多订阅源：短按切换，长按清除", Toast.LENGTH_SHORT).show());
-        tv_multi_epg.setOnClickListener(v -> Toast.makeText(this, "多节目单：短按切换，长按清除", Toast.LENGTH_SHORT).show());
 
-        // 自动生成二维码
+        // 手动输入
+        tv_custom_source.setOnClickListener(v -> showInputDialog("自定义订阅源", "请输入直播源地址", "custom_live_url"));
+        tv_custom_epg.setOnClickListener(v -> showInputDialog("自定义节目单", "请输入EPG节目单地址", "custom_epg_url"));
+
+        // 历史记录（查看 + 删除 + 选择）
+        tv_multi_source.setOnClickListener(v -> showHistoryDialog("直播源历史记录", "live_history"));
+        tv_multi_epg.setOnClickListener(v -> showHistoryDialog("节目单历史记录", "epg_history"));
+
         currentWebUrl = "http://" + getDeviceIPAddress() + ":" + PORT;
         tv_qr_code.setOnClickListener(v -> showQRCodeDialog());
-
-        // 启动网页推送接收服务
         startPushServer();
     }
 
-    // ====================== 二维码 250×250 ======================
+    // ================== 手动输入链接 ==================
+    private void showInputDialog(String title, String hint, String key) {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle(title);
+        final EditText input = new EditText(this);
+        input.setHint(hint);
+        input.setText(sp.getString(key, ""));
+        builder.setView(input);
+
+        builder.setPositiveButton("确定", (dialog, which) -> {
+            String url = input.getText().toString().trim();
+            if (!url.isEmpty()) {
+                sp.edit().putString(key, url).apply();
+                addToHistory(key.contains("live") ? "live_history" : "epg_history", url);
+                Toast.makeText(this, "已保存，正在刷新...", Toast.LENGTH_SHORT).show();
+                if (MainActivity.mInstance != null) MainActivity.mInstance.loadLiveAndEpg();
+            }
+        });
+        builder.setNegativeButton("取消", null);
+        builder.show();
+    }
+
+    // ================== 历史记录：查看 + 选择 + 删除 ==================
+    private void showHistoryDialog(String title, String historyKey) {
+        List<String> list = getHistory(historyKey);
+        if (list.isEmpty()) {
+            Toast.makeText(this, "暂无历史记录", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        String[] items = list.toArray(new String[0]);
+        new AlertDialog.Builder(this)
+            .setTitle(title)
+            .setItems(items, (d, i) -> {
+                String selected = items[i];
+                String saveKey = historyKey.equals("live_history") ? "custom_live_url" : "custom_epg_url";
+                sp.edit().putString(saveKey, selected).apply();
+                Toast.makeText(this, "已切换：" + selected, Toast.LENGTH_SHORT).show();
+                if (MainActivity.mInstance != null) MainActivity.mInstance.loadLiveAndEpg();
+            })
+            .setNeutralButton("删除选中", (d, i) -> {
+                new AlertDialog.Builder(this)
+                    .setMessage("确定删除这条记录？")
+                    .setPositiveButton("删除", (dl, ii) -> {
+                        removeHistory(historyKey, items[i]);
+                        Toast.makeText(this, "已删除", Toast.LENGTH_SHORT).show();
+                    })
+                    .setNegativeButton("取消", null)
+                    .show();
+            })
+            .setNegativeButton("关闭", null)
+            .show();
+    }
+
+    // ================== 历史记录存储 ==================
+    private List<String> getHistory(String key) {
+        String str = sp.getString(key, "");
+        if (str.isEmpty()) return new ArrayList<>();
+        return new ArrayList<>(Arrays.asList(str.split("\\|")));
+    }
+
+    private void addToHistory(String key, String url) {
+        List<String> list = getHistory(key);
+        if (list.contains(url)) list.remove(url);
+        list.add(0, url);
+        while (list.size() > 10) list.remove(list.size() - 1);
+        sp.edit().putString(key, String.join("|", list)).apply();
+    }
+
+    private void removeHistory(String key, String url) {
+        List<String> list = getHistory(key);
+        list.remove(url);
+        sp.edit().putString(key, String.join("|", list)).apply();
+    }
+
+    // ================== 二维码 250×250 ==================
     private void showQRCodeDialog() {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("扫码管理直播源/EPG");
@@ -101,7 +180,7 @@ public class SettingsActivity extends AppCompatActivity {
         }
     }
 
-    // ====================== 网页推送接收（核心） ======================
+    // ================== 网页推送 ==================
     private void startPushServer() {
         new Thread(() -> {
             try {
@@ -112,9 +191,7 @@ public class SettingsActivity extends AppCompatActivity {
                     Socket socket = serverSocket.accept();
                     handlePush(socket);
                 }
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
+            } catch (Exception e) { e.printStackTrace(); }
         }).start();
     }
 
@@ -128,7 +205,6 @@ public class SettingsActivity extends AppCompatActivity {
                 String data = new String(buf, 0, len);
                 socket.close();
 
-                // 解析推送
                 JSONObject json = new JSONObject(data);
                 String liveUrl = json.optString("live_url");
                 String epgUrl = json.optString("epg_url");
@@ -136,24 +212,20 @@ public class SettingsActivity extends AppCompatActivity {
                 handler.post(() -> {
                     if (!liveUrl.isEmpty()) {
                         sp.edit().putString("custom_live_url", liveUrl).apply();
-                        Toast.makeText(this, "直播源已更新", Toast.LENGTH_SHORT).show();
+                        addToHistory("live_history", liveUrl);
                     }
                     if (!epgUrl.isEmpty()) {
                         sp.edit().putString("custom_epg_url", epgUrl).apply();
-                        Toast.makeText(this, "EPG节目单已更新", Toast.LENGTH_SHORT).show();
+                        addToHistory("epg_history", epgUrl);
                     }
-                    // 通知主页刷新
-                    if (MainActivity.mInstance != null) {
-                        MainActivity.mInstance.loadLiveAndEpg();
-                    }
+                    Toast.makeText(this, "已更新并保存到历史记录", Toast.LENGTH_SHORT).show();
+                    if (MainActivity.mInstance != null) MainActivity.mInstance.loadLiveAndEpg();
                 });
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
+            } catch (Exception e) { e.printStackTrace(); }
         }).start();
     }
 
-    // ====================== 工具方法 ======================
+    // ================== 工具 ==================
     private String getDeviceIPAddress() {
         try {
             WifiManager wm = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
@@ -180,22 +252,16 @@ public class SettingsActivity extends AppCompatActivity {
     private void showRatioDialog() {
         String[] r = {"全屏", "填充", "原始"};
         new AlertDialog.Builder(this)
-                .setTitle("屏幕比例")
-                .setItems(r, (d, w) -> {
-                    sp.edit().putString("screen_ratio", r[w]).apply();
-                    Toast.makeText(this, "已设置：" + r[w], Toast.LENGTH_SHORT).show();
-                }).show();
-    }
-
-    private void showWebTip() {
-        Toast.makeText(this, currentWebUrl, Toast.LENGTH_LONG).show();
+            .setTitle("屏幕比例")
+            .setItems(r, (d, w) -> {
+                sp.edit().putString("screen_ratio", r[w]).apply();
+                Toast.makeText(this, "已设置：" + r[w], Toast.LENGTH_SHORT).show();
+            }).show();
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        try {
-            if (serverSocket != null) serverSocket.close();
-        } catch (IOException e) {}
+        try { if (serverSocket != null) serverSocket.close(); } catch (IOException e) {}
     }
 }

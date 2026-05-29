@@ -1,267 +1,30 @@
-package com.tv.live;
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.tv.live">
 
-import android.app.AlertDialog;
-import android.content.Context;
-import android.content.SharedPreferences;
-import android.graphics.Bitmap;
-import android.graphics.Color;
-import android.net.wifi.WifiInfo;
-import android.net.wifi.WifiManager;
-import android.os.Bundle;
-import android.os.Handler;
-import android.os.Looper;
-import android.widget.EditText;
-import android.widget.ImageView;
-import android.widget.Switch;
-import android.widget.TextView;
-import android.widget.Toast;
-import androidx.appcompat.app.AppCompatActivity;
-import com.google.zxing.BarcodeFormat;
-import com.google.zxing.common.BitMatrix;
-import com.google.zxing.qrcode.QRCodeWriter;
-import org.json.JSONObject;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.net.InetSocketAddress;
-import java.net.ServerSocket;
-import java.net.Socket;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
-public class SettingsActivity extends AppCompatActivity {
-    private Switch sw_boot, sw_epg, sw_auto_update, sw_reverse, sw_num_channel;
-    private TextView tv_screen_ratio, tv_custom_source, tv_custom_epg, tv_multi_source, tv_multi_epg, tv_qr_code;
-    private SharedPreferences sp;
-    private String currentWebUrl;
-    private ServerSocket serverSocket;
-    private final Handler handler = new Handler(Looper.getMainLooper());
-    private static final int PORT = 10481;
+    <application
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:theme="@style/Theme.AppCompat.NoActionBar"
+        android:usesCleartextTraffic="true"
+        android:debuggable="true">
 
-    @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_settings);
-        sp = getSharedPreferences("app_settings", MODE_PRIVATE);
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
 
-        sw_boot = findViewById(R.id.sw_boot);
-        sw_epg = findViewById(R.id.sw_epg);
-        sw_auto_update = findViewById(R.id.sw_auto_update);
-        sw_reverse = findViewById(R.id.sw_reverse);
-        sw_num_channel = findViewById(R.id.sw_num_channel);
+        <activity android:name=".SettingsActivity" />
+        <activity android:name=".ChannelListActivity" />
 
-        tv_screen_ratio = findViewById(R.id.tv_screen_ratio);
-        tv_custom_source = findViewById(R.id.tv_custom_source);
-        tv_custom_epg = findViewById(R.id.tv_custom_epg);
-        tv_multi_source = findViewById(R.id.tv_multi_source);
-        tv_multi_epg = findViewById(R.id.tv_multi_epg);
-        tv_qr_code = findViewById(R.id.tv_qr_code);
-
-        loadConfig();
-
-        sw_boot.setOnCheckedChangeListener((button, isChecked) -> save("boot_auto_start", isChecked));
-        sw_epg.setOnCheckedChangeListener((button, isChecked) -> save("epg_enable", isChecked));
-        sw_auto_update.setOnCheckedChangeListener((button, isChecked) -> save("auto_update_source", isChecked));
-        sw_reverse.setOnCheckedChangeListener((button, isChecked) -> save("channel_reverse", isChecked));
-        sw_num_channel.setOnCheckedChangeListener((button, isChecked) -> save("number_channel_enable", isChecked));
-
-        tv_screen_ratio.setOnClickListener(v -> showRatioDialog());
-
-        // 手动输入
-        tv_custom_source.setOnClickListener(v -> showInputDialog("自定义订阅源", "输入直播源地址", "custom_live_url"));
-        tv_custom_epg.setOnClickListener(v -> showInputDialog("自定义节目单", "输入EPG地址", "custom_epg_url"));
-
-        // 历史记录（查看、切换、删除）
-        tv_multi_source.setOnClickListener(v -> showHistory("直播源历史", "live_history", "custom_live_url"));
-        tv_multi_epg.setOnClickListener(v -> showHistory("节目单历史", "epg_history", "custom_epg_url"));
-
-        currentWebUrl = "http://" + getDeviceIPAddress() + ":" + PORT;
-        tv_qr_code.setOnClickListener(v -> showQRCodeDialog());
-        startPushServer();
-    }
-
-    // 手动输入并保存历史
-    private void showInputDialog(String title, String hint, String key) {
-        EditText input = new EditText(this);
-        input.setHint(hint);
-        input.setText(sp.getString(key, ""));
-
-        new AlertDialog.Builder(this)
-            .setTitle(title)
-            .setView(input)
-            .setPositiveButton("确定", (d, w) -> {
-                String url = input.getText().toString().trim();
-                if (!url.isEmpty()) {
-                    sp.edit().putString(key, url).apply();
-                    addHistory(key.contains("live") ? "live_history" : "epg_history", url);
-                    Toast.makeText(this, "已保存，刷新中…", Toast.LENGTH_SHORT).show();
-                    if (MainActivity.mInstance != null) MainActivity.mInstance.loadLiveAndEpg();
-                }
-            })
-            .setNegativeButton("取消", null)
-            .show();
-    }
-
-    // 历史记录：查看 + 切换 + 删除
-    private void showHistory(String title, String historyKey, String saveKey) {
-        List<String> list = getHistory(historyKey);
-        if (list.isEmpty()) {
-            Toast.makeText(this, "暂无记录", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        String[] arr = list.toArray(new String[0]);
-        new AlertDialog.Builder(this)
-            .setTitle(title)
-            .setItems(arr, (d, i) -> {
-                sp.edit().putString(saveKey, arr[i]).apply();
-                Toast.makeText(this, "已切换：" + arr[i], Toast.LENGTH_SHORT).show();
-                if (MainActivity.mInstance != null) MainActivity.mInstance.loadLiveAndEpg();
-            })
-            .setNeutralButton("删除选中", (d, i) -> {
-                new AlertDialog.Builder(this)
-                    .setMessage("确定删除？")
-                    .setPositiveButton("删除", (dl, ii) -> {
-                        removeHistory(historyKey, arr[i]);
-                        Toast.makeText(this, "已删除", Toast.LENGTH_SHORT).show();
-                    })
-                    .setNegativeButton("取消", null)
-                    .show();
-            })
-            .setNegativeButton("关闭", null)
-            .show();
-    }
-
-    // 历史存储
-    private List<String> getHistory(String key) {
-        String str = sp.getString(key, "");
-        return str.isEmpty() ? new ArrayList<>() : new ArrayList<>(Arrays.asList(str.split("\\|")));
-    }
-
-    private void addHistory(String key, String url) {
-        List<String> list = getHistory(key);
-        list.remove(url);
-        list.add(0, url);
-        while (list.size() > 10) list.remove(9);
-        sp.edit().putString(key, String.join("|", list)).apply();
-    }
-
-    private void removeHistory(String key, String url) {
-        List<String> list = getHistory(key);
-        list.remove(url);
-        sp.edit().putString(key, String.join("|", list)).apply();
-    }
-
-    // 二维码 250×250
-    private void showQRCodeDialog() {
-        ImageView iv = new ImageView(this);
-        iv.setImageBitmap(createQR(currentWebUrl));
-        new AlertDialog.Builder(this)
-            .setTitle("扫码管理")
-            .setView(iv)
-            .setPositiveButton("关闭", null)
-            .show();
-    }
-
-    private Bitmap createQR(String content) {
-        try {
-            BitMatrix m = new QRCodeWriter().encode(content, BarcodeFormat.QR_CODE, 250, 250);
-            Bitmap bmp = Bitmap.createBitmap(250, 250, Bitmap.Config.RGB_565);
-            for (int x = 0; x < 250; x++)
-                for (int y = 0; y < 250; y++)
-                    bmp.setPixel(x, y, m.get(x, y) ? Color.BLACK : Color.WHITE);
-            return bmp;
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    // 推送服务
-    private void startPushServer() {
-        new Thread(() -> {
-            try {
-                serverSocket = new ServerSocket();
-                serverSocket.setReuseAddress(true);
-                serverSocket.bind(new InetSocketAddress(PORT));
-                while (!serverSocket.isClosed()) {
-                    Socket s = serverSocket.accept();
-                    new Thread(() -> handlePush(s)).start();
-                }
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        }).start();
-    }
-
-    private void handlePush(Socket socket) {
-        try {
-            InputStream is = socket.getInputStream();
-            InputStreamReader reader = new InputStreamReader(is);
-            char[] buf = new char[2048];
-            int len = reader.read(buf);
-            String data = new String(buf, 0, len);
-            socket.close();
-
-            JSONObject json = new JSONObject(data);
-            String live = json.optString("live_url");
-            String epg = json.optString("epg_url");
-
-            handler.post(() -> {
-                if (!live.isEmpty()) {
-                    sp.edit().putString("custom_live_url", live).apply();
-                    addHistory("live_history", live);
-                }
-                if (!epg.isEmpty()) {
-                    sp.edit().putString("custom_epg_url", epg).apply();
-                    addHistory("epg_history", epg);
-                }
-                Toast.makeText(this, "推送成功，已刷新", Toast.LENGTH_SHORT).show();
-                if (MainActivity.mInstance != null) MainActivity.mInstance.loadLiveAndEpg();
-            });
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
-
-    // 获取IP
-    private String getDeviceIPAddress() {
-        try {
-            WifiManager wm = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
-            WifiInfo info = wm.getConnectionInfo();
-            int ip = info.getIpAddress();
-            return (ip & 0xFF) + "." + ((ip >> 8) & 0xFF) + "." + ((ip >> 16) & 0xFF) + "." + ((ip >> 24) & 0xFF);
-        } catch (Exception e) {
-            return "192.168.1.100";
-        }
-    }
-
-    private void save(String k, boolean v) {
-        sp.edit().putBoolean(k, v).apply();
-    }
-
-    private void loadConfig() {
-        sw_boot.setChecked(sp.getBoolean("boot_auto_start", false));
-        sw_epg.setChecked(sp.getBoolean("epg_enable", true));
-        sw_auto_update.setChecked(sp.getBoolean("auto_update_source", true));
-        sw_reverse.setChecked(sp.getBoolean("channel_reverse", false));
-        sw_num_channel.setChecked(sp.getBoolean("number_channel_enable", true));
-    }
-
-    private void showRatioDialog() {
-        new AlertDialog.Builder(this)
-            .setTitle("屏幕比例")
-            .setItems(new String[]{"全屏", "填充", "原始"}, (d, w) -> {
-                String r = new String[]{"全屏", "填充", "原始"}[w];
-                sp.edit().putString("screen_ratio", r).apply();
-                Toast.makeText(this, "已设置：" + r, Toast.LENGTH_SHORT).show();
-            }).show();
-    }
-
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        try {
-            if (serverSocket != null) serverSocket.close();
-        } catch (IOException e) {}
-    }
-}
+    </application>
+</manifest>

@@ -1,5 +1,7 @@
 package com.tv.live;
 
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 import org.xmlpull.v1.XmlPullParser;
 import org.xmlpull.v1.XmlPullParserFactory;
@@ -26,6 +28,7 @@ public class EpgManager {
         this.epgUrl = url;
     }
 
+    // ====================== 只改这里：确保回调在主线程 ======================
     public void loadEpg(Runnable callback) {
         new Thread(() -> {
             HttpURLConnection conn = null;
@@ -47,8 +50,10 @@ public class EpgManager {
             } finally {
                 try { if (in != null) in.close(); if (conn != null) conn.disconnect(); } catch (Exception ignored) {}
             }
+
+            // ✅ 修复：强制在主线程回调，解决“一直加载中”
             if (callback != null) {
-                callback.run();
+                new Handler(Looper.getMainLooper()).post(callback);
             }
         }).start();
     }
@@ -77,14 +82,12 @@ public class EpgManager {
                     String start = xml.getAttributeValue(null, "start");
                     String stop = xml.getAttributeValue(null, "stop");
                     if (start == null || stop == null) continue;
-
                     Calendar startCal = Calendar.getInstance();
                     startCal.setTime(sdf.parse(start));
                     String dayName = getDayName(startCal, today);
                     String timeStr = start.substring(8, 10) + ":" + start.substring(10, 12)
                             + " - " + stop.substring(8, 10) + ":" + stop.substring(10, 12);
 
-                    // ↓↓↓ 只修复构造参数，其他完全不变 ↓↓↓
                     Channel.EpgItem item = new Channel.EpgItem(
                             dayName, timeStr, "", false
                     );
@@ -111,7 +114,6 @@ public class EpgManager {
         }
         String cleanName = channelName.replaceAll("(?i)高清|HD|超清|4K| |-", "").toLowerCase();
 
-        // ↓↓↓ 只修复这里的类型，其他逻辑完全一样 ↓↓↓
         for (Map.Entry<String, List<Channel.EpgItem>> entry : channelEpgMap.entrySet()) {
             String key = entry.getKey().replaceAll("(?i)高清|HD|超清|4K| |-", "").toLowerCase();
             if (cleanName.contains(key) || key.contains(cleanName)) {
@@ -122,7 +124,7 @@ public class EpgManager {
     }
 
     public String getDayName(Calendar itemCal, Calendar todayCal) {
-        int dayDiff = itemCal.get(Calendar.DAY_OF_YEAR) - todayCal.get(Calendar.DAY_OF_YEAR);
+        int dayDiff = itemCal.get(Calendar.DAY_OF_YEAR) - todayCal.get(DayOfWeek.DAY_OF_YEAR);
         if (dayDiff == 0) return "今天";
         if (dayDiff == 1) return "明天";
         if (dayDiff == 2) return "后天";

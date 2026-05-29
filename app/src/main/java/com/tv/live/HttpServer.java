@@ -54,7 +54,7 @@ public class HttpServer extends NanoHTTPD {
                 String liveUrl = json.optString("liveUrl", "");
                 String epgUrl = json.optString("epgUrl", "");
 
-                mainActivity.onReceiveNewConfig(liveUrl, epgUrl);
+                mainActivity.onReceiveConfig(liveUrl, epgUrl);
 
                 JSONObject resp = new JSONObject();
                 resp.put("success", true);

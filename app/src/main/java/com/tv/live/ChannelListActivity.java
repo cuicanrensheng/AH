@@ -1,6 +1,7 @@
 package com.tv.live;
-import com.tv.live.Channel;
 
+import com.tv.live.Channel;
+import android.content.pm.ActivityInfo;
 import android.os.Bundle;
 import android.widget.ArrayAdapter;
 import android.widget.ListView;
@@ -12,6 +13,10 @@ public class ChannelListActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        // 强制横屏，永不竖屏
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+
         ListView listView = new ListView(this);
         setContentView(listView);
 

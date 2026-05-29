@@ -145,7 +145,7 @@
             android:layout_width="match_parent"
             android:layout_height="60dp"
             android:gravity="center"
-            android:text="网页设置：http://<设备IP>:10481"
+            android:text="网页设置：http://设备IP:10481"
             android:textColor="#999"
             android:textSize="14sp"/>
 

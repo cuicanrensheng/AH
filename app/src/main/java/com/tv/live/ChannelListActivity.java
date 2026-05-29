@@ -1,4 +1,5 @@
 package com.tv.live;
+import com.tv.live.Channel;
 
 import android.os.Bundle;
 import android.widget.ArrayAdapter;

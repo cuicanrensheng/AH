@@ -646,6 +646,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void showSettingDialog() {
         View view = LayoutInflater.from(this).inflate(R.layout.dialog_setting, null);
+
         Switch swReverse = view.findViewById(R.id.switch_reverse);
         Switch swBoot = view.findViewById(R.id.switch_boot);
         Switch swUpdate = view.findViewById(R.id.switch_update);
@@ -661,8 +662,10 @@ public class MainActivity extends AppCompatActivity {
 
         swReverse.setOnCheckedChangeListener((buttonView, isChecked) ->
                 sp.edit().putBoolean("reverse_channel", isChecked).apply());
+
         swBoot.setOnCheckedChangeListener((buttonView, isChecked) ->
                 sp.edit().putBoolean("boot_play", isChecked).apply());
+
         swUpdate.setOnCheckedChangeListener((buttonView, isChecked) ->
                 sp.edit().putBoolean("auto_update", isChecked).apply());
 
@@ -674,8 +677,6 @@ public class MainActivity extends AppCompatActivity {
                 })
                 .setNegativeButton("取消", null)
                 .show());
-
-        btnQr.setOnClickListener(v -> showQrDialog());
 
         btnSource.setOnClickListener(v -> {
             View editView = LayoutInflater.from(this).inflate(R.layout.dialog_edit, null);
@@ -709,6 +710,8 @@ public class MainActivity extends AppCompatActivity {
                     .setNegativeButton("取消", null)
                     .show();
         });
+
+        btnQr.setOnClickListener(v -> showQrDialog());
 
         new AlertDialog.Builder(this)
                 .setView(view)

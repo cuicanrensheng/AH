@@ -105,6 +105,11 @@ public class MainActivity extends AppCompatActivity {
 
         loadLiveAndEpg();
         initListViewClick();
+
+        // 启动后台管理服务器
+        HttpServer server = HttpServer.getInstance(this);
+        server.setMainActivity(this);
+        server.start();
     }
 
     private void initDateList() {
@@ -139,7 +144,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void refreshCurrentEpg() {
-        if (channelSourceList.isEmpty()) {
+        if (channelSourceList == null || channelSourceList.isEmpty()) {
             lvEpg.setAdapter(new android.widget.ArrayAdapter<>(this, android.R.layout.simple_list_item_1,
                     java.util.Collections.singletonList("暂无节目")));
             return;
@@ -148,9 +153,9 @@ public class MainActivity extends AppCompatActivity {
         Channel ch = channelSourceList.get(currentPlayIndex);
         List<Channel.EpgItem> epgItems = new ArrayList<>();
 
-        if (EpgManager.getInstance().getEpgMap() != null) {
-            List<Channel.EpgItem> list = EpgManager.getInstance().getEpgMap().get(ch.getName());
-            if (list != null) epgItems.addAll(list);
+        // 兼容写法，不依赖不存在的 getEpgMap()
+        if (EpgManager.getInstance().getChannelEpg(ch.getName()) != null) {
+            epgItems.addAll(EpgManager.getInstance().getChannelEpg(ch.getName()));
         }
 
         List<String> showList = new ArrayList<>();
@@ -319,9 +324,25 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        // 停止后台服务器
+        HttpServer.getInstance(this).stop();
         if (mPlayerManager != null) {
             mPlayerManager.release();
         }
         mInstance = null;
+    }
+
+    // 给 HttpServer 调用，接收扫码配置（解决编译错误）
+    public void onReceiveConfig(String liveUrl, String epgUrl) {
+        if (!TextUtils.isEmpty(liveUrl)) {
+            UrlConfig.LIVE_URL = liveUrl;
+        }
+        if (!TextUtils.isEmpty(epgUrl)) {
+            UrlConfig.EPG_URL = epgUrl;
+        }
+        runOnUiThread(() -> {
+            Toast.makeText(this, "配置已更新，正在重新加载...", Toast.LENGTH_SHORT).show();
+            loadLiveAndEpg();
+        });
     }
 }

@@ -1,5 +1,4 @@
 package com.tv.live;
-
 import com.tv.live.Channel;
 import android.content.pm.ActivityInfo;
 import android.os.Bundle;
@@ -13,30 +12,35 @@ public class ChannelListActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
-        // 强制横屏，永不竖屏
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
 
         ListView listView = new ListView(this);
         setContentView(listView);
 
-        if (MainActivity.mInstance == null || MainActivity.mInstance.channelSourceList.isEmpty()) {
+        // 安全判断
+        if (MainActivity.mInstance == null || MainActivity.mInstance.channelSourceList == null
+            || MainActivity.mInstance.channelSourceList.isEmpty()) {
             finish();
             return;
         }
 
-        List<Channel> channelList = MainActivity.mInstance.channelSourceList;
+        // 用当前真正播放的下标定位
+        final List<Channel> channelList = MainActivity.mInstance.channelSourceList;
+        final int currentRealIndex = MainActivity.mInstance.currentPlayIndex;
+
         List<String> names = new ArrayList<>();
         for (Channel c : channelList) names.add(c.getName());
 
-        ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, names);
+        ArrayAdapter<String> adapter = new ArrayAdapter<>(this,
+            android.R.layout.simple_list_item_1, names);
         listView.setAdapter(adapter);
+        listView.setSelection(currentRealIndex);
 
-        int currentPos = MainActivity.mInstance.currentChannelIndex;
-        listView.setSelection(currentPos);
-
+        // 点击就用当前列表真实position，100%准
         listView.setOnItemClickListener((parent, view, position, id) -> {
-            MainActivity.mInstance.playChannel(position);
+            if (MainActivity.mInstance != null) {
+                MainActivity.mInstance.playChannel(position);
+            }
             finish();
         });
     }

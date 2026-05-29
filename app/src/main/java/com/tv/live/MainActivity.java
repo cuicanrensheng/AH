@@ -87,33 +87,27 @@ public class MainActivity extends AppCompatActivity {
 
     // 加载直播源和EPG
     private void loadLiveAndEpg() {
-        new Thread(() -> {
-            try {
-                List<Channel> channels = PlaylistParser.parse(UrlConfig.LIVE_URL);
-                runOnUiThread(() -> {
-                    if (channels != null && !channels.isEmpty()) {
-                        channelSourceList.clear();
-                        channelSourceList.addAll(channels);
-                        Toast.makeText(MainActivity.this, "直播源加载完成：" + channelSourceList.size() + "个频道", Toast.LENGTH_SHORT).show();
-                        initChannelList();
-                        playChannel(0);
-                    }
-                });
-
-                EpgManager.getInstance().setEpgUrl(UrlConfig.EPG_URL);
-                EpgManager.getInstance().loadEpg(() -> {
-                    runOnUiThread(() -> {
-                        Toast.makeText(MainActivity.this, "EPG节目单加载完成", Toast.LENGTH_SHORT).show();
-                    });
-                });
-            } catch (Exception e) {
-                e.printStackTrace();
-                runOnUiThread(() -> {
-                    Toast.makeText(MainActivity.this, "加载失败：" + e.getMessage(), Toast.LENGTH_SHORT).show();
-                });
-            }
-        }).start();
-    }
+    new Thread(() -> {
+        try {
+            Log.i("MainActivity", "加载直播源...");
+            List<Channel> channels = PlaylistParser.parse(UrlConfig.LIVE_URL);
+            runOnUiThread(() -> {
+                Log.i("MainActivity", "解析到频道数：" + (channels == null ? "null" : channels.size()));
+                if (channels != null && !channels.isEmpty()) {
+                    channelSourceList.clear();
+                    channelSourceList.addAll(channels);
+                    Toast.makeText(this, "加载完成：" + channelSourceList.size() + "个频道", Toast.LENGTH_SHORT).show();
+                    playChannel(0);
+                } else {
+                    Toast.makeText(this, "未获取到频道", Toast.LENGTH_SHORT).show();
+                }
+            });
+        } catch (Exception e) {
+            e.printStackTrace();
+            runOnUiThread(() -> Toast.makeText(this, "加载失败：" + e.getMessage(), Toast.LENGTH_SHORT).show());
+        }
+    }).start();
+}
 
     // 遥控器
     @Override

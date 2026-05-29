@@ -107,18 +107,33 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void initListViewClick() {
+    // 关键：先判空，避免空指针
+    if (lvChannelList != null) {
         lvChannelList.setOnItemClickListener((parent, view, position, id) -> {
             Channel selectChannel = (Channel) parent.getItemAtPosition(position);
             int pos = channelSourceList.indexOf(selectChannel);
             playChannel(pos);
             lvChannelList.setSelection(position);
         });
-        lvGroup.setOnItemClickListener((parent, view, position, id) -> { lvChannelList.setSelection(0); });
-        lvEpg.setOnItemClickListener((parent, view, position, id) -> {
-            Object obj = parent.getItemAtPosition(position);
-            if (obj instanceof Channel.EpgItem) playEpgItem((Channel.EpgItem) obj);
+    }
+
+    if (lvGroup != null) {
+        lvGroup.setOnItemClickListener((parent, view, position, id) -> {
+            // 分组点击逻辑
+            lvChannelList.setSelection(0);
         });
     }
+
+    if (lvEpg != null) {
+        lvEpg.setOnItemClickListener((parent, view, position, id) -> {
+            Object obj = parent.getItemAtPosition(position);
+            if (obj instanceof Channel.EpgItem) {
+                playEpgItem((Channel.EpgItem) obj);
+            }
+        });
+    }
+}
+
 
     @Override
     public void onBackPressed() {

@@ -6,9 +6,8 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
-
+import com.google.android.exoplayer2.DefaultRenderersFactory;
 import androidx.annotation.NonNull;
-
 import com.google.android.exoplayer2.ExoPlayer;
 import com.google.android.exoplayer2.MediaItem;
 import com.google.android.exoplayer2.PlaybackParameters;
@@ -83,7 +82,7 @@ public class TVPlayerManager {
      */
     private void initPlayer() {
         mExoPlayer = new ExoPlayer.Builder(mAppContext)
-                .setRenderersFactory(Util.buildRenderersFactory(mAppContext, true))
+                .setRenderersFactory(new DefaultRenderersFactory(mAppContext))
                 .build();
         mExoPlayer.setPlayWhenReady(true);
 

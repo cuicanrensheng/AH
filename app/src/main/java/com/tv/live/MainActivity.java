@@ -157,7 +157,7 @@ public class MainActivity extends AppCompatActivity {
     private void initWeekList() {
         weekNames = new ArrayList<>();
         Calendar cal = Calendar.getInstance();
-        int today = cal.get(Calendar.DAY_OF_WEEK);
+        int today = cal.get(DAY_OF_WEEK);
         String[] weeks = {"周日", "周一", "周二", "周三", "周四", "周五", "周六"};
         for (int i = 0; i < 7; i++) {
             int index = (today + i - 1) % 7;
@@ -191,7 +191,6 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-// ====================== 【唯一修复：播放器】======================
 private void initExoPlayer() {
     exoPlayer = new ExoPlayer.Builder(this).build();
     playerView.setPlayer(exoPlayer);
@@ -204,7 +203,6 @@ private void initExoPlayer() {
         }
     });
 }
-// ===============================================================
 
     private void setRatio(int index) {
         currentRatioIndex = index;
@@ -263,7 +261,12 @@ private void initExoPlayer() {
             new AlertDialog.Builder(this)
                 .setTitle("扫码设置")
                 .setView(dv)
-                .setPositiveButton("关闭", null)
+                .setPositiveButton("关闭", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        dialog.dismiss();
+                    }
+                })
                 .show();
         } catch (WriterException e) {
             e.printStackTrace();
@@ -315,7 +318,12 @@ private void initExoPlayer() {
                 return true;
             }
         });
-        playerView.setOnTouchListener((v, event) -> gestureDetector.onTouchEvent(event));
+        playerView.setOnTouchListener(new View.OnTouchListener() {
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                return gestureDetector.onTouchEvent(event);
+            }
+        });
     }
     private void changeChannel(int delta) {
         if (channelSourceList.isEmpty()) return;
@@ -352,24 +360,40 @@ private void initExoPlayer() {
         Toast.makeText(this, "回看：" + item.title, Toast.LENGTH_SHORT).show();
     }
     private void loadChannels() {
-        new Thread(() -> {
-            try {
-                String playUrl = TextUtils.isEmpty(customSource) ? LIVE_SOURCE_URL : customSource;
-                channelSourceList = PlaylistParser.parse(playUrl);
-                String epgUrl = TextUtils.isEmpty(customEpg) ? "https://e.erw.cc/all.xml.gz" : customEpg;
-                EpgManager.getInstance().setEpgUrl(epgUrl);
-                EpgManager.getInstance().loadEpg(() -> runOnUiThread(() -> {
-                    for (Channel ch : channelSourceList) {
-                        ch.epgList = EpgManager.getInstance().getEpg(ch.name);
-                        markProgramStatus(ch.epgList);
-                    }
-                    if (!channelSourceList.isEmpty()) {
-                        int playIdx = Math.min(lastPlayIndex, channelSourceList.size() - 1);
-                        playChannel(playIdx);
-                    }
-                }));
-            } catch (Exception e) {
-                runOnUiThread(() -> Toast.makeText(MainActivity.this, "加载失败", Toast.LENGTH_SHORT).show());
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    String playUrl = TextUtils.isEmpty(customSource) ? LIVE_SOURCE_URL : customSource;
+                    channelSourceList = PlaylistParser.parse(playUrl);
+                    String epgUrl = TextUtils.isEmpty(customEpg) ? "https://e.erw.cc/all.xml.gz" : customEpg;
+                    EpgManager.getInstance().setEpgUrl(epgUrl);
+                    EpgManager.getInstance().loadEpg(new Runnable() {
+                        @Override
+                        public void run() {
+                            runOnUiThread(new Runnable() {
+                                @Override
+                                public void run() {
+                                    for (Channel ch : channelSourceList) {
+                                        ch.epgList = EpgManager.getInstance().getEpg(ch.name);
+                                        markProgramStatus(ch.epgList);
+                                    }
+                                    if (!channelSourceList.isEmpty()) {
+                                        int playIdx = Math.min(lastPlayIndex, channelSourceList.size() - 1);
+                                        playChannel(playIdx);
+                                    }
+                                }
+                            });
+                        }
+                    });
+                } catch (Exception e) {
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            Toast.makeText(MainActivity.this, "加载失败", Toast.LENGTH_SHORT).show();
+                        }
+                    });
+                }
             }
         }).start();
     }
@@ -444,29 +468,43 @@ private void initExoPlayer() {
             }
         };
         lvEpg.setAdapter(eAdapter);
-        lvGroup.post(() -> {
-            lvGroup.setItemChecked(gPos, true);
-            lvWeek.setItemChecked(0, true);
-            eAdapter.clear();
-            for (Channel.EpgItem item : curr.epgList) {
-                if (item.dayName.equals(weekNames.get(0))) eAdapter.add(item);
+        lvGroup.post(new Runnable() {
+            @Override
+            public void run() {
+                lvGroup.setItemChecked(gPos, true);
+                lvWeek.setItemChecked(0, true);
+                eAdapter.clear();
+                for (Channel.EpgItem item : curr.epgList) {
+                    if (item.dayName.equals(weekNames.get(0))) eAdapter.add(item);
+                }
+                eAdapter.notifyDataSetChanged();
             }
-            eAdapter.notifyDataSetChanged();
         });
-        lvWeek.setOnItemClickListener((parent, view, pos, id) => {
-            String day = weekNames.get(pos);
-            eAdapter.clear();
-            for (Channel.EpgItem item : curr.epgList) {
-                if (item.dayName.equals(day)) eAdapter.add(item);
+        lvWeek.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+            @Override
+            public void onItemClick(AdapterView<?> parent, View view, int pos, long id) {
+                String day = weekNames.get(pos);
+                eAdapter.clear();
+                for (Channel.EpgItem item : curr.epgList) {
+                    if (item.dayName.equals(day)) eAdapter.add(item);
+                }
+                eAdapter.notifyDataSetChanged();
             }
-            eAdapter.notifyDataSetChanged();
         });
-        lvEpg.setOnItemClickListener((parent, view, pos, id) => {
-            Channel.EpgItem item = eAdapter.getItem(pos);
-            if (item.isPast || item.isNow) playEpgItem(item);
+        lvEpg.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+            @Override
+            public void onItemClick(AdapterView<?> parent, View view, int pos, long id) {
+                Channel.EpgItem item = eAdapter.getItem(pos);
+                if (item.isPast || item.isNow) playEpgItem(item);
+            }
         });
         AlertDialog dialog = new AlertDialog.Builder(this).setView(v).setCancelable(true).show();
-        dialog.setOnDismissListener(dialog1 -> playerView.requestFocus());
+        dialog.setOnDismissListener(new DialogInterface.OnDismissListener() {
+            @Override
+            public void onDismiss(DialogInterface dialog) {
+                playerView.requestFocus();
+            }
+        });
     }
     private void showSettingDialog() {
         View v = LayoutInflater.from(this).inflate(R.layout.dialog_setting, null);
@@ -482,58 +520,119 @@ private void initExoPlayer() {
         switch_boot.setChecked(sp.getBoolean("boot_start", false));
         switch_update.setChecked(sp.getBoolean("auto_update", true));
         tv_ratio.setText(ratioNames[currentRatioIndex]);
-        switch_reverse.setOnCheckedChangeListener((buttonView, isChecked) ->
-                sp.edit().putBoolean("reverse_channel", isChecked).apply());
-        switch_boot.setOnCheckedChangeListener((buttonView, isChecked) ->
-                ed.putBoolean("boot_start", isChecked).apply());
-        switch_update.setOnCheckedChangeListener((buttonView, isChecked) => {
-            ed.putBoolean("auto_update", isChecked).apply();
-            if (isChecked) checkUpdate();
+        switch_reverse.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                sp.edit().putBoolean("reverse_channel", isChecked).apply();
+            }
         });
-        tv_ratio.setOnClickListener(view -> new AlertDialog.Builder(MainActivity.this)
-                .setTitle("画面比例")
-                .setItems(ratioNames, (dialog, which) -> {
-                    currentRatioIndex = which;
-                    tv_ratio.setText(ratioNames[currentRatioIndex]);
-                    setRatio(which);
-                    Toast.makeText(MainActivity.this, "已切换："+ratioNames[which], Toast.LENGTH_SHORT).show();
-                })
-                .setNegativeButton("取消", null)
-                .show());
-        btn_qr.setOnClickListener(view -> showDynamicQrCodeDialog());
-        btn_source.setOnClickListener(view -> {
-            View ev = LayoutInflater.from(this).inflate(R.layout.dialog_edit, null);
-            EditText et = ev.findViewById(R.id.et_input);
-            et.setText(sp.getString("custom_source", ""));
-            new AlertDialog.Builder(this)
-                .setTitle("自定义直播源")
-                .setView(ev)
-                .setPositiveButton("保存", (dialog, which) => {
-                    String url = et.getText().toString().trim();
-                    ed.putString("custom_source", url).apply();
-                    saveSourceHistory(url);
-                    Toast.makeText(MainActivity.this, "已保存，重启生效", Toast.LENGTH_SHORT).show();
-                })
-                .setNegativeButton("取消", null)
-                .show();
+        switch_boot.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                ed.putBoolean("boot_start", isChecked).apply();
+            }
         });
-        btn_epg.setOnClickListener(view -> {
-            View ev = LayoutInflater.from(this).inflate(R.layout.dialog_edit, null);
-            EditText et = ev.findViewById(R.id.et_input);
-            et.setText(sp.getString("custom_epg", ""));
-            new AlertDialog.Builder(this)
-                .setTitle("自定义EPG")
-                .setView(ev)
-                .setPositiveButton("保存", (dialog, which) => {
-                    String url = et.getText().toString().trim();
-                    ed.putString("custom_epg", url).apply();
-                    Toast.makeText(MainActivity.this, "已保存，重启生效", Toast.LENGTH_SHORT).show();
-                })
-                .setNegativeButton("取消", null)
-                .show();
+        switch_update.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                ed.putBoolean("auto_update", isChecked).apply();
+                if (isChecked) checkUpdate();
+            }
         });
-        AlertDialog dialog = new AlertDialog.Builder(this).setView(v).setNegativeButton("关闭", null).show();
-        dialog.setOnDismissListener(dialog1 -> playerView.requestFocus());
+        tv_ratio.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                new AlertDialog.Builder(MainActivity.this)
+                        .setTitle("画面比例")
+                        .setItems(ratioNames, new DialogInterface.OnClickListener() {
+                            @Override
+                            public void onClick(DialogInterface dialog, int which) {
+                                currentRatioIndex = which;
+                                tv_ratio.setText(ratioNames[currentRatioIndex]);
+                                setRatio(which);
+                                Toast.makeText(MainActivity.this, "已切换："+ratioNames[which], Toast.LENGTH_SHORT).show();
+                            }
+                        })
+                        .setNegativeButton("取消", new DialogInterface.OnClickListener() {
+                            @Override
+                            public void onClick(DialogInterface dialog, int which) {
+                                dialog.dismiss();
+                            }
+                        })
+                        .show();
+            }
+        });
+        btn_qr.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                showDynamicQrCodeDialog();
+            }
+        });
+        btn_source.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                View ev = LayoutInflater.from(MainActivity.this).inflate(R.layout.dialog_edit, null);
+                EditText et = ev.findViewById(R.id.et_input);
+                et.setText(sp.getString("custom_source", ""));
+                new AlertDialog.Builder(MainActivity.this)
+                    .setTitle("自定义直播源")
+                    .setView(ev)
+                    .setPositiveButton("保存", new DialogInterface.OnClickListener() {
+                        @Override
+                        public void onClick(DialogInterface dialog, int which) {
+                            String url = et.getText().toString().trim();
+                            ed.putString("custom_source", url).apply();
+                            saveSourceHistory(url);
+                            Toast.makeText(MainActivity.this, "已保存，重启生效", Toast.LENGTH_SHORT).show();
+                        }
+                    })
+                    .setNegativeButton("取消", new DialogInterface.OnClickListener() {
+                        @Override
+                        public void onClick(DialogInterface dialog, int which) {
+                            dialog.dismiss();
+                        }
+                    })
+                    .show();
+            }
+        });
+        btn_epg.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                View ev = LayoutInflater.from(MainActivity.this).inflate(R.layout.dialog_edit, null);
+                EditText et = ev.findViewById(R.id.et_input);
+                et.setText(sp.getString("custom_epg", ""));
+                new AlertDialog.Builder(MainActivity.this)
+                    .setTitle("自定义EPG")
+                    .setView(ev)
+                    .setPositiveButton("保存", new DialogInterface.OnClickListener() {
+                        @Override
+                        public void onClick(DialogInterface dialog, int which) {
+                            String url = et.getText().toString().trim();
+                            ed.putString("custom_epg", url).apply();
+                            Toast.makeText(MainActivity.this, "已保存，重启生效", Toast.LENGTH_SHORT).show();
+                        }
+                    })
+                    .setNegativeButton("取消", new DialogInterface.OnClickListener() {
+                        @Override
+                        public void onClick(DialogInterface dialog, int which) {
+                            dialog.dismiss();
+                        }
+                    })
+                    .show();
+            }
+        });
+        AlertDialog dialog = new AlertDialog.Builder(this).setView(v).setNegativeButton("关闭", new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                dialog.dismiss();
+            }
+        }).show();
+        dialog.setOnDismissListener(new DialogInterface.OnDismissListener() {
+            @Override
+            public void onDismiss(DialogInterface dialog) {
+                playerView.requestFocus();
+            }
+        });
     }
     public void onReceiveNewConfig(String liveUrl, String epgUrl) {
         SharedPreferences.Editor editor = sp.edit();
@@ -542,93 +641,125 @@ private void initExoPlayer() {
         editor.apply();
         customSource = liveUrl;
         customEpg = epgUrl;
-        runOnUiThread(() -> Toast.makeText(MainActivity.this, "配置已保存，重启生效", Toast.LENGTH_SHORT).show());
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                Toast.makeText(MainActivity.this, "配置已保存，重启生效", Toast.LENGTH_SHORT).show();
+            }
+        });
     }
     private void checkUpdate() {
-        new Thread(() -> {
-            HttpURLConnection conn = null;
-            BufferedReader reader = null;
-            try {
-                URL url = new URL(UPDATE_URL);
-                conn = (HttpURLConnection) url.openConnection();
-                conn.setRequestMethod("GET");
-                conn.setConnectTimeout(10000);
-                conn.setReadTimeout(10000);
-                conn.connect();
-                int code = conn.getResponseCode();
-                if (code != 200) return;
-                reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
-                StringBuilder sb = new StringBuilder();
-                String line;
-                while ((line = reader.readLine()) != null) sb.append(line);
-                JSONObject json = new JSONObject(sb.toString());
-                int svc = json.getInt("versionCode");
-                String svn = json.getString("versionName");
-                String msg = json.getString("message");
-                latestApkUrl = json.getString("downloadUrl");
-                int cvc = BuildConfig.VERSION_CODE;
-                if (svc > cvc) {
-                    runOnUiThread(() -> new AlertDialog.Builder(this)
-                            .setTitle("发现新版本 v" + svn)
-                            .setMessage(msg)
-                            .setPositiveButton("立即更新", (dialog, which) => {
-                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                    if (!getPackageManager().canRequestPackageInstalls()) {
-                                        Intent intent = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + getPackageName()));
-                                        startActivityForResult(intent, REQUEST_INSTALL_PACKAGES);
-                                        return;
-                                    }
-                                }
-                                startDownload();
-                            })
-                            .setNegativeButton("稍后再说", null)
-                            .show());
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                HttpURLConnection conn = null;
+                BufferedReader reader = null;
+                try {
+                    URL url = new URL(UPDATE_URL);
+                    conn = (HttpURLConnection) url.openConnection();
+                    conn.setRequestMethod("GET");
+                    conn.setConnectTimeout(10000);
+                    conn.setReadTimeout(10000);
+                    conn.connect();
+                    int code = conn.getResponseCode();
+                    if (code != 200) return;
+                    reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+                    StringBuilder sb = new StringBuilder();
+                    String line;
+                    while ((line = reader.readLine()) != null) sb.append(line);
+                    JSONObject json = new JSONObject(sb.toString());
+                    int svc = json.getInt("versionCode");
+                    String svn = json.getString("versionName");
+                    String msg = json.getString("message");
+                    latestApkUrl = json.getString("downloadUrl");
+                    int cvc = BuildConfig.VERSION_CODE;
+                    if (svc > cvc) {
+                        runOnUiThread(new Runnable() {
+                            @Override
+                            public void run() {
+                                new AlertDialog.Builder(MainActivity.this)
+                                        .setTitle("发现新版本 v" + svn)
+                                        .setMessage(msg)
+                                        .setPositiveButton("立即更新", new DialogInterface.OnClickListener() {
+                                            @Override
+                                            public void onClick(DialogInterface dialog, int which) {
+                                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                                    if (!getPackageManager().canRequestPackageInstalls()) {
+                                                        Intent intent = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + getPackageName()));
+                                                        startActivityForResult(intent, REQUEST_INSTALL_PACKAGES);
+                                                        return;
+                                                    }
+                                                }
+                                                startDownload();
+                                            }
+                                        })
+                                        .setNegativeButton("稍后再说", new DialogInterface.OnClickListener() {
+                                            @Override
+                                            public void onClick(DialogInterface dialog, int which) {
+                                                dialog.dismiss();
+                                            }
+                                        })
+                                        .show();
+                            }
+                        });
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
+                } finally {
+                    try { if (reader != null) reader.close(); if (conn != null) conn.disconnect(); } catch (Exception ignored) {}
                 }
-            } catch (Exception e) {
-                e.printStackTrace();
-            } finally {
-                try { if (reader != null) reader.close(); if (conn != null) conn.disconnect(); } catch (Exception ignored) {}
             }
         }).start();
     }
     private void startDownload() {
         Toast.makeText(this, "开始下载更新…", Toast.LENGTH_SHORT).show();
-        new Thread(() -> {
-            HttpURLConnection conn = null;
-            InputStream is = null;
-            FileOutputStream fos = null;
-            try {
-                URL url = new URL(latestApkUrl);
-                conn = (HttpURLConnection) url.openConnection();
-                conn.connect();
-                is = conn.getInputStream();
-                File outFile = new File(getExternalFilesDir("update"), "update.apk");
-                if (!outFile.getParentFile().exists()) outFile.getParentFile().mkdirs();
-                fos = new FileOutputStream(outFile);
-                byte[] buf = new byte[8192];
-                int len;
-                while ((len = is.read(buf)) != -1) fos.write(buf, 0, len);
-                runOnUiThread(() -> {
-                    try {
-                        Intent intent = new Intent(Intent.ACTION_VIEW);
-                        Uri uri;
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                            uri = androidx.core.content.FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", outFile);
-                            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-                        } else {
-                            uri = Uri.fromFile(outFile);
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                HttpURLConnection conn = null;
+                InputStream is = null;
+                FileOutputStream fos = null;
+                try {
+                    URL url = new URL(latestApkUrl);
+                    conn = (HttpURLConnection) url.openConnection();
+                    conn.connect();
+                    is = conn.getInputStream();
+                    File outFile = new File(getExternalFilesDir("update"), "update.apk");
+                    if (!outFile.getParentFile().exists()) outFile.getParentFile().mkdirs();
+                    fos = new FileOutputStream(outFile);
+                    byte[] buf = new byte[8192];
+                    int len;
+                    while ((len = is.read(buf)) != -1) fos.write(buf, 0, len);
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            try {
+                                Intent intent = new Intent(Intent.ACTION_VIEW);
+                                Uri uri;
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                                    uri = androidx.core.content.FileProvider.getUriForFile(MainActivity.this, getPackageName() + ".fileprovider", outFile);
+                                    intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                                } else {
+                                    uri = Uri.fromFile(outFile);
+                                }
+                                intent.setDataAndType(uri, "application/vnd.android.package-archive");
+                                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                                startActivity(intent);
+                            } catch (Exception e) {
+                                Toast.makeText(MainActivity.this, "安装失败", Toast.LENGTH_SHORT).show();
+                            }
                         }
-                        intent.setDataAndType(uri, "application/vnd.android.package-archive");
-                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                        startActivity(intent);
-                    } catch (Exception e) {
-                        Toast.makeText(this, "安装失败", Toast.LENGTH_SHORT).show();
-                    }
-                });
-            } catch (Exception e) {
-                runOnUiThread(() -> Toast.makeText(this, "下载失败", Toast.LENGTH_SHORT).show());
-            } finally {
-                try { if (fos != null) fos.close(); if (is != null) is.close(); if (conn != null) conn.disconnect(); } catch (Exception ignored) {}
+                    });
+                } catch (Exception e) {
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            Toast.makeText(MainActivity.this, "下载失败", Toast.LENGTH_SHORT).show();
+                        }
+                    });
+                } finally {
+                    try { if (fos != null) fos.close(); if (is != null) is.close(); if (conn != null) conn.disconnect(); } catch (Exception ignored) {}
+                }
             }
         }).start();
     }

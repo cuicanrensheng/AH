@@ -142,32 +142,21 @@
             android:textSize="16sp"/>
 
         <TextView
-            android:layout_width="match_parent"
-            android:layout_height="60dp"
-            android:gravity="center"
-            android:text="网页设置：http://设备IP:10481"
-            android:textColor="#999"
-            android:textSize="14sp"/>
-        
-        <!-- 扫码添加按钮 -->
-        <TextView
             android:id="@+id/tv_qr_code"
             android:layout_width="match_parent"
             android:layout_height="55dp"
             android:gravity="center_vertical"
             android:text="扫码添加直播源/节目单"
             android:textColor="#fff"
-            android:textSize="16sp"
-            android:clickable="true"
-            android:focusable="true"/>
+            android:textSize="16sp"/>
 
         <TextView
-            android:id="@+id/tv_web_url"
             android:layout_width="match_parent"
             android:layout_height="60dp"
             android:gravity="center"
             android:text="网页设置：http://设备IP:10481"
             android:textColor="#999"
             android:textSize="14sp"/>
+
     </LinearLayout>
 </ScrollView>

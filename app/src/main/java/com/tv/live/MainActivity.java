@@ -1,14 +1,12 @@
 package com.tv.live;
 
 import android.content.pm.ActivityInfo;
-import android.util.Log;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.text.TextUtils;
 import android.view.KeyEvent;
-import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.ListView;
@@ -17,7 +15,6 @@ import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import com.google.android.exoplayer2.ui.PlayerView;
 import java.util.ArrayList;
-import java.util.Calendar;
 import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
@@ -62,18 +59,16 @@ public class MainActivity extends AppCompatActivity {
         lvEpg = findViewById(R.id.lv_epg);
         btn_show_epg = findViewById(R.id.btn_show_epg);
 
-        // 点击屏幕显示/隐藏面板
         playerView.setOnClickListener(v -> togglePanel());
 
         btn_show_epg.setOnClickListener(v -> {
             lvEpg.post(() -> lvEpg.smoothScrollToPosition(0));
         });
 
-        // 日期今天优先
         initDateList();
 
         gestureHelper = new PlayerGestureHelper(this, new PlayerGestureHelper.GestureCallback() {
-            @Override public void onOk() { openChannelList(); }
+            @Override public void onOk() { togglePanel(); }
             @Override public void onLongOk() { openSettings(); }
             @Override public void onMenu() { openSettings(); }
             @Override public void onPrevChannel() { playPrev(); }
@@ -97,7 +92,7 @@ public class MainActivity extends AppCompatActivity {
             @Override public void onIdle() {}
             @Override public void onBuffering() {
                 try {
-                    if (channelSourceList != null && !channelSourceList.isEmpty()) {
+                    if (!channelSourceList.isEmpty()) {
                         String name = channelSourceList.get(currentPlayIndex).getName();
                         Toast.makeText(MainActivity.this, "正在播放：" + name, Toast.LENGTH_SHORT).show();
                     }
@@ -112,7 +107,6 @@ public class MainActivity extends AppCompatActivity {
         initListViewClick();
     }
 
-    // ========== 日期：今天优先 ==========
     private void initDateList() {
         List<String> dates = new ArrayList<>();
         dates.add("今天");
@@ -126,7 +120,6 @@ public class MainActivity extends AppCompatActivity {
         lvDate.setAdapter(new android.widget.ArrayAdapter<>(this, android.R.layout.simple_list_item_1, dates));
     }
 
-    // ========== 显示/隐藏面板 ==========
     private void togglePanel() {
         if (panel_layout.getVisibility() == View.VISIBLE) {
             panel_layout.setVisibility(View.GONE);
@@ -137,29 +130,40 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // ========== 刷新频道列表 + 定位当前台 ==========
     private void refreshChannelList() {
-        if (channelSourceList == null || channelSourceList.isEmpty()) return;
+        if (channelSourceList.isEmpty()) return;
         List<String> names = new ArrayList<>();
         for (Channel c : channelSourceList) names.add(c.getName());
         lvChannelList.setAdapter(new android.widget.ArrayAdapter<>(this, android.R.layout.simple_list_item_1, names));
         lvChannelList.setSelection(currentPlayIndex);
     }
 
-    // ========== 刷新当前频道节目单 ==========
     private void refreshCurrentEpg() {
-        if (channelSourceList == null || channelSourceList.isEmpty()) return;
-        Channel ch = channelSourceList.get(currentPlayIndex);
-        List<Channel.EpgItem> epgList = EpgManager.getInstance().getTodayEpg(ch.getEpgId());
-        List<String> showList = new ArrayList<>();
-        if (epgList != null && !epgList.isEmpty()) {
-            for (Channel.EpgItem e : epgList) {
-                showList.add(e.getStart() + " " + e.getTitle());
-            }
-        } else {
-            showList.add("暂无节目单");
+        if (channelSourceList.isEmpty()) {
+            lvEpg.setAdapter(new android.widget.ArrayAdapter<>(this, android.R.layout.simple_list_item_1,
+                    java.util.Collections.singletonList("暂无节目")));
+            return;
         }
-        lvEpg.setAdapter(new android.widget.ArrayAdapter<>(this, android.R.layout.simple_list_item_1, showList));
+
+        Channel ch = channelSourceList.get(currentPlayIndex);
+        List<Channel.EpgItem> epgItems = new ArrayList<>();
+
+        if (EpgManager.getInstance().getEpgMap() != null) {
+            List<Channel.EpgItem> list = EpgManager.getInstance().getEpgMap().get(ch.getName());
+            if (list != null) epgItems.addAll(list);
+        }
+
+        List<String> showList = new ArrayList<>();
+        if (epgItems.isEmpty()) {
+            showList.add("暂无节目数据");
+        } else {
+            for (Channel.EpgItem e : epgItems) {
+                showList.add(e.time + " | " + e.title);
+            }
+        }
+
+        lvEpg.setAdapter(new android.widget.ArrayAdapter<>(this,
+                android.R.layout.simple_list_item_1, showList));
     }
 
     private void applyScreenRatioFromSettings() {
@@ -183,6 +187,7 @@ public class MainActivity extends AppCompatActivity {
                         playChannel(currentPlayIndex);
                     }
                 });
+
                 EpgManager.getInstance().setEpgUrl(UrlConfig.EPG_URL);
                 EpgManager.getInstance().loadEpg(() -> {
                     runOnUiThread(() -> {
@@ -242,17 +247,21 @@ public class MainActivity extends AppCompatActivity {
         if (channelSourceList.isEmpty()) return;
         currentPlayIndex = index;
         currentChannelIndex = index;
+
         Channel ch = channelSourceList.get(index);
         if (TextUtils.isEmpty(ch.getPlayUrl())) {
-            Toast.makeText(this, "播放地址为空", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this,"播放地址为空",Toast.LENGTH_SHORT).show();
             return;
         }
+
         if (mPlayerManager != null) {
             mPlayerManager.playUrl(ch.getPlayUrl());
             applyScreenRatioFromSettings();
         }
+
         isPlayingPlayback = false;
         getSharedPreferences("play_config", 0).edit().putInt("last_play_index", index).apply();
+
         refreshChannelList();
         refreshCurrentEpg();
     }

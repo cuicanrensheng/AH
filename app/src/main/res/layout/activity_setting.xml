@@ -13,27 +13,42 @@
 
         <LinearLayout android:layout_width="match_parent" android:layout_height="55dp" android:gravity="center_vertical">
             <TextView android:layout_width="0dp" android:layout_weight="1" android:text="开机自启" android:textColor="#fff" android:textSize="16sp"/>
-            <Switch android:id="@+id/sw_boot"/>
+            <Switch 
+                android:id="@+id/sw_boot"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"/>
         </LinearLayout>
 
         <LinearLayout android:layout_width="match_parent" android:layout_height="55dp" android:gravity="center_vertical">
             <TextView android:layout_width="0dp" android:layout_weight="1" android:text="节目单开关" android:textColor="#fff" android:textSize="16sp"/>
-            <Switch android:id="@+id/sw_epg"/>
+            <Switch 
+                android:id="@+id/sw_epg"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"/>
         </LinearLayout>
 
         <LinearLayout android:layout_width="match_parent" android:layout_height="55dp" android:gravity="center_vertical">
             <TextView android:layout_width="0dp" android:layout_weight="1" android:text="自动更新" android:textColor="#fff" android:textSize="16sp"/>
-            <Switch android:id="@+id/sw_auto_update"/>
+            <Switch 
+                android:id="@+id/sw_auto_update"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"/>
         </LinearLayout>
 
         <LinearLayout android:layout_width="match_parent" android:layout_height="55dp" android:gravity="center_vertical">
             <TextView android:layout_width="0dp" android:layout_weight="1" android:text="换台反转" android:textColor="#fff" android:textSize="16sp"/>
-            <Switch android:id="@+id/sw_reverse_channel"/>
+            <Switch 
+                android:id="@+id/sw_reverse"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"/>
         </LinearLayout>
 
         <LinearLayout android:layout_width="match_parent" android:layout_height="55dp" android:gravity="center_vertical">
             <TextView android:layout_width="0dp" android:layout_weight="1" android:text="数字选台" android:textColor="#fff" android:textSize="16sp"/>
-            <Switch android:id="@+id/sw_num_channel"/>
+            <Switch 
+                android:id="@+id/sw_num_channel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"/>
         </LinearLayout>
 
         <TextView

@@ -1,70 +1,49 @@
 package com.tv.live;
 
-import android.util.Log;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 
 public class PlaylistParser {
-    private static final String TAG = "PlaylistParser";
-
-    public static List<Channel> parse(String urlStr) {
+    public static List<Channel> parse(String url) throws Exception {
         List<Channel> list = new ArrayList<>();
-        HttpURLConnection conn = null;
-        BufferedReader br = null;
+        BufferedReader br = new BufferedReader(new InputStreamReader(new URL(url).openStream()));
+        String line;
+        String currentGroup = "未分类";
 
-        try {
-            Log.i(TAG, "开始解析：" + urlStr);
-            URL url = new URL(urlStr);
-            conn = (HttpURLConnection) url.openConnection();
+        while ((line = br.readLine()) != null) {
+            line = line.trim();
+            if (line.startsWith("#EXTM3U")) continue;
 
-            // 加上超时，避免一直卡着
-            conn.setRequestMethod("GET");
-            conn.setConnectTimeout(15000);
-            conn.setReadTimeout(15000);
-            conn.connect();
-
-            int code = conn.getResponseCode();
-            Log.i(TAG, "HTTP 响应码：" + code);
-            if (code != 200) {
-                Log.e(TAG, "请求失败，code=" + code);
-                return list;
+            if (line.startsWith("#EXTGRP:")) {
+                currentGroup = line.substring(8).trim();
+                continue;
             }
 
-            br = new BufferedReader(new InputStreamReader(conn.getInputStream()));
-            String line;
-            String name = null;
+            if (line.startsWith("#EXTINF:")) {
+                String name = "";
+                String tvgId = "";
+                String group = currentGroup;
 
-            while ((line = br.readLine()) != null) {
-                line = line.trim();
-                if (line.startsWith("#EXTINF:")) {
-                    int idx = line.lastIndexOf(",");
-                    if (idx != -1) {
-                        name = line.substring(idx + 1).trim();
-                        Log.i(TAG, "频道：" + name);
-                    }
-                } else if (line.startsWith("http")) {
-                    Log.i(TAG, "地址：" + line);
-                    if (name != null) {
-                        list.add(new Channel(name, line));
-                        name = null;
-                    }
+                if (line.contains("tvg-id=\"")) {
+                    tvgId = line.split("tvg-id=\"")[1].split("\"")[0];
+                }
+                if (line.contains("group-title=\"")) {
+                    group = line.split("group-title=\"")[1].split("\"")[0];
+                }
+                if (line.contains(",")) {
+                    name = line.substring(line.indexOf(",") + 1).trim();
+                }
+
+                String uri = br.readLine();
+                if (uri != null && uri.startsWith("http")) {
+                    list.add(new Channel(name, uri, group, tvgId));
                 }
             }
-
-            Log.i(TAG, "解析完成，频道总数：" + list.size());
-
-        } catch (Exception e) {
-            Log.e(TAG, "解析异常", e);
-        } finally {
-            try {
-                if (br != null) br.close();
-                if (conn != null) conn.disconnect();
-            } catch (Exception ignored) {}
         }
+        br.close();
         return list;
     }
 }

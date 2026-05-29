@@ -12,10 +12,12 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.ListView;
+import android.widget.TextView;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import com.google.android.exoplayer2.ui.PlayerView;
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
@@ -25,10 +27,14 @@ public class MainActivity extends AppCompatActivity {
     public int currentChannelIndex = 0;
     public boolean isPlayingPlayback = false;
     public int currentRatioIndex = 2;
+
     public ListView lvGroup;
     public ListView lvChannelList;
     public ListView lvDate;
     public ListView lvEpg;
+    private View panel_layout;
+    private TextView btn_show_epg;
+
     public TVPlayerManager mPlayerManager;
     private PlayerGestureHelper gestureHelper;
     private SharedPreferences sp;
@@ -36,28 +42,35 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
-        // ========== 强制横屏 + 可左右旋转 + 永不竖屏 ==========
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
-
-        // ========== 隐藏状态栏 + 全屏 ==========
-        getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
-                WindowManager.LayoutParams.FLAG_FULLSCREEN);
+        getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
         getWindow().getDecorView().setSystemUiVisibility(
                 View.SYSTEM_UI_FLAG_FULLSCREEN
                         | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
                         | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-                        | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
         );
 
         mInstance = this;
         setContentView(R.layout.activity_main);
+
         sp = getSharedPreferences("app_settings", MODE_PRIVATE);
         PlayerView playerView = findViewById(R.id.player_view);
+        panel_layout = findViewById(R.id.panel_layout);
         lvGroup = findViewById(R.id.lv_group);
         lvChannelList = findViewById(R.id.lv_channel_list);
         lvDate = findViewById(R.id.lv_date);
         lvEpg = findViewById(R.id.lv_epg);
+        btn_show_epg = findViewById(R.id.btn_show_epg);
+
+        // 点击屏幕显示/隐藏面板
+        playerView.setOnClickListener(v -> togglePanel());
+
+        btn_show_epg.setOnClickListener(v -> {
+            lvEpg.post(() -> lvEpg.smoothScrollToPosition(0));
+        });
+
+        // 日期今天优先
+        initDateList();
 
         gestureHelper = new PlayerGestureHelper(this, new PlayerGestureHelper.GestureCallback() {
             @Override public void onOk() { openChannelList(); }
@@ -66,6 +79,7 @@ public class MainActivity extends AppCompatActivity {
             @Override public void onPrevChannel() { playPrev(); }
             @Override public void onNextChannel() { playNext(); }
         });
+
         playerView.setOnTouchListener((v, event) -> {
             gestureHelper.handleTouch(event);
             return true;
@@ -95,9 +109,57 @@ public class MainActivity extends AppCompatActivity {
         });
 
         loadLiveAndEpg();
-        initGesture();
-        initChannelList();
         initListViewClick();
+    }
+
+    // ========== 日期：今天优先 ==========
+    private void initDateList() {
+        List<String> dates = new ArrayList<>();
+        dates.add("今天");
+        dates.add("周一");
+        dates.add("周二");
+        dates.add("周三");
+        dates.add("周四");
+        dates.add("周五");
+        dates.add("周六");
+        dates.add("周日");
+        lvDate.setAdapter(new android.widget.ArrayAdapter<>(this, android.R.layout.simple_list_item_1, dates));
+    }
+
+    // ========== 显示/隐藏面板 ==========
+    private void togglePanel() {
+        if (panel_layout.getVisibility() == View.VISIBLE) {
+            panel_layout.setVisibility(View.GONE);
+        } else {
+            panel_layout.setVisibility(View.VISIBLE);
+            refreshChannelList();
+            refreshCurrentEpg();
+        }
+    }
+
+    // ========== 刷新频道列表 + 定位当前台 ==========
+    private void refreshChannelList() {
+        if (channelSourceList == null || channelSourceList.isEmpty()) return;
+        List<String> names = new ArrayList<>();
+        for (Channel c : channelSourceList) names.add(c.getName());
+        lvChannelList.setAdapter(new android.widget.ArrayAdapter<>(this, android.R.layout.simple_list_item_1, names));
+        lvChannelList.setSelection(currentPlayIndex);
+    }
+
+    // ========== 刷新当前频道节目单 ==========
+    private void refreshCurrentEpg() {
+        if (channelSourceList == null || channelSourceList.isEmpty()) return;
+        Channel ch = channelSourceList.get(currentPlayIndex);
+        List<Channel.EpgItem> epgList = EpgManager.getInstance().getTodayEpg(ch.getEpgId());
+        List<String> showList = new ArrayList<>();
+        if (epgList != null && !epgList.isEmpty()) {
+            for (Channel.EpgItem e : epgList) {
+                showList.add(e.getStart() + " " + e.getTitle());
+            }
+        } else {
+            showList.add("暂无节目单");
+        }
+        lvEpg.setAdapter(new android.widget.ArrayAdapter<>(this, android.R.layout.simple_list_item_1, showList));
     }
 
     private void applyScreenRatioFromSettings() {
@@ -112,22 +174,20 @@ public class MainActivity extends AppCompatActivity {
     public void loadLiveAndEpg() {
         new Thread(() -> {
             try {
-                Log.i("MainActivity", "加载直播源...");
                 List<Channel> channels = PlaylistParser.parse(UrlConfig.LIVE_URL);
                 runOnUiThread(() -> {
-                    Log.i("MainActivity", "解析到频道数：" + (channels == null ? "null" : channels.size()));
                     if (channels != null && !channels.isEmpty()) {
                         channelSourceList.clear();
                         channelSourceList.addAll(channels);
                         Toast.makeText(MainActivity.this, "直播源加载完成：" + channelSourceList.size() + "个频道", Toast.LENGTH_SHORT).show();
-                        initChannelList();
-                        playChannel(0);
+                        playChannel(currentPlayIndex);
                     }
                 });
                 EpgManager.getInstance().setEpgUrl(UrlConfig.EPG_URL);
                 EpgManager.getInstance().loadEpg(() -> {
                     runOnUiThread(() -> {
                         Toast.makeText(MainActivity.this, "EPG节目单加载完成", Toast.LENGTH_SHORT).show();
+                        refreshCurrentEpg();
                     });
                 });
             } catch (Exception e) {
@@ -148,7 +208,7 @@ public class MainActivity extends AppCompatActivity {
             case KeyEvent.KEYCODE_DPAD_DOWN:
                 if (reverse) playPrev(); else playNext(); return true;
             case KeyEvent.KEYCODE_DPAD_CENTER:
-            case KeyEvent.KEYCODE_ENTER: openChannelList(); return true;
+            case KeyEvent.KEYCODE_ENTER: togglePanel(); return true;
             case KeyEvent.KEYCODE_MENU:
             case KeyEvent.KEYCODE_HELP: openSettings(); return true;
         }
@@ -167,13 +227,11 @@ public class MainActivity extends AppCompatActivity {
         playChannel(i);
     }
 
-    // 找到你原来的 openChannelList() 方法，替换成这个
-private void openChannelList() {
-    // 进入列表前强制同步一次当前播放下标，保证起点正确
-    currentChannelIndex = currentPlayIndex;
-    Intent intent = new Intent(this, ChannelListActivity.class);
-    startActivity(intent);
-}
+    private void openChannelList() {
+        currentChannelIndex = currentPlayIndex;
+        Intent intent = new Intent(this, ChannelListActivity.class);
+        startActivity(intent);
+    }
 
     private void openSettings() {
         Intent intent = new Intent(this, SettingsActivity.class);
@@ -186,7 +244,7 @@ private void openChannelList() {
         currentChannelIndex = index;
         Channel ch = channelSourceList.get(index);
         if (TextUtils.isEmpty(ch.getPlayUrl())) {
-            Toast.makeText(this,"播放地址为空",Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "播放地址为空", Toast.LENGTH_SHORT).show();
             return;
         }
         if (mPlayerManager != null) {
@@ -194,7 +252,9 @@ private void openChannelList() {
             applyScreenRatioFromSettings();
         }
         isPlayingPlayback = false;
-        getSharedPreferences("play_config",0).edit().putInt("last_play_index",index).apply();
+        getSharedPreferences("play_config", 0).edit().putInt("last_play_index", index).apply();
+        refreshChannelList();
+        refreshCurrentEpg();
     }
 
     private void playEpgItem(Channel.EpgItem epg) {
@@ -213,10 +273,8 @@ private void openChannelList() {
     private void initListViewClick() {
         if (lvChannelList != null) {
             lvChannelList.setOnItemClickListener((p, v, pos, id) -> {
-                Channel c = (Channel) p.getItemAtPosition(pos);
-                int i = channelSourceList.indexOf(c);
-                playChannel(i);
-                lvChannelList.setSelection(pos);
+                playChannel(pos);
+                togglePanel();
             });
         }
         if (lvEpg != null) {
@@ -237,6 +295,10 @@ private void openChannelList() {
 
     @Override
     public void onBackPressed() {
+        if (panel_layout.getVisibility() == View.VISIBLE) {
+            panel_layout.setVisibility(View.GONE);
+            return;
+        }
         if (isPlayingPlayback) {
             isPlayingPlayback = false;
             playChannel(currentPlayIndex);
@@ -253,8 +315,4 @@ private void openChannelList() {
         }
         mInstance = null;
     }
-
-    private void initGesture() {}
-    private void initChannelList() {}
-    public void onReceiveConfig(String u1,String u2){}
 }

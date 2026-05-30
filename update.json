@@ -1,6 +1,5 @@
 {
-  "versionCode": 264,
-  "versionName": "1.0.264",
-  "message": "自动更新版本",
-  "downloadUrl": "private static final String UPDATE_JSON_URL = "https://github.com/cuicanrensheng/AH/releases/latest/download/app.apk";
-"}
+  "version_code": 2,
+  "version_name": "1.1.0",
+  "download_url": "https://github.com/cuicanrensheng/AH/releases/latest/download/app.apk"
+}

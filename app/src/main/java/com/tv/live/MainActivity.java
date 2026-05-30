@@ -117,7 +117,7 @@ public class MainActivity extends AppCompatActivity {
         registerReceiver(toggleControllerReceiver, new IntentFilter("com.tv.live.TOGGLE_CONTROLLER"));
         registerReceiver(refreshReceiver, new IntentFilter("com.tv.live.REFRESH_LIVE_AND_EPG"));
 
-        // ========== 节目单按钮 + 日期点击 已完整写好 ==========
+        // ========== 节目单按钮 + 日期点击 完整逻辑 ==========
         TextView btn_show_epg = findViewById(R.id.btn_show_epg);
 
         // 点击展开/收起 日期+节目单
@@ -127,11 +127,11 @@ public class MainActivity extends AppCompatActivity {
             lvEpg.setVisibility(epgPanelOpen ? View.VISIBLE : View.GONE);
         });
 
-        // 日期点击 → 刷新对应节目单
+        // 日期点击 → 刷新对应节目单（自动排序+回看+预约）
         lvDate.setOnItemClickListener((parent, view, position, id) -> {
             if (!channelSourceList.isEmpty()) {
-                Channel currentChannel = channelSourceList.get(currentPlayIndex);
-                epgManagerWrapper.refresh(currentChannel, channelSourceList);
+                Channel curr = channelSourceList.get(currentPlayIndex);
+                epgManagerWrapper.refresh(curr, channelSourceList);
             }
         });
         // ====================================================
@@ -249,7 +249,7 @@ public class MainActivity extends AppCompatActivity {
     public void onReceiveConfig(String liveUrl, String epgUrl) {
         AppConfig.getInstance(this).setCustomUrls(liveUrl, epgUrl);
         if (liveUrl != null) UrlConfig.LIVE_URL = liveUrl;
-        if (epgUrl != null) UrlConfig.EPG_URL = epgUrl;
+        if (epgUrl != null) UrlConfig.EPG_URL = customEpg;
         runOnUiThread(() -> {
             Toast.makeText(this, "配置已保存，重新加载…", Toast.LENGTH_LONG).show();
             loadLiveAndEpg();

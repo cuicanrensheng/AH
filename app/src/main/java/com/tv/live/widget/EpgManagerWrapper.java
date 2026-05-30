@@ -1,11 +1,11 @@
 package com.tv.live.widget;
-
 import android.app.AlarmManager;
 import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.graphics.Color;
 import android.os.Build;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -31,6 +31,7 @@ public class EpgManagerWrapper {
     private EpgAdapter adapter;
     private final Set<String> bookedSet = new HashSet<>();
     private static final String ACTION_ALARM = "com.tv.live.ALARM_PLAY";
+    private int selectedPosition = -1;
 
     public EpgManagerWrapper(Context context, ListView lvEpg) {
         this.context = context;
@@ -38,41 +39,35 @@ public class EpgManagerWrapper {
         registerAlarmReceiver();
     }
 
-    // 保留你原来的方法，不影响任何现有调用
-public void refresh(Channel currentChannel, List<Channel> channelSourceList) {
-    // 默认刷新"今天"的节目单，兼容旧逻辑
-    refresh(currentChannel, channelSourceList, 0);
-}
-
-// 新增：带日期筛选的重载方法，用于实现日期联动
-public void refresh(Channel currentChannel, List<Channel> channelSourceList, int dateIndex) {
-    if (currentChannel == null) {
-        showEmpty();
-        return;
+    public void refresh(Channel currentChannel, List<Channel> channelSourceList) {
+        refresh(currentChannel, channelSourceList, 0);
     }
-    new Thread(() -> {
-        try {
-            List<Channel.EpgItem> epgList = EpgManager.getInstance().getEpg(currentChannel.getName());
-            List<Channel.EpgItem> data = new ArrayList<>();
-            if (epgList != null && !epgList.isEmpty()) {
-                // 根据日期索引筛选节目单
-                String[] dayNames = {"今天", "周一", "周二", "周三", "周四", "周五", "周六"};
-                String targetDay = (dateIndex >= 0 && dateIndex < dayNames.length) ? dayNames[dateIndex] : "今天";
 
-                for (Channel.EpgItem item : epgList) {
-                    if (targetDay.equals(item.dayName)) {
-                        data.add(item);
-                    }
-                }
-                // 按时间排序
-                Collections.sort(data, Comparator.comparing(o -> o.time));
-            }
-            updateUi(currentChannel, data);
-        } catch (Exception e) {
-            updateUi(currentChannel, new ArrayList<>());
+    public void refresh(Channel currentChannel, List<Channel> channelSourceList, int dateIndex) {
+        if (currentChannel == null) {
+            showEmpty();
+            return;
         }
-    }).start();
-}
+        new Thread(() -> {
+            try {
+                List<Channel.EpgItem> epgList = EpgManager.getInstance().getEpg(currentChannel.getName());
+                List<Channel.EpgItem> data = new ArrayList<>();
+                if (epgList != null && !epgList.isEmpty()) {
+                    String[] dayNames = {"今天", "周一", "周二", "周三", "周四", "周五", "周六"};
+                    String targetDay = (dateIndex >= 0 && dateIndex < dayNames.length) ? dayNames[dateIndex] : "今天";
+                    for (Channel.EpgItem item : epgList) {
+                        if (targetDay.equals(item.dayName)) {
+                            data.add(item);
+                        }
+                    }
+                    Collections.sort(data, Comparator.comparing(o -> o.time));
+                }
+                updateUi(currentChannel, data);
+            } catch (Exception e) {
+                updateUi(currentChannel, new ArrayList<>());
+            }
+        }).start();
+    }
 
     private void showEmpty() {
         updateUi(null, new ArrayList<>());
@@ -87,6 +82,11 @@ public void refresh(Channel currentChannel, List<Channel> channelSourceList, int
                 adapter.setData(channel, list);
             }
         });
+    }
+
+    public void setSelectedPosition(int position) {
+        this.selectedPosition = position;
+        if (adapter != null) adapter.notifyDataSetChanged();
     }
 
     public void clearEpg() {
@@ -170,6 +170,16 @@ public void refresh(Channel currentChannel, List<Channel> channelSourceList, int
             holder.tv_dayName.setText(item.dayName);
             holder.tv_time.setText(item.time);
             holder.tv_title.setText(item.title);
+
+            // ========== 选中蓝色高亮（只加了这里）==========
+            if (position == selectedPosition) {
+                holder.tv_time.setTextColor(Color.parseColor("#40A9FF"));
+                holdertv_title.setTextColor(Color.parseColor("#40A9FF"));
+            } else {
+                holder.tv_time.setTextColor(Color.WHITE);
+                holder.tv_title.setTextColor(Color.WHITE);
+            }
+            // ==============================================
 
             String key = currentChannel != null ? currentChannel.getName() + "_" + position : "";
             if (item.isPlaying) {

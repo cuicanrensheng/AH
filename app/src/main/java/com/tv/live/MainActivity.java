@@ -14,7 +14,9 @@ import com.google.android.exoplayer2.ui.PlayerView;
 import com.tv.live.config.AppConfig;
 import com.tv.live.listener.PlayerStateListenerImpl;
 import com.tv.live.loader.LiveSourceLoader;
+import com.tv.live.manager.ChannelSwitchManager;
 import com.tv.live.manager.GestureManager;
+import com.tv.live.manager.KeyEventManager;
 import com.tv.live.manager.PanelManager;
 import com.tv.live.manager.ScreenRatioManager;
 import com.tv.live.service.HttpConfigService;
@@ -33,23 +35,20 @@ public class MainActivity extends AppCompatActivity {
     private View panel_layout;
     public TVPlayerManager mPlayerManager;
 
-    // 配置管理
     private AppConfig appConfig;
-
-    // 管理类
     private ScreenRatioManager screenRatioManager;
     private PanelManager panelManager;
     private GestureManager gestureManager;
+    private KeyEventManager keyEventManager;
     private HttpConfigService httpService;
 
-    // UI 列表
     private ChannelListManager channelListManager;
     private GroupListManager groupListManager;
     private DateListManager dateListManager;
     private EpgManagerWrapper epgManagerWrapper;
 
-    // 播放器状态
     private PlayerStateListenerImpl playerStateListener;
+    private ChannelSwitchManager switchManager;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -65,14 +64,12 @@ public class MainActivity extends AppCompatActivity {
         mInstance = this;
         setContentView(R.layout.activity_main);
 
-        // ========== 1. 初始化配置 ==========
         appConfig = AppConfig.getInstance(this);
         String customLive = appConfig.getCustomLiveUrl();
         String customEpg = appConfig.getCustomEpgUrl();
         if (customLive != null) UrlConfig.LIVE_URL = customLive;
         if (customEpg != null) UrlConfig.EPG_URL = customEpg;
 
-        // ========== 2. 视图绑定 ==========
         PlayerView playerView = findViewById(R.id.player_view);
         panel_layout = findViewById(R.id.panel_layout);
         ListView lvGroup = findViewById(R.id.lv_group);
@@ -80,27 +77,22 @@ public class MainActivity extends AppCompatActivity {
         ListView lvDate = findViewById(R.id.lv_date);
         ListView lvEpg = findViewById(R.id.lv_epg);
 
-        // ========== 3. 初始化 UI 列表管理 ==========
         channelListManager = new ChannelListManager(this, lvChannelList);
         groupListManager = new GroupListManager(this, lvGroup);
         dateListManager = new DateListManager(this, lvDate);
         epgManagerWrapper = new EpgManagerWrapper(this, lvEpg);
         dateListManager.initDate();
 
-        // ========== 4. 初始化面板管理 ==========
         panelManager = new PanelManager(panel_layout, channelListManager, epgManagerWrapper);
 
-        // ========== 5. 初始化播放器 ==========
         mPlayerManager = TVPlayerManager.getInstance(this);
         mPlayerManager.attachPlayerView(playerView);
         playerStateListener = new PlayerStateListenerImpl(this);
         mPlayerManager.setOnPlayStateListener(playerStateListener);
 
-        // ========== 6. 初始化屏幕比例 ==========
         screenRatioManager = new ScreenRatioManager(mPlayerManager, appConfig);
         screenRatioManager.apply();
 
-        // ========== 7. 初始化手势 ==========
         gestureManager = new GestureManager(this);
         PlayerGestureHelper gestureHelper = gestureManager.create();
         playerView.setOnTouchListener((v, event) -> {
@@ -108,23 +100,24 @@ public class MainActivity extends AppCompatActivity {
             return true;
         });
 
-        // ========== 8. 初始化 HTTP 服务 ==========
+        keyEventManager = new KeyEventManager(this);
+        switchManager = ChannelSwitchManager.getInstance();
         httpService = HttpConfigService.getInstance();
         httpService.start();
 
-        // ========== 9. 加载直播源和节目单 ==========
         currentPlayIndex = appConfig.getLastPlayIndex();
         loadLiveAndEpg();
         initListViewClick();
     }
 
-    // ========== 加载直播源 ==========
     private void loadLiveAndEpg() {
         LiveSourceLoader.getInstance(this).load(new LiveSourceLoader.LoadCallback() {
             @Override
             public void onSuccess(List<Channel> channels) {
                 channelSourceList.clear();
                 channelSourceList.addAll(channels);
+                switchManager.setChannelList(channelSourceList);
+                switchManager.setCurrentIndex(currentPlayIndex);
                 Toast.makeText(MainActivity.this, "直播源加载完成：" + channelSourceList.size() + "个频道", Toast.LENGTH_SHORT).show();
                 groupListManager.setGroups(channelSourceList);
                 playChannel(currentPlayIndex);
@@ -136,7 +129,6 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        // 加载EPG节目单
         EpgManager.getInstance().setEpgUrl(UrlConfig.EPG_URL);
         EpgManager.getInstance().loadEpg(() -> runOnUiThread(() -> {
             Toast.makeText(MainActivity.this, "EPG节目单加载完成", Toast.LENGTH_SHORT).show();
@@ -146,23 +138,23 @@ public class MainActivity extends AppCompatActivity {
         }));
     }
 
-    // ========== 切台逻辑 ==========
-    private void playPrev() {
-        if (channelSourceList == null || channelSourceList.isEmpty()) return;
-        int newIndex = (currentPlayIndex - 1 + channelSourceList.size()) % channelSourceList.size();
-        playChannel(newIndex);
+    // ===================== 切台逻辑已经独立 =====================
+    public void playPrev() {
+        int idx = switchManager.prev();
+        playChannel(idx);
     }
 
-    private void playNext() {
-        if (channelSourceList == null || channelSourceList.isEmpty()) return;
-        int newIndex = (currentPlayIndex + 1) % channelSourceList.size();
-        playChannel(newIndex);
+    public void playNext() {
+        int idx = switchManager.next();
+        playChannel(idx);
     }
+    // ==========================================================
 
     public void playChannel(int index) {
         if (channelSourceList == null || channelSourceList.isEmpty()) return;
         index = Math.max(0, Math.min(index, channelSourceList.size() - 1));
         currentPlayIndex = index;
+        switchManager.setCurrentIndex(index);
 
         Channel ch = channelSourceList.get(index);
         if (ch == null || TextUtils.isEmpty(ch.getPlayUrl())) {
@@ -170,19 +162,13 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
-        // 更新播放器状态监听的频道名
         playerStateListener.setCurrentChannelName(ch.getName());
-        if (mPlayerManager != null) {
-            mPlayerManager.play(ch.getPlayUrl());
-        }
-
-        // 保存索引
+        mPlayerManager.play(ch.getPlayUrl());
         appConfig.setLastPlayIndex(index);
         channelListManager.setChannels(channelSourceList, index);
         epgManagerWrapper.refresh(ch, channelSourceList);
     }
 
-    // ========== 面板控制 ==========
     public void togglePanel() {
         panelManager.toggle(channelSourceList, currentPlayIndex);
     }
@@ -191,35 +177,24 @@ public class MainActivity extends AppCompatActivity {
         startActivity(new Intent(this, SettingsActivity.class));
     }
 
-    // ========== 列表点击事件 ==========
     private void initListViewClick() {
         ListView lvChannelList = findViewById(R.id.lv_channel_list);
         lvChannelList.setOnItemClickListener((p, v, pos, id) -> {
+            switchManager.setCurrentIndex(pos);
             playChannel(pos);
             togglePanel();
         });
     }
 
-    // ========== 遥控器按键 ==========
+    // ===================== 遥控器逻辑已经独立 =====================
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
-        switch (keyCode) {
-            case KeyEvent.KEYCODE_DPAD_UP:
-                playPrev();
-                return true;
-            case KeyEvent.KEYCODE_DPAD_DOWN:
-                playNext();
-                return true;
-            case KeyEvent.KEYCODE_DPAD_CENTER:
-            case KeyEvent.KEYCODE_ENTER:
-                togglePanel();
-                return true;
-            case KeyEvent.KEYCODE_MENU:
-                openSettings();
-                return true;
+        if (keyEventManager.dispatchKey(keyCode)) {
+            return true;
         }
         return super.onKeyDown(keyCode, event);
     }
+    // ==========================================================
 
     @Override
     protected void onResume() {
@@ -231,9 +206,7 @@ public class MainActivity extends AppCompatActivity {
     protected void onDestroy() {
         super.onDestroy();
         httpService.stop();
-        if (mPlayerManager != null) {
-            mPlayerManager.release();
-        }
+        mPlayerManager.release();
         mInstance = null;
     }
 }

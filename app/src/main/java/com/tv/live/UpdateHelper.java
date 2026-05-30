@@ -3,26 +3,24 @@ package com.tv.live;
 import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
-import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Environment;
-import android.util.Log;
+import android.os.Handler;
+import android.os.Looper;
 import android.widget.Toast;
-
 import androidx.core.content.FileProvider;
-
 import org.json.JSONObject;
-
 import java.io.BufferedReader;
 import java.io.File;
-import java.io.FileOutputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
 
 public class UpdateHelper {
-    private static final String TAG = "UpdateHelper";
-    private static final String UPDATE_JSON_URL = "https://raw.githubusercontent.com/cuicanrensheng/AH/main/update.json"; // 改成你的 raw 地址
+
+    // 你的 GitHub 地址
+    private static final String UPDATE_JSON_URL
+            = "https://raw.githubusercontent.com/cuicanrensheng/AH/main/update.json";
 
     public interface UpdateCallback {
         void onNewVersionFound(String versionName, String downloadUrl);
@@ -31,97 +29,87 @@ public class UpdateHelper {
     }
 
     public static void checkUpdate(final Context context, final UpdateCallback callback) {
-        new AsyncTask<Void, Void, JSONObject>() {
-            @Override
-            protected JSONObject doInBackground(Void... voids) {
-                try {
-                    URL url = new URL(UPDATE_JSON_URL);
-                    HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                    conn.setRequestMethod("GET");
-                    conn.setConnectTimeout(10000);
-                    conn.setReadTimeout(10000);
+        new Thread(() -> {
+            try {
+                URL url = new URL(UPDATE_JSON_URL);
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("GET");
+                conn.setConnectTimeout(10000);
+                conn.setReadTimeout(10000);
 
-                    BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
-                    StringBuilder sb = new StringBuilder();
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        sb.append(line);
-                    }
-                    reader.close();
-                    return new JSONObject(sb.toString());
-                } catch (Exception e) {
-                    Log.e(TAG, "checkUpdate error", e);
-                    return null;
+                BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+                StringBuilder sb = new StringBuilder();
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    sb.append(line);
                 }
-            }
+                reader.close();
+                conn.disconnect();
 
-            @Override
-            protected void onPostExecute(JSONObject json) {
-                if (json == null) {
-                    callback.onError("获取更新信息失败");
-                    return;
-                }
-                try {
-                    int versionCode = json.getInt("versionCode");
-                    String versionName = json.getString("versionName");
-                    String downloadUrl = json.getString("downloadUrl");
+                JSONObject json = new JSONObject(sb.toString());
+                int versionCode = json.getInt("versionCode");
+                String versionName = json.getString("versionName");
+                String downloadUrl = json.getString("downloadUrl");
 
-                    int currentVersionCode = context.getPackageManager().getPackageInfo(context.getPackageName(), 0).versionCode;
+                int currentVersion
+                        = context.getPackageManager().getPackageInfo(context.getPackageName(), 0).versionCode;
 
-                    if (versionCode > currentVersionCode) {
+                new Handler(Looper.getMainLooper()).post(() -> {
+                    if (versionCode > currentVersion) {
                         callback.onNewVersionFound(versionName, downloadUrl);
                     } else {
                         callback.onNoUpdate();
                     }
-                } catch (Exception e) {
-                    callback.onError("解析更新信息失败");
-                }
+                });
+
+            } catch (Exception e) {
+                new Handler(Looper.getMainLooper()).post(() ->
+                        callback.onError("检查更新失败：" + e.getMessage())
+                );
             }
-        }.execute();
+        }).start();
     }
 
-    public static void downloadAndInstallApk(final Context context, String url) {
-        new AsyncTask<String, Integer, File>() {
-            @Override
-            protected File doInBackground(String... strings) {
-                try {
-                    URL apkUrl = new URL(strings[0]);
-                    HttpURLConnection conn = (HttpURLConnection) apkUrl.openConnection();
-                    conn.setRequestMethod("GET");
-                    conn.setDoOutput(true);
-                    conn.connect();
+    public static void downloadAndInstallApk(Context context, String url) {
+        new Thread(() -> {
+            try {
+                URL apkUrl = new URL(url);
+                HttpURLConnection conn = (HttpURLConnection) apkUrl.openConnection();
+                conn.setRequestMethod("GET");
+                conn.connect();
 
-                    File apkFile = new File(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "update.apk");
-                    FileOutputStream fos = new FileOutputStream(apkFile);
-                    byte[] buffer = new byte[1024];
-                    int len;
-                    while ((len = conn.getInputStream().read(buffer)) != -1) {
-                        fos.write(buffer, 0, len);
-                    }
-                    fos.close();
-                    return apkFile;
-                } catch (Exception e) {
-                    Log.e(TAG, "download apk error", e);
-                    return null;
+                File apkFile = new File(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "update.apk");
+                java.io.FileOutputStream fos = new java.io.FileOutputStream(apkFile);
+                byte[] buffer = new byte[1024];
+                int len;
+                while ((len = conn.getInputStream().read(buffer)) != -1) {
+                    fos.write(buffer, 0, len);
                 }
-            }
+                fos.close();
+                conn.disconnect();
 
-            @Override
-            protected void onPostExecute(File apkFile) {
-                if (apkFile == null || !apkFile.exists()) {
-                    Toast.makeText(context, "下载更新失败", Toast.LENGTH_SHORT).show();
-                    return;
-                }
-                installApk(context, apkFile);
+                new Handler(Looper.getMainLooper()).post(() -> {
+                    Toast.makeText(context, "下载完成，开始安装", Toast.LENGTH_SHORT).show();
+                    installApk(context, apkFile);
+                });
+
+            } catch (Exception e) {
+                new Handler(Looper.getMainLooper()).post(() ->
+                        Toast.makeText(context, "下载失败", Toast.LENGTH_SHORT).show()
+                );
             }
-        }.execute(url);
+        }).start();
     }
 
     private static void installApk(Context context, File apkFile) {
         Intent intent = new Intent(Intent.ACTION_VIEW);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            Uri apkUri = FileProvider.getUriForFile(context, context.getPackageName() + ".fileprovider", apkFile);
-            intent.setDataAndType(apkUri, "application/vnd.android.package-archive");
+            Uri uri = FileProvider.getUriForFile(
+                    context,
+                    context.getPackageName() + ".fileprovider",
+                    apkFile
+            );
+            intent.setDataAndType(uri, "application/vnd.android.package-archive");
             intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
         } else {
             intent.setDataAndType(Uri.fromFile(apkFile), "application/vnd.android.package-archive");

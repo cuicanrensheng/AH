@@ -68,21 +68,42 @@ public class SettingsActivity extends AppCompatActivity {
 
         updateCastBtn();
 
-// ========== 开机自启开关绑定 ==========
-// 加载用户之前保存的状态，让开关打开时显示正确
-boolean isAutoStartEnabled = sp.getBoolean("boot_auto_start", false);
-sw_boot.setChecked(isAutoStartEnabled);
+        // ====================== 所有开关一次性绑定完成 ======================
+        // 开机自启
+        sw_boot.setChecked(sp.getBoolean("boot_auto_start", false));
+        sw_boot.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            sp.edit().putBoolean("boot_auto_start", isChecked).apply();
+            Toast.makeText(this, "开机自启" + (isChecked ? "已开启" : "已关闭"), Toast.LENGTH_SHORT).show();
+        });
 
-// 绑定开关事件：用户点击时，保存状态
-sw_boot.setOnCheckedChangeListener((buttonView, isChecked) -> {
-    sp.edit().putBoolean("boot_auto_start", isChecked).apply();
-    Toast.makeText(this, "开机自启" + (isChecked ? "已开启" : "已关闭"), Toast.LENGTH_SHORT).show();
-});
-// ====================================
+        // 节目单开关
+        sw_epg.setChecked(sp.getBoolean("epg_enable", true));
+        sw_epg.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            sp.edit().putBoolean("epg_enable", isChecked).apply();
+            Toast.makeText(this, "节目单" + (isChecked ? "已开启" : "已关闭"), Toast.LENGTH_SHORT).show();
+        });
 
-btn_cast.setOnClickListener(v -> {
-    CastHelper.toggleCast(this, this::updateCastBtn);
-});
+        // 自动更新源
+        sw_auto_update.setChecked(sp.getBoolean("auto_update_source", true));
+        sw_auto_update.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            sp.edit().putBoolean("auto_update_source", isChecked).apply();
+            Toast.makeText(this, "自动更新源" + (isChecked ? "已开启" : "已关闭"), Toast.LENGTH_SHORT).show();
+        });
+
+        // 换台反转
+        sw_reverse.setChecked(sp.getBoolean("channel_reverse", false));
+        sw_reverse.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            sp.edit().putBoolean("channel_reverse", isChecked).apply();
+            Toast.makeText(this, "换台反转" + (isChecked ? "已开启" : "已关闭"), Toast.LENGTH_SHORT).show();
+        });
+
+        // 数字选台
+        sw_num_channel.setChecked(sp.getBoolean("number_channel_enable", true));
+        sw_num_channel.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            sp.edit().putBoolean("number_channel_enable", isChecked).apply();
+            Toast.makeText(this, "数字选台" + (isChecked ? "已开启" : "已关闭"), Toast.LENGTH_SHORT).show();
+        });
+        // ==================================================================
 
         btn_cast.setOnClickListener(v -> {
             CastHelper.toggleCast(this, this::updateCastBtn);
@@ -127,12 +148,6 @@ btn_cast.setOnClickListener(v -> {
     }
 
     private void initListeners() {
-        sw_boot.setOnCheckedChangeListener((b, v) -> save("boot_auto_start", v));
-        sw_epg.setOnCheckedChangeListener((b, v) -> save("epg_enable", v));
-        sw_auto_update.setOnCheckedChangeListener((b, v) -> save("auto_update_source", v));
-        sw_reverse.setOnCheckedChangeListener((b, v) -> save("channel_reverse", v));
-        sw_num_channel.setOnCheckedChangeListener((b, v) -> save("number_channel_enable", v));
-
         tv_screen_ratio.setOnClickListener(v -> showRatioDialog());
         tv_custom_source.setOnClickListener(v -> showInputDialog("自定义订阅源", "请输入直播源地址", "custom_live_url"));
         tv_custom_epg.setOnClickListener(v -> showInputDialog("自定义节目单", "请输入EPG地址", "custom_epg_url"));
@@ -141,11 +156,8 @@ btn_cast.setOnClickListener(v -> {
         tv_qr_code.setOnClickListener(v -> showQRCodeDialog());
     }
 
-    private void save(String k, boolean v) {
-        sp.edit().putBoolean(k, v).apply();
-    }
-
     private void loadConfig() {
+        // 开关已经在onCreate里绑定，这里只做备用兼容
         sw_boot.setChecked(sp.getBoolean("boot_auto_start", false));
         sw_epg.setChecked(sp.getBoolean("epg_enable", true));
         sw_auto_update.setChecked(sp.getBoolean("auto_update_source", true));

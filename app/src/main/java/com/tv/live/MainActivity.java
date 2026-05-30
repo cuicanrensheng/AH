@@ -48,12 +48,11 @@ public class MainActivity extends AppCompatActivity {
     private ChannelListManager channelListManager;
     private GroupListManager groupListManager;
     private DateListManager dateListManager;
-    private EpgManagerWrapper epgManagerWrapper;
-    private PlayerStateListenerImpl playerStateListener;
+    public EpgManagerWrapper epgManagerWrapper;
+    public PlayerStateListenerImpl playerStateListener;
     private ChannelSwitchManager switchManager;
     private boolean epgPanelOpen = false;
 
-    // 设置
     private boolean epg_enable;
     private boolean channel_reverse;
 
@@ -66,7 +65,7 @@ public class MainActivity extends AppCompatActivity {
                     String customLive = appConfig.getCustomLiveUrl();
                     String customEpg = appConfig.getCustomEpgUrl();
                     if (customLive != null) UrlConfig.LIVE_URL = customLive;
-                    if (customEpg != null) UrlConfig.EPG_URL = customEpg;
+                    if (customEpg != null) UrlConfig.EPG_URL = epgUrl;
                     loadLiveAndEpg();
                 });
             }
@@ -106,7 +105,7 @@ public class MainActivity extends AppCompatActivity {
 
         registerReceiver(refreshReceiver, new IntentFilter("com.tv.live.REFRESH_LIVE_AND_EPG"));
 
-        // ========== 1. 打开节目单 → 强制刷新，无旧数据 ==========
+        // 打开节目单 → 强制刷新
         btn_show_epg.setOnClickListener(v -> {
             if (!epg_enable) {
                 Toast.makeText(this, "节目单已关闭", Toast.LENGTH_SHORT).show();
@@ -124,7 +123,7 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        // ========== 2. 点击日期 → 立刻刷新节目单 ==========
+        // 点击日期 → 刷新EPG
         lvDate.setOnItemClickListener((parent, view, position, id) -> {
             if (!channelSourceList.isEmpty()) {
                 epgManagerWrapper.refresh(
@@ -134,12 +133,12 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        // ========== 3. 点击分组 → 刷新频道列表 ==========
+        // 点击分组 → 刷新频道
         lvGroup.setOnItemClickListener((parent, view, position, id) -> {
             channelListManager.setChannels(channelSourceList, currentPlayIndex);
         });
 
-        // 初始化管理器
+        // 初始化组件
         channelListManager = new ChannelListManager(this, lvChannelList);
         groupListManager = new GroupListManager(this, lvGroup);
         dateListManager = new DateListManager(this, lvDate);
@@ -165,7 +164,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void loadSettings() {
-        SharedPreferences sp = getSharedPreferences("app_settings", MODE_PRIVATE);
+        SharedPreferences sp = getSharedPreferences("app_settings", Context.MODE_PRIVATE);
         epg_enable = sp.getBoolean("epg_enable", true);
         channel_reverse = sp.getBoolean("channel_reverse", false);
     }
@@ -178,7 +177,6 @@ public class MainActivity extends AppCompatActivity {
                 channelSourceList.addAll(channels);
                 switchManager.setChannelList(channelSourceList);
                 groupListManager.setGroups(channelSourceList);
-                // ========== 4. 分组加载完 → 同步刷新频道 ==========
                 channelListManager.setChannels(channelSourceList, currentPlayIndex);
                 playChannel(currentPlayIndex);
             }
@@ -200,7 +198,6 @@ public class MainActivity extends AppCompatActivity {
         }));
     }
 
-    // ========== 换台反转生效 ==========
     public void playPrev() {
         int idx = channel_reverse ? switchManager.next() : switchManager.prev();
         playChannel(idx);
@@ -211,7 +208,6 @@ public class MainActivity extends AppCompatActivity {
         playChannel(idx);
     }
 
-    // ========== 5. 切频道 → EPG 自动刷新 ==========
     public void playChannel(int index) {
         if (channelSourceList == null || channelSourceList.isEmpty()) return;
         index = Math.max(0, Math.min(index, channelSourceList.size() - 1));
@@ -223,13 +219,10 @@ public class MainActivity extends AppCompatActivity {
         mPlayerManager.play(ch.getPlayUrl());
         appConfig.setLastPlayIndex(index);
 
-        // 刷新频道列表
         channelListManager.setChannels(channelSourceList, index);
-        // 刷新节目单
         epgManagerWrapper.refresh(ch, channelSourceList);
     }
 
-    // ========== 点击频道 → 播放 + EPG 双刷新 ==========
     private void initListViewClick() {
         ListView lvChannelList = findViewById(R.id.lv_channel_list);
         lvChannelList.setOnItemClickListener((p, v, pos, id) -> {
@@ -239,15 +232,20 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
+    public void togglePanel() {
+        panelManager.toggle(channelSourceList, currentPlayIndex);
+    }
+
+    // ✅ 修复编译报错：给遥控器/手势调用
+    public void openSettings() {
+        startActivity(new Intent(this, SettingsActivity.class));
+    }
+
     public void onReceiveConfig(String liveUrl, String epgUrl) {
         AppConfig.getInstance(this).setCustomUrls(liveUrl, epgUrl);
         if (liveUrl != null) UrlConfig.LIVE_URL = liveUrl;
         if (epgUrl != null) UrlConfig.EPG_URL = epgUrl;
         runOnUiThread(this::loadLiveAndEpg);
-    }
-
-    public void togglePanel() {
-        panelManager.toggle(channelSourceList, currentPlayIndex);
     }
 
     @Override
@@ -257,6 +255,12 @@ public class MainActivity extends AppCompatActivity {
         } else {
             super.onBackPressed();
         }
+    }
+
+    @Override
+    public boolean onKeyDown(int keyCode, KeyEvent event) {
+        if (keyEventManager.dispatchKey(keyCode)) return true;
+        return super.onKeyDown(keyCode, event);
     }
 
     @Override

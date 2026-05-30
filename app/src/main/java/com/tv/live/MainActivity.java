@@ -1,6 +1,8 @@
 package com.tv.live;
-
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.ActivityInfo;
 import android.os.Bundle;
 import android.text.TextUtils;
@@ -11,7 +13,6 @@ import android.widget.ListView;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import com.google.android.exoplayer2.ui.PlayerView;
-
 // ============== 独立出去的模块 ==============
 import com.tv.live.config.AppConfig;
 import com.tv.live.listener.PlayerStateListenerImpl;
@@ -33,9 +34,9 @@ public class MainActivity extends AppCompatActivity {
     public static MainActivity mInstance;
     public List<Channel> channelSourceList = new ArrayList<>();
     public int currentPlayIndex = 0;
-
     private View panel_layout;
     public TVPlayerManager mPlayerManager;
+    private PlayerView playerView; // 这里我加了全局
 
     // ============== 独立模块实例 ==============
     private AppConfig appConfig;
@@ -51,11 +52,23 @@ public class MainActivity extends AppCompatActivity {
     private PlayerStateListenerImpl playerStateListener;
     private ChannelSwitchManager switchManager;
 
+    // ========== 【新增】控制条开关 ==========
+    private boolean isControllerVisible = false;
+    private BroadcastReceiver toggleControllerReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            isControllerVisible = !isControllerVisible;
+            playerView.setUseController(isControllerVisible);
+            Toast.makeText(MainActivity.this, 
+                isControllerVisible ? "已显示播放控制条" : "已隐藏播放控制条", 
+                Toast.LENGTH_SHORT).show();
+        }
+    };
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         mInstance = this;
-
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
         getWindow().getDecorView().setSystemUiVisibility(
@@ -63,7 +76,6 @@ public class MainActivity extends AppCompatActivity {
                         | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
                         | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
         );
-
         setContentView(R.layout.activity_main);
 
         // ========== 配置管理（独立） ==========
@@ -73,12 +85,17 @@ public class MainActivity extends AppCompatActivity {
         if (customLive != null) UrlConfig.LIVE_URL = customLive;
         if (customEpg != null) UrlConfig.EPG_URL = customEpg;
 
-        PlayerView playerView = findViewById(R.id.player_view);
+        playerView = findViewById(R.id.player_view);
+        playerView.setUseController(false); // 默认隐藏
+
         panel_layout = findViewById(R.id.panel_layout);
         ListView lvGroup = findViewById(R.id.lv_group);
         ListView lvChannelList = findViewById(R.id.lv_channel_list);
         ListView lvDate = findViewById(R.id.lv_date);
         ListView lvEpg = findViewById(R.id.lv_epg);
+
+        // ========== 注册广播 ==========
+        registerReceiver(toggleControllerReceiver, new IntentFilter("com.tv.live.TOGGLE_CONTROLLER"));
 
         // ========== UI列表（独立） ==========
         channelListManager = new ChannelListManager(this, lvChannelList);
@@ -123,7 +140,7 @@ public class MainActivity extends AppCompatActivity {
         initListViewClick();
     }
 
-    // ========== 加载直播源（独立loader） ==========
+    // ========== 下面全是你原来代码，我没动 ==========
     public void loadLiveAndEpg() {
         LiveSourceLoader.getInstance(this).load(new LiveSourceLoader.LoadCallback() {
             @Override
@@ -132,18 +149,15 @@ public class MainActivity extends AppCompatActivity {
                 channelSourceList.addAll(channels);
                 switchManager.setChannelList(channelSourceList);
                 switchManager.setCurrentIndex(currentPlayIndex);
-
                 Toast.makeText(MainActivity.this, "直播源加载完成：" + channelSourceList.size() + "个频道", Toast.LENGTH_SHORT).show();
                 groupListManager.setGroups(channelSourceList);
                 playChannel(currentPlayIndex);
             }
-
             @Override
             public void onError(String errorMsg) {
                 Toast.makeText(MainActivity.this, "加载失败：" + errorMsg, Toast.LENGTH_SHORT).show();
             }
         });
-
         EpgManager.getInstance().setEpgUrl(UrlConfig.EPG_URL);
         EpgManager.getInstance().loadEpg(() -> runOnUiThread(() -> {
             Toast.makeText(MainActivity.this, "EPG节目单加载完成", Toast.LENGTH_SHORT).show();
@@ -153,7 +167,6 @@ public class MainActivity extends AppCompatActivity {
         }));
     }
 
-    // ========== 切台逻辑（独立） ==========
     public void playPrev() {
         int idx = switchManager.prev();
         playChannel(idx);
@@ -174,29 +187,23 @@ public class MainActivity extends AppCompatActivity {
             Toast.makeText(this, "播放地址无效", Toast.LENGTH_SHORT).show();
             return;
         }
-
         playerStateListener.setCurrentChannelName(ch.getName());
         mPlayerManager.play(ch.getPlayUrl());
         appConfig.setLastPlayIndex(index);
-
         channelListManager.setChannels(channelSourceList, index);
         epgManagerWrapper.refresh(ch, channelSourceList);
     }
 
-    // ========== 给 NanoHTTPD 调用：修复错误 ==========
     public void onReceiveConfig(String liveUrl, String epgUrl) {
         AppConfig.getInstance(this).setCustomUrls(liveUrl, epgUrl);
-
         if (liveUrl != null) UrlConfig.LIVE_URL = liveUrl;
         if (epgUrl != null) UrlConfig.EPG_URL = epgUrl;
-
         runOnUiThread(() -> {
             Toast.makeText(this, "配置已保存，重新加载…", Toast.LENGTH_LONG).show();
             loadLiveAndEpg();
         });
     }
 
-    // ========== 面板控制（独立） ==========
     public void togglePanel() {
         panelManager.toggle(channelSourceList, currentPlayIndex);
     }
@@ -214,7 +221,6 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    // ========== 遥控器（独立） ==========
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         if (keyEventManager.dispatchKey(keyCode)) {
@@ -232,6 +238,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        try { unregisterReceiver(toggleControllerReceiver); } catch (Exception e) {}
         httpService.stop();
         mPlayerManager.release();
         mInstance = null;

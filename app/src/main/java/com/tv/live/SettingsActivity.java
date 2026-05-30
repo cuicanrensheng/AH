@@ -1,4 +1,5 @@
 package com.tv.live;
+
 import android.app.AlertDialog;
 import android.content.Context;
 import android.content.Intent;
@@ -43,22 +44,19 @@ public class SettingsActivity extends AppCompatActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        // ========== 透明背景（已加好） ==========
         getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
         getWindow().getAttributes().dimAmount = 0.6f;
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND, WindowManager.LayoutParams.FLAG_DIM_BEHIND);
-
         super.onCreate(savedInstanceState);
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
         setContentView(R.layout.activity_settings);
-        sp = getSharedPreferences("app_settings", MODE_PRIVATE);
 
+        sp = getSharedPreferences("app_settings", MODE_PRIVATE);
         sw_boot = findViewById(R.id.sw_boot);
         sw_epg = findViewById(R.id.sw_epg);
         sw_auto_update = findViewById(R.id.sw_auto_update);
         sw_reverse = findViewById(R.id.sw_reverse);
         sw_num_channel = findViewById(R.id.sw_num_channel);
-
         tv_screen_ratio = findViewById(R.id.tv_screen_ratio);
         tv_custom_source = findViewById(R.id.tv_custom_source);
         tv_custom_epg = findViewById(R.id.tv_custom_epg);
@@ -68,25 +66,46 @@ public class SettingsActivity extends AppCompatActivity {
         btn_toggle_controller = findViewById(R.id.btn_toggle_controller);
         btn_cast = findViewById(R.id.btn_cast);
 
-        // ========== 初始化按钮文字 ==========
         btn_toggle_controller.setText("显示控制条");
         updateCastBtn();
 
-        // ========== 控制条开关（自动切换文字） ==========
         btn_toggle_controller.setOnClickListener(v -> {
             boolean nowShow = btn_toggle_controller.getText().toString().contains("显示");
             btn_toggle_controller.setText(nowShow ? "隐藏控制条" : "显示控制条");
             sendBroadcast(new Intent("com.tv.live.TOGGLE_CONTROLLER"));
         });
 
-        // ========== 投屏按钮 ==========
         btn_cast.setOnClickListener(v -> {
             CastHelper.toggleCast(this, this::updateCastBtn);
         });
 
+        // ====================== 【检查更新 已补全】 ======================
         findViewById(R.id.btn_check_update).setOnClickListener(v -> {
-            Toast.makeText(this, "已是最新版本", Toast.LENGTH_SHORT).show();
+            UpdateHelper.checkUpdate(this, new UpdateHelper.UpdateCallback() {
+                @Override
+                public void onNewVersionFound(String versionName, String downloadUrl) {
+                    new AlertDialog.Builder(SettingsActivity.this)
+                            .setTitle("发现新版本")
+                            .setMessage("最新版：" + versionName)
+                            .setPositiveButton("立即更新", (d, w) -> {
+                                UpdateHelper.downloadAndInstallApk(SettingsActivity.this, downloadUrl);
+                            })
+                            .setNegativeButton("稍后", null)
+                            .show();
+                }
+
+                @Override
+                public void onNoUpdate() {
+                    Toast.makeText(SettingsActivity.this, "已是最新版本", Toast.LENGTH_SHORT).show();
+                }
+
+                @Override
+                public void onError(String msg) {
+                    Toast.makeText(SettingsActivity.this, msg, Toast.LENGTH_SHORT).show();
+                }
+            });
         });
+        // ================================================================
 
         loadConfig();
         initListeners();
@@ -94,7 +113,6 @@ public class SettingsActivity extends AppCompatActivity {
         startPushServer();
     }
 
-    // ========== 投屏按钮状态更新 ==========
     private void updateCastBtn() {
         if (CastManager.getInstance(this).isCasting()) {
             btn_cast.setText("断开投屏｜" + CastManager.getInstance(this).getCastDeviceName());
@@ -103,14 +121,12 @@ public class SettingsActivity extends AppCompatActivity {
         }
     }
 
-    // ========== 下面全部是你原有代码，我没改动 ==========
     private void initListeners() {
         sw_boot.setOnCheckedChangeListener((b, v) -> save("boot_auto_start", v));
         sw_epg.setOnCheckedChangeListener((b, v) -> save("epg_enable", v));
         sw_auto_update.setOnCheckedChangeListener((b, v) -> save("auto_update_source", v));
         sw_reverse.setOnCheckedChangeListener((b, v) -> save("channel_reverse", v));
         sw_num_channel.setOnCheckedChangeListener((b, v) -> save("number_channel_enable", v));
-
         tv_screen_ratio.setOnClickListener(v -> showRatioDialog());
         tv_custom_source.setOnClickListener(v -> showInputDialog("自定义订阅源", "请输入直播源地址", "custom_live_url"));
         tv_custom_epg.setOnClickListener(v -> showInputDialog("自定义节目单", "请输入EPG地址", "custom_epg_url"));

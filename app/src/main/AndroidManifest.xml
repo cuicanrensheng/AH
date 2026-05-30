@@ -30,7 +30,11 @@
             android:name=".SettingsActivity"
             android:screenOrientation="sensorLandscape"
             android:configChanges="orientation|screenSize"/>
-            
+        
+        <activity
+            android:name=".SettingsActivity"
+            android:theme="@style/TransparentTheme"/>
+        
         <activity 
             android:name=".ChannelListActivity"
             android:screenOrientation="sensorLandscape"

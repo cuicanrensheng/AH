@@ -4,6 +4,7 @@ import android.content.Context;
 import android.widget.Toast;
 
 public class CastHelper {
+
     public static void toggleCast(Context context, OnCastStateChangeListener listener) {
         CastManager cm = CastManager.getInstance(context);
         if (cm.isCasting()) {
@@ -13,7 +14,9 @@ public class CastHelper {
             cm.openCastPicker();
             Toast.makeText(context, "请选择投屏设备", Toast.LENGTH_SHORT).show();
         }
-        if (listener != null) listener.onCastStateChanged();
+        if (listener != null) {
+            listener.onCastStateChanged();
+        }
     }
 
     public interface OnCastStateChangeListener {

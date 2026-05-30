@@ -28,6 +28,5 @@ public class DateListManager {
         lvDate.setAdapter(adapter);
     }
 
-    public void onBackPressed() {
-    }
+    public void onBackPressed() {}
 }

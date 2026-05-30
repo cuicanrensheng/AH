@@ -32,7 +32,7 @@ import java.util.List;
 public class SettingsActivity extends AppCompatActivity {
     private Switch sw_boot, sw_epg, sw_auto_update, sw_reverse, sw_num_channel;
     private TextView tv_screen_ratio, tv_custom_source, tv_custom_epg, tv_multi_source, tv_multi_epg, tv_qr_code;
-    private TextView btn_toggle_controller;
+    private TextView btn_toggle_controller, btn_cast;
     private SharedPreferences sp;
     private String currentWebUrl;
     private ServerSocket serverSocket;
@@ -60,15 +60,19 @@ public class SettingsActivity extends AppCompatActivity {
         tv_multi_epg = findViewById(R.id.tv_multi_epg);
         tv_qr_code = findViewById(R.id.tv_qr_code);
         btn_toggle_controller = findViewById(R.id.btn_toggle_controller);
+        btn_cast = findViewById(R.id.btn_cast);
 
-        // 初始化按钮文字
         updateControllerButtonText();
+        updateCastButtonStatus();
 
-        // 播放控制条开关
         btn_toggle_controller.setOnClickListener(v -> {
             isControllerShow = !isControllerShow;
             sendBroadcast(new Intent("com.tv.live.TOGGLE_CONTROLLER"));
             updateControllerButtonText();
+        });
+
+        btn_cast.setOnClickListener(v -> {
+            CastHelper.toggleCast(this, this::updateCastButtonStatus);
         });
 
         findViewById(R.id.btn_check_update).setOnClickListener(v -> {
@@ -82,10 +86,16 @@ public class SettingsActivity extends AppCompatActivity {
     }
 
     private void updateControllerButtonText() {
-        if (isControllerShow) {
-            btn_toggle_controller.setText("隐藏播放控制条");
+        btn_toggle_controller.setText(isControllerShow ? "隐藏播放控制条" : "显示播放控制条");
+    }
+
+    // --------------------- 投屏状态自动刷新 ---------------------
+    private void updateCastButtonStatus() {
+        CastManager cm = CastManager.getInstance(this);
+        if (cm.isCasting()) {
+            btn_cast.setText("断开投屏｜" + cm.getCastDeviceName());
         } else {
-            btn_toggle_controller.setText("显示播放控制条");
+            btn_cast.setText("开始投屏");
         }
     }
 
@@ -125,7 +135,6 @@ public class SettingsActivity extends AppCompatActivity {
                 }).show();
     }
 
-    // 【修改】输入框保存后发送刷新广播
     private void showInputDialog(String title, String hint, String key) {
         EditText ed = new EditText(this);
         ed.setHint(hint);
@@ -138,7 +147,6 @@ public class SettingsActivity extends AppCompatActivity {
                     if(!url.isEmpty()){
                         sp.edit().putString(key,url).apply();
                         addHistory(key.contains("live")?"live_history":"epg_history",url);
-                        // 发送广播通知 MainActivity 刷新
                         sendBroadcast(new Intent("com.tv.live.REFRESH_LIVE_AND_EPG"));
                         Toast.makeText(this, "已保存，正在刷新...", Toast.LENGTH_SHORT).show();
                     }
@@ -147,7 +155,6 @@ public class SettingsActivity extends AppCompatActivity {
                 .show();
     }
 
-    // 【修改】历史选择后发送刷新广播
     private void showHistoryDialog(String title, String key) {
         List<String> list = getHistory(key);
         if(list.isEmpty()){ Toast.makeText(this,"无记录",Toast.LENGTH_SHORT).show(); return; }
@@ -157,7 +164,6 @@ public class SettingsActivity extends AppCompatActivity {
                     String url = list.get(w);
                     sp.edit().putString(key.contains("live")?"custom_live_url":"custom_epg_url",url).apply();
                     addHistory(key.contains("live")?"live_history":"epg_history",url);
-                    // 发送广播通知 MainActivity 刷新
                     sendBroadcast(new Intent("com.tv.live.REFRESH_LIVE_AND_EPG"));
                     Toast.makeText(this, "已切换，正在刷新...", Toast.LENGTH_SHORT).show();
                 })
@@ -230,7 +236,6 @@ public class SettingsActivity extends AppCompatActivity {
                                     sp.edit().putString("custom_epg_url",json.optString("epg_url")).apply();
                                     addHistory("epg_history",json.optString("epg_url"));
                                 }
-                                // 收到推送配置后也发送刷新广播
                                 sendBroadcast(new Intent("com.tv.live.REFRESH_LIVE_AND_EPG"));
                             });
                             socket.close();
@@ -239,6 +244,12 @@ public class SettingsActivity extends AppCompatActivity {
                 }
             }catch (Exception e){}
         }).start();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        updateCastButtonStatus();
     }
 
     @Override

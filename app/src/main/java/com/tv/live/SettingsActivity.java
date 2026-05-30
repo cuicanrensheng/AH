@@ -1,7 +1,7 @@
 package com.tv.live;
-
 import android.app.AlertDialog;
 import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
 import android.graphics.Bitmap;
@@ -32,18 +32,19 @@ import java.util.List;
 public class SettingsActivity extends AppCompatActivity {
     private Switch sw_boot, sw_epg, sw_auto_update, sw_reverse, sw_num_channel;
     private TextView tv_screen_ratio, tv_custom_source, tv_custom_epg, tv_multi_source, tv_multi_epg, tv_qr_code;
+    private TextView btn_toggle_controller; // 你的按钮
     private SharedPreferences sp;
     private String currentWebUrl;
     private ServerSocket serverSocket;
     private Handler handler = new Handler(Looper.getMainLooper());
     private static final int PORT = 10481;
+    private boolean isControllerShow = false; // 控制条状态
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
         setContentView(R.layout.activity_settings);
-
         sp = getSharedPreferences("app_settings", MODE_PRIVATE);
 
         sw_boot = findViewById(R.id.sw_boot);
@@ -58,6 +59,17 @@ public class SettingsActivity extends AppCompatActivity {
         tv_multi_source = findViewById(R.id.tv_multi_source);
         tv_multi_epg = findViewById(R.id.tv_multi_epg);
         tv_qr_code = findViewById(R.id.tv_qr_code);
+        btn_toggle_controller = findViewById(R.id.btn_toggle_controller);
+
+        // 初始化按钮文字
+        updateControllerButtonText();
+
+        // ========== 播放控制条开关（带文字切换） ==========
+        btn_toggle_controller.setOnClickListener(v -> {
+            isControllerShow = !isControllerShow;
+            sendBroadcast(new Intent("com.tv.live.TOGGLE_CONTROLLER"));
+            updateControllerButtonText(); // 切换文字
+        });
 
         findViewById(R.id.btn_check_update).setOnClickListener(v -> {
             Toast.makeText(this, "已是最新版本", Toast.LENGTH_SHORT).show();
@@ -69,6 +81,16 @@ public class SettingsActivity extends AppCompatActivity {
         startPushServer();
     }
 
+    // ========== 自动更新按钮文字 ==========
+    private void updateControllerButtonText() {
+        if (isControllerShow) {
+            btn_toggle_controller.setText("隐藏播放控制条");
+        } else {
+            btn_toggle_controller.setText("显示播放控制条");
+        }
+    }
+
+    // ========== 下面全是你原来代码，我没动 ==========
     private void initListeners() {
         sw_boot.setOnCheckedChangeListener((b, v) -> save("boot_auto_start", v));
         sw_epg.setOnCheckedChangeListener((b, v) -> save("epg_enable", v));

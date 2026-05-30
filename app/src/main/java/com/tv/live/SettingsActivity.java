@@ -67,6 +67,17 @@ public class SettingsActivity extends AppCompatActivity {
         btn_cast = findViewById(R.id.btn_cast);
 
         updateCastBtn();
+        // ========== 开机自启开关绑定 ==========
+        // 加载用户之前保存的状态，让开关打开时显示正确
+        boolean isAutoStartEnabled = sp.getBoolean("boot_auto_start", false);
+        sw_boot.setChecked(isAutoStartEnabled);
+
+        // 绑定开关事件：用户点击时，保存状态
+        sw_boot.setOnCheckedChangeListener((buttonView, isChecked) -> {
+        sp.edit().putBoolean("boot_auto_start", isChecked).apply();
+        Toast.makeText(this, "开机自启" + (isChecked ? "已开启" : "已关闭"), Toast.LENGTH_SHORT).show();
+});
+        // ====================================
 
         btn_cast.setOnClickListener(v -> {
             CastHelper.toggleCast(this, this::updateCastBtn);

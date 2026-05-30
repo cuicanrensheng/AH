@@ -32,5 +32,6 @@ public class ChannelListManager {
      public void onBackPressed() {
          if (listener != null) {
              listener.onBack();
-    }
-}
+     }
+  }
+}        

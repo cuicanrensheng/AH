@@ -66,6 +66,10 @@ public class TVPlayerManager {
             });
         }).start();
     }
+    
+    public void play(String url) {
+    playUrl(url);
+}
 
     // 解析 PHP 接口获取真实地址
     private String resolveStreamUrl(String url) {

@@ -11,6 +11,7 @@ import java.util.Set;
 public class GroupListManager {
     private final ListView lvGroup;
     private final Context context;
+    private List<String> groupList;
 
     public GroupListManager(Context context, ListView lvGroup) {
         this.context = context;
@@ -23,11 +24,16 @@ public class GroupListManager {
         for (Channel c : channelSourceList) {
             groupSet.add(c.getGroup());
         }
-        List<String> groupList = new ArrayList<>(groupSet);
+        groupList = new ArrayList<>(groupSet);
         ArrayAdapter<String> adapter = new ArrayAdapter<>(context, android.R.layout.simple_list_item_1, groupList);
         lvGroup.setAdapter(adapter);
     }
 
-    public void onBackPressed() {
+    // ====================== 补全：获取当前分组 ======================
+    public String getCurrentGroup(int position) {
+        if (groupList == null || position < 0 || position >= groupList.size()) return "";
+        return groupList.get(position);
     }
+
+    public void onBackPressed() {}
 }

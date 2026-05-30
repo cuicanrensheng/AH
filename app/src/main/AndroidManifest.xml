@@ -9,23 +9,11 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
-    <!-- 【新增】下载文件到外部存储（Android 13以下需要） -->
+    <!-- 下载文件到外部存储 -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
 
     <!-- 开机自启权限 -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-
-    <!-- 开机广播接收器 -->
-<receiver
-    android:name=".BootReceiver"
-    android:enabled="true"
-    android:exported="true">
-    <intent-filter>
-        <action android:name="android.intent.action.BOOT_COMPLETED" />
-        <category android:name="android.intent.category.DEFAULT" />
-    </intent-filter>
-</receiver>
-
 
     <application
         android:allowBackup="true"
@@ -56,7 +44,18 @@
             android:screenOrientation="sensorLandscape"
             android:configChanges="orientation|screenSize" />
 
-        <!-- FileProvider 配置（你这里已经是对的） -->
+        <!-- ✅ 开机广播接收器（移到这里，application 内部） -->
+        <receiver
+            android:name=".BootReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </receiver>
+
+        <!-- FileProvider -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -68,4 +67,5 @@
         </provider>
 
     </application>
+
 </manifest>

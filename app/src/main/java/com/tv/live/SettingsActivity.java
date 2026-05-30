@@ -32,13 +32,13 @@ import java.util.List;
 public class SettingsActivity extends AppCompatActivity {
     private Switch sw_boot, sw_epg, sw_auto_update, sw_reverse, sw_num_channel;
     private TextView tv_screen_ratio, tv_custom_source, tv_custom_epg, tv_multi_source, tv_multi_epg, tv_qr_code;
-    private TextView btn_toggle_controller; // 你的按钮
+    private TextView btn_toggle_controller;
     private SharedPreferences sp;
     private String currentWebUrl;
     private ServerSocket serverSocket;
     private Handler handler = new Handler(Looper.getMainLooper());
     private static final int PORT = 10481;
-    private boolean isControllerShow = false; // 控制条状态
+    private boolean isControllerShow = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -64,11 +64,11 @@ public class SettingsActivity extends AppCompatActivity {
         // 初始化按钮文字
         updateControllerButtonText();
 
-        // ========== 播放控制条开关（带文字切换） ==========
+        // 播放控制条开关
         btn_toggle_controller.setOnClickListener(v -> {
             isControllerShow = !isControllerShow;
             sendBroadcast(new Intent("com.tv.live.TOGGLE_CONTROLLER"));
-            updateControllerButtonText(); // 切换文字
+            updateControllerButtonText();
         });
 
         findViewById(R.id.btn_check_update).setOnClickListener(v -> {
@@ -81,7 +81,6 @@ public class SettingsActivity extends AppCompatActivity {
         startPushServer();
     }
 
-    // ========== 自动更新按钮文字 ==========
     private void updateControllerButtonText() {
         if (isControllerShow) {
             btn_toggle_controller.setText("隐藏播放控制条");
@@ -90,7 +89,6 @@ public class SettingsActivity extends AppCompatActivity {
         }
     }
 
-    // ========== 下面全是你原来代码，我没动 ==========
     private void initListeners() {
         sw_boot.setOnCheckedChangeListener((b, v) -> save("boot_auto_start", v));
         sw_epg.setOnCheckedChangeListener((b, v) -> save("epg_enable", v));
@@ -127,6 +125,7 @@ public class SettingsActivity extends AppCompatActivity {
                 }).show();
     }
 
+    // 【修改】输入框保存后发送刷新广播
     private void showInputDialog(String title, String hint, String key) {
         EditText ed = new EditText(this);
         ed.setHint(hint);
@@ -139,13 +138,16 @@ public class SettingsActivity extends AppCompatActivity {
                     if(!url.isEmpty()){
                         sp.edit().putString(key,url).apply();
                         addHistory(key.contains("live")?"live_history":"epg_history",url);
-                        if(MainActivity.mInstance!=null) MainActivity.mInstance.loadLiveAndEpg();
+                        // 发送广播通知 MainActivity 刷新
+                        sendBroadcast(new Intent("com.tv.live.REFRESH_LIVE_AND_EPG"));
+                        Toast.makeText(this, "已保存，正在刷新...", Toast.LENGTH_SHORT).show();
                     }
                 })
                 .setNegativeButton("取消",null)
                 .show();
     }
 
+    // 【修改】历史选择后发送刷新广播
     private void showHistoryDialog(String title, String key) {
         List<String> list = getHistory(key);
         if(list.isEmpty()){ Toast.makeText(this,"无记录",Toast.LENGTH_SHORT).show(); return; }
@@ -154,7 +156,10 @@ public class SettingsActivity extends AppCompatActivity {
                 .setItems(list.toArray(new String[0]),(d,w)->{
                     String url = list.get(w);
                     sp.edit().putString(key.contains("live")?"custom_live_url":"custom_epg_url",url).apply();
-                    if(MainActivity.mInstance!=null) MainActivity.mInstance.loadLiveAndEpg();
+                    addHistory(key.contains("live")?"live_history":"epg_history",url);
+                    // 发送广播通知 MainActivity 刷新
+                    sendBroadcast(new Intent("com.tv.live.REFRESH_LIVE_AND_EPG"));
+                    Toast.makeText(this, "已切换，正在刷新...", Toast.LENGTH_SHORT).show();
                 })
                 .setNegativeButton("关闭",null)
                 .show();
@@ -225,7 +230,8 @@ public class SettingsActivity extends AppCompatActivity {
                                     sp.edit().putString("custom_epg_url",json.optString("epg_url")).apply();
                                     addHistory("epg_history",json.optString("epg_url"));
                                 }
-                                if(MainActivity.mInstance!=null) MainActivity.mInstance.loadLiveAndEpg();
+                                // 收到推送配置后也发送刷新广播
+                                sendBroadcast(new Intent("com.tv.live.REFRESH_LIVE_AND_EPG"));
                             });
                             socket.close();
                         }catch (Exception e){}

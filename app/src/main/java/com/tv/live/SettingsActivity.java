@@ -12,9 +12,13 @@ import android.net.wifi.WifiManager;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.view.WindowManager;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.ArrayAdapter;
 import android.widget.EditText;
 import android.widget.ImageView;
+import android.widget.ListView;
 import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -39,6 +43,11 @@ public class SettingsActivity extends AppCompatActivity {
     private ServerSocket serverSocket;
     private Handler handler = new Handler(Looper.getMainLooper());
     private static final int PORT = 10481;
+
+    // 蓝色高亮专用
+    private ListView listView;
+    private SettingsAdapter adapter;
+    private int selectedPosition = 0;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -121,7 +130,6 @@ public class SettingsActivity extends AppCompatActivity {
 
         loadConfig();
         initListeners();
-
         currentWebUrl = "http://" + getDeviceIPAddress() + ":" + PORT;
         startPushServer();
     }
@@ -276,4 +284,33 @@ public class SettingsActivity extends AppCompatActivity {
         super.onDestroy();
         try{ if(serverSocket!=null) serverSocket.close(); }catch (Exception ignored){}
     }
+
+    // ====================== 只加了这里：蓝色高亮适配器 ======================
+    class SettingsAdapter extends ArrayAdapter<String> {
+        public SettingsAdapter(Context context, List<String> items) {
+            super(context, R.layout.item_settings, items);
+        }
+
+        @Override
+        public View getView(int position, View convertView, ViewGroup parent) {
+            if (convertView == null) {
+                convertView = LayoutInflater.from(getContext()).inflate(R.layout.item_settings, parent, false);
+            }
+            TextView tv = convertView.findViewById(R.id.tv_setting_item);
+            tv.setText(getItem(position));
+
+            if (position == selectedPosition) {
+                tv.setTextColor(Color.parseColor("#40A9FF"));
+            } else {
+                tv.setTextColor(Color.WHITE);
+            }
+            return convertView;
+        }
+    }
+
+    public void setSelectedPosition(int pos) {
+        selectedPosition = pos;
+        if (adapter != null) adapter.notifyDataSetChanged();
+    }
+    // ======================================================================
 }

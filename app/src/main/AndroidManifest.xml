@@ -26,19 +26,17 @@
             </intent-filter>
         </activity>
 
-        <activity 
-            android:name=".SettingsActivity"
-            android:screenOrientation="sensorLandscape"
-            android:configChanges="orientation|screenSize"/>
-        
-        <activity
-            android:name=".SettingsActivity"
-            android:theme="@style/TransparentTheme"/>
-        
-        <activity 
-            android:name=".ChannelListActivity"
-            android:screenOrientation="sensorLandscape"
-            android:configChanges="orientation|screenSize"/>
+        <!-- 这里是合并后的 SettingsActivity -->
+    <activity
+        android:name=".SettingsActivity"
+        android:theme="@style/TransparentTheme"
+        android:screenOrientation="sensorLandscape"
+        android:configChanges="orientation|screenSize" />
+
+    <activity
+        android:name=".ChannelListActivity"
+        android:screenOrientation="sensorLandscape"
+        android:configChanges="orientation|screenSize" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

@@ -59,6 +59,9 @@ public class MainActivity extends AppCompatActivity {
     private boolean auto_update_source;
     private int currentSelectedDateIndex = 0;
 
+    // 投屏相关（只新增，不删原有）
+    private CastManager castManager;
+
     private final BroadcastReceiver toggleControllerReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
@@ -114,6 +117,23 @@ public class MainActivity extends AppCompatActivity {
         ListView lvDate = findViewById(R.id.lv_date);
         ListView lvEpg = findViewById(R.id.lv_epg);
         TextView btn_show_epg = findViewById(R.id.btn_show_epg);
+
+        // ====================== 投屏初始化（只追加）======================
+        castManager = CastManager.getInstance(this);
+        // 投屏按钮点击
+        View btn_cast = findViewById(R.id.btn_cast);
+        if (btn_cast != null) {
+            btn_cast.setOnClickListener(v -> {
+                if (castManager.isCasting()) {
+                    castManager.disconnect();
+                    Toast.makeText(this, "已断开投屏", Toast.LENGTH_SHORT).show();
+                } else {
+                    castManager.openCastPicker();
+                    Toast.makeText(this, "请选择投屏设备", Toast.LENGTH_SHORT).show();
+                }
+            });
+        }
+        // ===============================================================
 
         registerReceiver(toggleControllerReceiver, new IntentFilter("com.tv.live.TOGGLE_CONTROLLER"));
         registerReceiver(refreshReceiver, new IntentFilter("com.tv.live.REFRESH_LIVE_AND_EPG"));
@@ -284,7 +304,6 @@ public class MainActivity extends AppCompatActivity {
         startActivity(new Intent(this, SettingsActivity.class));
     }
 
-    // ====================== 我在这里只加了这一段，没有删任何东西！======================
     public void onReceiveConfig(String liveUrl, String epgUrl) {
         AppConfig config = AppConfig.getInstance(this);
         config.setCustomUrls(liveUrl, epgUrl);
@@ -292,7 +311,6 @@ public class MainActivity extends AppCompatActivity {
         if (epgUrl != null) UrlConfig.EPG_URL = epgUrl;
         runOnUiThread(this::loadLiveAndEpg);
     }
-    // ==================================================================================
 
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
@@ -314,6 +332,9 @@ public class MainActivity extends AppCompatActivity {
         try { unregisterReceiver(refreshReceiver); } catch (Exception ignored) {}
         httpService.stop();
         mPlayerManager.release();
+        if (castManager != null) {
+            castManager.release();
+        }
         mInstance = null;
     }
 }

@@ -23,13 +23,13 @@ public class CastManager {
         return instance;
     }
 
-    // 打开系统投屏选择器
+    // 真正打开系统投屏选择器（修复版）
     public void openCastPicker() {
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN) {
-                mediaRouter.getRouteAt(0);
-            }
-        } catch (Exception ignored) {}
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN) {
+            // 触发系统路由选择器，选择音视频输出设备
+            mediaRouter.selectRoute(MediaRouter.ROUTE_TYPE_LIVE_AUDIO | MediaRouter.ROUTE_TYPE_LIVE_VIDEO,
+                    mediaRouter.getSelectedRoute(MediaRouter.ROUTE_TYPE_LIVE_AUDIO | MediaRouter.ROUTE_TYPE_LIVE_VIDEO));
+        }
     }
 
     // 选择设备
@@ -39,7 +39,10 @@ public class CastManager {
 
     // 断开投屏
     public void disconnect() {
-        currentRoute = null;
+        if (currentRoute != null) {
+            mediaRouter.unselect(MediaRouter.ROUTE_TYPE_LIVE_AUDIO | MediaRouter.ROUTE_TYPE_LIVE_VIDEO);
+            currentRoute = null;
+        }
     }
 
     // 是否正在投屏
@@ -53,8 +56,9 @@ public class CastManager {
         return "未连接";
     }
 
-    // 释放
+    // 释放资源
     public void release() {
         currentRoute = null;
+        instance = null;
     }
 }

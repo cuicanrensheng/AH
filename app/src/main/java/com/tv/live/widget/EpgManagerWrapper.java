@@ -1,5 +1,4 @@
 package com.tv.live.widget;
-
 import android.content.Context;
 import android.widget.ArrayAdapter;
 import android.widget.ListView;
@@ -23,12 +22,10 @@ public class EpgManagerWrapper {
             showEmpty();
             return;
         }
-
         new Thread(() -> {
             try {
                 List<Channel.EpgItem> epgList = EpgManager.getInstance().getEpg(currentChannel.getName());
                 List<String> data = new ArrayList<>();
-
                 if (epgList != null && !epgList.isEmpty()) {
                     for (Channel.EpgItem item : new ArrayList<>(epgList)) {
                         data.add(item.dayName + " " + item.time + " " + item.title);
@@ -36,7 +33,6 @@ public class EpgManagerWrapper {
                 } else {
                     data.add("暂无节目单");
                 }
-
                 updateUi(data);
             } catch (Exception e) {
                 updateUi(Collections.singletonList("暂无节目单"));
@@ -50,13 +46,11 @@ public class EpgManagerWrapper {
 
     private void updateUi(List<String> data) {
         lvEpg.post(() -> {
-            ArrayAdapter<String> adapter = new ArrayAdapter<>(context,
-                    android.R.layout.simple_list_item_1, data);
+            ArrayAdapter<String> adapter = new ArrayAdapter<>(context, android.R.layout.simple_list_item_1, data);
             lvEpg.setAdapter(adapter);
-            // 供外部调用，触发返回
-     public void onBackPressed() {
-         if (listener != null) {
-             listener.onBack();
-        }
+        });
+    }
+
+    public void onBackPressed() {
     }
 }

@@ -23,40 +23,33 @@ public class CastManager {
         return instance;
     }
 
-    // 打开系统投屏选择器
+    // 触发系统投屏选择器的核心代码
     public void openCastPicker() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN) {
-            // 触发系统自带的设备选择界面
-            mediaRouter.selectRoute(
-                    MediaRouter.ROUTE_TYPE_LIVE_AUDIO | MediaRouter.ROUTE_TYPE_LIVE_VIDEO,
-                    mediaRouter.getSelectedRoute(MediaRouter.ROUTE_TYPE_LIVE_AUDIO | MediaRouter.ROUTE_TYPE_LIVE_VIDEO)
-            );
+            int routeType = MediaRouter.ROUTE_TYPE_LIVE_AUDIO | MediaRouter.ROUTE_TYPE_LIVE_VIDEO;
+            // 强制切换到当前路由，系统会弹出选择界面
+            mediaRouter.selectRoute(routeType, mediaRouter.getSelectedRoute(routeType));
         }
     }
 
-    // 选择设备
     public void selectRoute(MediaRouter.RouteInfo route) {
         currentRoute = route;
     }
 
-    // 断开投屏（兼容无unselect方法的低版本）
+    // 断开投屏（仅标记状态，不调用会报错的系统API）
     public void disconnect() {
         currentRoute = null;
-        // 不再调用unselect，避免编译错误，仅清空状态即可
     }
 
-    // 是否正在投屏
     public boolean isCasting() {
         return currentRoute != null;
     }
 
-    // 获取投屏设备名
     public String getCastDeviceName() {
         if (isCasting()) return currentRoute.getName().toString();
         return "未连接";
     }
 
-    // 释放资源
     public void release() {
         currentRoute = null;
         instance = null;

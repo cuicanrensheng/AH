@@ -107,6 +107,15 @@ public class MainActivity extends AppCompatActivity {
         // 注册两个广播接收器
         registerReceiver(toggleControllerReceiver, new IntentFilter("com.tv.live.TOGGLE_CONTROLLER"));
         registerReceiver(refreshReceiver, new IntentFilter("com.tv.live.REFRESH_LIVE_AND_EPG"));
+        
+        TextView btn_show_epg = findViewById(R.id.btn_show_epg);
+        boolean epgPanelOpen = false;
+
+        btn_show_epg.setOnClickListener(v -> {
+        epgPanelOpen = !epgPanelOpen;
+        lvDate.setVisibility(epgPanelOpen ? View.VISIBLE : View.GONE);
+        lvEpg.setVisibility(epgPanelOpen ? View.VISIBLE : View.GONE);
+    });
         // UI列表管理
         channelListManager = new ChannelListManager(this, lvChannelList);
         groupListManager = new GroupListManager(this, lvGroup);

@@ -2,51 +2,54 @@ package com.tv.live;
 
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
-import android.content.Context;
-import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.text.TextUtils;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.ListView;
-import android.widget.TextView;
-import android.widget.Button;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import com.google.android.exoplayer2.ui.PlayerView;
+import com.tv.live.config.AppConfig;
+import com.tv.live.listener.PlayerStateListenerImpl;
+import com.tv.live.loader.LiveSourceLoader;
+import com.tv.live.manager.GestureManager;
+import com.tv.live.manager.PanelManager;
+import com.tv.live.manager.ScreenRatioManager;
+import com.tv.live.service.HttpConfigService;
 import com.tv.live.widget.ChannelListManager;
 import com.tv.live.widget.DateListManager;
 import com.tv.live.widget.EpgManagerWrapper;
 import com.tv.live.widget.GroupListManager;
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
 public class MainActivity extends AppCompatActivity {
     public static MainActivity mInstance;
     public List<Channel> channelSourceList = new ArrayList<>();
     public int currentPlayIndex = 0;
-    public int currentChannelIndex = 0;
-    public boolean isPlayingPlayback = false;
-    public int currentRatioIndex = 2;
 
     private View panel_layout;
-    private TextView btn_show_epg;
-    private NanoHTTPD nanoHTTPD;
     public TVPlayerManager mPlayerManager;
-    private PlayerGestureHelper gestureHelper;
-    private SharedPreferences sp;
-    private Button btnToggleController;
-    private boolean isControllerVisible = false;
 
-    // 独立出去的列表管理类
+    // 配置管理
+    private AppConfig appConfig;
+
+    // 管理类
+    private ScreenRatioManager screenRatioManager;
+    private PanelManager panelManager;
+    private GestureManager gestureManager;
+    private HttpConfigService httpService;
+
+    // UI 列表
     private ChannelListManager channelListManager;
     private GroupListManager groupListManager;
     private DateListManager dateListManager;
     private EpgManagerWrapper epgManagerWrapper;
+
+    // 播放器状态
+    private PlayerStateListenerImpl playerStateListener;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -58,174 +61,92 @@ public class MainActivity extends AppCompatActivity {
                         | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
                         | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
         );
+
         mInstance = this;
         setContentView(R.layout.activity_main);
-        sp = getSharedPreferences("app_settings", MODE_PRIVATE);
-        String customLive = sp.getString("custom_live_url", null);
-        String customEpg = sp.getString("custom_epg_url", null);
+
+        // ========== 1. 初始化配置 ==========
+        appConfig = AppConfig.getInstance(this);
+        String customLive = appConfig.getCustomLiveUrl();
+        String customEpg = appConfig.getCustomEpgUrl();
         if (customLive != null) UrlConfig.LIVE_URL = customLive;
         if (customEpg != null) UrlConfig.EPG_URL = customEpg;
 
+        // ========== 2. 视图绑定 ==========
         PlayerView playerView = findViewById(R.id.player_view);
         panel_layout = findViewById(R.id.panel_layout);
         ListView lvGroup = findViewById(R.id.lv_group);
         ListView lvChannelList = findViewById(R.id.lv_channel_list);
         ListView lvDate = findViewById(R.id.lv_date);
         ListView lvEpg = findViewById(R.id.lv_epg);
-        btn_show_epg = findViewById(R.id.btn_show_epg);
-        btnToggleController = findViewById(R.id.btn_toggle_controller);
 
-        // 初始化独立管理类
+        // ========== 3. 初始化 UI 列表管理 ==========
         channelListManager = new ChannelListManager(this, lvChannelList);
         groupListManager = new GroupListManager(this, lvGroup);
         dateListManager = new DateListManager(this, lvDate);
         epgManagerWrapper = new EpgManagerWrapper(this, lvEpg);
-
         dateListManager.initDate();
 
-        lvGroup.setOnItemClickListener((p, v, pos, id) -> {
-            String selectedGroup = (String) p.getItemAtPosition(pos);
-            List<Channel> filteredChannels = new ArrayList<>();
-            for (Channel channel : channelSourceList) {
-                if (selectedGroup.equals(channel.getGroup())) {
-                    filteredChannels.add(channel);
-                }
-            }
-            List<String> channelNames = new ArrayList<>();
-            for (Channel c : filteredChannels) {
-                channelNames.add(c.getName());
-            }
-            lvChannelList.setAdapter(new android.widget.ArrayAdapter<>(this, android.R.layout.simple_list_item_1, channelNames));
-        });
+        // ========== 4. 初始化面板管理 ==========
+        panelManager = new PanelManager(panel_layout, channelListManager, epgManagerWrapper);
 
-        playerView.setUseController(isControllerVisible);
-        btnToggleController.setOnClickListener(v -> {
-            isControllerVisible = !isControllerVisible;
-            playerView.setUseController(isControllerVisible);
-            Toast.makeText(this, isControllerVisible ? "已显示控制条" : "已隐藏控制条", Toast.LENGTH_SHORT).show();
-        });
+        // ========== 5. 初始化播放器 ==========
+        mPlayerManager = TVPlayerManager.getInstance(this);
+        mPlayerManager.attachPlayerView(playerView);
+        playerStateListener = new PlayerStateListenerImpl(this);
+        mPlayerManager.setOnPlayStateListener(playerStateListener);
 
-        playerView.setOnClickListener(v -> togglePanel());
-        btn_show_epg.setOnClickListener(v -> {
-            lvEpg.post(() -> lvEpg.smoothScrollToPosition(0));
-        });
+        // ========== 6. 初始化屏幕比例 ==========
+        screenRatioManager = new ScreenRatioManager(mPlayerManager, appConfig);
+        screenRatioManager.apply();
 
-        gestureHelper = new PlayerGestureHelper(this, new PlayerGestureHelper.GestureCallback() {
-            @Override public void onOk() { togglePanel(); }
-            @Override public void onLongOk() { openSettings(); }
-            @Override public void onMenu() { openSettings(); }
-            @Override public void onNextChannel() { playPrev(); }
-            @Override public void onPrevChannel() { playNext(); }
-        });
+        // ========== 7. 初始化手势 ==========
+        gestureManager = new GestureManager(this);
+        PlayerGestureHelper gestureHelper = gestureManager.create();
         playerView.setOnTouchListener((v, event) -> {
             gestureHelper.handleTouch(event);
             return true;
         });
 
-        SharedPreferences spPlay = getSharedPreferences("play_config", Context.MODE_PRIVATE);
-        currentRatioIndex = spPlay.getInt("play_ratio", 2);
-        currentPlayIndex = spPlay.getInt("last_play_index", 0);
+        // ========== 8. 初始化 HTTP 服务 ==========
+        httpService = HttpConfigService.getInstance();
+        httpService.start();
 
-        mPlayerManager = TVPlayerManager.getInstance(this);
-        mPlayerManager.attachPlayerView(playerView);
-        applyScreenRatioFromSettings();
-
-        mPlayerManager.setOnPlayStateListener(new TVPlayerManager.OnPlayStateListener() {
-            @Override public void onIdle() {}
-            @Override public void onBuffering() {
-                try {
-                    if (!channelSourceList.isEmpty()) {
-                        String name = channelSourceList.get(currentPlayIndex).getName();
-                        Toast.makeText(MainActivity.this, "正在播放：" + name, Toast.LENGTH_SHORT).show();
-                    }
-                } catch (Exception e) {}
-            }
-            @Override public void onPlayReady() {}
-            @Override public void onPlayEnd() { Toast.makeText(MainActivity.this,"播放结束，自动重试",Toast.LENGTH_SHORT).show(); }
-            @Override public void onPlayError(String msg) { Toast.makeText(MainActivity.this,"播放异常："+msg,Toast.LENGTH_SHORT).show(); }
-        });
-
+        // ========== 9. 加载直播源和节目单 ==========
+        currentPlayIndex = appConfig.getLastPlayIndex();
         loadLiveAndEpg();
         initListViewClick();
-
-        try {
-            nanoHTTPD = new NanoHTTPD(10481);
-            nanoHTTPD.start();
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
     }
 
-    private void togglePanel() {
-        if (panel_layout.getVisibility() == View.VISIBLE) {
-            panel_layout.setVisibility(View.GONE);
-        } else {
-            panel_layout.setVisibility(View.VISIBLE);
-            channelListManager.setChannels(channelSourceList, currentPlayIndex);
+    // ========== 加载直播源 ==========
+    private void loadLiveAndEpg() {
+        LiveSourceLoader.getInstance(this).load(new LiveSourceLoader.LoadCallback() {
+            @Override
+            public void onSuccess(List<Channel> channels) {
+                channelSourceList.clear();
+                channelSourceList.addAll(channels);
+                Toast.makeText(MainActivity.this, "直播源加载完成：" + channelSourceList.size() + "个频道", Toast.LENGTH_SHORT).show();
+                groupListManager.setGroups(channelSourceList);
+                playChannel(currentPlayIndex);
+            }
+
+            @Override
+            public void onError(String errorMsg) {
+                Toast.makeText(MainActivity.this, "加载失败：" + errorMsg, Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        // 加载EPG节目单
+        EpgManager.getInstance().setEpgUrl(UrlConfig.EPG_URL);
+        EpgManager.getInstance().loadEpg(() -> runOnUiThread(() -> {
+            Toast.makeText(MainActivity.this, "EPG节目单加载完成", Toast.LENGTH_SHORT).show();
             if (!channelSourceList.isEmpty()) {
                 epgManagerWrapper.refresh(channelSourceList.get(currentPlayIndex), channelSourceList);
             }
-        }
+        }));
     }
 
-    private void applyScreenRatioFromSettings() {
-        String ratio = sp.getString("screen_ratio", "全屏");
-        switch (ratio) {
-            case "原始": mPlayerManager.setScaleMode(TVPlayerManager.ScaleMode.FIT); break;
-            case "填充": mPlayerManager.setScaleMode(TVPlayerManager.ScaleMode.FILL); break;
-            default: mPlayerManager.setScaleMode(TVPlayerManager.ScaleMode.ZOOM); break;
-        }
-    }
-
-    public void loadLiveAndEpg() {
-        new Thread(() -> {
-            try {
-                List<Channel> channels = PlaylistParser.parse(UrlConfig.LIVE_URL);
-                runOnUiThread(() -> {
-                    if (channels != null && !channels.isEmpty()) {
-                        channelSourceList.clear();
-                        channelSourceList.addAll(channels);
-                        Toast.makeText(MainActivity.this, "直播源加载完成：" + channelSourceList.size() + "个频道", Toast.LENGTH_SHORT).show();
-
-                        groupListManager.setGroups(channelSourceList);
-                        playChannel(currentPlayIndex);
-                    }
-                });
-
-                EpgManager.getInstance().setEpgUrl(UrlConfig.EPG_URL);
-                EpgManager.getInstance().loadEpg(() -> {
-                    runOnUiThread(() -> {
-                        Toast.makeText(MainActivity.this, "EPG节目单加载完成", Toast.LENGTH_SHORT).show();
-                        if (!channelSourceList.isEmpty()) {
-                            epgManagerWrapper.refresh(channelSourceList.get(currentPlayIndex), channelSourceList);
-                        }
-                    });
-                });
-            } catch (Exception e) {
-                e.printStackTrace();
-                runOnUiThread(() -> {
-                    Toast.makeText(MainActivity.this, "加载失败：" + e.getMessage(), Toast.LENGTH_SHORT).show();
-                });
-            }
-        }).start();
-    }
-
-    @Override
-    public boolean onKeyDown(int keyCode, KeyEvent event) {
-        boolean reverse = sp.getBoolean("channel_reverse", false);
-        switch (keyCode) {
-            case KeyEvent.KEYCODE_DPAD_UP:
-                if (reverse) playNext(); else playPrev(); return true;
-            case KeyEvent.KEYCODE_DPAD_DOWN:
-                if (reverse) playPrev(); else playNext(); return true;
-            case KeyEvent.KEYCODE_DPAD_CENTER:
-            case KeyEvent.KEYCODE_ENTER: togglePanel(); return true;
-            case KeyEvent.KEYCODE_MENU:
-            case KeyEvent.KEYCODE_HELP: openSettings(); return true;
-        }
-        return super.onKeyDown(keyCode, event);
-    }
-
+    // ========== 切台逻辑 ==========
     private void playPrev() {
         if (channelSourceList == null || channelSourceList.isEmpty()) return;
         int newIndex = (currentPlayIndex - 1 + channelSourceList.size()) % channelSourceList.size();
@@ -238,21 +159,10 @@ public class MainActivity extends AppCompatActivity {
         playChannel(newIndex);
     }
 
-    private void openSettings() {
-        Intent intent = new Intent(this, SettingsActivity.class);
-        startActivity(intent);
-    }
-
-    private void playEpgItem(Channel.EpgItem epg) {
-        Toast.makeText(this,"暂无回看",Toast.LENGTH_SHORT).show();
-    }
-
     public void playChannel(int index) {
         if (channelSourceList == null || channelSourceList.isEmpty()) return;
-
         index = Math.max(0, Math.min(index, channelSourceList.size() - 1));
         currentPlayIndex = index;
-        currentChannelIndex = index;
 
         Channel ch = channelSourceList.get(index);
         if (ch == null || TextUtils.isEmpty(ch.getPlayUrl())) {
@@ -260,81 +170,70 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
+        // 更新播放器状态监听的频道名
+        playerStateListener.setCurrentChannelName(ch.getName());
         if (mPlayerManager != null) {
             mPlayerManager.play(ch.getPlayUrl());
         }
 
-        getSharedPreferences("play_config", MODE_PRIVATE)
-                .edit()
-                .putInt("last_play_index", index)
-                .apply();
-
+        // 保存索引
+        appConfig.setLastPlayIndex(index);
         channelListManager.setChannels(channelSourceList, index);
         epgManagerWrapper.refresh(ch, channelSourceList);
     }
 
-    private void initListViewClick() {
-        ListView lvChannelList = findViewById(R.id.lv_channel_list);
-        ListView lvEpg = findViewById(R.id.lv_epg);
-
-        if (lvChannelList != null) {
-            lvChannelList.setOnItemClickListener((p, v, pos, id) -> {
-                playChannel(pos);
-                togglePanel();
-            });
-        }
-        if (lvEpg != null) {
-            lvEpg.setOnItemClickListener((p, v, pos, id) -> {
-                Object o = p.getItemAtPosition(pos);
-                if (o instanceof Channel.EpgItem) {
-                    playEpgItem((Channel.EpgItem) o);
-                }
-            });
-        }
+    // ========== 面板控制 ==========
+    public void togglePanel() {
+        panelManager.toggle(channelSourceList, currentPlayIndex);
     }
 
-    public void onReceiveConfig(String liveUrl, String epgUrl) {
-        SharedPreferences.Editor edit = sp.edit();
-        if (liveUrl != null && !liveUrl.isEmpty()) {
-            UrlConfig.LIVE_URL = liveUrl;
-            edit.putString("custom_live_url", liveUrl);
-        }
-        if (epgUrl != null && !epgUrl.isEmpty()) {
-            UrlConfig.EPG_URL = epgUrl;
-            edit.putString("custom_epg_url", epgUrl);
-        }
-        edit.apply();
-        runOnUiThread(() -> {
-            Toast.makeText(this, "配置已保存，重新加载中…", Toast.LENGTH_LONG).show();
-            loadLiveAndEpg();
+    public void openSettings() {
+        startActivity(new Intent(this, SettingsActivity.class));
+    }
+
+    // ========== 列表点击事件 ==========
+    private void initListViewClick() {
+        ListView lvChannelList = findViewById(R.id.lv_channel_list);
+        lvChannelList.setOnItemClickListener((p, v, pos, id) -> {
+            playChannel(pos);
+            togglePanel();
         });
+    }
+
+    // ========== 遥控器按键 ==========
+    @Override
+    public boolean onKeyDown(int keyCode, KeyEvent event) {
+        switch (keyCode) {
+            case KeyEvent.KEYCODE_DPAD_UP:
+                playPrev();
+                return true;
+            case KeyEvent.KEYCODE_DPAD_DOWN:
+                playNext();
+                return true;
+            case KeyEvent.KEYCODE_DPAD_CENTER:
+            case KeyEvent.KEYCODE_ENTER:
+                togglePanel();
+                return true;
+            case KeyEvent.KEYCODE_MENU:
+                openSettings();
+                return true;
+        }
+        return super.onKeyDown(keyCode, event);
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        applyScreenRatioFromSettings();
-    }
-
-    @Override
-    public void onBackPressed() {
-        if (panel_layout.getVisibility() == View.VISIBLE) {
-            panel_layout.setVisibility(View.GONE);
-            return;
-        }
-        if (isPlayingPlayback) {
-            isPlayingPlayback = false;
-            playChannel(currentPlayIndex);
-            return;
-        }
-        super.onBackPressed();
+        screenRatioManager.apply();
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        if (nanoHTTPD != null) nanoHTTPD.stop();
-        if (mPlayerManager != null) mPlayerManager.release();
+        httpService.stop();
+        if (mPlayerManager != null) {
+            mPlayerManager.release();
+        }
         mInstance = null;
     }
 }

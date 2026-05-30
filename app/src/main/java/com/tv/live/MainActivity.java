@@ -1,11 +1,8 @@
 package com.tv.live;
+
 import android.content.Intent;
-import java.util.Set;
-import java.util.HashSet;
-import android.widget.Button;
 import android.content.pm.ActivityInfo;
 import android.content.Context;
-import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.text.TextUtils;
@@ -14,11 +11,15 @@ import android.view.View;
 import android.view.WindowManager;
 import android.widget.ListView;
 import android.widget.TextView;
+import android.widget.Button;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import com.google.android.exoplayer2.ui.PlayerView;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 public class MainActivity extends AppCompatActivity {
     public static MainActivity mInstance;
@@ -38,7 +39,7 @@ public class MainActivity extends AppCompatActivity {
     private PlayerGestureHelper gestureHelper;
     private SharedPreferences sp;
     private Button btnToggleController;
-    private boolean isControllerVisible = false; // 默认隐藏
+    private boolean isControllerVisible = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -53,7 +54,6 @@ public class MainActivity extends AppCompatActivity {
         mInstance = this;
         setContentView(R.layout.activity_main);
         sp = getSharedPreferences("app_settings", MODE_PRIVATE);
-
         String customLive = sp.getString("custom_live_url", null);
         String customEpg = sp.getString("custom_epg_url", null);
         if (customLive != null) UrlConfig.LIVE_URL = customLive;
@@ -67,42 +67,34 @@ public class MainActivity extends AppCompatActivity {
         lvEpg = findViewById(R.id.lv_epg);
         btn_show_epg = findViewById(R.id.btn_show_epg);
         btnToggleController = findViewById(R.id.btn_toggle_controller);
-        
-        // 初始化分组列表的适配器（先给个空的，等加载完直播源再更新数据）
-        lvGroup.setAdapter(new android.widget.ArrayAdapter<>(this,
-        android.R.layout.simple_list_item_1, new ArrayList<>()));
 
-        // 分组点击事件：点击分组，过滤显示对应频道
+        lvGroup.setAdapter(new android.widget.ArrayAdapter<>(this, android.R.layout.simple_list_item_1, new ArrayList<>()));
         lvGroup.setOnItemClickListener((p, v, pos, id) -> {
-        String selectedGroup = (String) p.getItemAtPosition(pos);
-        List<Channel> filteredChannels = new ArrayList<>();
-        for (Channel channel : channelSourceList) {
-        if (selectedGroup.equals(channel.getGroup())) {
-            filteredChannels.add(channel);
-        }
-    }
-         // 更新频道列表
-         List<String> channelNames = new ArrayList<>();
-         for (Channel c : filteredChannels) {
-         channelNames.add(c.getName());
-    }
-         lvChannelList.setAdapter(new android.widget.ArrayAdapter<>(this,
-            android.R.layout.simple_list_item_1, channelNames));
-});
-        // 初始化隐藏控制条
+            String selectedGroup = (String) p.getItemAtPosition(pos);
+            List<Channel> filteredChannels = new ArrayList<>();
+            for (Channel channel : channelSourceList) {
+                if (selectedGroup.equals(channel.getGroup())) {
+                    filteredChannels.add(channel);
+                }
+            }
+            List<String> channelNames = new ArrayList<>();
+            for (Channel c : filteredChannels) {
+                channelNames.add(c.getName());
+            }
+            lvChannelList.setAdapter(new android.widget.ArrayAdapter<>(this, android.R.layout.simple_list_item_1, channelNames));
+        });
+
         playerView.setUseController(isControllerVisible);
-        // 按钮点击事件
         btnToggleController.setOnClickListener(v -> {
-        isControllerVisible = !isControllerVisible;
-        playerView.setUseController(isControllerVisible);
-        Toast.makeText(this, isControllerVisible ? "已显示控制条" : "已隐藏控制条", Toast.LENGTH_SHORT).show();
-});
-        
+            isControllerVisible = !isControllerVisible;
+            playerView.setUseController(isControllerVisible);
+            Toast.makeText(this, isControllerVisible ? "已显示控制条" : "已隐藏控制条", Toast.LENGTH_SHORT).show();
+        });
+
         playerView.setOnClickListener(v -> togglePanel());
         btn_show_epg.setOnClickListener(v -> {
             lvEpg.post(() -> lvEpg.smoothScrollToPosition(0));
         });
-
         initDateList();
 
         gestureHelper = new PlayerGestureHelper(this, new PlayerGestureHelper.GestureCallback() {
@@ -112,7 +104,6 @@ public class MainActivity extends AppCompatActivity {
             @Override public void onNextChannel() { playPrev(); }
             @Override public void onPrevChannel() { playNext(); }
         });
-
         playerView.setOnTouchListener((v, event) -> {
             gestureHelper.handleTouch(event);
             return true;
@@ -184,31 +175,33 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void refreshCurrentEpg() {
-    if (channelSourceList == null || channelSourceList.isEmpty()) {
-        lvEpg.setAdapter(new android.widget.ArrayAdapter<>(this,
-                android.R.layout.simple_list_item_1,
-                java.util.Collections.singletonList("暂无节目单")));
-        return;
-    }
-
-    Channel currentChannel = channelSourceList.get(currentPlayIndex);
-    List<Channel.EpgItem> epgList = EpgManager.getInstance().getEpg(currentChannel.getName());
-
-    List<String> data = new ArrayList<>();
-    if (epgList != null && !epgList.isEmpty()) {
-        for (Channel.EpgItem item : epgList) {
-            data.add(item.dayName + " " + item.time + " " + item.title);
+        if (channelSourceList == null || channelSourceList.isEmpty()) {
+            runOnUiThread(() -> {
+                lvEpg.setAdapter(new android.widget.ArrayAdapter<>(this,
+                        android.R.layout.simple_list_item_1,
+                        Collections.singletonList("暂无节目单")));
+            });
+            return;
         }
-    } else {
-        data.add("暂无节目单");
-    }
 
-    // 关键：把UI操作放到主线程，同时避免并发修改异常
-    runOnUiThread(() -> {
-        lvEpg.setAdapter(new android.widget.ArrayAdapter<>(this,
-                android.R.layout.simple_list_item_1, data));
-    });
-}
+        new Thread(() -> {
+            Channel currentChannel = channelSourceList.get(currentPlayIndex);
+            List<Channel.EpgItem> epgList = EpgManager.getInstance().getEpg(currentChannel.getName());
+            List<String> data = new ArrayList<>();
+
+            if (epgList != null && !epgList.isEmpty()) {
+                for (Channel.EpgItem item : new ArrayList<>(epgList)) {
+                    data.add(item.dayName + " " + item.time + " " + item.title);
+                }
+            } else {
+                data.add("暂无节目单");
+            }
+
+            runOnUiThread(() -> {
+                lvEpg.setAdapter(new android.widget.ArrayAdapter<>(this, android.R.layout.simple_list_item_1, data));
+            });
+        }).start();
+    }
 
     private void applyScreenRatioFromSettings() {
         String ratio = sp.getString("screen_ratio", "全屏");
@@ -228,13 +221,15 @@ public class MainActivity extends AppCompatActivity {
                         channelSourceList.clear();
                         channelSourceList.addAll(channels);
                         Toast.makeText(MainActivity.this, "直播源加载完成：" + channelSourceList.size() + "个频道", Toast.LENGTH_SHORT).show();
+
                         Set<String> groupSet = new HashSet<>();
-        for (Channel c : channelSourceList) {
-            groupSet.add(c.getGroup());
-        }
-        List<String> groupList = new ArrayList<>(groupSet);
-        lvGroup.setAdapter(new android.widget.ArrayAdapter<>(MainActivity.this,
-                android.R.layout.simple_list_item_1, groupList));
+                        for (Channel c : channelSourceList) {
+                            groupSet.add(c.getGroup());
+                        }
+                        List<String> groupList = new ArrayList<>(groupSet);
+                        lvGroup.setAdapter(new android.widget.ArrayAdapter<>(MainActivity.this,
+                                android.R.layout.simple_list_item_1, groupList));
+
                         playChannel(currentPlayIndex);
                     }
                 });
@@ -270,62 +265,53 @@ public class MainActivity extends AppCompatActivity {
         }
         return super.onKeyDown(keyCode, event);
     }
-    
-    private void playPrev() {
-    // 双重判断：同时防止列表为空和未初始化
-    if (channelSourceList == null || channelSourceList.isEmpty()) {
-        return;
-    }    
-    // 环形切换，防止索引为负数
-    int newIndex = (currentPlayIndex - 1 + channelSourceList.size()) % channelSourceList.size();
-    playChannel(newIndex);
-}
 
-private void playNext() {
-    if (channelSourceList == null || channelSourceList.isEmpty()) {
-        return;
+    private void playPrev() {
+        if (channelSourceList == null || channelSourceList.isEmpty()) return;
+        int newIndex = (currentPlayIndex - 1 + channelSourceList.size()) % channelSourceList.size();
+        playChannel(newIndex);
     }
-    // 环形切换，防止索引超出列表长度
-    int newIndex = (currentPlayIndex + 1) % channelSourceList.size();
-    playChannel(newIndex);
-}
+
+    private void playNext() {
+        if (channelSourceList == null || channelSourceList.isEmpty()) return;
+        int newIndex = (currentPlayIndex + 1) % channelSourceList.size();
+        playChannel(newIndex);
+    }
+
     private void openSettings() {
-    Intent intent = new Intent(this, SettingsActivity.class);
-    startActivity(intent);
-}
+        Intent intent = new Intent(this, SettingsActivity.class);
+        startActivity(intent);
+    }
+
     private void playEpgItem(Channel.EpgItem epg) {
         Toast.makeText(this,"暂无回看",Toast.LENGTH_SHORT).show();
     }
+
     public void playChannel(int index) {
-    if (channelSourceList == null || channelSourceList.isEmpty()) {
-        return;
+        if (channelSourceList == null || channelSourceList.isEmpty()) return;
+
+        index = Math.max(0, Math.min(index, channelSourceList.size() - 1));
+        currentPlayIndex = index;
+        currentChannelIndex = index;
+
+        Channel ch = channelSourceList.get(index);
+        if (ch == null || TextUtils.isEmpty(ch.getPlayUrl())) {
+            Toast.makeText(this, "播放地址无效", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        if (mPlayerManager != null) {
+            mPlayerManager.play(ch.getPlayUrl());
+        }
+
+        getSharedPreferences("play_config", MODE_PRIVATE)
+                .edit()
+                .putInt("last_play_index", index)
+                .apply();
+
+        refreshChannelList();
+        refreshCurrentEpg();
     }
-    // 强制限制索引范围，彻底杜绝越界
-    index = Math.max(0, Math.min(index, channelSourceList.size() - 1));
-    currentPlayIndex = index;
-    currentChannelIndex = index;
-
-    Channel ch = channelSourceList.get(index);
-    // 这里改成 getPlayUrl()
-    if (ch == null || android.text.TextUtils.isEmpty(ch.getPlayUrl())) {
-        android.widget.Toast.makeText(this, "播放地址无效", android.widget.Toast.LENGTH_SHORT).show();
-        return;
-    }
-
-    if (mPlayerManager != null) {
-        // 这里也一起改成 getPlayUrl()
-        mPlayerManager.play(ch.getPlayUrl());
-    }
-
-    // 保存最后播放位置
-    getSharedPreferences("play_config", MODE_PRIVATE)
-            .edit()
-            .putInt("last_play_index", index)
-            .apply();
-
-    refreshChannelList();
-    refreshCurrentEpg();
-}
 
     private void initListViewClick() {
         if (lvChannelList != null) {
@@ -355,7 +341,6 @@ private void playNext() {
             edit.putString("custom_epg_url", epgUrl);
         }
         edit.apply();
-
         runOnUiThread(() -> {
             Toast.makeText(this, "配置已保存，重新加载中…", Toast.LENGTH_LONG).show();
             loadLiveAndEpg();

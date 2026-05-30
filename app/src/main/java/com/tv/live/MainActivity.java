@@ -59,9 +59,6 @@ public class MainActivity extends AppCompatActivity {
     private boolean auto_update_source;
     private int currentSelectedDateIndex = 0;
 
-    // 投屏相关（只新增，不删原有）
-    private CastManager castManager;
-
     private final BroadcastReceiver toggleControllerReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
@@ -99,10 +96,8 @@ public class MainActivity extends AppCompatActivity {
                         | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
         );
         setContentView(R.layout.activity_main);
-
         appConfig = AppConfig.getInstance(this);
         loadSettings();
-
         String customLive = appConfig.getCustomLiveUrl();
         String customEpg = appConfig.getCustomEpgUrl();
         if (customLive != null) UrlConfig.LIVE_URL = customLive;
@@ -111,29 +106,11 @@ public class MainActivity extends AppCompatActivity {
         playerView = findViewById(R.id.player_view);
         playerView.setUseController(false);
         panel_layout = findViewById(R.id.panel_layout);
-
         ListView lvGroup = findViewById(R.id.lv_group);
         ListView lvChannelList = findViewById(R.id.lv_channel_list);
         ListView lvDate = findViewById(R.id.lv_date);
         ListView lvEpg = findViewById(R.id.lv_epg);
         TextView btn_show_epg = findViewById(R.id.btn_show_epg);
-
-        // ====================== 投屏初始化（只追加）======================
-        castManager = CastManager.getInstance(this);
-        // 投屏按钮点击
-        View btn_cast = findViewById(R.id.btn_cast);
-        if (btn_cast != null) {
-            btn_cast.setOnClickListener(v -> {
-                if (castManager.isCasting()) {
-                    castManager.disconnect();
-                    Toast.makeText(this, "已断开投屏", Toast.LENGTH_SHORT).show();
-                } else {
-                    castManager.openCastPicker();
-                    Toast.makeText(this, "请选择投屏设备", Toast.LENGTH_SHORT).show();
-                }
-            });
-        }
-        // ===============================================================
 
         registerReceiver(toggleControllerReceiver, new IntentFilter("com.tv.live.TOGGLE_CONTROLLER"));
         registerReceiver(refreshReceiver, new IntentFilter("com.tv.live.REFRESH_LIVE_AND_EPG"));
@@ -183,8 +160,8 @@ public class MainActivity extends AppCompatActivity {
         dateListManager = new DateListManager(this, lvDate);
         epgManagerWrapper = new EpgManagerWrapper(this, lvEpg);
         dateListManager.initDate();
-
         panelManager = new PanelManager(panel_layout, channelListManager, epgManagerWrapper);
+
         mPlayerManager = TVPlayerManager.getInstance(this);
         mPlayerManager.attachPlayerView(playerView);
         playerStateListener = new PlayerStateListenerImpl(this);
@@ -204,7 +181,6 @@ public class MainActivity extends AppCompatActivity {
         httpService.start();
         switchManager = ChannelSwitchManager.getInstance();
         currentPlayIndex = appConfig.getLastPlayIndex();
-
         loadLiveAndEpg();
         initListViewClick();
     }
@@ -239,13 +215,11 @@ public class MainActivity extends AppCompatActivity {
                 channelListManager.setChannels(channelSourceList, currentPlayIndex);
                 playChannel(currentPlayIndex);
             }
-
             @Override
             public void onError(String errorMsg) {
                 Toast.makeText(MainActivity.this, "加载失败：" + errorMsg, Toast.LENGTH_SHORT).show();
             }
         });
-
         EpgManager.getInstance().setEpgUrl(UrlConfig.EPG_URL);
         EpgManager.getInstance().loadEpg(() -> runOnUiThread(() -> {
             if (!channelSourceList.isEmpty()) {
@@ -270,11 +244,9 @@ public class MainActivity extends AppCompatActivity {
         currentPlayIndex = index;
         Channel ch = channelSourceList.get(index);
         if (ch == null || TextUtils.isEmpty(ch.getPlayUrl())) return;
-
         playerStateListener.setCurrentChannelName(ch.getName());
         mPlayerManager.play(ch.getPlayUrl());
         appConfig.setLastPlayIndex(index);
-
         channelListManager.setChannels(channelSourceList, index);
         epgManagerWrapper.refresh(ch, channelSourceList, currentSelectedDateIndex);
     }
@@ -332,9 +304,6 @@ public class MainActivity extends AppCompatActivity {
         try { unregisterReceiver(refreshReceiver); } catch (Exception ignored) {}
         httpService.stop();
         mPlayerManager.release();
-        if (castManager != null) {
-            castManager.release();
-        }
         mInstance = null;
     }
 }

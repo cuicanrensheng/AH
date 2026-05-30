@@ -33,5 +33,6 @@ public class DateListManager {
      public void onBackPressed() {
          if (listener != null) {
              listener.onBack();
+         }   
     }
 }

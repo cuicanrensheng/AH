@@ -306,13 +306,15 @@ private void playNext() {
     currentChannelIndex = index;
 
     Channel ch = channelSourceList.get(index);
-    if (ch == null || android.text.TextUtils.isEmpty(ch.getUrl())) {
+    // 这里改成 getPlayUrl()
+    if (ch == null || android.text.TextUtils.isEmpty(ch.getPlayUrl())) {
         android.widget.Toast.makeText(this, "播放地址无效", android.widget.Toast.LENGTH_SHORT).show();
         return;
     }
 
     if (mPlayerManager != null) {
-        mPlayerManager.play(ch.getUrl());
+        // 这里也一起改成 getPlayUrl()
+        mPlayerManager.play(ch.getPlayUrl());
     }
 
     // 保存最后播放位置

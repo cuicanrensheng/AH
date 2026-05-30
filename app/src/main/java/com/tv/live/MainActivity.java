@@ -1,4 +1,5 @@
 package com.tv.live;
+import android.content.Intent;
 import java.util.Set;
 import java.util.HashSet;
 import android.widget.Button;
@@ -274,7 +275,7 @@ public class MainActivity extends AppCompatActivity {
     // 双重判断：同时防止列表为空和未初始化
     if (channelSourceList == null || channelSourceList.isEmpty()) {
         return;
-    }
+    }    
     // 环形切换，防止索引为负数
     int newIndex = (currentPlayIndex - 1 + channelSourceList.size()) % channelSourceList.size();
     playChannel(newIndex);
@@ -288,7 +289,10 @@ private void playNext() {
     int newIndex = (currentPlayIndex + 1) % channelSourceList.size();
     playChannel(newIndex);
 }
-    
+    private void openSettings() {
+    Intent intent = new Intent(this, SettingsActivity.class);
+    startActivity(intent);
+}
     private void playEpgItem(Channel.EpgItem epg) {
         Toast.makeText(this,"暂无回看",Toast.LENGTH_SHORT).show();
     }

@@ -1,5 +1,4 @@
 package com.tv.live.widget;
-
 import android.app.AlarmManager;
 import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
@@ -12,7 +11,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ArrayAdapter;
 import android.widget.ListView;
-import android.widget.TextView;
+import android.widget.Text;
 import android.widget.Toast;
 import com.tv.live.Channel;
 import com.tv.live.EpgManager;
@@ -73,17 +72,20 @@ public class EpgManagerWrapper {
         });
     }
 
+    // ====================== 补全：清空节目单（防旧数据） ======================
+    public void clearEpg() {
+        updateUi(null, new ArrayList<>());
+    }
+
     private void setAlarm(Context ctx, long reqCode, String title, String playUrl) {
         AlarmManager alarmManager = (AlarmManager) ctx.getSystemService(Context.ALARM_SERVICE);
         Intent intent = new Intent(ACTION_ALARM);
         intent.putExtra("title", title);
         intent.putExtra("playUrl", playUrl);
-
         int flag = PendingIntent.FLAG_UPDATE_CURRENT;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             flag |= PendingIntent.FLAG_IMMUTABLE;
         }
-
         PendingIntent pi = PendingIntent.getBroadcast(ctx, (int) reqCode, intent, flag);
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -153,8 +155,7 @@ public class EpgManagerWrapper {
             holder.tv_time.setText(item.time);
             holder.tv_title.setText(item.title);
 
-            String key = currentChannel.getName() + "_" + position;
-
+            String key = currentChannel != null ? currentChannel.getName() + "_" + position : "";
             if (item.isPlaying) {
                 holder.tv_action.setText("播放中");
                 holder.tv_action.setBackgroundColor(0xFFFF9800);

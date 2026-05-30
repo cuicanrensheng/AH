@@ -1,5 +1,4 @@
 package com.tv.live.widget;
-
 import android.content.Context;
 import android.widget.ArrayAdapter;
 import android.widget.ListView;
@@ -18,20 +17,16 @@ public class ChannelListManager {
 
     public void setChannels(List<Channel> channelSourceList, int currentPlayIndex) {
         if (channelSourceList == null || channelSourceList.isEmpty()) return;
-
         List<String> names = new ArrayList<>();
         for (Channel c : channelSourceList) {
             names.add(c.getName());
         }
-
-        ArrayAdapter<String> adapter = new ArrayAdapter<>(context,
-                android.R.layout.simple_list_item_1, names);
+        ArrayAdapter<String> adapter = new ArrayAdapter<>(context, android.R.layout.simple_list_item_1, names);
         lvChannelList.setAdapter(adapter);
         lvChannelList.setSelection(currentPlayIndex);
-        // 供外部调用，触发返回
-     public void onBackPressed() {
-         if (listener != null) {
-             listener.onBack();
-     }
-  }
-}        
+    }
+
+    // ↓↓↓ 正确位置，不在任何方法里面
+    public void onBackPressed() {
+    }
+}

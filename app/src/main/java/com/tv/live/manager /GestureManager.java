@@ -1,12 +1,16 @@
 package com.tv.live.manager;
 
+import android.os.Handler;
+import android.os.Looper;
 import com.tv.live.MainActivity;
 import com.tv.live.PlayerGestureHelper;
 
 public class GestureManager {
 
     private final MainActivity activity;
-    private PlayerGestureHelper gestureHelper;
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private static final long DEBOUNCE_DELAY_MS = 300; // 300ms防抖
+    private boolean isGestureLocked = false;
 
     public GestureManager(MainActivity activity) {
         this.activity = activity;
@@ -31,12 +35,22 @@ public class GestureManager {
 
             @Override
             public void onPrevChannel() {
-                activity.playNext();
+                if (!isGestureLocked) {
+                    isGestureLocked = true;
+                    activity.playPrev();
+                    // 解锁
+                    mainHandler.postDelayed(() -> isGestureLocked = false, DEBOUNCE_DELAY_MS);
+                }
             }
 
             @Override
             public void onNextChannel() {
-                activity.playPrev();
+                if (!isGestureLocked) {
+                    isGestureLocked = true;
+                    activity.playNext();
+                    // 解锁
+                    mainHandler.postDelayed(() -> isGestureLocked = false, DEBOUNCE_DELAY_MS);
+                }
             }
         });
     }

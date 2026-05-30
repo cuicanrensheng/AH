@@ -1,4 +1,5 @@
 package com.tv.live.widget;
+
 import android.app.AlarmManager;
 import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
@@ -11,7 +12,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ArrayAdapter;
 import android.widget.ListView;
-import android.widget.Text;
+import android.widget.TextView;
 import android.widget.Toast;
 import com.tv.live.Channel;
 import com.tv.live.EpgManager;
@@ -72,7 +73,6 @@ public class EpgManagerWrapper {
         });
     }
 
-    // ====================== 补全：清空节目单（防旧数据） ======================
     public void clearEpg() {
         updateUi(null, new ArrayList<>());
     }

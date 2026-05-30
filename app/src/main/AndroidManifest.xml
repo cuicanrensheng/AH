@@ -2,11 +2,15 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.tv.live">
 
+    <!-- 原有权限 -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
+    <!-- 【新增】下载文件到外部存储（Android 13以下需要） -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
 
     <application
         android:allowBackup="true"
@@ -26,18 +30,18 @@
             </intent-filter>
         </activity>
 
-        <!-- 这里是合并后的 SettingsActivity -->
-    <activity
-        android:name=".SettingsActivity"
-        android:theme="@style/TransparentTheme"
-        android:screenOrientation="sensorLandscape"
-        android:configChanges="orientation|screenSize" />
+        <activity
+            android:name=".SettingsActivity"
+            android:theme="@style/TransparentTheme"
+            android:screenOrientation="sensorLandscape"
+            android:configChanges="orientation|screenSize" />
 
-    <activity
-        android:name=".ChannelListActivity"
-        android:screenOrientation="sensorLandscape"
-        android:configChanges="orientation|screenSize" />
+        <activity
+            android:name=".ChannelListActivity"
+            android:screenOrientation="sensorLandscape"
+            android:configChanges="orientation|screenSize" />
 
+        <!-- FileProvider 配置（你这里已经是对的） -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

@@ -26,7 +26,22 @@ public class ChannelListManager {
         lvChannelList.setSelection(currentPlayIndex);
     }
 
-    // ↓↓↓ 正确位置，不在任何方法里面
-    public void onBackPressed() {
+    // ====================== 补全：按分组筛选 ======================
+    public void setChannelsByGroup(List<Channel> channelSourceList, String group, int currentPlayIndex) {
+        if (channelSourceList == null || channelSourceList.isEmpty()) return;
+        List<String> names = new ArrayList<>();
+        int realIndex = 0;
+        for (int i = 0; i < channelSourceList.size(); i++) {
+            Channel c = channelSourceList.get(i);
+            if (group == null || group.isEmpty() || group.equals(c.getGroup())) {
+                names.add(c.getName());
+                if (i == currentPlayIndex) realIndex = names.size() - 1;
+            }
+        }
+        ArrayAdapter<String> adapter = new ArrayAdapter<>(context, android.R.layout.simple_list_item_1, names);
+        lvChannelList.setAdapter(adapter);
+        lvChannelList.setSelection(realIndex);
     }
+
+    public void onBackPressed() {}
 }

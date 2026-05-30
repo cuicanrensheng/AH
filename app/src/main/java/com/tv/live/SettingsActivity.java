@@ -15,6 +15,7 @@ import android.os.Looper;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.WindowManager;
 import android.widget.ArrayAdapter;
 import android.widget.EditText;
 import android.widget.ImageView;
@@ -44,13 +45,15 @@ public class SettingsActivity extends AppCompatActivity {
     private Handler handler = new Handler(Looper.getMainLooper());
     private static final int PORT = 10481;
 
-    // 蓝色高亮专用
-    private ListView listView;
-    private SettingsAdapter adapter;
+    // 蓝色高亮
     private int selectedPosition = 0;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // ========== 只加这一行：播放时不熄屏（官方最稳）==========
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        // ======================================================
+
         getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
         getWindow().getAttributes().dimAmount = 0.6f;
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND, WindowManager.LayoutParams.FLAG_DIM_BEHIND);
@@ -285,7 +288,7 @@ public class SettingsActivity extends AppCompatActivity {
         try{ if(serverSocket!=null) serverSocket.close(); }catch (Exception ignored){}
     }
 
-    // ====================== 只加了这里：蓝色高亮适配器 ======================
+    // 蓝色高亮适配器
     class SettingsAdapter extends ArrayAdapter<String> {
         public SettingsAdapter(Context context, List<String> items) {
             super(context, R.layout.item_settings, items);
@@ -312,5 +315,4 @@ public class SettingsActivity extends AppCompatActivity {
         selectedPosition = pos;
         if (adapter != null) adapter.notifyDataSetChanged();
     }
-    // ======================================================================
 }

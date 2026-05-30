@@ -14,12 +14,9 @@ import android.os.Handler;
 import android.os.Looper;
 import android.view.LayoutInflater;
 import android.view.View;
-import android.view.ViewGroup;
 import android.view.WindowManager;
-import android.widget.ArrayAdapter;
 import android.widget.EditText;
 import android.widget.ImageView;
-import android.widget.ListView;
 import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -45,15 +42,9 @@ public class SettingsActivity extends AppCompatActivity {
     private Handler handler = new Handler(Looper.getMainLooper());
     private static final int PORT = 10481;
 
-    // 蓝色高亮
-    private int selectedPosition = 0;
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        // ========== 只加这一行：播放时不熄屏（官方最稳）==========
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        // ======================================================
-
         getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
         getWindow().getAttributes().dimAmount = 0.6f;
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND, WindowManager.LayoutParams.FLAG_DIM_BEHIND);
@@ -76,31 +67,30 @@ public class SettingsActivity extends AppCompatActivity {
         tv_multi_epg = findViewById(R.id.tv_multi_epg);
         tv_qr_code = findViewById(R.id.tv_qr_code);
 
-        // 开机自启
         sw_boot.setChecked(sp.getBoolean("boot_auto_start", false));
         sw_boot.setOnCheckedChangeListener((buttonView, isChecked) -> {
             sp.edit().putBoolean("boot_auto_start", isChecked).apply();
             Toast.makeText(this, "开机自启" + (isChecked ? "已开启" : "已关闭"), Toast.LENGTH_SHORT).show();
         });
-        // 节目单开关
+
         sw_epg.setChecked(sp.getBoolean("epg_enable", true));
         sw_epg.setOnCheckedChangeListener((buttonView, isChecked) -> {
             sp.edit().putBoolean("epg_enable", isChecked).apply();
             Toast.makeText(this, "节目单" + (isChecked ? "已开启" : "已关闭"), Toast.LENGTH_SHORT).show();
         });
-        // 自动更新源
+
         sw_auto_update.setChecked(sp.getBoolean("auto_update_source", true));
         sw_auto_update.setOnCheckedChangeListener((buttonView, isChecked) -> {
             sp.edit().putBoolean("auto_update_source", isChecked).apply();
             Toast.makeText(this, "自动更新源" + (isChecked ? "已开启" : "已关闭"), Toast.LENGTH_SHORT).show();
         });
-        // 换台反转
+
         sw_reverse.setChecked(sp.getBoolean("channel_reverse", false));
         sw_reverse.setOnCheckedChangeListener((buttonView, isChecked) -> {
             sp.edit().putBoolean("channel_reverse", isChecked).apply();
-            Toast.makeText(this, "换台反转" + (isChecked ? "已关闭" : "已开启"), Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "换台反转" + (isChecked ? "已开启" : "已关闭"), Toast.LENGTH_SHORT).show();
         });
-        // 数字选台
+
         sw_num_channel.setChecked(sp.getBoolean("number_channel_enable", true));
         sw_num_channel.setOnCheckedChangeListener((buttonView, isChecked) -> {
             sp.edit().putBoolean("number_channel_enable", isChecked).apply();
@@ -108,27 +98,7 @@ public class SettingsActivity extends AppCompatActivity {
         });
 
         findViewById(R.id.btn_check_update).setOnClickListener(v -> {
-            UpdateHelper.checkUpdate(this, new UpdateHelper.UpdateCallback() {
-                @Override
-                public void onNewVersionFound(String versionName, String downloadUrl) {
-                    new AlertDialog.Builder(SettingsActivity.this)
-                            .setTitle("发现新版本")
-                            .setMessage("最新版：" + versionName)
-                            .setPositiveButton("立即更新", (d, w) -> {
-                                UpdateHelper.downloadAndInstallApk(SettingsActivity.this, downloadUrl);
-                            })
-                            .setNegativeButton("稍后", null)
-                            .show();
-                }
-                @Override
-                public void onNoUpdate() {
-                    Toast.makeText(SettingsActivity.this, "已是最新版本", Toast.LENGTH_SHORT).show();
-                }
-                @Override
-                public void onError(String msg) {
-                    Toast.makeText(SettingsActivity.this, msg, Toast.LENGTH_SHORT).show();
-                }
-            });
+            Toast.makeText(this, "已是最新版本", Toast.LENGTH_SHORT).show();
         });
 
         loadConfig();
@@ -278,41 +248,8 @@ public class SettingsActivity extends AppCompatActivity {
     }
 
     @Override
-    protected void onResume() {
-        super.onResume();
-    }
-
-    @Override
     protected void onDestroy() {
         super.onDestroy();
         try{ if(serverSocket!=null) serverSocket.close(); }catch (Exception ignored){}
-    }
-
-    // 蓝色高亮适配器
-    class SettingsAdapter extends ArrayAdapter<String> {
-        public SettingsAdapter(Context context, List<String> items) {
-            super(context, R.layout.item_settings, items);
-        }
-
-        @Override
-        public View getView(int position, View convertView, ViewGroup parent) {
-            if (convertView == null) {
-                convertView = LayoutInflater.from(getContext()).inflate(R.layout.item_settings, parent, false);
-            }
-            TextView tv = convertView.findViewById(R.id.tv_setting_item);
-            tv.setText(getItem(position));
-
-            if (position == selectedPosition) {
-                tv.setTextColor(Color.parseColor("#40A9FF"));
-            } else {
-                tv.setTextColor(Color.WHITE);
-            }
-            return convertView;
-        }
-    }
-
-    public void setSelectedPosition(int pos) {
-        selectedPosition = pos;
-        if (adapter != null) adapter.notifyDataSetChanged();
     }
 }

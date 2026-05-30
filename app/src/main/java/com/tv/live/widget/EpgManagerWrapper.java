@@ -174,7 +174,7 @@ public class EpgManagerWrapper {
             // ========== 选中蓝色高亮（只加了这里）==========
             if (position == selectedPosition) {
                 holder.tv_time.setTextColor(Color.parseColor("#40A9FF"));
-                holdertv_title.setTextColor(Color.parseColor("#40A9FF"));
+                holder.tv_title.setTextColor(Color.parseColor("#40A9FF"));
             } else {
                 holder.tv_time.setTextColor(Color.WHITE);
                 holder.tv_title.setTextColor(Color.WHITE);

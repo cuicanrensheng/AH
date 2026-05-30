@@ -38,25 +38,41 @@ public class EpgManagerWrapper {
         registerAlarmReceiver();
     }
 
-    public void refresh(Channel currentChannel, List<Channel> channelSourceList) {
-        if (currentChannel == null) {
-            showEmpty();
-            return;
-        }
-        new Thread(() -> {
-            try {
-                List<Channel.EpgItem> epgList = EpgManager.getInstance().getEpg(currentChannel.getName());
-                List<Channel.EpgItem> data = new ArrayList<>();
-                if (epgList != null && !epgList.isEmpty()) {
-                    data.addAll(epgList);
-                    Collections.sort(data, Comparator.comparing(o -> o.time));
-                }
-                updateUi(currentChannel, data);
-            } catch (Exception e) {
-                updateUi(currentChannel, new ArrayList<>());
-            }
-        }).start();
+    // 保留你原来的方法，不影响任何现有调用
+public void refresh(Channel currentChannel, List<Channel> channelSourceList) {
+    // 默认刷新"今天"的节目单，兼容旧逻辑
+    refresh(currentChannel, channelSourceList, 0);
+}
+
+// 新增：带日期筛选的重载方法，用于实现日期联动
+public void refresh(Channel currentChannel, List<Channel> channelSourceList, int dateIndex) {
+    if (currentChannel == null) {
+        showEmpty();
+        return;
     }
+    new Thread(() -> {
+        try {
+            List<Channel.EpgItem> epgList = EpgManager.getInstance().getEpg(currentChannel.getName());
+            List<Channel.EpgItem> data = new ArrayList<>();
+            if (epgList != null && !epgList.isEmpty()) {
+                // 根据日期索引筛选节目单
+                String[] dayNames = {"今天", "周一", "周二", "周三", "周四", "周五", "周六"};
+                String targetDay = (dateIndex >= 0 && dateIndex < dayNames.length) ? dayNames[dateIndex] : "今天";
+
+                for (Channel.EpgItem item : epgList) {
+                    if (targetDay.equals(item.dayName)) {
+                        data.add(item);
+                    }
+                }
+                // 按时间排序
+                Collections.sort(data, Comparator.comparing(o -> o.time));
+            }
+            updateUi(currentChannel, data);
+        } catch (Exception e) {
+            updateUi(currentChannel, new ArrayList<>());
+        }
+    }).start();
+}
 
     private void showEmpty() {
         updateUi(null, new ArrayList<>());

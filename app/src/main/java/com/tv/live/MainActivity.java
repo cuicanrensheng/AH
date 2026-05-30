@@ -36,7 +36,6 @@ public class MainActivity extends AppCompatActivity {
     private View panel_layout;
     public TVPlayerManager mPlayerManager;
     private PlayerView playerView;
-
     private AppConfig appConfig;
     private ScreenRatioManager screenRatioManager;
     private PanelManager panelManager;
@@ -49,7 +48,6 @@ public class MainActivity extends AppCompatActivity {
     private EpgManagerWrapper epgManagerWrapper;
     private PlayerStateListenerImpl playerStateListener;
     private ChannelSwitchManager switchManager;
-
     // 控制条开关广播接收器
     private boolean isControllerVisible = false;
     private final BroadcastReceiver toggleControllerReceiver = new BroadcastReceiver() {
@@ -62,7 +60,6 @@ public class MainActivity extends AppCompatActivity {
                     Toast.LENGTH_SHORT).show();
         }
     };
-
     // 【新增】直播源/EPG 刷新广播接收器
     private final BroadcastReceiver refreshReceiver = new BroadcastReceiver() {
         @Override
@@ -74,7 +71,6 @@ public class MainActivity extends AppCompatActivity {
                     String customEpg = appConfig.getCustomEpgUrl();
                     if (customLive != null) UrlConfig.LIVE_URL = customLive;
                     if (customEpg != null) UrlConfig.EPG_URL = customEpg;
-
                     // 刷新直播源和EPG
                     loadLiveAndEpg();
                     Toast.makeText(MainActivity.this, "已刷新直播源/EPG", Toast.LENGTH_SHORT).show();
@@ -95,47 +91,38 @@ public class MainActivity extends AppCompatActivity {
                         | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
         );
         setContentView(R.layout.activity_main);
-
         // 配置管理
         appConfig = AppConfig.getInstance(this);
         String customLive = appConfig.getCustomLiveUrl();
         String customEpg = appConfig.getCustomEpgUrl();
         if (customLive != null) UrlConfig.LIVE_URL = customLive;
         if (customEpg != null) UrlConfig.EPG_URL = customEpg;
-
         playerView = findViewById(R.id.player_view);
         playerView.setUseController(false); // 默认隐藏
-
         panel_layout = findViewById(R.id.panel_layout);
         ListView lvGroup = findViewById(R.id.lv_group);
         ListView lvChannelList = findViewById(R.id.lv_channel_list);
         ListView lvDate = findViewById(R.id.lv_date);
         ListView lvEpg = findViewById(R.id.lv_epg);
-
         // 注册两个广播接收器
         registerReceiver(toggleControllerReceiver, new IntentFilter("com.tv.live.TOGGLE_CONTROLLER"));
         registerReceiver(refreshReceiver, new IntentFilter("com.tv.live.REFRESH_LIVE_AND_EPG"));
-
         // UI列表管理
         channelListManager = new ChannelListManager(this, lvChannelList);
         groupListManager = new GroupListManager(this, lvGroup);
         dateListManager = new DateListManager(this, lvDate);
         epgManagerWrapper = new EpgManagerWrapper(this, lvEpg);
         dateListManager.initDate();
-
         // 面板管理
         panelManager = new PanelManager(panel_layout, channelListManager, epgManagerWrapper);
-
         // 播放器
         mPlayerManager = TVPlayerManager.getInstance(this);
         mPlayerManager.attachPlayerView(playerView);
         playerStateListener = new PlayerStateListenerImpl(this);
         mPlayerManager.setOnPlayStateListener(playerStateListener);
-
         // 屏幕比例管理
         screenRatioManager = new ScreenRatioManager(mPlayerManager, appConfig);
         screenRatioManager.apply();
-
         // 手势管理
         gestureManager = new GestureManager(this);
         PlayerGestureHelper gestureHelper = gestureManager.create();
@@ -143,21 +130,31 @@ public class MainActivity extends AppCompatActivity {
             gestureHelper.handleTouch(event);
             return true;
         });
-
         // 遥控器管理
         keyEventManager = new KeyEventManager(this);
-
         // HTTP服务
         httpService = HttpConfigService.getInstance();
         httpService.start();
-
         // 切台管理
         switchManager = ChannelSwitchManager.getInstance();
-
         currentPlayIndex = appConfig.getLastPlayIndex();
         loadLiveAndEpg();
         initListViewClick();
     }
+
+    // ====================== 【返回键修复：只加了这里】 ======================
+    @Override
+    public void onBackPressed() {
+        if (panel_layout.getVisibility() == View.VISIBLE) {
+            // 列表打开时按返回 → 关闭列表，回到播放界面
+            panel_layout.setVisibility(View.GONE);
+            playerView.requestFocus();
+        } else {
+            // 列表关闭时 → 执行系统默认返回
+            super.onBackPressed();
+        }
+    }
+    // ====================================================================
 
     public void loadLiveAndEpg() {
         LiveSourceLoader.getInstance(this).load(new LiveSourceLoader.LoadCallback() {
@@ -171,6 +168,7 @@ public class MainActivity extends AppCompatActivity {
                 groupListManager.setGroups(channelSourceList);
                 playChannel(currentPlayIndex);
             }
+
             @Override
             public void onError(String errorMsg) {
                 Toast.makeText(MainActivity.this, "加载失败：" + errorMsg, Toast.LENGTH_SHORT).show();
@@ -199,7 +197,6 @@ public class MainActivity extends AppCompatActivity {
         if (channelSourceList == null || channelSourceList.isEmpty()) return;
         index = Math.max(0, Math.min(index, channelSourceList.size() - 1));
         currentPlayIndex = index;
-
         Channel ch = channelSourceList.get(index);
         if (ch == null || TextUtils.isEmpty(ch.getPlayUrl())) {
             Toast.makeText(this, "播放地址无效", Toast.LENGTH_SHORT).show();
@@ -259,7 +256,6 @@ public class MainActivity extends AppCompatActivity {
         // 注销两个广播接收器
         try { unregisterReceiver(toggleControllerReceiver); } catch (Exception ignored) {}
         try { unregisterReceiver(refreshReceiver); } catch (Exception ignored) {}
-
         httpService.stop();
         mPlayerManager.release();
         mInstance = null;

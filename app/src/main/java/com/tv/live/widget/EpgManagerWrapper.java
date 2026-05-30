@@ -53,6 +53,10 @@ public class EpgManagerWrapper {
             ArrayAdapter<String> adapter = new ArrayAdapter<>(context,
                     android.R.layout.simple_list_item_1, data);
             lvEpg.setAdapter(adapter);
+            // 供外部调用，触发返回
+     public void onBackPressed() {
+         if (listener != null) {
+             listener.onBack();
         });
     }
 }

@@ -34,7 +34,7 @@ import java.util.List;
 public class MainActivity extends AppCompatActivity {
     public static MainActivity mInstance;
     public List<Channel> channelSourceList = new ArrayList<>();
-    public List<Channel> currentGroupChannelList = new ArrayList<>(); // 当前分组的频道列表
+    public List<Channel> currentGroupChannelList = new ArrayList<>();
     public int currentPlayIndex = 0;
     private View panel_layout;
     public TVPlayerManager mPlayerManager;
@@ -57,6 +57,7 @@ public class MainActivity extends AppCompatActivity {
     private boolean channel_reverse;
     private boolean number_channel_enable;
     private boolean auto_update_source;
+    private int currentSelectedDateIndex = 0; // 当前选中的日期索引
 
     private final BroadcastReceiver toggleControllerReceiver = new BroadcastReceiver() {
         @Override
@@ -117,7 +118,7 @@ public class MainActivity extends AppCompatActivity {
         registerReceiver(toggleControllerReceiver, new IntentFilter("com.tv.live.TOGGLE_CONTROLLER"));
         registerReceiver(refreshReceiver, new IntentFilter("com.tv.live.REFRESH_LIVE_AND_EPG"));
 
-        // 1. 打开节目单 → 强制刷新，无旧数据
+        // 1. 打开节目单 → 强制刷新当前频道当前日期的节目单
         btn_show_epg.setOnClickListener(v -> {
             if (!epg_enable) {
                 Toast.makeText(this, "节目单功能已关闭", Toast.LENGTH_SHORT).show();
@@ -128,22 +129,23 @@ public class MainActivity extends AppCompatActivity {
             lvEpg.setVisibility(epgPanelOpen ? View.VISIBLE : View.GONE);
             if (epgPanelOpen && !channelSourceList.isEmpty()) {
                 Channel curr = channelSourceList.get(currentPlayIndex);
-                epgManagerWrapper.refresh(curr, channelSourceList);
+                epgManagerWrapper.refresh(curr, channelSourceList, currentSelectedDateIndex);
             }
         });
 
-        // 2. 点击日期 → 立刻刷新当前频道该日节目单
+        // 2. 点击日期 → 刷新当前频道对应日期的节目单（核心联动）
         lvDate.setOnItemClickListener((parent, view, position, id) -> {
+            currentSelectedDateIndex = position;
             if (!channelSourceList.isEmpty()) {
                 Channel curr = channelSourceList.get(currentPlayIndex);
-                epgManagerWrapper.refresh(curr, channelSourceList);
+                epgManagerWrapper.refresh(curr, channelSourceList, currentSelectedDateIndex);
             }
         });
 
-        // 3. 点击分组 → 同步更新频道列表和当前频道索引
+        // 3. 点击分组 → 同步刷新频道列表，并更新当前频道
         lvGroup.setOnItemClickListener((parent, view, position, id) -> {
             String groupName = groupListManager.getCurrentGroup(position);
-            // 先筛选出当前分组的频道
+            // 筛选当前分组的频道
             currentGroupChannelList.clear();
             for (Channel c : channelSourceList) {
                 if (groupName.equals(c.getGroup())) {
@@ -152,15 +154,12 @@ public class MainActivity extends AppCompatActivity {
             }
             // 更新频道列表
             channelListManager.setChannelsByGroup(channelSourceList, groupName, currentPlayIndex);
-            // 重置当前分组的频道索引，避免随机跳转
+            // 重置并播放该分组的第一个频道
             if (!currentGroupChannelList.isEmpty()) {
                 Channel firstChannel = currentGroupChannelList.get(0);
                 int globalIndex = channelSourceList.indexOf(firstChannel);
                 if (globalIndex != -1) {
-                    currentPlayIndex = globalIndex;
-                    switchManager.setCurrentIndex(currentPlayIndex);
-                    // 自动播放该分组第一个频道
-                    playChannel(currentPlayIndex);
+                    playChannel(globalIndex);
                 }
             }
         });
@@ -237,7 +236,7 @@ public class MainActivity extends AppCompatActivity {
         EpgManager.getInstance().setEpgUrl(UrlConfig.EPG_URL);
         EpgManager.getInstance().loadEpg(() -> runOnUiThread(() -> {
             if (!channelSourceList.isEmpty()) {
-                epgManagerWrapper.refresh(channelSourceList.get(currentPlayIndex), channelSourceList);
+                epgManagerWrapper.refresh(channelSourceList.get(currentPlayIndex), channelSourceList, currentSelectedDateIndex);
             }
         }));
     }
@@ -252,8 +251,7 @@ public class MainActivity extends AppCompatActivity {
         playChannel(idx);
     }
 
-    // 4. 切换频道 → 节目单自动刷新
-    // 5. 点击频道 → 播放+EPG双刷新
+    // 4. 切换频道 → 节目单自动刷新当前频道当前日期的节目
     public void playChannel(int index) {
         if (channelSourceList == null || channelSourceList.isEmpty()) return;
         index = Math.max(0, Math.min(index, channelSourceList.size() - 1));
@@ -266,38 +264,22 @@ public class MainActivity extends AppCompatActivity {
         appConfig.setLastPlayIndex(index);
 
         channelListManager.setChannels(channelSourceList, index);
-        epgManagerWrapper.refresh(ch, channelSourceList);
-    }
-
-    public void onReceiveConfig(String liveUrl, String epgUrl) {
-        AppConfig.getInstance(this).setCustomUrls(liveUrl, epgUrl);
-        if (liveUrl != null) UrlConfig.LIVE_URL = liveUrl;
-        if (epgUrl != null) UrlConfig.EPG_URL = epgUrl;
-        runOnUiThread(this::loadLiveAndEpg);
-    }
-
-    public void setSelectedDatePosition(int position) {}
-    public void setSelectedGroupPosition(int position) {}
-
-    public void setChannelsByGroup(int groupPosition, List<Channel> channels) {
-        channelListManager.setChannels(channels, currentPlayIndex);
+        // 关键：切换频道时，节目单也同步刷新，且日期不变
+        epgManagerWrapper.refresh(ch, channelSourceList, currentSelectedDateIndex);
     }
 
     private void initListViewClick() {
         ListView lvChannelList = findViewById(R.id.lv_channel_list);
         lvChannelList.setOnItemClickListener((p, v, pos, id) -> {
-            // 关键修复：根据分组频道列表的位置，找到全局频道索引
+            // 从当前分组列表找到全局频道索引
             if (!currentGroupChannelList.isEmpty() && pos < currentGroupChannelList.size()) {
                 Channel selectedChannel = currentGroupChannelList.get(pos);
                 int globalIndex = channelSourceList.indexOf(selectedChannel);
                 if (globalIndex != -1) {
-                    switchManager.setCurrentIndex(globalIndex);
                     playChannel(globalIndex);
                     togglePanel();
                 }
             } else {
-                // 如果没有分组列表，直接用全局索引
-                switchManager.setCurrentIndex(pos);
                 playChannel(pos);
                 togglePanel();
             }

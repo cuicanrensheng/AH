@@ -152,59 +152,63 @@ public class EpgManagerWrapper {
         }
 
         @Override
-        public View getView(int position, View convertView, ViewGroup parent) {
-            ViewHolder holder;
-            if (convertView == null) {
-                convertView = inflater.inflate(R.layout.item_epg, parent, false);
-                holder = new ViewHolder();
-                holder.tv_dayName = convertView.findViewById(R.id.tv_dayName);
-                holder.tv_time = convertView.findViewById(R.id.tv_time);
-                holder.tv_title = convertView.findViewById(R.id.tv_title);
-                holder.tv_action = convertView.findViewById(R.id.tv_action);
-                convertView.setTag(holder);
-            } else {
-                holder = (ViewHolder) convertView.getTag();
-            }
+public View getView(int position, View convertView, ViewGroup parent) {
+    ViewHolder holder;
+    if (convertView == null) {
+        convertView = inflater.inflate(R.layout.item_epg, parent, false);
+        holder = new ViewHolder();
+        holder.tv_dayName = convertView.findViewById(R.id.tv_dayName);
+        holder.tv_time = convertView.findViewById(R.id.tv_time);
+        holder.tv_title = convertView.findViewById(R.id.tv_title);
+        holder.tv_action = convertView.findViewById(R.id.tv_action);
+        convertView.setTag(holder);
+    } else {
+        holder = (ViewHolder) convertView.getTag();
+    }
 
-            Channel.EpgItem item = items.get(position);
-            holder.tv_dayName.setText(item.dayName);
-            holder.tv_time.setText(item.time);
-            holder.tv_title.setText(item.title);
+    Channel.EpgItem item = items.get(position);
+    holder.tv_dayName.setText(item.dayName);
+    holder.tv_time.setText(item.time);
+    holder.tv_title.setText(item.title);
 
-            // ========== 选中蓝色高亮（只加了这里）==========
-            if (position == selectedPosition) {
-                holder.tv_time.setTextColor(Color.parseColor("#40A9FF"));
-                holder.tv_title.setTextColor(Color.parseColor("#40A9FF"));
-            } else {
-                holder.tv_time.setTextColor(Color.WHITE);
-                holder.tv_title.setTextColor(Color.WHITE);
-            }
-            // ==============================================
+    // ========== 日期、时间、标题 一起高亮 ==========
+    if (position == selectedPosition) {
+        // 选中状态：统一蓝色高亮
+        holder.tv_dayName.setTextColor(Color.parseColor("#40A9FF"));
+        holder.tv_time.setTextColor(Color.parseColor("#40A9FF"));
+        holder.tv_title.setTextColor(Color.parseColor("#40A9FF"));
+    } else {
+        // 未选中状态：和你布局里的默认颜色保持一致
+        holder.tv_dayName.setTextColor(Color.parseColor("#ffffff"));
+        holder.tv_time.setTextColor(Color.parseColor("#cccccc"));
+        holder.tv_title.setTextColor(Color.parseColor("#ffffff"));
+    }
+    // ==============================================
 
-            String key = currentChannel != null ? currentChannel.getName() + "_" + position : "";
-            if (item.isPlaying) {
-                holder.tv_action.setText("播放中");
-                holder.tv_action.setBackgroundColor(0xFFFF9800);
-                holder.tv_action.setEnabled(false);
-            } else {
-                if (bookedSet.contains(key)) {
-                    holder.tv_action.setText("已预约");
-                    holder.tv_action.setBackgroundColor(0xFF607D8B);
-                    holder.tv_action.setEnabled(false);
-                } else {
-                    holder.tv_action.setText("预约");
-                    holder.tv_action.setBackgroundColor(0xFF4CAF50);
-                    holder.tv_action.setEnabled(true);
-                    holder.tv_action.setOnClickListener(v -> {
-                        bookedSet.add(key);
-                        setAlarm(context, position, item.title, currentChannel.getPlayUrl());
-                        notifyDataSetChanged();
-                        Toast.makeText(context, "已预约：" + item.title, Toast.LENGTH_SHORT).show();
-                    });
-                }
-            }
-            return convertView;
+    String key = currentChannel != null ? currentChannel.getName() + "_" + position : "";
+    if (item.isPlaying) {
+        holder.tv_action.setText("播放中");
+        holder.tv_action.setBackgroundColor(0xFFFF9800);
+        holder.tv_action.setEnabled(false);
+    } else {
+        if (bookedSet.contains(key)) {
+            holder.tv_action.setText("已预约");
+            holder.tv_action.setBackgroundColor(0xFF607D8B);
+            holder.tv_action.setEnabled(false);
+        } else {
+            holder.tv_action.setText("预约");
+            holder.tv_action.setBackgroundColor(0xFF4CAF50);
+            holder.tv_action.setEnabled(true);
+            holder.tv_action.setOnClickListener(v -> {
+                bookedSet.add(key);
+                setAlarm(context, position, item.title, currentChannel.getPlayUrl());
+                notifyDataSetChanged();
+                Toast.makeText(context, "已预约：" + item.title, Toast.LENGTH_SHORT).show();
+            });
         }
+    }
+    return convertView;
+}
 
         class ViewHolder {
             TextView tv_dayName;

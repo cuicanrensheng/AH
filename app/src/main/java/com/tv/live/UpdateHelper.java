@@ -22,7 +22,7 @@ import java.net.URL;
 
 public class UpdateHelper {
     private static final String TAG = "UpdateHelper";
-    private static final String UPDATE_JSON_URL = "https://raw.githubusercontent.com/你的用户名/你的仓库名/main/update.json"; // 改成你的 raw 地址
+    private static final String UPDATE_JSON_URL = "https://raw.githubusercontent.com/cuicanrensheng/AH/main/update.json"; // 改成你的 raw 地址
 
     public interface UpdateCallback {
         void onNewVersionFound(String versionName, String downloadUrl);

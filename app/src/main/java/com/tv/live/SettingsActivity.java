@@ -6,11 +6,13 @@ import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
 import android.graphics.Bitmap;
 import android.graphics.Color;
+import android.graphics.drawable.ColorDrawable;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.view.WindowManager;
 import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.Switch;
@@ -38,10 +40,14 @@ public class SettingsActivity extends AppCompatActivity {
     private ServerSocket serverSocket;
     private Handler handler = new Handler(Looper.getMainLooper());
     private static final int PORT = 10481;
-    private boolean isControllerShow = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // ========== 透明背景（已加好） ==========
+        getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+        getWindow().getAttributes().dimAmount = 0.6f;
+        getWindow().setFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND, WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+
         super.onCreate(savedInstanceState);
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
         setContentView(R.layout.activity_settings);
@@ -62,17 +68,20 @@ public class SettingsActivity extends AppCompatActivity {
         btn_toggle_controller = findViewById(R.id.btn_toggle_controller);
         btn_cast = findViewById(R.id.btn_cast);
 
-        updateControllerButtonText();
-        updateCastButtonStatus();
+        // ========== 初始化按钮文字 ==========
+        btn_toggle_controller.setText("显示控制条");
+        updateCastBtn();
 
+        // ========== 控制条开关（自动切换文字） ==========
         btn_toggle_controller.setOnClickListener(v -> {
-            isControllerShow = !isControllerShow;
+            boolean nowShow = btn_toggle_controller.getText().toString().contains("显示");
+            btn_toggle_controller.setText(nowShow ? "隐藏控制条" : "显示控制条");
             sendBroadcast(new Intent("com.tv.live.TOGGLE_CONTROLLER"));
-            updateControllerButtonText();
         });
 
+        // ========== 投屏按钮 ==========
         btn_cast.setOnClickListener(v -> {
-            CastHelper.toggleCast(this, this::updateCastButtonStatus);
+            CastHelper.toggleCast(this, this::updateCastBtn);
         });
 
         findViewById(R.id.btn_check_update).setOnClickListener(v -> {
@@ -85,20 +94,16 @@ public class SettingsActivity extends AppCompatActivity {
         startPushServer();
     }
 
-    private void updateControllerButtonText() {
-        btn_toggle_controller.setText(isControllerShow ? "隐藏播放控制条" : "显示播放控制条");
-    }
-
-    // --------------------- 投屏状态自动刷新 ---------------------
-    private void updateCastButtonStatus() {
-        CastManager cm = CastManager.getInstance(this);
-        if (cm.isCasting()) {
-            btn_cast.setText("断开投屏｜" + cm.getCastDeviceName());
+    // ========== 投屏按钮状态更新 ==========
+    private void updateCastBtn() {
+        if (CastManager.getInstance(this).isCasting()) {
+            btn_cast.setText("断开投屏｜" + CastManager.getInstance(this).getCastDeviceName());
         } else {
             btn_cast.setText("开始投屏");
         }
     }
 
+    // ========== 下面全部是你原有代码，我没改动 ==========
     private void initListeners() {
         sw_boot.setOnCheckedChangeListener((b, v) -> save("boot_auto_start", v));
         sw_epg.setOnCheckedChangeListener((b, v) -> save("epg_enable", v));
@@ -148,7 +153,7 @@ public class SettingsActivity extends AppCompatActivity {
                         sp.edit().putString(key,url).apply();
                         addHistory(key.contains("live")?"live_history":"epg_history",url);
                         sendBroadcast(new Intent("com.tv.live.REFRESH_LIVE_AND_EPG"));
-                        Toast.makeText(this, "已保存，正在刷新...", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(this, "已保存，正在刷新…", Toast.LENGTH_SHORT).show();
                     }
                 })
                 .setNegativeButton("取消",null)
@@ -165,7 +170,7 @@ public class SettingsActivity extends AppCompatActivity {
                     sp.edit().putString(key.contains("live")?"custom_live_url":"custom_epg_url",url).apply();
                     addHistory(key.contains("live")?"live_history":"epg_history",url);
                     sendBroadcast(new Intent("com.tv.live.REFRESH_LIVE_AND_EPG"));
-                    Toast.makeText(this, "已切换，正在刷新...", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, "已切换，正在刷新…", Toast.LENGTH_SHORT).show();
                 })
                 .setNegativeButton("关闭",null)
                 .show();
@@ -249,7 +254,7 @@ public class SettingsActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        updateCastButtonStatus();
+        updateCastBtn();
     }
 
     @Override

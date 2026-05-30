@@ -42,7 +42,6 @@
 
             <!-- 【已改成你要的样式：右侧竖条按钮】 -->
             <TextView
-                <TextView
     android:id="@+id/btn_show_epg"
     android:layout_width="50dp"
     android:layout_height="match_parent"

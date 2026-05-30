@@ -168,8 +168,7 @@ public class MainActivity extends AppCompatActivity {
         if (channelSourceList == null || channelSourceList.isEmpty()) return;
         index = Math.max(0, Math.min(index, channelSourceList.size() - 1));
         currentPlayIndex = index;
-        switchManager.setCurrentIndex(index);
-
+        
         Channel ch = channelSourceList.get(index);
         if (ch == null || TextUtils.isEmpty(ch.getPlayUrl())) {
             Toast.makeText(this, "播放地址无效", Toast.LENGTH_SHORT).show();

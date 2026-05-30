@@ -18,7 +18,6 @@
         android:layout_height="match_parent"
         android:orientation="horizontal"
         android:visibility="gone">
-        
 
         <!-- 1 频道分组 -->
         <ListView
@@ -41,39 +40,44 @@
                 android:layout_weight="1"
                 android:background="#CC000000"/>
 
+            <!-- 【已改成你要的样式：右侧竖条按钮】 -->
             <TextView
                 android:id="@+id/btn_show_epg"
-                android:layout_width="match_parent"
-                android:layout_height="50dp"
+                android:layout_width="50dp"
+                android:layout_height="match_parent"
                 android:background="#99000000"
                 android:gravity="center"
-                android:text="👉 向右查看节目单"
+                android:text="节目单"
                 android:textColor="#ffffff"
-                android:textSize="14sp"/>
+                android:textSize="14sp"
+                android:rotation="270"/>
 
         </LinearLayout>
 
-        <!-- 3 日期 -->
+        <!-- 3 日期 默认隐藏 -->
         <ListView
             android:id="@+id/lv_date"
             android:layout_width="120dp"
             android:layout_height="match_parent"
-            android:background="#CC000000"/>
+            android:background="#CC000000"
+            android:visibility="gone"/>
 
-        <!-- 4 节目单 EPG -->
+        <!-- 4 节目单 EPG 默认隐藏 -->
         <ListView
             android:id="@+id/lv_epg"
             android:layout_width="360dp"
             android:layout_height="match_parent"
             android:background="#CC000000"
-            android:textColor="#ffffff"/>
-        
-        <!-- 新增：控制条开关按钮 -->
-    <Button
-        android:id="@+id/btn_toggle_controller"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="开关控制条" />
+            android:textColor="#ffffff"
+            android:visibility="gone"/>
+
+        <!-- 控制条开关 -->
+        <Button
+            android:id="@+id/btn_toggle_controller"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="开关控制条" />
+
     </LinearLayout>
 
 </FrameLayout>

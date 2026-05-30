@@ -1,5 +1,4 @@
 package com.tv.live;
-
 import android.app.AlertDialog;
 import android.content.Context;
 import android.content.Intent;
@@ -35,7 +34,7 @@ import java.util.List;
 public class SettingsActivity extends AppCompatActivity {
     private Switch sw_boot, sw_epg, sw_auto_update, sw_reverse, sw_num_channel;
     private TextView tv_screen_ratio, tv_custom_source, tv_custom_epg, tv_multi_source, tv_multi_epg, tv_qr_code;
-    private TextView btn_toggle_controller, btn_cast;
+    private TextView btn_cast;
     private SharedPreferences sp;
     private String currentWebUrl;
     private ServerSocket serverSocket;
@@ -52,34 +51,27 @@ public class SettingsActivity extends AppCompatActivity {
         setContentView(R.layout.activity_settings);
 
         sp = getSharedPreferences("app_settings", MODE_PRIVATE);
+
         sw_boot = findViewById(R.id.sw_boot);
         sw_epg = findViewById(R.id.sw_epg);
         sw_auto_update = findViewById(R.id.sw_auto_update);
         sw_reverse = findViewById(R.id.sw_reverse);
         sw_num_channel = findViewById(R.id.sw_num_channel);
+
         tv_screen_ratio = findViewById(R.id.tv_screen_ratio);
         tv_custom_source = findViewById(R.id.tv_custom_source);
         tv_custom_epg = findViewById(R.id.tv_custom_epg);
         tv_multi_source = findViewById(R.id.tv_multi_source);
         tv_multi_epg = findViewById(R.id.tv_multi_epg);
         tv_qr_code = findViewById(R.id.tv_qr_code);
-        btn_toggle_controller = findViewById(R.id.btn_toggle_controller);
         btn_cast = findViewById(R.id.btn_cast);
 
-        btn_toggle_controller.setText("显示控制条");
         updateCastBtn();
-
-        btn_toggle_controller.setOnClickListener(v -> {
-            boolean nowShow = btn_toggle_controller.getText().toString().contains("显示");
-            btn_toggle_controller.setText(nowShow ? "隐藏控制条" : "显示控制条");
-            sendBroadcast(new Intent("com.tv.live.TOGGLE_CONTROLLER"));
-        });
 
         btn_cast.setOnClickListener(v -> {
             CastHelper.toggleCast(this, this::updateCastBtn);
         });
 
-        // ====================== 【检查更新 已补全】 ======================
         findViewById(R.id.btn_check_update).setOnClickListener(v -> {
             UpdateHelper.checkUpdate(this, new UpdateHelper.UpdateCallback() {
                 @Override
@@ -93,19 +85,16 @@ public class SettingsActivity extends AppCompatActivity {
                             .setNegativeButton("稍后", null)
                             .show();
                 }
-
                 @Override
                 public void onNoUpdate() {
                     Toast.makeText(SettingsActivity.this, "已是最新版本", Toast.LENGTH_SHORT).show();
                 }
-
                 @Override
                 public void onError(String msg) {
                     Toast.makeText(SettingsActivity.this, msg, Toast.LENGTH_SHORT).show();
                 }
             });
         });
-        // ================================================================
 
         loadConfig();
         initListeners();
@@ -127,6 +116,7 @@ public class SettingsActivity extends AppCompatActivity {
         sw_auto_update.setOnCheckedChangeListener((b, v) -> save("auto_update_source", v));
         sw_reverse.setOnCheckedChangeListener((b, v) -> save("channel_reverse", v));
         sw_num_channel.setOnCheckedChangeListener((b, v) -> save("number_channel_enable", v));
+
         tv_screen_ratio.setOnClickListener(v -> showRatioDialog());
         tv_custom_source.setOnClickListener(v -> showInputDialog("自定义订阅源", "请输入直播源地址", "custom_live_url"));
         tv_custom_epg.setOnClickListener(v -> showInputDialog("自定义节目单", "请输入EPG地址", "custom_epg_url"));
@@ -178,7 +168,10 @@ public class SettingsActivity extends AppCompatActivity {
 
     private void showHistoryDialog(String title, String key) {
         List<String> list = getHistory(key);
-        if(list.isEmpty()){ Toast.makeText(this,"无记录",Toast.LENGTH_SHORT).show(); return; }
+        if(list.isEmpty()){
+            Toast.makeText(this,"无记录",Toast.LENGTH_SHORT).show();
+            return;
+        }
         new AlertDialog.Builder(this)
                 .setTitle(title)
                 .setItems(list.toArray(new String[0]),(d,w)->{

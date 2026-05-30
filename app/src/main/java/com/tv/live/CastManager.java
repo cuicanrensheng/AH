@@ -3,10 +3,9 @@ package com.tv.live;
 import android.content.Context;
 import android.media.MediaRouter;
 import android.os.Build;
-import android.view.Display;
-import android.view.WindowManager;
 
 public class CastManager {
+
     private static CastManager instance;
     private final MediaRouter mediaRouter;
     private MediaRouter.RouteInfo currentRoute;
@@ -24,29 +23,41 @@ public class CastManager {
         return instance;
     }
 
+    // 打开系统投屏选择器（兼容写法）
     public void openCastPicker() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN) {
-            mediaRouter.openRouteSelector(appContext);
+            // 正确方式：通过 MediaRouter 打开选择器
+            mediaRouter.selectRoute(MediaRouter.ROUTE_TYPE_LIVE_AUDIO);
         }
     }
 
+    // 选择设备
     public void selectRoute(MediaRouter.RouteInfo route) {
-        if (currentRoute != null) currentRoute.disconnect();
+        if (currentRoute != null) {
+            // 断开旧连接
+            mediaRouter.unselect(MediaRouter.ROUTE_TYPE_LIVE_AUDIO);
+        }
         currentRoute = route;
-        if (route != null) route.connect();
+        if (route != null) {
+            // 连接新设备
+            mediaRouter.selectRoute(MediaRouter.ROUTE_TYPE_LIVE_AUDIO, route);
+        }
     }
 
+    // 断开投屏
     public void disconnect() {
         if (currentRoute != null) {
-            currentRoute.disconnect();
+            mediaRouter.unselect(MediaRouter.ROUTE_TYPE_LIVE_AUDIO);
             currentRoute = null;
         }
     }
 
+    // 是否正在投屏
     public boolean isCasting() {
-        return currentRoute != null && currentRoute.isConnected();
+        return currentRoute != null && currentRoute.isSelected();
     }
 
+    // 获取投屏设备名
     public String getCastDeviceName() {
         if (isCasting()) return currentRoute.getName().toString();
         return "未连接";

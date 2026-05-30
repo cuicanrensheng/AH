@@ -34,7 +34,6 @@ import java.util.List;
 public class SettingsActivity extends AppCompatActivity {
     private Switch sw_boot, sw_epg, sw_auto_update, sw_reverse, sw_num_channel;
     private TextView tv_screen_ratio, tv_custom_source, tv_custom_epg, tv_multi_source, tv_multi_epg, tv_qr_code;
-    private TextView btn_cast;
     private SharedPreferences sp;
     private String currentWebUrl;
     private ServerSocket serverSocket;
@@ -64,49 +63,36 @@ public class SettingsActivity extends AppCompatActivity {
         tv_multi_source = findViewById(R.id.tv_multi_source);
         tv_multi_epg = findViewById(R.id.tv_multi_epg);
         tv_qr_code = findViewById(R.id.tv_qr_code);
-        btn_cast = findViewById(R.id.btn_cast);
 
-        updateCastBtn();
-
-        // ====================== 所有开关一次性绑定完成 ======================
         // 开机自启
         sw_boot.setChecked(sp.getBoolean("boot_auto_start", false));
         sw_boot.setOnCheckedChangeListener((buttonView, isChecked) -> {
             sp.edit().putBoolean("boot_auto_start", isChecked).apply();
             Toast.makeText(this, "开机自启" + (isChecked ? "已开启" : "已关闭"), Toast.LENGTH_SHORT).show();
         });
-
         // 节目单开关
         sw_epg.setChecked(sp.getBoolean("epg_enable", true));
         sw_epg.setOnCheckedChangeListener((buttonView, isChecked) -> {
             sp.edit().putBoolean("epg_enable", isChecked).apply();
             Toast.makeText(this, "节目单" + (isChecked ? "已开启" : "已关闭"), Toast.LENGTH_SHORT).show();
         });
-
         // 自动更新源
         sw_auto_update.setChecked(sp.getBoolean("auto_update_source", true));
         sw_auto_update.setOnCheckedChangeListener((buttonView, isChecked) -> {
             sp.edit().putBoolean("auto_update_source", isChecked).apply();
             Toast.makeText(this, "自动更新源" + (isChecked ? "已开启" : "已关闭"), Toast.LENGTH_SHORT).show();
         });
-
         // 换台反转
         sw_reverse.setChecked(sp.getBoolean("channel_reverse", false));
         sw_reverse.setOnCheckedChangeListener((buttonView, isChecked) -> {
             sp.edit().putBoolean("channel_reverse", isChecked).apply();
-            Toast.makeText(this, "换台反转" + (isChecked ? "已开启" : "已关闭"), Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "换台反转" + (isChecked ? "已关闭" : "已开启"), Toast.LENGTH_SHORT).show();
         });
-
         // 数字选台
         sw_num_channel.setChecked(sp.getBoolean("number_channel_enable", true));
         sw_num_channel.setOnCheckedChangeListener((buttonView, isChecked) -> {
             sp.edit().putBoolean("number_channel_enable", isChecked).apply();
             Toast.makeText(this, "数字选台" + (isChecked ? "已开启" : "已关闭"), Toast.LENGTH_SHORT).show();
-        });
-        // ==================================================================
-
-        btn_cast.setOnClickListener(v -> {
-            CastHelper.toggleCast(this, this::updateCastBtn);
         });
 
         findViewById(R.id.btn_check_update).setOnClickListener(v -> {
@@ -135,16 +121,9 @@ public class SettingsActivity extends AppCompatActivity {
 
         loadConfig();
         initListeners();
+
         currentWebUrl = "http://" + getDeviceIPAddress() + ":" + PORT;
         startPushServer();
-    }
-
-    private void updateCastBtn() {
-        if (CastManager.getInstance(this).isCasting()) {
-            btn_cast.setText("断开投屏｜" + CastManager.getInstance(this).getCastDeviceName());
-        } else {
-            btn_cast.setText("开始投屏");
-        }
     }
 
     private void initListeners() {
@@ -157,7 +136,6 @@ public class SettingsActivity extends AppCompatActivity {
     }
 
     private void loadConfig() {
-        // 开关已经在onCreate里绑定，这里只做备用兼容
         sw_boot.setChecked(sp.getBoolean("boot_auto_start", false));
         sw_epg.setChecked(sp.getBoolean("epg_enable", true));
         sw_auto_update.setChecked(sp.getBoolean("auto_update_source", true));
@@ -291,7 +269,6 @@ public class SettingsActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        updateCastBtn();
     }
 
     @Override

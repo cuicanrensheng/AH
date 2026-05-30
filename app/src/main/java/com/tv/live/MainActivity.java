@@ -65,7 +65,7 @@ public class MainActivity extends AppCompatActivity {
                     String customLive = appConfig.getCustomLiveUrl();
                     String customEpg = appConfig.getCustomEpgUrl();
                     if (customLive != null) UrlConfig.LIVE_URL = customLive;
-                    if (customEpg != null) UrlConfig.EPG_URL = epgUrl;
+                    if (customEpg != null) UrlConfig.EPG_URL = customEpg;
                     loadLiveAndEpg();
                 });
             }
@@ -236,7 +236,7 @@ public class MainActivity extends AppCompatActivity {
         panelManager.toggle(channelSourceList, currentPlayIndex);
     }
 
-    // ✅ 修复编译报错：给遥控器/手势调用
+    // 修复按键打开设置
     public void openSettings() {
         startActivity(new Intent(this, SettingsActivity.class));
     }

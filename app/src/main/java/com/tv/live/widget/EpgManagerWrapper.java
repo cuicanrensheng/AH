@@ -57,6 +57,6 @@ public class EpgManagerWrapper {
      public void onBackPressed() {
          if (listener != null) {
              listener.onBack();
-        });
+        }
     }
 }

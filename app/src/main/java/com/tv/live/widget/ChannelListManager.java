@@ -28,5 +28,9 @@ public class ChannelListManager {
                 android.R.layout.simple_list_item_1, names);
         lvChannelList.setAdapter(adapter);
         lvChannelList.setSelection(currentPlayIndex);
+        // 供外部调用，触发返回
+     public void onBackPressed() {
+         if (listener != null) {
+             listener.onBack();
     }
 }

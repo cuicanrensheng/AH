@@ -57,7 +57,6 @@ public class MainActivity extends AppCompatActivity {
         public void onReceive(Context context, Intent intent) {
             isControllerVisible = !isControllerVisible;
             playerView.setUseController(isControllerVisible);
-            Toast.makeText(MainActivity.this, isControllerVisible ? "已显示播放控制条" : "已隐藏播放控制条", Toast.LENGTH_SHORT).show();
         }
     };
 
@@ -99,6 +98,7 @@ public class MainActivity extends AppCompatActivity {
         playerView = findViewById(R.id.player_view);
         playerView.setUseController(false);
         panel_layout = findViewById(R.id.panel_layout);
+
         ListView lvGroup = findViewById(R.id.lv_group);
         ListView lvChannelList = findViewById(R.id.lv_channel_list);
         ListView lvDate = findViewById(R.id.lv_date);
@@ -112,22 +112,34 @@ public class MainActivity extends AppCompatActivity {
             epgPanelOpen = !epgPanelOpen;
             lvDate.setVisibility(epgPanelOpen ? View.VISIBLE : View.GONE);
             lvEpg.setVisibility(epgPanelOpen ? View.VISIBLE : View.GONE);
+            if (epgPanelOpen && !channelSourceList.isEmpty()) {
+                Channel curr = channelSourceList.get(currentPlayIndex);
+                epgManagerWrapper.refresh(curr, channelSourceList);
+            }
         });
 
         lvDate.setOnItemClickListener((parent, view, position, id) -> {
+            dateListManager.setSelectedPosition(position);
             if (!channelSourceList.isEmpty()) {
                 Channel curr = channelSourceList.get(currentPlayIndex);
                 epgManagerWrapper.refresh(curr, channelSourceList);
             }
         });
 
+        // ———————————————— 修复：分组点击刷新频道 ————————————————
+        lvGroup.setOnItemClickListener((parent, view, position, id) -> {
+            groupListManager.setSelectedPosition(position);
+            channelListManager.setChannelsByGroup(position, channelSourceList);
+        });
+
         channelListManager = new ChannelListManager(this, lvChannelList);
         groupListManager = new GroupListManager(this, lvGroup);
         dateListManager = new DateListManager(this, lvDate);
         epgManagerWrapper = new EpgManagerWrapper(this, lvEpg);
-        dateListManager.initDate();
 
+        dateListManager.initDate();
         panelManager = new PanelManager(panel_layout, channelListManager, epgManagerWrapper);
+
         mPlayerManager = TVPlayerManager.getInstance(this);
         mPlayerManager.attachPlayerView(playerView);
         playerStateListener = new PlayerStateListenerImpl(this);
@@ -149,6 +161,7 @@ public class MainActivity extends AppCompatActivity {
 
         switchManager = ChannelSwitchManager.getInstance();
         currentPlayIndex = appConfig.getLastPlayIndex();
+
         loadLiveAndEpg();
         initListViewClick();
     }
@@ -171,8 +184,11 @@ public class MainActivity extends AppCompatActivity {
                 channelSourceList.addAll(channels);
                 switchManager.setChannelList(channelSourceList);
                 switchManager.setCurrentIndex(currentPlayIndex);
+
                 Toast.makeText(MainActivity.this, "直播源加载完成：" + channelSourceList.size() + "个频道", Toast.LENGTH_SHORT).show();
+
                 groupListManager.setGroups(channelSourceList);
+                channelListManager.setChannels(channelSourceList, currentPlayIndex);
                 playChannel(currentPlayIndex);
             }
 
@@ -205,14 +221,17 @@ public class MainActivity extends AppCompatActivity {
         if (channelSourceList == null || channelSourceList.isEmpty()) return;
         index = Math.max(0, Math.min(index, channelSourceList.size() - 1));
         currentPlayIndex = index;
+
         Channel ch = channelSourceList.get(index);
         if (ch == null || TextUtils.isEmpty(ch.getPlayUrl())) {
             Toast.makeText(this, "播放地址无效", Toast.LENGTH_SHORT).show();
             return;
         }
+
         playerStateListener.setCurrentChannelName(ch.getName());
         mPlayerManager.play(ch.getPlayUrl());
         appConfig.setLastPlayIndex(index);
+
         channelListManager.setChannels(channelSourceList, index);
         epgManagerWrapper.refresh(ch, channelSourceList);
     }
@@ -240,6 +259,7 @@ public class MainActivity extends AppCompatActivity {
         lvChannelList.setOnItemClickListener((p, v, pos, id) -> {
             switchManager.setCurrentIndex(pos);
             playChannel(pos);
+            epgManagerWrapper.refresh(channelSourceList.get(pos), channelSourceList);
             togglePanel();
         });
     }

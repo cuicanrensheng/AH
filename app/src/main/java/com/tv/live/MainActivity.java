@@ -12,7 +12,7 @@ import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import com.google.android.exoplayer2.ui.PlayerView;
 
-// ============== 以下全部是【独立出去的模块】，已经和MainActivity解耦 ==============
+// ============== 独立出去的模块 ==============
 import com.tv.live.config.AppConfig;
 import com.tv.live.listener.PlayerStateListenerImpl;
 import com.tv.live.loader.LiveSourceLoader;
@@ -37,7 +37,7 @@ public class MainActivity extends AppCompatActivity {
     private View panel_layout;
     public TVPlayerManager mPlayerManager;
 
-    // ============== 所有独立模块的实例，MainActivity只负责调度 ==============
+    // ============== 独立模块实例 ==============
     private AppConfig appConfig;
     private ScreenRatioManager screenRatioManager;
     private PanelManager panelManager;
@@ -54,6 +54,8 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        mInstance = this;
+
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
         getWindow().getDecorView().setSystemUiVisibility(
@@ -62,17 +64,15 @@ public class MainActivity extends AppCompatActivity {
                         | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
         );
 
-        mInstance = this;
         setContentView(R.layout.activity_main);
 
-        // ========== 1. 配置管理（独立模块：config/AppConfig.java） ==========
+        // ========== 配置管理（独立） ==========
         appConfig = AppConfig.getInstance(this);
         String customLive = appConfig.getCustomLiveUrl();
         String customEpg = appConfig.getCustomEpgUrl();
         if (customLive != null) UrlConfig.LIVE_URL = customLive;
         if (customEpg != null) UrlConfig.EPG_URL = customEpg;
 
-        // ========== 2. 视图绑定 ==========
         PlayerView playerView = findViewById(R.id.player_view);
         panel_layout = findViewById(R.id.panel_layout);
         ListView lvGroup = findViewById(R.id.lv_group);
@@ -80,28 +80,27 @@ public class MainActivity extends AppCompatActivity {
         ListView lvDate = findViewById(R.id.lv_date);
         ListView lvEpg = findViewById(R.id.lv_epg);
 
-        // ========== 3. UI列表管理（独立模块：widget/下的4个文件） ==========
+        // ========== UI列表（独立） ==========
         channelListManager = new ChannelListManager(this, lvChannelList);
         groupListManager = new GroupListManager(this, lvGroup);
         dateListManager = new DateListManager(this, lvDate);
         epgManagerWrapper = new EpgManagerWrapper(this, lvEpg);
         dateListManager.initDate();
 
-        // ========== 4. 面板控制（独立模块：manager/PanelManager.java） ==========
+        // ========== 面板管理（独立） ==========
         panelManager = new PanelManager(panel_layout, channelListManager, epgManagerWrapper);
 
-        // ========== 5. 播放器 ==========
+        // ========== 播放器 ==========
         mPlayerManager = TVPlayerManager.getInstance(this);
         mPlayerManager.attachPlayerView(playerView);
-        // 播放器状态监听（独立模块：listener/PlayerStateListenerImpl.java）
         playerStateListener = new PlayerStateListenerImpl(this);
         mPlayerManager.setOnPlayStateListener(playerStateListener);
 
-        // ========== 6. 屏幕比例控制（独立模块：manager/ScreenRatioManager.java） ==========
+        // ========== 屏幕比例（独立） ==========
         screenRatioManager = new ScreenRatioManager(mPlayerManager, appConfig);
         screenRatioManager.apply();
 
-        // ========== 7. 手势控制（独立模块：manager/GestureManager.java） ==========
+        // ========== 手势（独立） ==========
         gestureManager = new GestureManager(this);
         PlayerGestureHelper gestureHelper = gestureManager.create();
         playerView.setOnTouchListener((v, event) -> {
@@ -109,30 +108,28 @@ public class MainActivity extends AppCompatActivity {
             return true;
         });
 
-        // ========== 8. 遥控器按键（独立模块：manager/KeyEventManager.java） ==========
+        // ========== 遥控器（独立） ==========
         keyEventManager = new KeyEventManager(this);
 
-        // ========== 9. HTTP配置服务（独立模块：service/HttpConfigService.java） ==========
+        // ========== HTTP服务（独立） ==========
         httpService = HttpConfigService.getInstance();
         httpService.start();
 
-        // ========== 10. 切台索引管理（独立模块：manager/ChannelSwitchManager.java） ==========
+        // ========== 切台管理（独立） ==========
         switchManager = ChannelSwitchManager.getInstance();
 
-        // 读取上次播放索引
         currentPlayIndex = appConfig.getLastPlayIndex();
         loadLiveAndEpg();
         initListViewClick();
     }
 
-    // ========== 直播源加载（独立模块：loader/LiveSourceLoader.java） ==========
-    private void loadLiveAndEpg() {
+    // ========== 加载直播源（独立loader） ==========
+    public void loadLiveAndEpg() {
         LiveSourceLoader.getInstance(this).load(new LiveSourceLoader.LoadCallback() {
             @Override
             public void onSuccess(List<Channel> channels) {
                 channelSourceList.clear();
                 channelSourceList.addAll(channels);
-                // 把频道列表交给独立的切台管理器
                 switchManager.setChannelList(channelSourceList);
                 switchManager.setCurrentIndex(currentPlayIndex);
 
@@ -147,7 +144,6 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        // 加载EPG节目单（防崩溃逻辑在 widget/EpgManagerWrapper.java 中）
         EpgManager.getInstance().setEpgUrl(UrlConfig.EPG_URL);
         EpgManager.getInstance().loadEpg(() -> runOnUiThread(() -> {
             Toast.makeText(MainActivity.this, "EPG节目单加载完成", Toast.LENGTH_SHORT).show();
@@ -157,7 +153,7 @@ public class MainActivity extends AppCompatActivity {
         }));
     }
 
-    // ========== 切台逻辑：调用独立模块 ChannelSwitchManager ==========
+    // ========== 切台逻辑（独立） ==========
     public void playPrev() {
         int idx = switchManager.prev();
         playChannel(idx);
@@ -172,8 +168,6 @@ public class MainActivity extends AppCompatActivity {
         if (channelSourceList == null || channelSourceList.isEmpty()) return;
         index = Math.max(0, Math.min(index, channelSourceList.size() - 1));
         currentPlayIndex = index;
-
-        // 同步索引到独立的切台管理器
         switchManager.setCurrentIndex(index);
 
         Channel ch = channelSourceList.get(index);
@@ -182,21 +176,28 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
-        // 更新播放器状态监听的频道名（独立模块：PlayerStateListenerImpl）
         playerStateListener.setCurrentChannelName(ch.getName());
-        if (mPlayerManager != null) {
-            mPlayerManager.play(ch.getPlayUrl());
-        }
-
-        // 保存索引（配置读写在独立模块：AppConfig）
+        mPlayerManager.play(ch.getPlayUrl());
         appConfig.setLastPlayIndex(index);
 
-        // 更新频道列表和EPG（独立模块：ChannelListManager / EpgManagerWrapper）
         channelListManager.setChannels(channelSourceList, index);
         epgManagerWrapper.refresh(ch, channelSourceList);
     }
 
-    // ========== 面板控制：调用独立模块 PanelManager ==========
+    // ========== 给 NanoHTTPD 调用：修复错误 ==========
+    public void onReceiveConfig(String liveUrl, String epgUrl) {
+        AppConfig.getInstance(this).setCustomUrls(liveUrl, epgUrl);
+
+        if (liveUrl != null) UrlConfig.LIVE_URL = liveUrl;
+        if (epgUrl != null) UrlConfig.EPG_URL = epgUrl;
+
+        runOnUiThread(() -> {
+            Toast.makeText(this, "配置已保存，重新加载…", Toast.LENGTH_LONG).show();
+            loadLiveAndEpg();
+        });
+    }
+
+    // ========== 面板控制（独立） ==========
     public void togglePanel() {
         panelManager.toggle(channelSourceList, currentPlayIndex);
     }
@@ -205,18 +206,16 @@ public class MainActivity extends AppCompatActivity {
         startActivity(new Intent(this, SettingsActivity.class));
     }
 
-    // ========== 列表点击事件 ==========
     private void initListViewClick() {
         ListView lvChannelList = findViewById(R.id.lv_channel_list);
         lvChannelList.setOnItemClickListener((p, v, pos, id) -> {
-            // 点击列表时同步索引到独立的切台管理器
             switchManager.setCurrentIndex(pos);
             playChannel(pos);
             togglePanel();
         });
     }
 
-    // ========== 遥控器按键：调用独立模块 KeyEventManager ==========
+    // ========== 遥控器（独立） ==========
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         if (keyEventManager.dispatchKey(keyCode)) {
@@ -228,19 +227,14 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        // 刷新屏幕比例（独立模块：ScreenRatioManager）
         screenRatioManager.apply();
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        // 停止HTTP服务（独立模块：HttpConfigService）
         httpService.stop();
-        // 释放播放器
-        if (mPlayerManager != null) {
-            mPlayerManager.release();
-        }
+        mPlayerManager.release();
         mInstance = null;
     }
 }

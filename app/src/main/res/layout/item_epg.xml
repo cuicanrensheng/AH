@@ -34,7 +34,6 @@
                 android:textColor="#cccccc"
                 android:layout_marginLeft="12dp"
                 android:minWidth="70dp"/>
-
         </LinearLayout>
 
         <TextView
@@ -51,6 +50,7 @@
         android:id="@+id/tv_action"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
+        android:text="播放"
         android:textSize="13sp"
         android:paddingLeft="12dp"
         android:paddingRight="12dp"

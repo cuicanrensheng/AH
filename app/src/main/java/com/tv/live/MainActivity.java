@@ -10,6 +10,7 @@ import android.view.KeyEvent;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.ListView;
+import android.widget.TextView;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import com.google.android.exoplayer2.ui.PlayerView;
@@ -48,6 +49,10 @@ public class MainActivity extends AppCompatActivity {
     private EpgManagerWrapper epgManagerWrapper;
     private PlayerStateListenerImpl playerStateListener;
     private ChannelSwitchManager switchManager;
+
+    // 节目单开关标记
+    private boolean epgPanelOpen = false;
+
     // 控制条开关广播接收器
     private boolean isControllerVisible = false;
     private final BroadcastReceiver toggleControllerReceiver = new BroadcastReceiver() {
@@ -60,6 +65,7 @@ public class MainActivity extends AppCompatActivity {
                     Toast.LENGTH_SHORT).show();
         }
     };
+
     // 【新增】直播源/EPG 刷新广播接收器
     private final BroadcastReceiver refreshReceiver = new BroadcastReceiver() {
         @Override
@@ -91,12 +97,14 @@ public class MainActivity extends AppCompatActivity {
                         | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
         );
         setContentView(R.layout.activity_main);
+
         // 配置管理
         appConfig = AppConfig.getInstance(this);
         String customLive = appConfig.getCustomLiveUrl();
         String customEpg = appConfig.getCustomEpgUrl();
         if (customLive != null) UrlConfig.LIVE_URL = customLive;
         if (customEpg != null) UrlConfig.EPG_URL = customEpg;
+
         playerView = findViewById(R.id.player_view);
         playerView.setUseController(false); // 默认隐藏
         panel_layout = findViewById(R.id.panel_layout);
@@ -104,34 +112,50 @@ public class MainActivity extends AppCompatActivity {
         ListView lvChannelList = findViewById(R.id.lv_channel_list);
         ListView lvDate = findViewById(R.id.lv_date);
         ListView lvEpg = findViewById(R.id.lv_epg);
+
         // 注册两个广播接收器
         registerReceiver(toggleControllerReceiver, new IntentFilter("com.tv.live.TOGGLE_CONTROLLER"));
         registerReceiver(refreshReceiver, new IntentFilter("com.tv.live.REFRESH_LIVE_AND_EPG"));
-        
-        TextView btn_show_epg = findViewById(R.id.btn_show_epg);
-        boolean epgPanelOpen = false;
 
+        // ========== 节目单按钮 + 日期点击 已完整写好 ==========
+        TextView btn_show_epg = findViewById(R.id.btn_show_epg);
+
+        // 点击展开/收起 日期+节目单
         btn_show_epg.setOnClickListener(v -> {
-        epgPanelOpen = !epgPanelOpen;
-        lvDate.setVisibility(epgPanelOpen ? View.VISIBLE : View.GONE);
-        lvEpg.setVisibility(epgPanelOpen ? View.VISIBLE : View.GONE);
-    });
+            epgPanelOpen = !epgPanelOpen;
+            lvDate.setVisibility(epgPanelOpen ? View.VISIBLE : View.GONE);
+            lvEpg.setVisibility(epgPanelOpen ? View.VISIBLE : View.GONE);
+        });
+
+        // 日期点击 → 刷新对应节目单
+        lvDate.setOnItemClickListener((parent, view, position, id) -> {
+            if (!channelSourceList.isEmpty()) {
+                Channel currentChannel = channelSourceList.get(currentPlayIndex);
+                epgManagerWrapper.refresh(currentChannel, channelSourceList);
+            }
+        });
+        // ====================================================
+
         // UI列表管理
         channelListManager = new ChannelListManager(this, lvChannelList);
         groupListManager = new GroupListManager(this, lvGroup);
         dateListManager = new DateListManager(this, lvDate);
         epgManagerWrapper = new EpgManagerWrapper(this, lvEpg);
         dateListManager.initDate();
+
         // 面板管理
         panelManager = new PanelManager(panel_layout, channelListManager, epgManagerWrapper);
+
         // 播放器
         mPlayerManager = TVPlayerManager.getInstance(this);
         mPlayerManager.attachPlayerView(playerView);
         playerStateListener = new PlayerStateListenerImpl(this);
         mPlayerManager.setOnPlayStateListener(playerStateListener);
+
         // 屏幕比例管理
         screenRatioManager = new ScreenRatioManager(mPlayerManager, appConfig);
         screenRatioManager.apply();
+
         // 手势管理
         gestureManager = new GestureManager(this);
         PlayerGestureHelper gestureHelper = gestureManager.create();
@@ -139,11 +163,14 @@ public class MainActivity extends AppCompatActivity {
             gestureHelper.handleTouch(event);
             return true;
         });
+
         // 遥控器管理
         keyEventManager = new KeyEventManager(this);
+
         // HTTP服务
         httpService = HttpConfigService.getInstance();
         httpService.start();
+
         // 切台管理
         switchManager = ChannelSwitchManager.getInstance();
         currentPlayIndex = appConfig.getLastPlayIndex();
@@ -151,7 +178,7 @@ public class MainActivity extends AppCompatActivity {
         initListViewClick();
     }
 
-    // ====================== 【返回键修复：只加了这里】 ======================
+    // ====================== 【返回键修复】 ======================
     @Override
     public void onBackPressed() {
         if (panel_layout.getVisibility() == View.VISIBLE) {
@@ -163,7 +190,7 @@ public class MainActivity extends AppCompatActivity {
             super.onBackPressed();
         }
     }
-    // ====================================================================
+    // ============================================================
 
     public void loadLiveAndEpg() {
         LiveSourceLoader.getInstance(this).load(new LiveSourceLoader.LoadCallback() {
@@ -183,6 +210,7 @@ public class MainActivity extends AppCompatActivity {
                 Toast.makeText(MainActivity.this, "加载失败：" + errorMsg, Toast.LENGTH_SHORT).show();
             }
         });
+
         EpgManager.getInstance().setEpgUrl(UrlConfig.EPG_URL);
         EpgManager.getInstance().loadEpg(() -> runOnUiThread(() -> {
             Toast.makeText(MainActivity.this, "EPG节目单加载完成", Toast.LENGTH_SHORT).show();

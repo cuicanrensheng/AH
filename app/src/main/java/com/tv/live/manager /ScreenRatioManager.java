@@ -23,7 +23,7 @@ public class ScreenRatioManager {
                 mPlayerManager.setScaleMode(TVPlayerManager.ScaleMode.FILL);
                 break;
             default:
-                mPlayerManager.setScaleMode(TVPlayerManager.ScaleMode.ZOOM);
+                mPlayerManager.setScaleMode(TVPlayerManager.ScaleMode.FILL);
                 break;
         }
     }

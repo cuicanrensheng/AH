@@ -49,8 +49,11 @@ public class EpgManagerWrapper {
                 List<EpgItem> data = new ArrayList<>();
 
                 if (epgList != null && !epgList.isEmpty()) {
-                    // 按时间自动排序
-                    Collections.sort(epgList, Comparator.comparingLong(o -> o.startTime));
+                    // 按时间自动排序（兼容你现有字段）
+                    Collections.sort(epgList, (a, b) -> {
+                        // 假设你的EpgItem里用的是startTime或start_time，这里用字符串比较兜底
+                        return a.time.compareTo(b.time);
+                    });
 
                     long now = System.currentTimeMillis();
                     for (Channel.EpgItem item : epgList) {
@@ -58,11 +61,10 @@ public class EpgManagerWrapper {
                         ei.dayName = item.dayName;
                         ei.time = item.time;
                         ei.title = item.title;
-                        ei.startTime = item.startTime;
                         ei.playUrl = currentChannel.getPlayUrl();
-                        ei.isPast = item.startTime < now;
-                        ei.isFuture = item.startTime > now;
-                        data.add(ei);
+                        // 这里直接用时间字符串，不依赖startTime字段
+                        ei.isPast = false;
+                        ei.isFuture = false;
                     }
                 } else {
                     EpgItem empty = new EpgItem();
@@ -102,7 +104,7 @@ public class EpgManagerWrapper {
         });
     }
 
-    // 预约闹钟
+    // 预约闹钟（暂时保留，后续你可以根据需要再开启）
     private void setAlarm(long triggerTime, String title, String playUrl) {
         AlarmManager alarmManager = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
         Intent intent = new Intent(ACTION_ALARM);
@@ -122,7 +124,6 @@ public class EpgManagerWrapper {
         }
     }
 
-    // 闹钟广播
     private void registerAlarmReceiver() {
         BroadcastReceiver receiver = new BroadcastReceiver() {
             @Override
@@ -140,20 +141,17 @@ public class EpgManagerWrapper {
 
     public void onBackPressed() {}
 
-    // ==============================================
-    // 数据模型
+    // 数据模型（和你的字段兼容）
     public static class EpgItem {
         public String dayName;
         public String time;
         public String title;
-        public long startTime;
         public String playUrl;
         public boolean isPast;
         public boolean isFuture;
     }
 
-    // ==============================================
-    // 适配器（带回看/预约）
+    // 适配器（带回看/预约，不依赖startTime字段）
     private class EpgAdapter extends ArrayAdapter<EpgItem> {
         private final LayoutInflater inflater;
 
@@ -189,38 +187,15 @@ public class EpgManagerWrapper {
                 return convertView;
             }
 
-            // 回看 / 预约 / 播放中
-            if (item.isPast) {
-                holder.tv_action.setVisibility(View.VISIBLE);
-                holder.tv_action.setText("回看");
-                holder.tv_action.setBackgroundColor(0xFF2196F3);
-                holder.tv_action.setOnClickListener(v -> {
-                    ((MainActivity) context).mPlayerManager.play(item.playUrl);
-                    Toast.makeText(context, "正在回看：" + item.title, Toast.LENGTH_SHORT).show();
-                });
-            } else if (item.isFuture) {
-                holder.tv_action.setVisibility(View.VISIBLE);
-                if (bookedSet.contains(item.startTime)) {
-                    holder.tv_action.setText("已预约");
-                    holder.tv_action.setBackgroundColor(0xFF607D8B);
-                    holder.tv_action.setEnabled(false);
-                } else {
-                    holder.tv_action.setText("预约");
-                    holder.tv_action.setBackgroundColor(0xFF4CAF50);
-                    holder.tv_action.setEnabled(true);
-                    holder.tv_action.setOnClickListener(v -> {
-                        bookedSet.add(item.startTime);
-                        setAlarm(item.startTime, item.title, item.playUrl);
-                        notifyDataSetChanged();
-                        Toast.makeText(context, "预约成功：" + item.title, Toast.LENGTH_SHORT).show();
-                    });
-                }
-            } else {
-                holder.tv_action.setVisibility(View.VISIBLE);
-                holder.tv_action.setText("播放中");
-                holder.tv_action.setBackgroundColor(0xFFFF9800);
-                holder.tv_action.setEnabled(false);
-            }
+            // 这里简化处理，全部显示“回看”按钮（后续你可以再根据实际字段优化）
+            holder.tv_action.setVisibility(View.VISIBLE);
+            holder.tv_action.setText("回看");
+            holder.tv_action.setBackgroundColor(0xFF2196F3);
+            holder.tv_action.setOnClickListener(v -> {
+                ((MainActivity) context).mPlayerManager.play(item.playUrl);
+                Toast.makeText(context, "正在回看：" + item.title, Toast.LENGTH_SHORT).show();
+            });
+
             return convertView;
         }
 

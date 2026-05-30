@@ -34,5 +34,6 @@ public class GroupListManager {
      public void onBackPressed() {
          if (listener != null) {
              listener.onBack();
+        }   
     }
 }

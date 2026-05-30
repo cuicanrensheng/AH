@@ -13,29 +13,6 @@
         android:padding="16dp"
         android:background="#B3000000">
 
-        <!-- 投屏 -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="56dp"
-            android:gravity="center_vertical"
-            android:paddingStart="16dp"
-            android:paddingEnd="16dp">
-            <TextView
-                android:layout_width="0dp"
-                android:layout_weight="1"
-                android:layout_height="wrap_content"
-                android:text="投屏播放"
-                android:textColor="#ffffff"
-                android:textSize="16sp"/>
-            <TextView
-                android:id="@+id/btn_cast"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="开始投屏"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:textColor="#ffffff"/>
-        </LinearLayout>
-
         <!-- 开机自启 -->
         <LinearLayout
             android:layout_width="match_parent"

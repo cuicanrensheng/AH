@@ -17,7 +17,7 @@ public class ChannelSwitcher {
         return instance;
     }
 
-    // 设置频道列表（必须调用）
+    // 设置频道列表（必须在加载直播源后调用一次）
     public void setChannelList(List<Channel> list) {
         this.channelList = list;
         if (channelList == null || channelList.isEmpty()) {
@@ -25,27 +25,12 @@ public class ChannelSwitcher {
         }
     }
 
-    // 上一个台（真正稳定、不乱跳）
-    public int prev() {
-        if (channelList == null || channelList.isEmpty()) return 0;
-        currentIndex--;
-        if (currentIndex < 0) {
-            currentIndex = channelList.size() - 1;
-        }
+    // 获取当前索引
+    public int getCurrentIndex() {
         return currentIndex;
     }
 
-    // 下一个台（真正稳定、不乱跳）
-    public int next() {
-        if (channelList == null || channelList.isEmpty()) return 0;
-        currentIndex++;
-        if (currentIndex >= channelList.size()) {
-            currentIndex = 0;
-        }
-        return currentIndex;
-    }
-
-    // 设置当前索引
+    // 设置当前索引（比如用户点击列表选台时）
     public void setCurrentIndex(int index) {
         if (channelList == null || channelList.isEmpty()) {
             currentIndex = 0;
@@ -56,7 +41,23 @@ public class ChannelSwitcher {
         this.currentIndex = index;
     }
 
-    public int getCurrentIndex() {
+    // 上一个频道（稳定不乱跳）
+    public int prev() {
+        if (channelList == null || channelList.isEmpty()) return 0;
+        currentIndex--;
+        if (currentIndex < 0) {
+            currentIndex = channelList.size() - 1;
+        }
+        return currentIndex;
+    }
+
+    // 下一个频道（稳定不乱跳）
+    public int next() {
+        if (channelList == null || channelList.isEmpty()) return 0;
+        currentIndex++;
+        if (currentIndex >= channelList.size()) {
+            currentIndex = 0;
+        }
         return currentIndex;
     }
 }

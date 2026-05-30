@@ -15,6 +15,10 @@ import android.widget.Button;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import com.google.android.exoplayer2.ui.PlayerView;
+import com.tv.live.widget.ChannelListManager;
+import com.tv.live.widget.DateListManager;
+import com.tv.live.widget.EpgManagerWrapper;
+import com.tv.live.widget.GroupListManager;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
@@ -28,10 +32,7 @@ public class MainActivity extends AppCompatActivity {
     public int currentChannelIndex = 0;
     public boolean isPlayingPlayback = false;
     public int currentRatioIndex = 2;
-    public ListView lvGroup;
-    public ListView lvChannelList;
-    public ListView lvDate;
-    public ListView lvEpg;
+
     private View panel_layout;
     private TextView btn_show_epg;
     private NanoHTTPD nanoHTTPD;
@@ -40,6 +41,12 @@ public class MainActivity extends AppCompatActivity {
     private SharedPreferences sp;
     private Button btnToggleController;
     private boolean isControllerVisible = false;
+
+    // 独立出去的列表管理类
+    private ChannelListManager channelListManager;
+    private GroupListManager groupListManager;
+    private DateListManager dateListManager;
+    private EpgManagerWrapper epgManagerWrapper;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -61,14 +68,21 @@ public class MainActivity extends AppCompatActivity {
 
         PlayerView playerView = findViewById(R.id.player_view);
         panel_layout = findViewById(R.id.panel_layout);
-        lvGroup = findViewById(R.id.lv_group);
-        lvChannelList = findViewById(R.id.lv_channel_list);
-        lvDate = findViewById(R.id.lv_date);
-        lvEpg = findViewById(R.id.lv_epg);
+        ListView lvGroup = findViewById(R.id.lv_group);
+        ListView lvChannelList = findViewById(R.id.lv_channel_list);
+        ListView lvDate = findViewById(R.id.lv_date);
+        ListView lvEpg = findViewById(R.id.lv_epg);
         btn_show_epg = findViewById(R.id.btn_show_epg);
         btnToggleController = findViewById(R.id.btn_toggle_controller);
 
-        lvGroup.setAdapter(new android.widget.ArrayAdapter<>(this, android.R.layout.simple_list_item_1, new ArrayList<>()));
+        // 初始化独立管理类
+        channelListManager = new ChannelListManager(this, lvChannelList);
+        groupListManager = new GroupListManager(this, lvGroup);
+        dateListManager = new DateListManager(this, lvDate);
+        epgManagerWrapper = new EpgManagerWrapper(this, lvEpg);
+
+        dateListManager.initDate();
+
         lvGroup.setOnItemClickListener((p, v, pos, id) -> {
             String selectedGroup = (String) p.getItemAtPosition(pos);
             List<Channel> filteredChannels = new ArrayList<>();
@@ -95,14 +109,13 @@ public class MainActivity extends AppCompatActivity {
         btn_show_epg.setOnClickListener(v -> {
             lvEpg.post(() -> lvEpg.smoothScrollToPosition(0));
         });
-        initDateList();
 
         gestureHelper = new PlayerGestureHelper(this, new PlayerGestureHelper.GestureCallback() {
             @Override public void onOk() { togglePanel(); }
             @Override public void onLongOk() { openSettings(); }
             @Override public void onMenu() { openSettings(); }
-            @Override public void onPrevChannel() { playNext(); }
             @Override public void onNextChannel() { playPrev(); }
+            @Override public void onPrevChannel() { playNext(); }
         });
         playerView.setOnTouchListener((v, event) -> {
             gestureHelper.handleTouch(event);
@@ -143,64 +156,16 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private void initDateList() {
-        List<String> dates = new ArrayList<>();
-        dates.add("今天");
-        dates.add("周一");
-        dates.add("周二");
-        dates.add("周三");
-        dates.add("周四");
-        dates.add("周五");
-        dates.add("周六");
-        dates.add("周日");
-        lvDate.setAdapter(new android.widget.ArrayAdapter<>(this, android.R.layout.simple_list_item_1, dates));
-    }
-
     private void togglePanel() {
         if (panel_layout.getVisibility() == View.VISIBLE) {
             panel_layout.setVisibility(View.GONE);
         } else {
             panel_layout.setVisibility(View.VISIBLE);
-            refreshChannelList();
-            refreshCurrentEpg();
-        }
-    }
-
-    private void refreshChannelList() {
-        if (channelSourceList.isEmpty()) return;
-        List<String> names = new ArrayList<>();
-        for (Channel c : channelSourceList) names.add(c.getName());
-        lvChannelList.setAdapter(new android.widget.ArrayAdapter<>(this, android.R.layout.simple_list_item_1, names));
-        lvChannelList.setSelection(currentPlayIndex);
-    }
-
-    private void refreshCurrentEpg() {
-        if (channelSourceList == null || channelSourceList.isEmpty()) {
-            runOnUiThread(() -> {
-                lvEpg.setAdapter(new android.widget.ArrayAdapter<>(this,
-                        android.R.layout.simple_list_item_1,
-                        Collections.singletonList("暂无节目单")));
-            });
-            return;
-        }
-
-        new Thread(() -> {
-            Channel currentChannel = channelSourceList.get(currentPlayIndex);
-            List<Channel.EpgItem> epgList = EpgManager.getInstance().getEpg(currentChannel.getName());
-            List<String> data = new ArrayList<>();
-
-            if (epgList != null && !epgList.isEmpty()) {
-                for (Channel.EpgItem item : new ArrayList<>(epgList)) {
-                    data.add(item.dayName + " " + item.time + " " + item.title);
-                }
-            } else {
-                data.add("暂无节目单");
+            channelListManager.setChannels(channelSourceList, currentPlayIndex);
+            if (!channelSourceList.isEmpty()) {
+                epgManagerWrapper.refresh(channelSourceList.get(currentPlayIndex), channelSourceList);
             }
-
-            runOnUiThread(() -> {
-                lvEpg.setAdapter(new android.widget.ArrayAdapter<>(this, android.R.layout.simple_list_item_1, data));
-            });
-        }).start();
+        }
     }
 
     private void applyScreenRatioFromSettings() {
@@ -222,19 +187,7 @@ public class MainActivity extends AppCompatActivity {
                         channelSourceList.addAll(channels);
                         Toast.makeText(MainActivity.this, "直播源加载完成：" + channelSourceList.size() + "个频道", Toast.LENGTH_SHORT).show();
 
-                        // 关键：加载后把频道列表交给ChannelSwitcher
-                        ChannelSwitcher.getInstance().setChannelList(channelSourceList);
-                        // 同步初始索引
-                        ChannelSwitcher.getInstance().setCurrentIndex(currentPlayIndex);
-
-                        Set<String> groupSet = new HashSet<>();
-                        for (Channel c : channelSourceList) {
-                            groupSet.add(c.getGroup());
-                        }
-                        List<String> groupList = new ArrayList<>(groupSet);
-                        lvGroup.setAdapter(new android.widget.ArrayAdapter<>(MainActivity.this,
-                                android.R.layout.simple_list_item_1, groupList));
-
+                        groupListManager.setGroups(channelSourceList);
                         playChannel(currentPlayIndex);
                     }
                 });
@@ -243,7 +196,9 @@ public class MainActivity extends AppCompatActivity {
                 EpgManager.getInstance().loadEpg(() -> {
                     runOnUiThread(() -> {
                         Toast.makeText(MainActivity.this, "EPG节目单加载完成", Toast.LENGTH_SHORT).show();
-                        refreshCurrentEpg();
+                        if (!channelSourceList.isEmpty()) {
+                            epgManagerWrapper.refresh(channelSourceList.get(currentPlayIndex), channelSourceList);
+                        }
                     });
                 });
             } catch (Exception e) {
@@ -271,17 +226,17 @@ public class MainActivity extends AppCompatActivity {
         return super.onKeyDown(keyCode, event);
     }
 
-    // ============== 关键：已改为用ChannelSwitcher控制 ==============
     private void playPrev() {
-        int index = ChannelSwitcher.getInstance().prev();
-        playChannel(index);
+        if (channelSourceList == null || channelSourceList.isEmpty()) return;
+        int newIndex = (currentPlayIndex - 1 + channelSourceList.size()) % channelSourceList.size();
+        playChannel(newIndex);
     }
 
     private void playNext() {
-        int index = ChannelSwitcher.getInstance().next();
-        playChannel(index);
+        if (channelSourceList == null || channelSourceList.isEmpty()) return;
+        int newIndex = (currentPlayIndex + 1) % channelSourceList.size();
+        playChannel(newIndex);
     }
-    // =============================================================
 
     private void openSettings() {
         Intent intent = new Intent(this, SettingsActivity.class);
@@ -314,15 +269,16 @@ public class MainActivity extends AppCompatActivity {
                 .putInt("last_play_index", index)
                 .apply();
 
-        refreshChannelList();
-        refreshCurrentEpg();
+        channelListManager.setChannels(channelSourceList, index);
+        epgManagerWrapper.refresh(ch, channelSourceList);
     }
 
     private void initListViewClick() {
+        ListView lvChannelList = findViewById(R.id.lv_channel_list);
+        ListView lvEpg = findViewById(R.id.lv_epg);
+
         if (lvChannelList != null) {
             lvChannelList.setOnItemClickListener((p, v, pos, id) -> {
-                // 点击列表时同步索引到ChannelSwitcher
-                ChannelSwitcher.getInstance().setCurrentIndex(pos);
                 playChannel(pos);
                 togglePanel();
             });

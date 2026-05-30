@@ -183,26 +183,31 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void refreshCurrentEpg() {
-        if (channelSourceList == null || channelSourceList.isEmpty()) {
-            lvEpg.setAdapter(new android.widget.ArrayAdapter<>(this, android.R.layout.simple_list_item_1,
-                    java.util.Collections.singletonList("暂无节目")));
-            return;
-        }
-
-        Channel currentChannel = channelSourceList.get(currentPlayIndex);
-        List<Channel.EpgItem> epgList = EpgManager.getInstance().getEpg(currentChannel.getName());
-
-        List<String> data = new ArrayList<>();
-        if (epgList != null && !epgList.isEmpty()) {
-            for (Channel.EpgItem item : epgList) {
-                data.add(item.dayName + " " + item.time + " " + item.title);
-            }
-        } else {
-            data.add("暂无节目单");
-        }
-
-        lvEpg.setAdapter(new android.widget.ArrayAdapter<>(this, android.R.layout.simple_list_item_1, data));
+    if (channelSourceList == null || channelSourceList.isEmpty()) {
+        lvEpg.setAdapter(new android.widget.ArrayAdapter<>(this,
+                android.R.layout.simple_list_item_1,
+                java.util.Collections.singletonList("暂无节目单")));
+        return;
     }
+
+    Channel currentChannel = channelSourceList.get(currentPlayIndex);
+    List<Channel.EpgItem> epgList = EpgManager.getInstance().getEpg(currentChannel.getName());
+
+    List<String> data = new ArrayList<>();
+    if (epgList != null && !epgList.isEmpty()) {
+        for (Channel.EpgItem item : epgList) {
+            data.add(item.dayName + " " + item.time + " " + item.title);
+        }
+    } else {
+        data.add("暂无节目单");
+    }
+
+    // 关键：把UI操作放到主线程，同时避免并发修改异常
+    runOnUiThread(() -> {
+        lvEpg.setAdapter(new android.widget.ArrayAdapter<>(this,
+                android.R.layout.simple_list_item_1, data));
+    });
+}
 
     private void applyScreenRatioFromSettings() {
         String ratio = sp.getString("screen_ratio", "全屏");
@@ -264,50 +269,57 @@ public class MainActivity extends AppCompatActivity {
         }
         return super.onKeyDown(keyCode, event);
     }
-
+    
     private void playPrev() {
-        if (channelSourceList.isEmpty()) return;
-        int i = (currentPlayIndex - 1 + channelSourceList.size()) % channelSourceList.size();
-        playChannel(i);
+    // 双重判断：同时防止列表为空和未初始化
+    if (channelSourceList == null || channelSourceList.isEmpty()) {
+        return;
     }
+    // 环形切换，防止索引为负数
+    int newIndex = (currentPlayIndex - 1 + channelSourceList.size()) % channelSourceList.size();
+    playChannel(newIndex);
+}
 
-    private void playNext() {
-        if (channelSourceList.isEmpty()) return;
-        int i = (currentPlayIndex + 1) % channelSourceList.size();
-        playChannel(i);
+private void playNext() {
+    if (channelSourceList == null || channelSourceList.isEmpty()) {
+        return;
     }
-
-    private void openSettings() {
-        Intent intent = new Intent(this, SettingsActivity.class);
-        startActivity(intent);
-    }
-
-    public void playChannel(int index) {
-        if (channelSourceList.isEmpty()) return;
-        currentPlayIndex = index;
-        currentChannelIndex = index;
-
-        Channel ch = channelSourceList.get(index);
-        if (TextUtils.isEmpty(ch.getPlayUrl())) {
-            Toast.makeText(this,"播放地址为空",Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        if (mPlayerManager != null) {
-            mPlayerManager.playUrl(ch.getPlayUrl());
-            applyScreenRatioFromSettings();
-        }
-
-        isPlayingPlayback = false;
-        getSharedPreferences("play_config", 0).edit().putInt("last_play_index", index).apply();
-
-        refreshChannelList();
-        refreshCurrentEpg();
-    }
-
+    // 环形切换，防止索引超出列表长度
+    int newIndex = (currentPlayIndex + 1) % channelSourceList.size();
+    playChannel(newIndex);
+}
+    
     private void playEpgItem(Channel.EpgItem epg) {
         Toast.makeText(this,"暂无回看",Toast.LENGTH_SHORT).show();
     }
+    public void playChannel(int index) {
+    if (channelSourceList == null || channelSourceList.isEmpty()) {
+        return;
+    }
+    // 强制限制索引范围，彻底杜绝越界
+    index = Math.max(0, Math.min(index, channelSourceList.size() - 1));
+    currentPlayIndex = index;
+    currentChannelIndex = index;
+
+    Channel ch = channelSourceList.get(index);
+    if (ch == null || android.text.TextUtils.isEmpty(ch.getUrl())) {
+        android.widget.Toast.makeText(this, "播放地址无效", android.widget.Toast.LENGTH_SHORT).show();
+        return;
+    }
+
+    if (mPlayerManager != null) {
+        mPlayerManager.play(ch.getUrl());
+    }
+
+    // 保存最后播放位置
+    getSharedPreferences("play_config", MODE_PRIVATE)
+            .edit()
+            .putInt("last_play_index", index)
+            .apply();
+
+    refreshChannelList();
+    refreshCurrentEpg();
+}
 
     private void initListViewClick() {
         if (lvChannelList != null) {

@@ -101,8 +101,8 @@ public class MainActivity extends AppCompatActivity {
             @Override public void onOk() { togglePanel(); }
             @Override public void onLongOk() { openSettings(); }
             @Override public void onMenu() { openSettings(); }
-            @Override public void onNextChannel() { playPrev(); }
             @Override public void onPrevChannel() { playNext(); }
+            @Override public void onNextChannel() { playPrev(); }
         });
         playerView.setOnTouchListener((v, event) -> {
             gestureHelper.handleTouch(event);
@@ -222,6 +222,11 @@ public class MainActivity extends AppCompatActivity {
                         channelSourceList.addAll(channels);
                         Toast.makeText(MainActivity.this, "直播源加载完成：" + channelSourceList.size() + "个频道", Toast.LENGTH_SHORT).show();
 
+                        // 关键：加载后把频道列表交给ChannelSwitcher
+                        ChannelSwitcher.getInstance().setChannelList(channelSourceList);
+                        // 同步初始索引
+                        ChannelSwitcher.getInstance().setCurrentIndex(currentPlayIndex);
+
                         Set<String> groupSet = new HashSet<>();
                         for (Channel c : channelSourceList) {
                             groupSet.add(c.getGroup());
@@ -266,17 +271,17 @@ public class MainActivity extends AppCompatActivity {
         return super.onKeyDown(keyCode, event);
     }
 
+    // ============== 关键：已改为用ChannelSwitcher控制 ==============
     private void playPrev() {
-        if (channelSourceList == null || channelSourceList.isEmpty()) return;
-        int newIndex = (currentPlayIndex - 1 + channelSourceList.size()) % channelSourceList.size();
-        playChannel(newIndex);
+        int index = ChannelSwitcher.getInstance().prev();
+        playChannel(index);
     }
 
     private void playNext() {
-        if (channelSourceList == null || channelSourceList.isEmpty()) return;
-        int newIndex = (currentPlayIndex + 1) % channelSourceList.size();
-        playChannel(newIndex);
+        int index = ChannelSwitcher.getInstance().next();
+        playChannel(index);
     }
+    // =============================================================
 
     private void openSettings() {
         Intent intent = new Intent(this, SettingsActivity.class);
@@ -316,6 +321,8 @@ public class MainActivity extends AppCompatActivity {
     private void initListViewClick() {
         if (lvChannelList != null) {
             lvChannelList.setOnItemClickListener((p, v, pos, id) -> {
+                // 点击列表时同步索引到ChannelSwitcher
+                ChannelSwitcher.getInstance().setCurrentIndex(pos);
                 playChannel(pos);
                 togglePanel();
             });

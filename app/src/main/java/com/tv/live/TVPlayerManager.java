@@ -1,4 +1,5 @@
 package com.tv.live;
+
 import com.tv.live.SettingsActivity;
 import android.content.Context;
 import android.net.Uri;
@@ -61,74 +62,74 @@ public class TVPlayerManager {
     private Map<String, String> getGiteeHeaders() {
         Map<String, String> headers = new HashMap<>();
         headers.put("User-Agent", "MTV");
+        headers.put("Referer", "https://www.huya.com/"); // 🔥 关键修复：防盗链
         headers.put("Accept", "*/*");
         headers.put("Connection", "Keep-Alive");
         headers.put("Accept-Encoding", "gzip");
         return headers;
     }
 
-    
     public void play(String url) {
         playUrl(url);
     }
+
     public void playUrl(String url) {
-    if (player == null || url == null || url.isEmpty()) return;
+        if (player == null || url == null || url.isEmpty()) return;
 
-    // 第一处日志：请求信息
-    SettingsActivity.log("播放器请求地址：" + url);
-    SettingsActivity.log("播放器 User-Agent：MTV");
+        // 日志
+        SettingsActivity.log("播放器请求地址：" + url);
+        SettingsActivity.log("播放器 User-Agent：MTV");
 
-    new Thread(() -> {
-        new Handler(context.getMainLooper()).post(() -> {
-            try {
-                DefaultHttpDataSource.Factory factory = new DefaultHttpDataSource.Factory();
-                factory.setUserAgent("MTV");
-                factory.setDefaultRequestProperties(getGiteeHeaders());
-                factory.setAllowCrossProtocolRedirects(true);
+        new Thread(() -> {
+            new Handler(context.getMainLooper()).post(() -> {
+                try {
+                    DefaultHttpDataSource.Factory factory = new DefaultHttpDataSource.Factory();
+                    factory.setUserAgent("MTV");
+                    factory.setDefaultRequestProperties(getGiteeHeaders());
+                    factory.setAllowCrossProtocolRedirects(true);
 
-                MediaItem mediaItem = MediaItem.fromUri(url);
-                HlsMediaSource source = new HlsMediaSource.Factory(factory).createMediaSource(mediaItem);
-                player.setMediaSource(source);
-                player.prepare();
-                player.play();
+                    MediaItem mediaItem = MediaItem.fromUri(url);
+                    HlsMediaSource source = new HlsMediaSource.Factory(factory).createMediaSource(mediaItem);
+                    player.setMediaSource(source);
+                    player.prepare();
+                    player.play();
 
-                // 第二处日志：播放状态监听（关键！）
-                player.addListener(new Player.Listener() {
-                    @Override
-                    public void onPlayerError(PlaybackException error) {
-                        // 捕获播放器错误
-                        SettingsActivity.log("❌ 播放器错误：" + error.getMessage());
-                        SettingsActivity.log("❌ 错误码：" + error.errorCode);
-                    }
-
-                    @Override
-                    public void onPlaybackStateChanged(int state) {
-                        switch (state) {
-                            case Player.STATE_IDLE:
-                                SettingsActivity.log("⏸️ 播放器状态：空闲");
-                                break;
-                            case Player.STATE_BUFFERING:
-                                SettingsActivity.log("⏳ 播放器状态：缓冲中");
-                                break;
-                            case Player.STATE_READY:
-                                SettingsActivity.log("✅ 播放器状态：已就绪，开始播放");
-                                break;
-                            case Player.STATE_ENDED:
-                                SettingsActivity.log("🛑 播放器状态：播放结束");
-                                break;
+                    // 错误监听（兼容你现有版本，不报错）
+                    player.addListener(new Player.Listener() {
+                        @Override
+                        public void onPlayerError(PlaybackException error) {
+                            SettingsActivity.log("❌ 播放器错误：" + error.getMessage());
+                            SettingsActivity.log("❌ 错误码：" + error.errorCode);
                         }
-                    }
-                });
 
-                SettingsActivity.log("播放器已开始播放");
-            } catch (Exception e) {
-                // 第三处日志：捕获异常
-                SettingsActivity.log("❌ 播放异常：" + e.getMessage());
-                e.printStackTrace();
-            }
-        });
-    }).start();
-}
+                        @Override
+                        public void onPlaybackStateChanged(int state) {
+                            switch (state) {
+                                case Player.STATE_IDLE:
+                                    SettingsActivity.log("⏸️ 播放器状态：空闲");
+                                    break;
+                                case Player.STATE_BUFFERING:
+                                    SettingsActivity.log("⏳ 播放器状态：缓冲中");
+                                    break;
+                                case Player.STATE_READY:
+                                    SettingsActivity.log("✅ 播放器状态：已就绪，开始播放");
+                                    break;
+                                case Player.STATE_ENDED:
+                                    SettingsActivity.log("🛑 播放器状态：播放结束");
+                                    break;
+                            }
+                        }
+                    });
+
+                    SettingsActivity.log("播放器已开始播放");
+
+                } catch (Exception e) {
+                    SettingsActivity.log("❌ 播放异常：" + e.getMessage());
+                    e.printStackTrace();
+                }
+            });
+        }).start();
+    }
 
     private String resolveStreamUrl(String url) {
         return url;

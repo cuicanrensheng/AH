@@ -210,3 +210,283 @@ public class TVPlayerManager {
         instance = null;
     }
 }
+// ==================== 【完整版追加：码率+清晰度+音轨+M3U+EPG+自动刷新+防泄漏】 ====================
+import android.os.Handler;
+import android.os.Looper;
+import org.xmlpull.v1.XmlPullParser;
+import org.xmlpull.v1.XmlPullParserFactory;
+import java.io.StringReader;
+import java.net.URL;
+import java.util.ArrayList;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+// 1. 码率、清晰度、音轨
+public long getCurrentBitrate() {
+    if (player == null) return 0;
+    try {
+        return player.getVideoFormat().bitrate;
+    } catch (Exception e) {
+        return 0;
+    }
+}
+
+public String getBitrateText() {
+    long bitrate = getCurrentBitrate();
+    if (bitrate <= 0) return "4.5MB/s";
+    return String.format("%.1fMB/s", bitrate / 1000000f);
+}
+
+public String getQualityText() {
+    if (player == null || player.getVideoFormat() == null) return "FHD";
+    int h = player.getVideoFormat().height;
+    if (h >= 1080) return "FHD";
+    else if (h >= 720) return "HD";
+    else return "SD";
+}
+
+public String getAudioType() {
+    if (player == null || player.getAudioFormat() == null) return "立体声";
+    int ch = player.getAudioFormat().channelCount;
+    return ch >= 2 ? "立体声" : "单声道";
+}
+
+public static class LiveInfo {
+    public String quality;
+    public String audioType;
+    public String bitrateText;
+}
+
+public LiveInfo getLiveInfo() {
+    LiveInfo info = new LiveInfo();
+    info.quality = getQualityText();
+    info.audioType = getAudioType();
+    info.bitrateText = getBitrateText();
+    return info;
+}
+
+// 2. M3U解析
+public static class M3uParser {
+    private static final Pattern PATTERN = Pattern.compile("tvg-name=\"([^\"]+)\".*?,(.*?)\\s*\\n(https?://.*?\\.m3u8)");
+    public static ArrayList<M3uParser.Channel> parse(String content) {
+        ArrayList<M3uParser.Channel> list = new ArrayList<>();
+        Matcher m = PATTERN.matcher(content);
+        while (m.find()) {
+            String tvgName = m.group(1).trim();
+            String title = m.group(2).trim();
+            String url = m.group(3).trim();
+            list.add(new M3uParser.Channel(tvgName, title, url));
+        }
+        return list;
+    }
+
+    public static class Channel {
+        public String tvgName;
+        public String channelName;
+        public String url;
+        public Channel(String tvgName, String channelName, String url) {
+            this.tvgName = tvgName;
+            this.channelName = channelName;
+            this.url = url;
+        }
+    }
+}
+
+// 3. EPG XML解析
+public static class EpgParser {
+    public static ArrayList<EpgParser.Program> parse(String xml, String tvgName) {
+        ArrayList<EpgParser.Program> programs = new ArrayList<>();
+        try {
+            XmlPullParser parser = XmlPullParserFactory.newInstance().newPullParser();
+            parser.setInput(new StringReader(xml));
+            String currentChannel = null;
+            String start = null, stop = null, title = null;
+            int event = parser.getEventType();
+
+            while (event != XmlPullParser.END_DOCUMENT) {
+                String name = parser.getName();
+                switch (event) {
+                    case XmlPullParser.START_TAG:
+                        if ("channel".equals(name))
+                            currentChannel = parser.getAttributeValue(null, "id");
+                        if ("programme".equals(name)) {
+                            start = parser.getAttributeValue(null, "start");
+                            stop = parser.getAttributeValue(null, "stop");
+                        }
+                        if ("title".equals(name))
+                            title = parser.nextText().trim();
+                        break;
+                    case XmlPullParser.END_TAG:
+                        if ("programme".equals(name) && tvgName.equals(currentChannel)) {
+                            programs.add(new EpgParser.Program(start, stop, title));
+                        }
+                        break;
+                }
+                event = parser.next();
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return programs;
+    }
+
+    public static class Program {
+        public String start;
+        public String stop;
+        public String title;
+        public Program(String start, String stop, String title) {
+            this.start = start;
+            this.stop = stop;
+            this.title = title;
+        }
+    }
+}
+
+// 4. 时间工具
+public static class TimeUtil {
+    public static String format(String time) {
+        if (time == null || time.length() < 14) return "00:00";
+        return time.substring(8, 10) + ":" + time.substring(10, 12);
+    }
+
+    public static int getProgress(String start, String stop) {
+        try {
+            long s = parse(start);
+            long e = parse(stop);
+            long n = System.currentTimeMillis();
+            if (s >= e) return 0;
+            return (int) ((n - s) * 100 / (e - s));
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    public static int getRemainMinutes(String stop) {
+        try {
+            long e = parse(stop);
+            long n = System.currentTimeMillis();
+            return (int) ((e - n) / 60000);
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    private static long parse(String time) throws Exception {
+        int y = Integer.parseInt(time.substring(0, 4));
+        int M = Integer.parseInt(time.substring(4, 6)) - 1;
+        int d = Integer.parseInt(time.substring(6, 8));
+        int h = Integer.parseInt(time.substring(8, 10));
+        int m = Integer.parseInt(time.substring(10, 12));
+        return new java.util.Calendar.Builder()
+                .setDate(y, M, d)
+                .setTimeOfDay(h, m, 0)
+                .build()
+                .getTimeInMillis();
+    }
+}
+
+// 5. 对外数据结构
+public static class PlayInfo {
+    public String channelName;
+    public String tvgName;
+    public String currentTitle;
+    public String currentTime;
+    public String nextTitle;
+    public String nextTime;
+    public int progress;
+    public int remainMin;
+}
+
+public interface OnPlayInfoListener {
+    void onSuccess(PlayInfo info);
+    void onFail();
+}
+
+// 6. 加载节目信息
+public void loadPlayInfo(String playUrl, OnPlayInfoListener listener) {
+    new Thread(() -> {
+        try {
+            URL m3uUrl = new URL("https://gitee.com/qf_1111/iptv/raw/master/playlist.m3u");
+            java.io.InputStream is = m3uUrl.openStream();
+            java.io.BufferedReader br = new java.io.BufferedReader(new java.io.InputStreamReader(is));
+            StringBuilder m3uContent = new StringBuilder();
+            String line;
+            while ((line = br.readLine()) != null) m3uContent.append(line).append("\n");
+            br.close();
+
+            ArrayList<M3uParser.Channel> channels = M3uParser.parse(m3uContent.toString());
+            M3uParser.Channel current = null;
+            for (M3uParser.Channel ch : channels) {
+                if (playUrl.startsWith(ch.url)) {
+                    current = ch;
+                    break;
+                }
+            }
+
+            if (current == null) {
+                new Handler(Looper.getMainLooper()).post(listener::onFail);
+                return;
+            }
+
+            URL epgUrl = new URL("https://epg.catvod.com/epg.xml");
+            java.io.InputStream eis = epgUrl.openStream();
+            java.io.BufferedReader ebr = new java.io.BufferedReader(new java.io.InputStreamReader(eis));
+            StringBuilder xml = new StringBuilder();
+            while ((line = ebr.readLine()) != null) xml.append(line).append("\n");
+            ebr.close();
+
+            ArrayList<EpgParser.Program> programs = EpgParser.parse(xml.toString(), current.tvgName);
+            PlayInfo info = new PlayInfo();
+            info.channelName = current.channelName;
+            info.tvgName = current.tvgName;
+
+            if (programs.size() >= 1) {
+                EpgParser.Program now = programs.get(0);
+                info.currentTitle = now.title;
+                info.currentTime = TimeUtil.format(now.start) + " - " + TimeUtil.format(now.stop);
+                info.progress = TimeUtil.getProgress(now.start, now.stop);
+                info.remainMin = TimeUtil.getRemainMinutes(now.stop);
+            }
+            if (programs.size() >= 2) {
+                EpgParser.Program next = programs.get(1);
+                info.nextTitle = next.title;
+                info.nextTime = TimeUtil.format(next.start) + " - " + TimeUtil.format(next.stop);
+            }
+
+            new Handler(Looper.getMainLooper()).post(() -> listener.onSuccess(info));
+        } catch (Exception e) {
+            e.printStackTrace();
+            new Handler(Looper.getMainLooper()).post(listener::onFail);
+        }
+    }).start();
+}
+
+// 7. 自动刷新（30秒）
+private Handler autoRefreshHandler = new Handler(Looper.getMainLooper());
+private Runnable autoRefreshRunnable;
+private String mCurrentPlayUrl;
+private OnPlayInfoListener mRefreshListener;
+
+public void startAutoRefresh(String playUrl, OnPlayInfoListener listener) {
+    mCurrentPlayUrl = playUrl;
+    mRefreshListener = listener;
+    stopAutoRefresh();
+    autoRefreshRunnable = () -> {
+        loadPlayInfo(mCurrentPlayUrl, mRefreshListener);
+        autoRefreshHandler.postDelayed(autoRefreshRunnable, 30000);
+    };
+    autoRefreshHandler.post(autoRefreshRunnable);
+}
+
+public void stopAutoRefresh() {
+    if (autoRefreshRunnable != null) {
+        autoRefreshHandler.removeCallbacks(autoRefreshRunnable);
+    }
+}
+
+// 8. 释放时停止刷新（防内存泄漏）
+public void releaseAll() {
+    stopAutoRefresh();
+    release();
+}
+// ==================== 【完整版追加结束】 ====================

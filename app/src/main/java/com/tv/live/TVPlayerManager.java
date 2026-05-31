@@ -22,7 +22,12 @@ import java.net.URL;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * 播放器管理类（ExoPlayer）
+ * 负责：播放、解析地址、切换画面比例、暂停/恢复
+ */
 public class TVPlayerManager {
+    // 单例实例
     private static TVPlayerManager instance;
     private ExoPlayer player;
     private Context context;
@@ -51,7 +56,7 @@ public class TVPlayerManager {
         if (player == null || url == null || url.isEmpty()) return;
         new Thread(() -> {
             String realUrl = resolveStreamUrl(url);
-            new Handler(context.getMainLooper()).post(() -> {
+            new android.os.Handler(context.getMainLooper()).post(() -> {
                 try {
                     DefaultHttpDataSource.Factory factory = new DefaultHttpDataSource.Factory();
                     factory.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36");
@@ -115,23 +120,20 @@ public class TVPlayerManager {
         headers.put("Referer", "https://www.huya.com/");
         headers.put("Origin", "https://www.huya.com");
         headers.put("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36");
-        headers.put("Accept", "*/*");
         return headers;
     }
 
     public void setScaleMode(ScaleMode mode) {
         if (playerView == null) return;
         switch (mode) {
-            case FIT:
-                playerView.setResizeMode(com.google.android.exoplayer2.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT);
-                break;
-            case FILL:
-                playerView.setResizeMode(com.google.android.exoplayer2.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL);
-                break;
-            case ZOOM:
-                playerView.setResizeMode(com.google.android.exoplayer2.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM);
-                break;
+            case FIT: playerView.setResizeMode(com.google.android.exoplayer2.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT); break;
+            case FILL: playerView.setResizeMode(com.google.android.exoplayer2.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL); break;
+            case ZOOM: playerView.setResizeMode(com.google.android.exoplayer2.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM); break;
         }
+    }
+
+    public void setOnPlayStateListener(OnPlayStateListener l) {
+        listener = l;
     }
 
     public interface OnPlayStateListener {
@@ -140,10 +142,6 @@ public class TVPlayerManager {
         void onPlayReady();
         void onPlayEnd();
         void onPlayError(String msg);
-    }
-
-    public void setOnPlayStateListener(OnPlayStateListener l) {
-        listener = l;
     }
 
     public void pause() {
@@ -167,11 +165,8 @@ public class TVPlayerManager {
     }
 
     public long getBitrate() {
-        try {
-            return player.getVideoFormat().bitrate;
-        } catch (Exception e) {
-            return 0;
-        }
+        try { return player.getVideoFormat().bitrate; }
+        catch (Exception e) { return 0; }
     }
 
     public String getBitrateStr() {
@@ -185,18 +180,14 @@ public class TVPlayerManager {
             if (h >= 1080) return "FHD";
             else if (h >= 720) return "HD";
             else return "SD";
-        } catch (Exception e) {
-            return "FHD";
-        }
+        } catch (Exception e) { return "FHD"; }
     }
 
     public String getAudio() {
         try {
             int ch = player.getAudioFormat().channelCount;
             return ch >= 2 ? "立体声" : "单声道";
-        } catch (Exception e) {
-            return "立体声";
-        }
+        } catch (Exception e) { return "立体声"; }
     }
 
     public static class LiveInfo {
@@ -211,6 +202,125 @@ public class TVPlayerManager {
         info.audio = getAudio();
         info.bitrate = getBitrateStr();
         return info;
+    }
+
+    public static class M3u {
+        public static class Channel {
+            public String tvg;
+            public String name;
+            public String url;
+            public Channel(String tvg, String name, String url) {
+                this.tvg = tvg;
+                this.name = name;
+                this.url = url;
+            }
+        }
+        public static ArrayList<Channel> parse(String txt) {
+            ArrayList<Channel> list = new ArrayList<>();
+            Pattern p = Pattern.compile("tvg-name=\"([^\"]+)\".*?,(.*?)\\s*\\n(https?://.*?\\.m3u8)");
+            Matcher m = p.matcher(txt);
+            while (m.find()) {
+                String tvg = m.group(1).trim();
+                String name = m.group(2).trim();
+                String url = m.group(3).trim();
+                list.add(new Channel(tvg, name, url));
+            }
+            return list;
+        }
+    }
+
+    public static class Epg {
+        public static class Program {
+            public String start;
+            public String stop;
+            public String title;
+            public Program(String s, String e, String t) {
+                start = s;
+                stop = e;
+                title = t;
+            }
+        }
+        public static ArrayList<Program> parse(String xml, String tvg) {
+            ArrayList<Program> list = new ArrayList<>();
+            try {
+                XmlPullParser x = XmlPullParserFactory.newInstance().newPullParser();
+                x.setInput(new StringReader(xml));
+                String curChan = null, start = null, stop = null, title = null;
+                int event = x.getEventType();
+                while (event != XmlPullParser.END_DOCUMENT) {
+                    String name = x.getName();
+                    if (event == XmlPullParser.START_TAG) {
+                        if ("channel".equals(name)) curChan = x.getAttributeValue(null, "id");
+                        if ("programme".equals(name)) {
+                            start = x.getAttributeValue(null, "start");
+                            stop = x.getAttributeValue(null, "stop");
+                        }
+                        if ("title".equals(name)) title = x.nextText().trim();
+                    }
+                    if (event == XmlPullParser.END_TAG && "programme".equals(name)) {
+                        if (tvg.equals(curChan)) list.add(new Program(start, stop, title));
+                    }
+                    event = x.next();
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+            return list;
+        }
+    }
+
+    public static class PlayInfo {
+        public String channel;
+        public String tvg;
+        public String nowTitle;
+        public String nowTime;
+        public String nextTitle;
+        public String nextTime;
+        public int progress;
+        public int remain;
+    }
+
+    public interface OnPlayInfoListener {
+        void onSuccess(PlayInfo info);
+    }
+
+    public void loadPlayInfo(String playUrl, OnPlayInfoListener listener) {
+        new Thread(() -> {
+            try {
+                String m3uTxt = HttpUtil.get(UrlConfig.LIVE_URL);
+                ArrayList<M3u.Channel> channels = M3u.parse(m3uTxt);
+                M3u.Channel curr = null;
+                for (M3u.Channel ch : channels) {
+                    if (playUrl.startsWith(ch.url)) {
+                        curr = ch;
+                        break;
+                    }
+                }
+                if (curr == null) {
+                    return;
+                }
+                String epgXml = HttpUtil.get(UrlConfig.EPG_URL);
+                ArrayList<Epg.Program> programs = Epg.parse(epgXml, curr.tvg);
+                PlayInfo info = new PlayInfo();
+                info.channel = curr.name;
+                info.tvg = curr.tvg;
+                if (programs.size() >= 1) {
+                    Epg.Program p = programs.get(0);
+                    info.nowTitle = p.title;
+                    info.nowTime = TimeUtil.fmt(p.start) + " - " + TimeUtil.fmt(p.stop);
+                    info.progress = TimeUtil.progress(p.start, p.stop);
+                    info.remain = TimeUtil.remain(p.stop);
+                }
+                if (programs.size() >= 2) {
+                    Epg.Program p = programs.get(1);
+                    info.nextTitle = p.title;
+                    info.nextTime = TimeUtil.fmt(p.start) + " - " + TimeUtil.fmt(p.stop);
+                }
+                new Handler(Looper.getMainLooper()).post(() -> listener.onSuccess(info));
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }).start();
     }
 
     private Handler mRefreshHandler = new Handler(Looper.getMainLooper());
@@ -233,19 +343,19 @@ public class TVPlayerManager {
         if (mRefreshRunnable != null) mRefreshHandler.removeCallbacks(mRefreshRunnable);
     }
 
-    public void loadPlayInfo(String url, OnPlayInfoListener listener) {
+    public interface OnChannelListener {
+        void onSuccess(ArrayList<M3u.Channel> list);
     }
 
-    public interface OnPlayInfoListener {
-        void onSuccess(PlayInfo info);
-    }
-
-    public static class PlayInfo {
-    }
-
-    public static class M3u {
-    }
-
-    public static class Epg {
+    public void loadChannelList(OnChannelListener listener) {
+        new Thread(() -> {
+            try {
+                String txt = HttpUtil.get(UrlConfig.LIVE_URL);
+                ArrayList<M3u.Channel> list = M3u.parse(txt);
+                new Handler(Looper.getMainLooper()).post(() -> listener.onSuccess(list));
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }).start();
     }
 }

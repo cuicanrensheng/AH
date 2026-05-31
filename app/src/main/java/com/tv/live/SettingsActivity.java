@@ -46,24 +46,39 @@ public class SettingsActivity extends AppCompatActivity {
     private static final int PORT = 10481;
     private SettingsAdapter adapter;
 
-    // ====================== 全局日志系统 ======================
-    public static String PLAY_LOG = "";
+        // ====================== 全局日志系统（已修复） ======================
+    // 使用 StringBuilder 存储日志，更稳定高效；volatile 确保多线程可见性
+    public static volatile StringBuilder PLAY_LOG = new StringBuilder();
 
-    // 记录日志
+    // 记录日志的静态方法，所有地方都可以调用
     public static void log(String msg) {
+        if (PLAY_LOG == null) {
+            PLAY_LOG = new StringBuilder();
+        }
         String time = android.text.format.DateFormat.format("HH:mm:ss", new java.util.Date()).toString();
-        PLAY_LOG += "[" + time + "] " + msg + "\n";
-        if (PLAY_LOG.length() > 10000) PLAY_LOG = PLAY_LOG.substring(PLAY_LOG.length() - 8000);
+        PLAY_LOG.append("[").append(time).append("] ").append(msg).append("\n");
+
+        // 日志过长时自动裁剪，防止内存占用过高
+        if (PLAY_LOG.length() > 20000) {
+            PLAY_LOG.delete(0, PLAY_LOG.length() - 15000);
+        }
     }
 
     // 查看日志弹窗
     private void showLogDialog() {
         ScrollView scrollView = new ScrollView(this);
         TextView tv = new TextView(this);
-        tv.setText(PLAY_LOG);
+
+        // 读取日志内容，如果为空则显示提示
+        if (PLAY_LOG == null || PLAY_LOG.length() == 0) {
+            tv.setText("暂无日志内容，请先播放一个频道再查看。");
+        } else {
+            tv.setText(PLAY_LOG.toString());
+        }
+
         tv.setTextSize(12);
         tv.setPadding(40, 40, 40, 40);
-        tv.setTextColor(Color.WHITE);
+        tv.setTextColor(Color.BLACK);
         scrollView.addView(tv);
 
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
@@ -71,7 +86,9 @@ public class SettingsActivity extends AppCompatActivity {
         builder.setView(scrollView);
         builder.setPositiveButton("关闭", null);
         builder.setNeutralButton("清空日志", (dialog, which) -> {
-            PLAY_LOG = "";
+            if (PLAY_LOG != null) {
+                PLAY_LOG.setLength(0); // 清空 StringBuilder
+            }
             Toast.makeText(this, "日志已清空", Toast.LENGTH_SHORT).show();
         });
         builder.show();

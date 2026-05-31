@@ -18,7 +18,16 @@ android {
         versionCode 20
         versionName "2.0"
         multiDexEnabled true
+        
+        // 加上这几行，适配 VLC
+        ndk {
+            abiFilters 'armeabi-v7a', 'arm64-v8a'
+        }
 
+        buildConfigField "int", "VERSION_CODE", "${versionCode}"
+        buildConfigField "String", "VERSION_NAME", "\"${versionName}\""
+    }
+}
         buildConfigField "int", "VERSION_CODE", "${versionCode}"
         buildConfigField "String", "VERSION_NAME", "\"${versionName}\""
 

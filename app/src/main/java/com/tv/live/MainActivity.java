@@ -323,9 +323,8 @@ public class MainActivity extends AppCompatActivity {
     // ==================================================================
 
     // 解析真实地址
-    realUrl = getRealPlayUrl(ch.getPlayUrl());
-    SettingsActivity.log("解析后地址：" + realUrl);
-
+    String realUrl = getRealPlayUrl(ch.getPlayUrl());
+    
     // 调用播放器
     playerStateListener.setCurrentChannelName(ch.getName());
     mPlayerManager.play(realUrl);

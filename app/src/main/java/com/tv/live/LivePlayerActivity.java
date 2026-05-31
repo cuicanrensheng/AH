@@ -46,21 +46,21 @@ public class LivePlayerActivity extends AppCompatActivity {
             }
             return false;
         });
-
+        
         mgr.startAutoRefresh(url, info -> {
-            tvChannel.setText(info.channel);
-            tvNow.setText(info.nowTitle);
-            tvNowTime.setText(info.nowTime);
-            progress.setProgress(info.progress);
-            tvRemain.setText(info.remain + "分钟");
-            tvNext.setText(info.nextTitle);
-            tvNextTime.setText(info.nextTime);
+    tvChannel.setText(info.channel);
+    tvNow.setText(info.nowTitle);
+    tvNowTime.setText(info.nowTime);
+    progress.setProgress(info.progress);
+    tvRemain.setText(info.remain + "分钟");
+    tvNext.setText(info.nextTitle);
+    tvNextTime.setText(info.nextTime);
 
-            TVPlayerManager.LiveInfo live = mgr.getLiveInfo();
-            tvFhd.setText(live.quality);
-            tvAudio.setText(live.audio);
-            tvBitrate.setText(live.bitrate);
-        });
+    TVPlayerManager.LiveInfo live = mgr.getLiveInfo();
+    tvFhd.setText(live.quality);
+    tvAudio.setText(live.audio);
+    tvBitrate.setText(live.bitrate);
+});  
     }
 
     private final Runnable hide = () -> infoBar.setVisibility(View.GONE);

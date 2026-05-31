@@ -65,40 +65,68 @@ public class TVPlayerManager {
         return headers;
     }
 
-    public void playUrl(String url) {
-        if (player == null || url == null || url.isEmpty()) return;
-           // ====================== 在这里加！第一处日志 ======================
-    SettingsActivity.log("播放器请求地址：" + url);
-    SettingsActivity.log("播放器 User-Agent：MTV");
-    // ==================================================================  
-        new Thread(() -> {
-            new Handler(context.getMainLooper()).post(() -> {
-                try {
-                    DefaultHttpDataSource.Factory factory = new DefaultHttpDataSource.Factory();
-                    factory.setUserAgent("MTV");
-                    factory.setDefaultRequestProperties(getGiteeHeaders());
-                    factory.setAllowCrossProtocolRedirects(true);
-
-                    MediaItem mediaItem = MediaItem.fromUri(url);
-                    HlsMediaSource source = new HlsMediaSource.Factory(factory).createMediaSource(mediaItem);
-                    player.setMediaSource(source);
-                    player.prepare();
-                    player.play();
-                    // ====================== 在这里加！第二处日志 ======================
-                SettingsActivity.log("播放器已开始播放");
-                } catch (Exception e) {
-                     // ====================== 在这里加！第三处日志 ======================
-                SettingsActivity.log("播放异常：" + e.getMessage());
-                // ==================================================================
-                    e.printStackTrace();
-                }
-            });
-        }).start();
-    }
-
+    
     public void play(String url) {
         playUrl(url);
     }
+    public void playUrl(String url) {
+    if (player == null || url == null || url.isEmpty()) return;
+
+    // 第一处日志：请求信息
+    SettingsActivity.log("播放器请求地址：" + url);
+    SettingsActivity.log("播放器 User-Agent：MTV");
+
+    new Thread(() -> {
+        new Handler(context.getMainLooper()).post(() -> {
+            try {
+                DefaultHttpDataSource.Factory factory = new DefaultHttpDataSource.Factory();
+                factory.setUserAgent("MTV");
+                factory.setDefaultRequestProperties(getGiteeHeaders());
+                factory.setAllowCrossProtocolRedirects(true);
+
+                MediaItem mediaItem = MediaItem.fromUri(url);
+                HlsMediaSource source = new HlsMediaSource.Factory(factory).createMediaSource(mediaItem);
+                player.setMediaSource(source);
+                player.prepare();
+                player.play();
+
+                // 第二处日志：播放状态监听（关键！）
+                player.addListener(new Player.Listener() {
+                    @Override
+                    public void onPlayerError(PlaybackException error) {
+                        // 捕获播放器错误
+                        SettingsActivity.log("❌ 播放器错误：" + error.getMessage());
+                        SettingsActivity.log("❌ 错误码：" + error.errorCode);
+                    }
+
+                    @Override
+                    public void onPlaybackStateChanged(int state) {
+                        switch (state) {
+                            case Player.STATE_IDLE:
+                                SettingsActivity.log("⏸️ 播放器状态：空闲");
+                                break;
+                            case Player.STATE_BUFFERING:
+                                SettingsActivity.log("⏳ 播放器状态：缓冲中");
+                                break;
+                            case Player.STATE_READY:
+                                SettingsActivity.log("✅ 播放器状态：已就绪，开始播放");
+                                break;
+                            case Player.STATE_ENDED:
+                                SettingsActivity.log("🛑 播放器状态：播放结束");
+                                break;
+                        }
+                    }
+                });
+
+                SettingsActivity.log("播放器已开始播放");
+            } catch (Exception e) {
+                // 第三处日志：捕获异常
+                SettingsActivity.log("❌ 播放异常：" + e.getMessage());
+                e.printStackTrace();
+            }
+        });
+    }).start();
+}
 
     private String resolveStreamUrl(String url) {
         return url;

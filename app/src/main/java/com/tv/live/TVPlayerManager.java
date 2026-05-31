@@ -57,15 +57,27 @@ public class TVPlayerManager {
     }
 
     // ==============================
-    // Gitee / giteehb 专用请求头
+    // 虎牙直播 终极请求头（含完整Cookie）
     // ==============================
     private Map<String, String> getGiteeHeaders() {
         Map<String, String> headers = new HashMap<>();
-        headers.put("User-Agent", "MTV");
-        headers.put("Referer", "https://www.huya.com/"); // 🔥 关键修复：防盗链
+        headers.put("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36");
+        headers.put("Referer", "https://www.huya.com/");
+        headers.put("Origin", "https://www.huya.com");
         headers.put("Accept", "*/*");
         headers.put("Connection", "Keep-Alive");
-        headers.put("Accept-Encoding", "gzip");
+        headers.put("Accept-Encoding", "gzip, deflate, br");
+        headers.put("Accept-Language", "zh-CN,zh;q=0.9");
+        headers.put("Sec-Fetch-Mode", "cors");
+        headers.put("Sec-Fetch-Site", "cross-site");
+        headers.put("Sec-Fetch-Dest", "empty");
+        headers.put("X-Requested-With", "XMLHttpRequest");
+        headers.put("Cache-Control", "no-cache");
+        headers.put("Pragma", "no-cache");
+
+        // 你提供的完整虎牙Cookie（已直接填入）
+        headers.put("Cookie", "__yamid_new=CBAE6B2F616000012FA487501AD61400; __yasmid=0.6018124788030086; __yamid_tt1=0.6018124788030086; _yasids=__rootsid%3DCBAE6B2F7F7000017F2D3F5013501A2E; udb_appid=5131; hdid=5d1ed36c1636d618790249406a7d98db142fa989; game_did=XbWjWc0g3x0seXULdL4gZOWoaefEjLVcoXs; _qimei_uuid42=1a51f141c0f100cb27d1b2b05607d37675a2a0b577; guid=0a7d910e5f291c6a390179217a21d18d; SoundValue=0.50; alphaValue=0.80; isInLiveRoom=true; udb_guiddata=f8a14fa7ec49465890de64d519d8ec79; udb_deviceid=w_1113564630755672064; sdid=0UnHUgv0_qmfD4KAKlwzhqTa75I06hyNx4h4gGoKdEelYxR828o9qZhnMaTjaGu0iuF89R44_yy2QBe8lUsXwT7A9vUXRclYeI07Eg410Y6nWVkn9LtfFJw_Qo4kgKr8OZHDqNnuwg612sGyflFn1drgqtEk86lGJoTGZ4uaaXbGGmYmAcr9jCaZiDHAhe19a; udb_passdata=3; udb_anouid=1470934057565; udb_anobiztoken=AQCZBvjCa1LpBtGxm8crb0F-XD7JSRyPHkBsUjignL3kfUltwLAsSB5n1nJTLvtJZ_kgDNVxyrrOd9p7Nvwlm7ezKPsZ4f8DeV4VPVOZu7oQcs4-idqqTx4jr299R2JWbQvsynWPR7bpv0LEQr65WTJ9OhiBmy7YjtjEviqk41TIwV8qdN22N-LiCbnMUltKuuXRSV7Nt6kAiWBJ2rr1XRzCA6YiEp92hDja-tSojCpfvBxEXITiENHWp_RwWENcq-v6IYkWicJdSU7TNXv6HRmZrRr3Cie0nu23dJDE7fwxmoBq9043nAcs2D7cdDdTriCgl6jlQKPUsDxox7MVEiVt; _qimei_fingerprint=1b07e4205026a9c8f33cdf981af38ae5; _qimei_h38=9bfa8bbe27d1b2b05607d3760200000571a51f; Hm_lvt_51700b6c722f5bb4cf39906a596ea41f=1780230501; HMACCOUNT=2B6BB34E743A6F12; huyawap_rep_cnt=59; _rep_cnt=3; guid=0a7d910e5f291c6a390179217a21d18d; huya_ua=webh5&0.1.0&websocket&&h5_/11342412; Hm_lpvt_51700b6c722f5bb4cf39906a596ea41f=1780230525; huya_web_rep_cnt=125; huya_flash_rep_cnt=27");
+
         return headers;
     }
 
@@ -76,17 +88,18 @@ public class TVPlayerManager {
     public void playUrl(String url) {
         if (player == null || url == null || url.isEmpty()) return;
 
-        // 日志
         SettingsActivity.log("播放器请求地址：" + url);
-        SettingsActivity.log("播放器 User-Agent：MTV");
+        SettingsActivity.log("已启用虎牙全套请求头 + 完整Cookie");
 
         new Thread(() -> {
             new Handler(context.getMainLooper()).post(() -> {
                 try {
                     DefaultHttpDataSource.Factory factory = new DefaultHttpDataSource.Factory();
-                    factory.setUserAgent("MTV");
+                    factory.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36");
                     factory.setDefaultRequestProperties(getGiteeHeaders());
                     factory.setAllowCrossProtocolRedirects(true);
+                    factory.setConnectTimeoutMs(15000);
+                    factory.setReadTimeoutMs(15000);
 
                     MediaItem mediaItem = MediaItem.fromUri(url);
                     HlsMediaSource source = new HlsMediaSource.Factory(factory).createMediaSource(mediaItem);
@@ -94,7 +107,6 @@ public class TVPlayerManager {
                     player.prepare();
                     player.play();
 
-                    // 错误监听（兼容你现有版本，不报错）
                     player.addListener(new Player.Listener() {
                         @Override
                         public void onPlayerError(PlaybackException error) {
@@ -122,7 +134,6 @@ public class TVPlayerManager {
                     });
 
                     SettingsActivity.log("播放器已开始播放");
-
                 } catch (Exception e) {
                     SettingsActivity.log("❌ 播放异常：" + e.getMessage());
                     e.printStackTrace();

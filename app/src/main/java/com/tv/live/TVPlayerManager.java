@@ -67,20 +67,10 @@ public class TVPlayerManager {
 
     public void playUrl(String url) {
         if (player == null || url == null || url.isEmpty()) return;
-            // --- 关键：日志写入 ---
-    SettingsActivity.log("=== 开始播放 ===");
-    SettingsActivity.log("频道名称：" + ch.getName());
-    SettingsActivity.log("原始地址：" + ch.getPlayUrl());
-
-    // 解析真实地址
-    String realUrl = getRealPlayUrl(ch.getPlayUrl());
-    SettingsActivity.log("解析后地址：" + realUrl);
-
-    // 调用播放器
-    playerStateListener.setCurrentChannelName(ch.getName());
-    mPlayerManager.play(realUrl);
-
-    // 其他原有代码不变
+           // ====================== 在这里加！第一处日志 ======================
+    SettingsActivity.log("播放器请求地址：" + url);
+    SettingsActivity.log("播放器 User-Agent：MTV");
+    // ==================================================================  
         new Thread(() -> {
             new Handler(context.getMainLooper()).post(() -> {
                 try {
@@ -94,7 +84,12 @@ public class TVPlayerManager {
                     player.setMediaSource(source);
                     player.prepare();
                     player.play();
+                    // ====================== 在这里加！第二处日志 ======================
+                SettingsActivity.log("播放器已开始播放");
                 } catch (Exception e) {
+                     // ====================== 在这里加！第三处日志 ======================
+                SettingsActivity.log("播放异常：" + e.getMessage());
+                // ==================================================================
                     e.printStackTrace();
                 }
             });

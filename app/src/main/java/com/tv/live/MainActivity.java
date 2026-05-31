@@ -176,12 +176,8 @@ public class MainActivity extends AppCompatActivity {
         dateListManager.initDate();
         panelManager = new PanelManager(panel_layout, channelListManager, epgManagerWrapper);
 
-        // ====================== 【我只改了这 1 行：自动选择播放器】 ======================
-        if (currentPlayerType == 1) {
-            mPlayerManager = TVVlcPlayerManager.getInstance(this);
-        } else {
-            mPlayerManager = TVPlayerManager.getInstance(this);
-        }
+        // 统一用 TVPlayerManager，内部自动判断 Exo/VLC
+         mPlayerManager = TVPlayerManager.getInstance(this);
         // ==============================================================================
 
         mPlayerManager.attachPlayerView(playerView);

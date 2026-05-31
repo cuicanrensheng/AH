@@ -38,6 +38,7 @@
             android:text="向右查看节目单"
             android:textColor="#fff"
             android:background="#333"/>
+
     </RelativeLayout>
 
     <!-- EPG 节目单 -->
@@ -69,6 +70,7 @@
             android:divider="#333"
             android:dividerHeight="1dp"
             android:background="#222"/>
+
     </LinearLayout>
 
 </LinearLayout>

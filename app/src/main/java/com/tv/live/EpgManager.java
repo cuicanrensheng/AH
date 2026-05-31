@@ -12,6 +12,9 @@ import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.zip.GZIPInputStream;
 
+/**
+ * 节目单解析器：下载、解压、解析XML
+ */
 public class EpgManager {
     private static EpgManager instance;
     private final Map<String, List<Channel.EpgItem>> channelEpgMap = new HashMap<>();
@@ -24,11 +27,16 @@ public class EpgManager {
         return instance;
     }
 
+    /**
+     * 设置节目单地址
+     */
     public void setEpgUrl(String url) {
         this.epgUrl = url;
     }
 
-    // ====================== 只改这里：确保回调在主线程 ======================
+    /**
+     * 下载并解析节目单
+     */
     public void loadEpg(Runnable callback) {
         new Thread(() -> {
             HttpURLConnection conn = null;
@@ -40,30 +48,41 @@ public class EpgManager {
                 conn.setReadTimeout(15000);
                 conn.connect();
                 in = conn.getInputStream();
+
+                // 自动解压gz
                 if (epgUrl.endsWith(".gz")) {
                     in = new GZIPInputStream(in);
                 }
+
                 parseXml(in);
                 Log.d("EPG", "EPG加载完成，共解析 " + channelEpgMap.size() + " 个频道");
             } catch (Exception e) {
                 Log.e("EPG", "EPG加载失败", e);
             } finally {
-                try { if (in != null) in.close(); if (conn != null) conn.disconnect(); } catch (Exception ignored) {}
+                try {
+                    if (in != null) in.close();
+                    if (conn != null) conn.disconnect();
+                } catch (Exception ignored) {}
             }
 
-            // ✅ 修复：强制在主线程回调，解决“一直加载中”
+            // 主线程回调
             if (callback != null) {
                 new Handler(Looper.getMainLooper()).post(callback);
             }
         }).start();
     }
 
+    /**
+     * 解析XML格式节目单
+     */
     private void parseXml(InputStream is) throws Exception {
         XmlPullParserFactory factory = XmlPullParserFactory.newInstance();
         XmlPullParser xml = factory.newPullParser();
         xml.setInput(is, "UTF-8");
+
         SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMddHHmmss");
         Calendar today = Calendar.getInstance();
+
         String currentChannelId = null;
         String currentChannelName = null;
         List<Channel.EpgItem> tempPrograms = new ArrayList<>();
@@ -71,20 +90,25 @@ public class EpgManager {
         while (xml.getEventType() != XmlPullParser.END_DOCUMENT) {
             if (xml.getEventType() == XmlPullParser.START_TAG) {
                 String tag = xml.getName();
+
                 if ("channel".equals(tag)) {
                     currentChannelId = xml.getAttributeValue(null, "id");
                     tempPrograms.clear();
                 }
+
                 if ("display-name".equals(tag) && currentChannelId != null) {
                     currentChannelName = xml.nextText().trim();
                 }
+
                 if ("programme".equals(tag)) {
                     String start = xml.getAttributeValue(null, "start");
                     String stop = xml.getAttributeValue(null, "stop");
                     if (start == null || stop == null) continue;
+
                     Calendar startCal = Calendar.getInstance();
                     startCal.setTime(sdf.parse(start));
                     String dayName = getDayName(startCal, today);
+
                     String timeStr = start.substring(8, 10) + ":" + start.substring(10, 12)
                             + " - " + stop.substring(8, 10) + ":" + stop.substring(10, 12);
 
@@ -93,25 +117,33 @@ public class EpgManager {
                     );
                     tempPrograms.add(item);
                 }
+
                 if ("title".equals(tag) && !tempPrograms.isEmpty()) {
                     String title = xml.nextText().trim();
                     tempPrograms.get(tempPrograms.size() - 1).title = title;
                 }
             }
+
+            // 节目结束，保存数据
             if (xml.getEventType() == XmlPullParser.END_TAG && "programme".equals(xml.getName())) {
                 if (currentChannelName != null && !tempPrograms.isEmpty()) {
                     tempPrograms.sort(Comparator.comparing(item -> item.time));
                     channelEpgMap.put(currentChannelName, new ArrayList<>(tempPrograms));
                 }
             }
+
             xml.next();
         }
     }
 
+    /**
+     * 根据频道名获取节目单（兼容HD、高清、4K）
+     */
     public List<Channel.EpgItem> getEpg(String channelName) {
         if (channelName == null || channelName.isEmpty()) {
             return new ArrayList<>();
         }
+
         String cleanName = channelName.replaceAll("(?i)高清|HD|超清|4K| |-", "").toLowerCase();
 
         for (Map.Entry<String, List<Channel.EpgItem>> entry : channelEpgMap.entrySet()) {
@@ -123,15 +155,18 @@ public class EpgManager {
         return new ArrayList<>();
     }
 
+    /**
+     * 计算日期：今天/明天/后天/周X
+     */
     public String getDayName(Calendar itemCal, Calendar todayCal) {
-    // 只修复这一行：把 DayOfWeek 改成 Calendar
-    int dayDiff = itemCal.get(Calendar.DAY_OF_YEAR) - todayCal.get(Calendar.DAY_OF_YEAR);
-    
-    if (dayDiff == 0) return "今天";
-    if (dayDiff == 1) return "明天";
-    if (dayDiff == 2) return "后天";
-    String[] weekDays = {"周日", "周一", "周二", "周三", "周四", "周五", "周六"};
-    int dayOfWeek = itemCal.get(Calendar.DAY_OF_WEEK) - 1;
-    return weekDays[dayOfWeek];
-   }
+        int dayDiff = itemCal.get(Calendar.DAY_OF_YEAR) - todayCal.get(Calendar.DAY_OF_YEAR);
+
+        if (dayDiff == 0) return "今天";
+        if (dayDiff == 1) return "明天";
+        if (dayDiff == 2) return "后天";
+
+        String[] weekDays = {"周日", "周一", "周二", "周三", "周四", "周五", "周六"};
+        int dayOfWeek = itemCal.get(Calendar.DAY_OF_WEEK) - 1;
+        return weekDays[dayOfWeek];
+    }
 }

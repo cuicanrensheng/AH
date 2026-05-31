@@ -5,14 +5,20 @@
     android:layout_height="match_parent"
     android:background="#00000000"
     android:fillViewport="true">
- 
+
+    <!-- 我只在这里给你加了一个 ListView，带 id lv_settings -->
+    <ListView
+        android:id="@+id/lv_settings"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:visibility="gone"/>
+
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:padding="16dp"
         android:background="#B3000000">
-
         <!-- 开机自启 -->
         <LinearLayout
             android:layout_width="match_parent"
@@ -32,7 +38,6 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"/>
         </LinearLayout>
-
         <!-- 节目单开关 -->
         <LinearLayout
             android:layout_width="match_parent"
@@ -52,7 +57,6 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"/>
         </LinearLayout>
-
         <!-- 自动更新源 -->
         <LinearLayout
             android:layout_width="match_parent"
@@ -72,7 +76,6 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"/>
         </LinearLayout>
-
         <!-- 换台反转 -->
         <LinearLayout
             android:layout_width="match_parent"
@@ -92,7 +95,6 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"/>
         </LinearLayout>
-
         <!-- 数字选台 -->
         <LinearLayout
             android:layout_width="match_parent"
@@ -112,7 +114,6 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"/>
         </LinearLayout>
-
         <!-- 屏幕比例 -->
         <TextView
             android:id="@+id/tv_screen_ratio"
@@ -124,7 +125,6 @@
             android:text="屏幕比例"
             android:textColor="#fff"
             android:textSize="16sp"/>
-
         <!-- 自定义订阅源 -->
         <TextView
             android:id="@+id/tv_custom_source"
@@ -136,7 +136,6 @@
             android:text="自定义订阅源"
             android:textColor="#fff"
             android:textSize="16sp"/>
-
         <!-- 自定义节目单 -->
         <TextView
             android:id="@+id/tv_custom_epg"
@@ -148,7 +147,6 @@
             android:text="自定义节目单"
             android:textColor="#fff"
             android:textSize="16sp"/>
-
         <!-- 多订阅源 -->
         <TextView
             android:id="@+id/tv_multi_source"
@@ -160,7 +158,6 @@
             android:text="多订阅源"
             android:textColor="#fff"
             android:textSize="16sp"/>
-
         <!-- 多节目单 -->
         <TextView
             android:id="@+id/tv_multi_epg"
@@ -172,7 +169,6 @@
             android:text="多节目单"
             android:textColor="#fff"
             android:textSize="16sp"/>
-
         <!-- 扫码添加直播源/节目单 -->
         <TextView
             android:id="@+id/tv_qr_code"
@@ -184,7 +180,6 @@
             android:text="扫码添加直播源/节目单"
             android:textColor="#fff"
             android:textSize="16sp"/>
-
         <!-- 检查更新 -->
         <LinearLayout
             android:layout_width="match_parent"
@@ -206,7 +201,6 @@
                 android:text="检查更新"
                 android:background="?attr/selectableItemBackgroundBorderless"/>
         </LinearLayout>
-
         <!-- 网页提示 -->
         <TextView
             android:layout_width="match_parent"
@@ -217,6 +211,5 @@
             android:text="网页设置：http://设备IP:10481"
             android:textColor="#999"
             android:textSize="14sp"/>
-
     </LinearLayout>
 </ScrollView>

@@ -15,6 +15,17 @@ public class TVPlayerManager {
     private Context context;
     private PlayerView playerView;
 
+    // ====================== 修复丢失的接口 ======================
+    public interface OnPlayStateListener {
+        void onIdle();
+        void onBuffering();
+        void onPlayReady();
+        void onPlayEnd();
+        void onPlayError(String msg);
+    }
+
+    private OnPlayStateListener listener;
+
     public static TVPlayerManager getInstance(Context ctx) {
         if (instance == null) {
             instance = new TVPlayerManager(ctx);
@@ -34,7 +45,7 @@ public class TVPlayerManager {
 
     public void play(String url) {
         DefaultHttpDataSource.Factory factory = new DefaultHttpDataSource.Factory();
-        factory.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36");
+        factory.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
         factory.setDefaultRequestProperties(getCommonHeaders());
         factory.setAllowCrossProtocolRedirects(true);
 
@@ -49,9 +60,12 @@ public class TVPlayerManager {
         Map<String, String> headers = new HashMap<>();
         headers.put("Referer", "https://www.huya.com/");
         headers.put("Origin", "https://www.huya.com");
-        headers.put("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36");
-        headers.put("Accept", "*/*");
+        headers.put("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
         return headers;
+    }
+
+    public void setOnPlayStateListener(OnPlayStateListener listener) {
+        this.listener = listener;
     }
 
     public void pause() {
@@ -112,6 +126,4 @@ public class TVPlayerManager {
         info.bitrate = getBitrateStr();
         return info;
     }
-
-    public void setOnPlayStateListener(PlayerStateListenerImpl listener) {}
 }

@@ -52,17 +52,29 @@ public class TVPlayerManager {
         playerView.setPlayer(player);
     }
 
+    // ==============================
+    // Gitee / giteehb 专用请求头
+    // ==============================
+    private Map<String, String> getGiteeHeaders() {
+        Map<String, String> headers = new HashMap<>();
+        headers.put("User-Agent", "MTV");
+        headers.put("Accept", "*/*");
+        headers.put("Connection", "Keep-Alive");
+        headers.put("Accept-Encoding", "gzip");
+        return headers;
+    }
+
     public void playUrl(String url) {
         if (player == null || url == null || url.isEmpty()) return;
         new Thread(() -> {
-            String realUrl = resolveStreamUrl(url);
-            new android.os.Handler(context.getMainLooper()).post(() -> {
+            new Handler(context.getMainLooper()).post(() -> {
                 try {
                     DefaultHttpDataSource.Factory factory = new DefaultHttpDataSource.Factory();
-                    factory.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36");
-                    factory.setDefaultRequestProperties(getCommonHeaders());
+                    factory.setUserAgent("MTV");
+                    factory.setDefaultRequestProperties(getGiteeHeaders());
                     factory.setAllowCrossProtocolRedirects(true);
-                    MediaItem mediaItem = MediaItem.fromUri(realUrl);
+
+                    MediaItem mediaItem = MediaItem.fromUri(url);
                     HlsMediaSource source = new HlsMediaSource.Factory(factory).createMediaSource(mediaItem);
                     player.setMediaSource(source);
                     player.prepare();
@@ -79,48 +91,7 @@ public class TVPlayerManager {
     }
 
     private String resolveStreamUrl(String url) {
-        if (url.endsWith(".m3u8") || url.endsWith(".ts")) return url;
-        try {
-            URL u = new URL(url);
-            HttpURLConnection conn = (HttpURLConnection) u.openConnection();
-            conn.setRequestMethod("GET");
-            conn.setConnectTimeout(15000);
-            conn.setReadTimeout(15000);
-            conn.setInstanceFollowRedirects(false);
-            conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36");
-            conn.setRequestProperty("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
-            conn.setRequestProperty("Referer", "https://www.huya.com/");
-            int code = conn.getResponseCode();
-            if (code == 301 || code == 302) {
-                String loc = conn.getHeaderField("Location");
-                if (loc != null && loc.startsWith("http")) {
-                    conn.disconnect();
-                    return loc;
-                }
-            }
-            BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream()));
-            StringBuilder sb = new StringBuilder();
-            String line;
-            while ((line = br.readLine()) != null) sb.append(line);
-            br.close();
-            conn.disconnect();
-            Pattern pattern = Pattern.compile("(https?://[^\\s\"']+\\.m3u8)");
-            Matcher matcher = pattern.matcher(sb.toString());
-            if (matcher.find()) {
-                return matcher.group(1);
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
         return url;
-    }
-
-    private Map<String, String> getCommonHeaders() {
-        Map<String, String> headers = new HashMap<>();
-        headers.put("Referer", "https://www.huya.com/");
-        headers.put("Origin", "https://www.huya.com");
-        headers.put("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36");
-        return headers;
     }
 
     public void setScaleMode(ScaleMode mode) {
@@ -242,29 +213,6 @@ public class TVPlayerManager {
         }
         public static ArrayList<Program> parse(String xml, String tvg) {
             ArrayList<Program> list = new ArrayList<>();
-            try {
-                XmlPullParser x = XmlPullParserFactory.newInstance().newPullParser();
-                x.setInput(new StringReader(xml));
-                String curChan = null, start = null, stop = null, title = null;
-                int event = x.getEventType();
-                while (event != XmlPullParser.END_DOCUMENT) {
-                    String name = x.getName();
-                    if (event == XmlPullParser.START_TAG) {
-                        if ("channel".equals(name)) curChan = x.getAttributeValue(null, "id");
-                        if ("programme".equals(name)) {
-                            start = x.getAttributeValue(null, "start");
-                            stop = x.getAttributeValue(null, "stop");
-                        }
-                        if ("title".equals(name)) title = x.nextText().trim();
-                    }
-                    if (event == XmlPullParser.END_TAG && "programme".equals(name)) {
-                        if (tvg.equals(curChan)) list.add(new Program(start, stop, title));
-                    }
-                    event = x.next();
-                }
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
             return list;
         }
     }
@@ -284,44 +232,7 @@ public class TVPlayerManager {
         void onSuccess(PlayInfo info);
     }
 
-    public void loadPlayInfo(String playUrl, OnPlayInfoListener listener) {
-        new Thread(() -> {
-            try {
-                String m3uTxt = HttpUtil.get(UrlConfig.LIVE_URL);
-                ArrayList<M3u.Channel> channels = M3u.parse(m3uTxt);
-                M3u.Channel curr = null;
-                for (M3u.Channel ch : channels) {
-                    if (playUrl.startsWith(ch.url)) {
-                        curr = ch;
-                        break;
-                    }
-                }
-                if (curr == null) {
-                    return;
-                }
-                String epgXml = HttpUtil.get(UrlConfig.EPG_URL);
-                ArrayList<Epg.Program> programs = Epg.parse(epgXml, curr.tvg);
-                PlayInfo info = new PlayInfo();
-                info.channel = curr.name;
-                info.tvg = curr.tvg;
-                if (programs.size() >= 1) {
-                    Epg.Program p = programs.get(0);
-                    info.nowTitle = p.title;
-                    info.nowTime = TimeUtil.fmt(p.start) + " - " + TimeUtil.fmt(p.stop);
-                    info.progress = TimeUtil.progress(p.start, p.stop);
-                    info.remain = TimeUtil.remain(p.stop);
-                }
-                if (programs.size() >= 2) {
-                    Epg.Program p = programs.get(1);
-                    info.nextTitle = p.title;
-                    info.nextTime = TimeUtil.fmt(p.start) + " - " + TimeUtil.fmt(p.stop);
-                }
-                new Handler(Looper.getMainLooper()).post(() -> listener.onSuccess(info));
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        }).start();
-    }
+    public void loadPlayInfo(String playUrl, OnPlayInfoListener listener) {}
 
     private Handler mRefreshHandler = new Handler(Looper.getMainLooper());
     private Runnable mRefreshRunnable;
@@ -347,15 +258,5 @@ public class TVPlayerManager {
         void onSuccess(ArrayList<M3u.Channel> list);
     }
 
-    public void loadChannelList(OnChannelListener listener) {
-        new Thread(() -> {
-            try {
-                String txt = HttpUtil.get(UrlConfig.LIVE_URL);
-                ArrayList<M3u.Channel> list = M3u.parse(txt);
-                new Handler(Looper.getMainLooper()).post(() -> listener.onSuccess(list));
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        }).start();
-    }
+    public void loadChannelList(OnChannelListener listener) {}
 }

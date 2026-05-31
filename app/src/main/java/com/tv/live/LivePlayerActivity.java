@@ -47,7 +47,7 @@ public class LivePlayerActivity extends AppCompatActivity {
             if (infoBar != null) {
                 infoBar.setVisibility(View.VISIBLE);
                 infoBar.removeCallbacks(hide);
-                infoBar.postDelayed(hide, 2000); // 2秒
+                infoBar.postDelayed(hide, 1000); // 1秒
             }
             return false;
         });

@@ -36,8 +36,6 @@ public class SettingsActivity extends AppCompatActivity {
 
         sp = getSharedPreferences("app_settings", MODE_PRIVATE);
 
-        // 初始化列表
-        lvSettings = findViewById(R.id.lv_settings);
         // 开启单选模式，为高亮做准备
         lvSettings.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
 

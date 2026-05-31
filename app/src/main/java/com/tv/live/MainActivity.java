@@ -311,49 +311,43 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public void playChannel(int index) {
-        if (channelSourceList == null || channelSourceList.isEmpty()) return;
-        index = Math.max(0, Math.min(index, channelSourceList.size() - 1));
-        currentPlayIndex = index;
-        Channel ch = channelSourceList.get(index);
-        if (ch == null || TextUtils.isEmpty(ch.getPlayUrl())) return;
-         // ====================== 在这里加！第一处日志 ======================
+    if (channelSourceList == null || channelSourceList.isEmpty()) return;
+    index = Math.max(0, Math.min(index, channelSourceList.size() - 1));
+    currentPlayIndex = index;
+    Channel ch = channelSourceList.get(index);
+    if (ch == null || TextUtils.isEmpty(ch.getPlayUrl())) return;
+
+    // 1. 日志：记录播放前信息
     SettingsActivity.log("=== 开始播放 ===");
     SettingsActivity.log("频道名称：" + ch.getName());
     SettingsActivity.log("原始地址：" + ch.getPlayUrl());
-    // ==================================================================
 
-    // 解析真实地址
+    // 2. 解析真实地址（只定义一次 realUrl，关键！）
     String realUrl = getRealPlayUrl(ch.getPlayUrl());
-    
-    // 调用播放器
+
+    // 3. 日志：记录解析后的地址
+    SettingsActivity.log("解析后地址：" + realUrl);
+
+    // 4. 调用播放器（只播放一次）
     playerStateListener.setCurrentChannelName(ch.getName());
     mPlayerManager.play(realUrl);
 
-    // 其他原有代码不变
+    // 其他原有代码（全部保留，不要动）
+    appConfig.setLastPlayIndex(index);
+    channelListManager.setChannels(channelSourceList, index);
+    epgManagerWrapper.refresh(ch, channelSourceList, currentSelectedDateIndex);
 
-        // ====================== 【兜底：先解析真实地址再播放】 ======================
-        String realUrl = getRealPlayUrl(ch.getPlayUrl());
-            // ====================== 在这里加！第二处日志 ======================
-    SettingsActivity.log("解析后地址：" + realUrl);
-    // ==================================================================
-        playerStateListener.setCurrentChannelName(ch.getName());
-        mPlayerManager.play(realUrl);
-
-        appConfig.setLastPlayIndex(index);
-        channelListManager.setChannels(channelSourceList, index);
-        epgManagerWrapper.refresh(ch, channelSourceList, currentSelectedDateIndex);
-
-        if (info_bar != null) {
-            info_bar.setVisibility(View.VISIBLE);
-            info_bar.removeCallbacks(hideInfoBar);
-            info_bar.postDelayed(hideInfoBar, 2000);
-            tv_channel_name.setText(ch.getName());
-            TVPlayerManager.LiveInfo live = mPlayerManager.getLiveInfo();
-            tv_tag_fhd.setText(live.quality);
-            tv_tag_audio.setText(live.audio);
-            tv_bitrate.setText(live.bitrate);
-        }
+    if (info_bar != null) {
+        info_bar.setVisibility(View.VISIBLE);
+        info_bar.removeCallbacks(hideInfoBar);
+        info_bar.postDelayed(hideInfoBar, 2000);
+        tv_channel_name.setText(ch.getName());
+        TVPlayerManager.LiveInfo live = mPlayerManager.getLiveInfo();
+        tv_tag_fhd.setText(live.quality);
+        tv_tag_audio.setText(live.audio);
+        tv_bitrate.setText(live.bitrate);
     }
+}
 
     private void initListViewClick() {
         ListView lvChannelList = findViewById(R.id.lv_channel_list);

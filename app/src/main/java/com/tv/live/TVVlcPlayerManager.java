@@ -1,5 +1,4 @@
 package com.tv.live;
-
 import android.content.Context;
 import android.view.SurfaceView;
 import org.videolan.libvlc.LibVLC;
@@ -11,7 +10,6 @@ public class TVVlcPlayerManager {
     private static TVVlcPlayerManager instance;
     private LibVLC libVLC;
     private MediaPlayer mediaPlayer;
-    private Context context;
 
     public static TVVlcPlayerManager getInstance(Context ctx) {
         if (instance == null) {
@@ -21,50 +19,35 @@ public class TVVlcPlayerManager {
     }
 
     private TVVlcPlayerManager(Context ctx) {
-        context = ctx.getApplicationContext();
         ArrayList<String> options = new ArrayList<>();
         options.add("--aout=opensles");
         options.add("--audio-time-stretch");
-        options.add("-vvv");
-        libVLC = new LibVLC(context, options);
+        libVLC = new LibVLC(ctx, options);
         mediaPlayer = new MediaPlayer(libVLC);
     }
 
-    public void attachSurfaceView(SurfaceView surfaceView) {
-        mediaPlayer.getVLCVout().setVideoView(surfaceView);
-        mediaPlayer.getVLCVout().attachViews();
-    }
-
     public void play(String url) {
-        try {
-            Media media = new Media(libVLC, url);
-            mediaPlayer.setMedia(media);
-            media.release();
-            mediaPlayer.play();
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+        Media media = new Media(libVLC, url);
+        media.addOption(":http-user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36");
+        media.addOption(":http-referrer=https://www.huya.com/");
+        media.addOption(":http-forward-cookies");
+        media.addOption(":network-caching=1500");
+        mediaPlayer.setMedia(media);
+        media.release();
+        mediaPlayer.play();
     }
 
     public void pause() {
-        if (mediaPlayer.isPlaying()) {
-            mediaPlayer.pause();
-        }
+        mediaPlayer.pause();
     }
 
     public void resume() {
-        if (!mediaPlayer.isPlaying()) {
-            mediaPlayer.play();
-        }
+        mediaPlayer.play();
     }
 
     public void release() {
         mediaPlayer.release();
         libVLC.release();
         instance = null;
-    }
-
-    public boolean isPlaying() {
-        return mediaPlayer.isPlaying();
     }
 }

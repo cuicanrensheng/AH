@@ -20,6 +20,7 @@ import android.view.WindowManager;
 import android.widget.ArrayAdapter;
 import android.widget.EditText;
 import android.widget.ImageView;
+import android.widget.ScrollView;
 import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -29,7 +30,6 @@ import com.google.zxing.common.BitMatrix;
 import com.google.zxing.qrcode.QRCodeWriter;
 import org.json.JSONObject;
 import java.io.InputStreamReader;
-import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.ArrayList;
@@ -46,6 +46,38 @@ public class SettingsActivity extends AppCompatActivity {
     private static final int PORT = 10481;
     private SettingsAdapter adapter;
 
+    // ====================== 全局日志系统 ======================
+    public static String PLAY_LOG = "";
+
+    // 记录日志
+    public static void log(String msg) {
+        String time = android.text.format.DateFormat.format("HH:mm:ss", new java.util.Date()).toString();
+        PLAY_LOG += "[" + time + "] " + msg + "\n";
+        if (PLAY_LOG.length() > 10000) PLAY_LOG = PLAY_LOG.substring(PLAY_LOG.length() - 8000);
+    }
+
+    // 查看日志弹窗
+    private void showLogDialog() {
+        ScrollView scrollView = new ScrollView(this);
+        TextView tv = new TextView(this);
+        tv.setText(PLAY_LOG);
+        tv.setTextSize(12);
+        tv.setPadding(40, 40, 40, 40);
+        tv.setTextColor(Color.WHITE);
+        scrollView.addView(tv);
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("📄 解析 & 播放日志");
+        builder.setView(scrollView);
+        builder.setPositiveButton("关闭", null);
+        builder.setNeutralButton("清空日志", (dialog, which) -> {
+            PLAY_LOG = "";
+            Toast.makeText(this, "日志已清空", Toast.LENGTH_SHORT).show();
+        });
+        builder.show();
+    }
+    // =================================================================
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -55,7 +87,6 @@ public class SettingsActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
         setContentView(R.layout.activity_settings);
-
         sp = getSharedPreferences("app_settings", MODE_PRIVATE);
 
         sw_boot = findViewById(R.id.sw_boot);
@@ -63,7 +94,6 @@ public class SettingsActivity extends AppCompatActivity {
         sw_auto_update = findViewById(R.id.sw_auto_update);
         sw_reverse = findViewById(R.id.sw_reverse);
         sw_num_channel = findViewById(R.id.sw_num_channel);
-
         tv_screen_ratio = findViewById(R.id.tv_screen_ratio);
         tv_custom_source = findViewById(R.id.tv_custom_source);
         tv_custom_epg = findViewById(R.id.tv_custom_epg);
@@ -72,7 +102,9 @@ public class SettingsActivity extends AppCompatActivity {
         tv_qr_code = findViewById(R.id.tv_qr_code);
         tv_player_engine = findViewById(R.id.tv_player_engine);
 
-        // ====================== 【我只加了这一行：显示当前播放器】 ======================
+        // ====================== 查看日志按钮点击 ======================
+        findViewById(R.id.log_viewer).setOnClickListener(v -> showLogDialog());
+
         updatePlayerDisplay();
 
         sw_boot.setChecked(sp.getBoolean("boot_auto_start", false));
@@ -105,7 +137,6 @@ public class SettingsActivity extends AppCompatActivity {
             Toast.makeText(this, "数字选台" + (isChecked ? "已开启" : "已关闭"), Toast.LENGTH_SHORT).show();
         });
 
-        // ====================== 【我只优化了这里：切换后自动重启生效】 ======================
         tv_player_engine.setOnClickListener(v -> {
             String[] items = {"ExoPlayer（默认）", "VLC 播放器"};
             int current = sp.getInt("player_engine", 0);
@@ -136,13 +167,11 @@ public class SettingsActivity extends AppCompatActivity {
         startPushServer();
     }
 
-    // ====================== 【我只加了这个方法：更新显示当前播放器】 ======================
     private void updatePlayerDisplay() {
         int type = sp.getInt("player_engine", 0);
         tv_player_engine.setText(type == 0 ? "当前：ExoPlayer" : "当前：VLC 播放器");
     }
 
-    // ====================== 【我只加了这个方法：重启APP】 ======================
     private void restartApp() {
         Intent intent = new Intent(this, MainActivity.class);
         intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_NEW_TASK);

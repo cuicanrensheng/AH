@@ -1,4 +1,5 @@
 package com.tv.live;
+
 import android.content.Context;
 import android.net.Uri;
 import android.widget.Toast;
@@ -13,6 +14,15 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.HashMap;
 import java.util.Map;
+
+import android.os.Handler;
+import android.os.Looper;
+import org.xmlpull.v1.XmlPullParser;
+import org.xmlpull.v1.XmlPullParserFactory;
+import java.io.StringReader;
+import java.util.ArrayList;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * 播放器管理类（ExoPlayer）
@@ -181,25 +191,15 @@ public class TVPlayerManager {
     }
 
 // ==================== 【完整追加代码】 ====================
-import android.os.Handler;
-import android.os.Looper;
-import org.xmlpull.v1.XmlPullParser;
-import org.xmlpull.v1.XmlPullParserFactory;
-import java.io.StringReader;
-import java.util.ArrayList;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 public long getBitrate() {
     try { return player.getVideoFormat().bitrate; }
     catch (Exception e) { return 0; }
 }
-
 public String getBitrateStr() {
     long b = getBitrate();
     return b <= 0 ? "4.5MB/s" : String.format("%.1fMB/s", b / 1000000f);
 }
-
 public String getQuality() {
     try {
         int h = player.getVideoFormat().height;
@@ -208,20 +208,17 @@ public String getQuality() {
         else return "SD";
     } catch (Exception e) { return "FHD"; }
 }
-
 public String getAudio() {
     try {
         int ch = player.getAudioFormat().channelCount;
         return ch >= 2 ? "立体声" : "单声道";
     } catch (Exception e) { return "立体声"; }
 }
-
 public static class LiveInfo {
     public String quality;
     public String audio;
     public String bitrate;
 }
-
 public LiveInfo getLiveInfo() {
     LiveInfo info = new LiveInfo();
     info.quality = getQuality();
@@ -229,7 +226,6 @@ public LiveInfo getLiveInfo() {
     info.bitrate = getBitrateStr();
     return info;
 }
-
 public static class M3u {
     public static class Channel {
         public String tvg;
@@ -241,7 +237,6 @@ public static class M3u {
             this.url = url;
         }
     }
-
     public static ArrayList<Channel> parse(String txt) {
         ArrayList<Channel> list = new ArrayList<>();
         Pattern p = Pattern.compile("tvg-name=\"([^\"]+)\".*?,(.*?)\\s*\\n(https?://.*?\\.m3u8)");
@@ -255,7 +250,6 @@ public static class M3u {
         return list;
     }
 }
-
 public static class Epg {
     public static class Program {
         public String start;
@@ -267,7 +261,6 @@ public static class Epg {
             title = t;
         }
     }
-
     public static ArrayList<Program> parse(String xml, String tvg) {
         ArrayList<Program> list = new ArrayList<>();
         try {
@@ -296,7 +289,6 @@ public static class Epg {
         return list;
     }
 }
-
 public static class PlayInfo {
     public String channel;
     public String tvg;
@@ -307,12 +299,10 @@ public static class PlayInfo {
     public int progress;
     public int remain;
 }
-
 public interface OnPlayInfoListener {
     void onSuccess(PlayInfo info);
     void onFail();
 }
-
 public void loadPlayInfo(String playUrl, OnPlayInfoListener listener) {
     new Thread(() -> {
         try {
@@ -352,12 +342,10 @@ public void loadPlayInfo(String playUrl, OnPlayInfoListener listener) {
         }
     }).start();
 }
-
 private Handler mRefreshHandler = new Handler(Looper.getMainLooper());
 private Runnable mRefreshRunnable;
 private String mCurrUrl;
 private OnPlayInfoListener mRefreshListener;
-
 public void startAutoRefresh(String url, OnPlayInfoListener listener) {
     mCurrUrl = url;
     mRefreshListener = listener;
@@ -368,16 +356,13 @@ public void startAutoRefresh(String url, OnPlayInfoListener listener) {
     };
     mRefreshHandler.post(mRefreshRunnable);
 }
-
 public void stopAutoRefresh() {
     if (mRefreshRunnable != null) mRefreshHandler.removeCallbacks(mRefreshRunnable);
 }
-
 public interface OnChannelListener {
     void onSuccess(ArrayList<M3u.Channel> list);
     void onFail();
 }
-
 public void loadChannelList(OnChannelListener listener) {
     new Thread(() -> {
         try {
@@ -389,4 +374,7 @@ public void loadChannelList(OnChannelListener listener) {
         }
     }).start();
 }
+
 // ==================== 追加结束 ====================
+
+}

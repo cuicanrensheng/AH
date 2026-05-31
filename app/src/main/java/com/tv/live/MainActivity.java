@@ -1,5 +1,4 @@
 package com.tv.live;
-
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -26,12 +25,10 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
-
     public static MainActivity mInstance;
     public List<Channel> channelSourceList = new ArrayList<>();
     public List<Channel> currentGroupChannelList = new ArrayList<>();
     public int currentPlayIndex = 0;
-
     private View panel_layout;
     public TVPlayerManager mPlayerManager;
     private PlayerView playerView;
@@ -41,15 +38,12 @@ public class MainActivity extends AppCompatActivity {
     private GestureManager gestureManager;
     private KeyEventManager keyEventManager;
     private HttpConfigService httpService;
-
     private ChannelListManager channelListManager;
     private GroupListManager groupListManager;
     private DateListManager dateListManager;
     private EpgManagerWrapper epgManagerWrapper;
-
     private PlayerStateListenerImpl playerStateListener;
     private ChannelSwitchManager switchManager;
-
     private boolean epgPanelOpen = false;
     private boolean isControllerVisible = false;
     private boolean epg_enable;
@@ -58,13 +52,16 @@ public class MainActivity extends AppCompatActivity {
     private boolean auto_update_source;
     private int currentSelectedDateIndex = 0;
 
-    // 信息栏控件
+    // ====================== 【我只加了这 3 行 播放器切换配置】 ======================
+    private SharedPreferences sp;
+    private int currentPlayerType; // 0=ExoPlayer 1=VLC
+    // =============================================================================
+
     private View info_bar;
     private TextView tv_channel_name, tv_tag_fhd, tv_tag_audio, tv_bitrate;
     private TextView tv_current_program_name, tv_current_time_range, tv_remaining_time;
     private TextView tv_next_program_name, tv_next_time_range;
     private android.widget.ProgressBar progress_program;
-
     private final Runnable hideInfoBar = () -> info_bar.setVisibility(View.GONE);
 
     private final BroadcastReceiver toggleControllerReceiver = new BroadcastReceiver() {
@@ -104,11 +101,15 @@ public class MainActivity extends AppCompatActivity {
                         | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
         );
         setContentView(R.layout.activity_main);
-
         initInfoBar();
-
         appConfig = AppConfig.getInstance(this);
         loadSettings();
+
+        // ====================== 【我只加了这 读取播放器配置 】 ======================
+        sp = getSharedPreferences("app_settings", MODE_PRIVATE);
+        currentPlayerType = sp.getInt("player_engine", 0);
+        // ==========================================================================
+
         String customLive = appConfig.getCustomLiveUrl();
         String customEpg = appConfig.getCustomEpgUrl();
         if (customLive != null) UrlConfig.LIVE_URL = customLive;
@@ -117,7 +118,6 @@ public class MainActivity extends AppCompatActivity {
         playerView = findViewById(R.id.player_view);
         playerView.setUseController(false);
         panel_layout = findViewById(R.id.panel_layout);
-
         ListView lvGroup = findViewById(R.id.lv_group);
         ListView lvChannelList = findViewById(R.id.lv_channel_list);
         ListView lvDate = findViewById(R.id.lv_date);
@@ -176,20 +176,25 @@ public class MainActivity extends AppCompatActivity {
         dateListManager.initDate();
         panelManager = new PanelManager(panel_layout, channelListManager, epgManagerWrapper);
 
-        mPlayerManager = TVPlayerManager.getInstance(this);
+        // ====================== 【我只改了这 1 行：自动选择播放器】 ======================
+        if (currentPlayerType == 1) {
+            mPlayerManager = TVVlcPlayerManager.getInstance(this);
+        } else {
+            mPlayerManager = TVPlayerManager.getInstance(this);
+        }
+        // ==============================================================================
+
         mPlayerManager.attachPlayerView(playerView);
         playerStateListener = new PlayerStateListenerImpl(this);
         mPlayerManager.setOnPlayStateListener(playerStateListener);
         screenRatioManager = new ScreenRatioManager(mPlayerManager, appConfig);
         screenRatioManager.apply();
-
         gestureManager = new GestureManager(this);
         PlayerGestureHelper gestureHelper = gestureManager.create();
         playerView.setOnTouchListener((v, event) -> {
             gestureHelper.handleTouch(event);
             return true;
         });
-
         keyEventManager = new KeyEventManager(this);
         httpService = HttpConfigService.getInstance();
         httpService.start();
@@ -207,10 +212,7 @@ public class MainActivity extends AppCompatActivity {
         tv_bitrate = findViewById(R.id.tv_bitrate);
         tv_current_program_name = findViewById(R.id.tv_current_program_name);
         tv_current_time_range = findViewById(R.id.tv_current_time_range);
-
-        // 这里是唯一改动：变量名和id统一为 progress_program
         progress_program = findViewById(R.id.progress_program);
-
         tv_remaining_time = findViewById(R.id.tv_remaining_time);
         tv_next_program_name = findViewById(R.id.tv_next_program_name);
         tv_next_time_range = findViewById(R.id.tv_next_time_range);
@@ -280,12 +282,10 @@ public class MainActivity extends AppCompatActivity {
         appConfig.setLastPlayIndex(index);
         channelListManager.setChannels(channelSourceList, index);
         epgManagerWrapper.refresh(ch, channelSourceList, currentSelectedDateIndex);
-
         if (info_bar != null) {
             info_bar.setVisibility(View.VISIBLE);
             info_bar.removeCallbacks(hideInfoBar);
             info_bar.postDelayed(hideInfoBar, 2000);
-
             tv_channel_name.setText(ch.getName());
             TVPlayerManager.LiveInfo live = mPlayerManager.getLiveInfo();
             tv_tag_fhd.setText(live.quality);

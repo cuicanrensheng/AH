@@ -21,6 +21,11 @@ import com.tv.live.loader.LiveSourceLoader;
 import com.tv.live.manager.*;
 import com.tv.live.service.HttpConfigService;
 import com.tv.live.widget.*;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -52,10 +57,8 @@ public class MainActivity extends AppCompatActivity {
     private boolean auto_update_source;
     private int currentSelectedDateIndex = 0;
 
-    // ====================== 【我只加了这 3 行 播放器切换配置】 ======================
     private SharedPreferences sp;
-    private int currentPlayerType; // 0=ExoPlayer 1=VLC
-    // =============================================================================
+    private int currentPlayerType;
 
     private View info_bar;
     private TextView tv_channel_name, tv_tag_fhd, tv_tag_audio, tv_bitrate;
@@ -63,6 +66,45 @@ public class MainActivity extends AppCompatActivity {
     private TextView tv_next_program_name, tv_next_time_range;
     private android.widget.ProgressBar progress_program;
     private final Runnable hideInfoBar = () -> info_bar.setVisibility(View.GONE);
+
+    // ====================== 【兜底：解析PHP真实播放地址】 ======================
+    private String getRealPlayUrl(String url) {
+        if (url == null) return url;
+        if (url.contains(".m3u8") || url.contains(".m3u") || url.contains(".ts")) {
+            return url;
+        }
+
+        OkHttpClient client = new OkHttpClient.Builder()
+                .followRedirects(true)
+                .followSslRedirects(true)
+                .build();
+
+        Request request = new Request.Builder()
+                .url(url)
+                .addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36")
+                .addHeader("Referer", "https://www.huya.com/")
+                .addHeader("Origin", "https://www.huya.com")
+                .addHeader("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+                .build();
+
+        try (Response response = client.newCall(request).execute()) {
+            if (!response.isSuccessful() || response.body() == null) return url;
+
+            String body = response.body().string();
+            String finalUrl = response.request().url().toString();
+
+            if (finalUrl.contains(".m3u8")) return finalUrl;
+
+            Pattern p = Pattern.compile("https?://[^\\s\"']+\\.m3u8");
+            Matcher m = p.matcher(body);
+            if (m.find()) return m.group();
+
+            return finalUrl;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return url;
+        }
+    }
 
     private final BroadcastReceiver toggleControllerReceiver = new BroadcastReceiver() {
         @Override
@@ -101,14 +143,16 @@ public class MainActivity extends AppCompatActivity {
                         | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
         );
         setContentView(R.layout.activity_main);
+
+        // 播放不息屏
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+
         initInfoBar();
         appConfig = AppConfig.getInstance(this);
         loadSettings();
 
-        // ====================== 【我只加了这 读取播放器配置 】 ======================
         sp = getSharedPreferences("app_settings", MODE_PRIVATE);
         currentPlayerType = sp.getInt("player_engine", 0);
-        // ==========================================================================
 
         String customLive = appConfig.getCustomLiveUrl();
         String customEpg = appConfig.getCustomEpgUrl();
@@ -176,9 +220,7 @@ public class MainActivity extends AppCompatActivity {
         dateListManager.initDate();
         panelManager = new PanelManager(panel_layout, channelListManager, epgManagerWrapper);
 
-        // 统一用 TVPlayerManager，内部自动判断 Exo/VLC
-         mPlayerManager = TVPlayerManager.getInstance(this);
-        // ==============================================================================
+        mPlayerManager = TVPlayerManager.getInstance(this);
 
         mPlayerManager.attachPlayerView(playerView);
         playerStateListener = new PlayerStateListenerImpl(this);
@@ -273,11 +315,16 @@ public class MainActivity extends AppCompatActivity {
         currentPlayIndex = index;
         Channel ch = channelSourceList.get(index);
         if (ch == null || TextUtils.isEmpty(ch.getPlayUrl())) return;
+
+        // ====================== 【兜底：先解析真实地址再播放】 ======================
+        String realUrl = getRealPlayUrl(ch.getPlayUrl());
         playerStateListener.setCurrentChannelName(ch.getName());
-        mPlayerManager.play(ch.getPlayUrl());
+        mPlayerManager.play(realUrl);
+
         appConfig.setLastPlayIndex(index);
         channelListManager.setChannels(channelSourceList, index);
         epgManagerWrapper.refresh(ch, channelSourceList, currentSelectedDateIndex);
+
         if (info_bar != null) {
             info_bar.setVisibility(View.VISIBLE);
             info_bar.removeCallbacks(hideInfoBar);

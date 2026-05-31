@@ -14,7 +14,9 @@ import android.os.Handler;
 import android.os.Looper;
 import android.view.LayoutInflater;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.WindowManager;
+import android.widget.ArrayAdapter;
 import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.Switch;
@@ -41,6 +43,9 @@ public class SettingsActivity extends AppCompatActivity {
     private ServerSocket serverSocket;
     private Handler handler = new Handler(Looper.getMainLooper());
     private static final int PORT = 10481;
+
+    // ====================== 只补回这一行：适配器对象 ======================
+    private SettingsAdapter adapter;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -159,16 +164,20 @@ public class SettingsActivity extends AppCompatActivity {
             Toast.makeText(this,"无记录",Toast.LENGTH_SHORT).show();
             return;
         }
+
+        // ====================== 只补回这一段：蓝色高亮 ======================
+        adapter = new SettingsAdapter(this, list);
         new AlertDialog.Builder(this)
                 .setTitle(title)
-                .setItems(list.toArray(new String[0]),(d,w)->{
+                .setAdapter(adapter, (d, w) -> {
                     String url = list.get(w);
-                    sp.edit().putString(key.contains("live")?"custom_live_url":"custom_epg_url",url).apply();
-                    addHistory(key.contains("live")?"live_history":"epg_history",url);
+                    sp.edit().putString(key.contains("live") ? "custom_live_url" : "custom_epg_url", url).apply();
+                    addHistory(key.contains("live") ? "live_history" : "epg_history", url);
                     sendBroadcast(new Intent("com.tv.live.REFRESH_LIVE_AND_EPG"));
+                    adapter.setSelectedPosition(w);
                     Toast.makeText(this, "已切换，正在刷新…", Toast.LENGTH_SHORT).show();
                 })
-                .setNegativeButton("关闭",null)
+                .setNegativeButton("关闭", null)
                 .show();
     }
 
@@ -251,5 +260,41 @@ public class SettingsActivity extends AppCompatActivity {
     protected void onDestroy() {
         super.onDestroy();
         try{ if(serverSocket!=null) serverSocket.close(); }catch (Exception ignored){}
+    }
+
+    // ====================== 只补回这整个适配器：蓝色高亮 ======================
+    private static class SettingsAdapter extends ArrayAdapter<String> {
+        private final Context context;
+        private final List<String> items;
+        private int selectedPosition = -1;
+
+        public SettingsAdapter(Context context, List<String> items) {
+            super(context, R.layout.item_settings, items);
+            this.context = context;
+            this.items = items;
+        }
+
+        public void setSelectedPosition(int position) {
+            selectedPosition = position;
+            notifyDataSetChanged();
+        }
+
+        @Override
+        public View getView(int position, View convertView, ViewGroup parent) {
+            if (convertView == null) {
+                convertView = LayoutInflater.from(context).inflate(R.layout.item_settings, parent, false);
+            }
+
+            TextView tv = convertView.findViewById(R.id.tv_setting_item);
+            tv.setText(items.get(position));
+
+            if (position == selectedPosition) {
+                tv.setTextColor(Color.parseColor("#40A9FF"));
+            } else {
+                tv.setTextColor(Color.WHITE);
+            }
+
+            return convertView;
+        }
     }
 }

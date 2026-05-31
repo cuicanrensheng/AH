@@ -1,18 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 根布局：全屏黑色，层叠布局 -->
-<FrameLayout
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#000000">
 
-    <!-- 播放器核心视图 -->
     <com.google.android.exoplayer2.ui.PlayerView
         android:id="@+id/player_view"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:layout_gravity="center"/>
 
-    <!-- 频道面板：分组+列表+节目单 默认隐藏 -->
     <LinearLayout
         android:id="@+id/panel_layout"
         android:layout_width="match_parent"
@@ -20,7 +17,6 @@
         android:orientation="horizontal"
         android:visibility="gone">
 
-        <!-- 频道分组 -->
         <ListView
             android:id="@+id/lv_group"
             android:layout_width="130dp"
@@ -29,14 +25,12 @@
             android:textColor="#ffffff"
             android:choiceMode="singleChoice"/>
 
-        <!-- 频道列表 -->
         <ListView
             android:id="@+id/lv_channel_list"
             android:layout_width="200dp"
             android:layout_height="match_parent"
             android:background="#CC000000"/>
 
-        <!-- 节目单开关按钮 -->
         <TextView
             android:id="@+id/btn_show_epg"
             android:layout_width="50dp"
@@ -47,7 +41,6 @@
             android:textColor="#ffffff"
             android:textSize="14sp" />
 
-        <!-- 日期选择 默认隐藏 -->
         <ListView
             android:id="@+id/lv_date"
             android:layout_width="120dp"
@@ -55,7 +48,6 @@
             android:background="#CC000000"
             android:visibility="gone"/>
 
-        <!-- 节目单列表 默认隐藏 -->
         <ListView
             android:id="@+id/lv_epg"
             android:layout_width="360dp"
@@ -65,7 +57,6 @@
             android:visibility="gone"/>
     </LinearLayout>
 
-    <!-- 底部信息栏：切台才显示，2秒自动隐藏 -->
     <LinearLayout
         android:id="@+id/info_bar"
         android:layout_width="match_parent"
@@ -76,7 +67,6 @@
         android:background="#CC000000"
         android:visibility="gone">
 
-        <!-- 频道名称 + 清晰度 + 音频 + 码率 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -121,7 +111,6 @@
                 android:textSize="14sp"/>
         </LinearLayout>
 
-        <!-- 当前节目时间 + 进度条 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -136,7 +125,7 @@
                 android:textSize="13sp"/>
 
             <ProgressBar
-                android:id="@+id/program_progress"
+                android:id="@+id/progress_program"
                 style="?android:attr/progressBarStyleHorizontal"
                 android:layout_width="0dp"
                 android:layout_weight="1"
@@ -159,7 +148,6 @@
                 android:textSize="13sp"/>
         </LinearLayout>
 
-        <!-- 下一个节目 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

@@ -1,32 +1,33 @@
+package com.tv.live;
 public class TimeUtil {
-    public static String formatEpgTime(String time) {
-        if (time == null || time.length() < 14) return "00:00";
+    public static String fmt(String time) {
+        if (time == null || time.length() < 14) return "";
         return time.substring(8, 10) + ":" + time.substring(10, 12);
     }
 
-    public static int getProgramProgress(String start, String stop) {
+    public static int progress(String start, String stop) {
         try {
-            long s = parseTime(start);
-            long e = parseTime(stop);
-            long now = System.currentTimeMillis();
+            long s = parse(start);
+            long e = parse(stop);
+            long n = System.currentTimeMillis();
             if (s >= e) return 0;
-            return (int) ((now - s) * 100 / (e - s));
+            return (int) ((n - s) * 100 / (e - s));
         } catch (Exception e) {
             return 0;
         }
     }
 
-    public static int getRemainMinutes(String stop) {
+    public static int remain(String stop) {
         try {
-            long e = parseTime(stop);
-            long now = System.currentTimeMillis();
-            return (int) ((e - now) / 60000);
+            long e = parse(stop);
+            long n = System.currentTimeMillis();
+            return (int) ((e - n) / 60000);
         } catch (Exception e) {
             return 0;
         }
     }
 
-    private static long parseTime(String time) throws Exception {
+    private static long parse(String time) throws Exception {
         int y = Integer.parseInt(time.substring(0, 4));
         int M = Integer.parseInt(time.substring(4, 6)) - 1;
         int d = Integer.parseInt(time.substring(6, 8));

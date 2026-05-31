@@ -323,7 +323,7 @@ public class MainActivity extends AppCompatActivity {
     // ==================================================================
 
     // 解析真实地址
-    String realUrl = getRealPlayUrl(ch.getPlayUrl());
+    realUrl = getRealPlayUrl(ch.getPlayUrl());
     SettingsActivity.log("解析后地址：" + realUrl);
 
     // 调用播放器

@@ -4,14 +4,12 @@
     android:layout_height="match_parent"
     android:background="#000000">
 
-    <!-- 播放器 -->
     <com.google.android.exoplayer2.ui.PlayerView
         android:id="@+id/player_view"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:layout_gravity="center"/>
 
-    <!-- 点击弹出：频道分组 + 频道列表 + 日期 + 节目单 -->
     <LinearLayout
         android:id="@+id/panel_layout"
         android:layout_width="match_parent"
@@ -19,22 +17,20 @@
         android:orientation="horizontal"
         android:visibility="gone">
 
-        <!-- 1 频道分组 -->
         <ListView
             android:id="@+id/lv_group"
             android:layout_width="130dp"
             android:layout_height="match_parent"
             android:background="#CC000000"
-            android:textColor="#ffffff"/>
+            android:textColor="#ffffff"
+            android:choiceMode="singleChoice"/>
 
-        <!-- 2 频道列表 -->
         <ListView
             android:id="@+id/lv_channel_list"
             android:layout_width="200dp"
             android:layout_height="match_parent"
             android:background="#CC000000"/>
 
-        <!-- 3 节目单按钮 -->
         <TextView
             android:id="@+id/btn_show_epg"
             android:layout_width="50dp"
@@ -45,7 +41,6 @@
             android:textColor="#ffffff"
             android:textSize="14sp" />
 
-        <!-- 4 日期 默认隐藏 -->
         <ListView
             android:id="@+id/lv_date"
             android:layout_width="120dp"
@@ -53,7 +48,6 @@
             android:background="#CC000000"
             android:visibility="gone"/>
 
-        <!-- 5 节目单 EPG 默认隐藏 -->
         <ListView
             android:id="@+id/lv_epg"
             android:layout_width="360dp"
@@ -61,21 +55,18 @@
             android:background="#CC000000"
             android:textColor="#ffffff"
             android:visibility="gone"/>
-
     </LinearLayout>
 
-    <!-- 仿官方风格：底部紧凑信息栏 -->
     <LinearLayout
         android:id="@+id/info_bar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="16dp"
+        android:padding="8dp"
         android:layout_gravity="bottom"
         android:background="@drawable/info_bar_bg"
         android:visibility="gone">
 
-        <!-- 第一行：频道名 + 标签 + 码率 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -86,101 +77,97 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:textColor="#FFFFFF"
-                android:textSize="24sp"
+                android:textSize="22sp"
                 android:textStyle="bold"/>
 
             <TextView
                 android:id="@+id/tv_tag_fhd"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginLeft="16dp"
-                android:background="#E0E0E0"
-                android:paddingHorizontal="10dp"
-                android:paddingVertical="4dp"
-                android:text="FHD"
-                android:textColor="#000000"
-                android:textSize="14sp"/>
+                android:layout_marginLeft="10dp"
+                android:background="#DDDDDD"
+                android:paddingHorizontal="6dp"
+                android:paddingVertical="2dp"
+                android:textSize="12sp"
+                android:textColor="#000"/>
 
             <TextView
                 android:id="@+id/tv_tag_audio"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginLeft="8dp"
-                android:background="#E0E0E0"
-                android:paddingHorizontal="10dp"
-                android:paddingVertical="4dp"
-                android:text="立体声"
-                android:textColor="#000000"
-                android:textSize="14sp"/>
+                android:layout_marginLeft="6dp"
+                android:background="#DDDDDD"
+                android:paddingHorizontal="6dp"
+                android:paddingVertical="2dp"
+                android:textSize="12sp"
+                android:textColor="#000"/>
 
             <TextView
                 android:id="@+id/tv_bitrate"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginLeft="16dp"
+                android:layout_marginLeft="10dp"
                 android:textColor="#FFFFFF"
-                android:textSize="18sp"/>
+                android:textSize="14sp"/>
         </LinearLayout>
 
-        <!-- 第二行：当前节目信息 + 进度条 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:gravity="center_vertical"
-            android:layout_marginTop="12dp">
+            android:layout_marginTop="4dp">
 
             <TextView
                 android:id="@+id/tv_current_time_range"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:textColor="#FFFFFF"
-                android:textSize="16sp"/>
+                android:textSize="13sp"/>
 
             <ProgressBar
                 android:id="@+id/progress_program"
                 style="?android:attr/progressBarStyleHorizontal"
                 android:layout_width="0dp"
                 android:layout_weight="1"
-                android:layout_height="4dp"
-                android:layout_marginHorizontal="12dp"/>
+                android:layout_height="3dp"
+                android:layout_marginHorizontal="8dp"/>
 
             <TextView
                 android:id="@+id/tv_remaining_time"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:textColor="#FFFFFF"
-                android:textSize="16sp"/>
+                android:textSize="13sp"/>
 
             <TextView
                 android:id="@+id/tv_current_program_name"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginLeft="12dp"
+                android:layout_marginLeft="8dp"
                 android:textColor="#FFFFFF"
-                android:textSize="16sp"/>
+                android:textSize="13sp"/>
         </LinearLayout>
 
-        <!-- 第三行：下一个节目信息 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp">
+            android:gravity="center_vertical"
+            android:layout_marginTop="4dp">
 
             <TextView
                 android:id="@+id/tv_next_time_range"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:textColor="#AAAAAA"
-                android:textSize="14sp"/>
+                android:textSize="12sp"/>
 
             <TextView
                 android:id="@+id/tv_next_program_name"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginLeft="12dp"
+                android:layout_marginLeft="8dp"
                 android:textColor="#AAAAAA"
-                android:textSize="14sp"/>
+                android:textSize="12sp"/>
         </LinearLayout>
     </LinearLayout>
-
 </FrameLayout>

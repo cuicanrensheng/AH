@@ -22,7 +22,7 @@
         <!-- 1 频道分组 -->
         <ListView
             android:id="@+id/lv_group"
-            android:layout_width="160dp"
+            android:layout_width="130dp"
             android:layout_height="match_parent"
             android:background="#CC000000"
             android:textColor="#ffffff"/>

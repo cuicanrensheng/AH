@@ -225,7 +225,7 @@ public class MainActivity extends AppCompatActivity {
             if (info_bar != null) {
                 info_bar.setVisibility(View.VISIBLE);
                 info_bar.removeCallbacks(hideInfoBar);
-                info_bar.postDelayed(hideInfoBar, 2000);
+                info_bar.postDelayed(hideInfoBar, 1000);
             }
             // ====================== 原有逻辑保留 ======================
             gestureHelper.handleTouch(event);

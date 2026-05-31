@@ -1,32 +1,22 @@
 package com.tv.live;
 
-import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.text.TextUtils;
-import android.view.LayoutInflater;
 import android.view.View;
-import android.view.ViewGroup;
-import android.widget.BaseAdapter;
 import android.widget.EditText;
-import android.widget.ListView;
 import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
-import java.util.ArrayList;
-import java.util.List;
 
-/**
- * 设置页面：带蓝色高亮选中效果
- */
 public class SettingsActivity extends AppCompatActivity {
 
-    private ListView lvSettings;
-    private SettingsAdapter adapter;
+    private Switch sw_boot, sw_epg, sw_auto_update, sw_reverse, sw_num_channel;
+    private TextView tv_screen_ratio, tv_custom_source, tv_custom_epg, tv_multi_source, tv_multi_epg, tv_qr_code;
     private SharedPreferences sp;
 
     @Override
@@ -36,205 +26,129 @@ public class SettingsActivity extends AppCompatActivity {
 
         sp = getSharedPreferences("app_settings", MODE_PRIVATE);
 
-        // 开启单选模式，为高亮做准备
-        lvSettings.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
+        sw_boot = findViewById(R.id.sw_boot);
+        sw_epg = findViewById(R.id.sw_epg);
+        sw_auto_update = findViewById(R.id.sw_auto_update);
+        sw_reverse = findViewById(R.id.sw_reverse);
+        sw_num_channel = findViewById(R.id.sw_num_channel);
 
-        // 初始化设置项
-        List<SettingItem> settingList = new ArrayList<>();
-        settingList.add(new SettingItem("开机自启", "开/关"));
-        settingList.add(new SettingItem("节目单开关", "开/关"));
-        settingList.add(new SettingItem("自动更新源", "开/关"));
-        settingList.add(new SettingItem("换台反转", "开/关"));
-        settingList.add(new SettingItem("数字选台", "开/关"));
-        settingList.add(new SettingItem("屏幕比例", "选择"));
-        settingList.add(new SettingItem("自定义直播源", "输入地址"));
-        settingList.add(new SettingItem("自定义节目单", "输入地址"));
-        settingList.add(new SettingItem("直播源历史", "查看/管理"));
-        settingList.add(new SettingItem("节目单历史", "查看/管理"));
+        tv_screen_ratio = findViewById(R.id.tv_screen_ratio);
+        tv_custom_source = findViewById(R.id.tv_custom_source);
+        tv_custom_epg = findViewById(R.id.tv_custom_epg);
+        tv_multi_source = findViewById(R.id.tv_multi_source);
+        tv_multi_epg = findViewById(R.id.tv_multi_epg);
+        tv_qr_code = findViewById(R.id.tv_qr_code);
 
-        // 初始化适配器
-        adapter = new SettingsAdapter(this, settingList);
-        lvSettings.setAdapter(adapter);
+        loadConfig();
+        initListeners();
+    }
 
-        // 列表点击事件：点击后文字变蓝，并执行对应设置逻辑
-        lvSettings.setOnItemClickListener((parent, view, position, id) -> {
-            // 1. 更新选中状态（文字变蓝）
-            lvSettings.setItemChecked(position, true);
-            adapter.setSelectedPosition(position);
+    private void initListeners() {
+        sw_boot.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            sp.edit().putBoolean("boot_auto_start", isChecked).apply();
+            Toast.makeText(this, "开机自启" + (isChecked ? "已开启" : "已关闭"), Toast.LENGTH_SHORT).show();
+        });
 
-            // 2. 执行对应设置逻辑
-            handleSettingClick(position);
+        sw_epg.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            sp.edit().putBoolean("epg_enable", isChecked).apply();
+            Toast.makeText(this, "节目单" + (isChecked ? "已开启" : "已关闭"), Toast.LENGTH_SHORT).show();
+        });
+
+        sw_auto_update.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            sp.edit().putBoolean("auto_update_source", isChecked).apply();
+            Toast.makeText(this, "自动更新源" + (isChecked ? "已开启" : "已关闭"), Toast.LENGTH_SHORT).show();
+        });
+
+        sw_reverse.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            sp.edit().putBoolean("channel_reverse", isChecked).apply();
+            Toast.makeText(this, "换台反转" + (isChecked ? "已开启" : "已关闭"), Toast.LENGTH_SHORT).show();
+        });
+
+        sw_num_channel.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            sp.edit().putBoolean("number_channel_enable", isChecked).apply();
+            Toast.makeText(this, "数字选台" + (isChecked ? "已开启" : "已关闭"), Toast.LENGTH_SHORT).show();
+        });
+
+        tv_screen_ratio.setOnClickListener(v -> showRatioDialog());
+        tv_custom_source.setOnClickListener(v -> showInputDialog("自定义订阅源", "请输入直播源地址", "custom_live_url"));
+        tv_custom_epg.setOnClickListener(v -> showInputDialog("自定义节目单", "请输入EPG地址", "custom_epg_url"));
+        tv_multi_source.setOnClickListener(v -> showHistoryDialog("直播源历史", "live_history"));
+        tv_multi_epg.setOnClickListener(v -> showHistoryDialog("节目单历史", "epg_history"));
+
+        findViewById(R.id.btn_check_update).setOnClickListener(v -> {
+            Toast.makeText(this, "已是最新版本", Toast.LENGTH_SHORT).show();
         });
     }
 
-    /**
-     * 处理设置项点击逻辑
-     */
-    private void handleSettingClick(int position) {
-        switch (position) {
-            case 0: // 开机自启
-                toggleSwitch("boot_auto_start");
-                break;
-            case 1: // 节目单开关
-                toggleSwitch("epg_enable");
-                break;
-            case 2: // 自动更新源
-                toggleSwitch("auto_update_source");
-                break;
-            case 3: // 换台反转
-                toggleSwitch("channel_reverse");
-                break;
-            case 4: // 数字选台
-                toggleSwitch("number_channel_enable");
-                break;
-            case 5: // 屏幕比例
-                showScreenRatioDialog();
-                break;
-            case 6: // 自定义直播源
-                showInputDialog("自定义直播源", "live_url");
-                break;
-            case 7: // 自定义节目单
-                showInputDialog("自定义节目单", "epg_url");
-                break;
-            case 8: // 直播源历史
-                showHistoryDialog("live_history", "直播源历史");
-                break;
-            case 9: // 节目单历史
-                showHistoryDialog("epg_history", "节目单历史");
-                break;
-        }
+    private void loadConfig() {
+        sw_boot.setChecked(sp.getBoolean("boot_auto_start", false));
+        sw_epg.setChecked(sp.getBoolean("epg_enable", true));
+        sw_auto_update.setChecked(sp.getBoolean("auto_update_source", true));
+        sw_reverse.setChecked(sp.getBoolean("channel_reverse", false));
+        sw_num_channel.setChecked(sp.getBoolean("number_channel_enable", true));
     }
 
-    /**
-     * 开关类设置项（true/false）
-     */
-    private void toggleSwitch(String key) {
-        boolean current = sp.getBoolean(key, true);
-        sp.edit().putBoolean(key, !current).apply();
-        Toast.makeText(this, "已" + (!current ? "开启" : "关闭"), Toast.LENGTH_SHORT).show();
-    }
-
-    /**
-     * 屏幕比例选择弹窗
-     */
-    private void showScreenRatioDialog() {
-        String[] ratios = {"默认", "16:9", "4:3", "全屏"};
+    private void showRatioDialog() {
         new AlertDialog.Builder(this)
-                .setTitle("选择屏幕比例")
-                .setItems(ratios, (dialog, which) -> {
-                    sp.edit().putInt("screen_ratio", which).apply();
-                    Toast.makeText(this, "已选择：" + ratios[which], Toast.LENGTH_SHORT).show();
-                })
-                .show();
+                .setTitle("屏幕比例")
+                .setItems(new String[]{"全屏","填充","原始"}, (d,w)->{
+                    sp.edit().putString("screen_ratio", new String[]{"全屏","填充","原始"}[w]).apply();
+                    Toast.makeText(this,"已设置",Toast.LENGTH_SHORT).show();
+                }).show();
     }
 
-    /**
-     * 自定义地址输入弹窗
-     */
-    private void showInputDialog(String title, String key) {
-        EditText et = new EditText(this);
-        et.setText(sp.getString(key, ""));
+    private void showInputDialog(String title, String hint, String key) {
+        EditText ed = new EditText(this);
+        ed.setHint(hint);
+        ed.setText(sp.getString(key,""));
         new AlertDialog.Builder(this)
                 .setTitle(title)
-                .setView(et)
-                .setPositiveButton("确定", (dialog, which) -> {
-                    String url = et.getText().toString().trim();
-                    sp.edit().putString(key, url).apply();
-                    Toast.makeText(this, "已保存", Toast.LENGTH_SHORT).show();
+                .setView(ed)
+                .setPositiveButton("确定",(d,w)->{
+                    String url = ed.getText().toString().trim();
+                    if(!url.isEmpty()){
+                        sp.edit().putString(key,url).apply();
+                        addHistory(key.contains("live")?"live_history":"epg_history",url);
+                        sendBroadcast(new Intent("com.tv.live.REFRESH_LIVE_AND_EPG"));
+                        Toast.makeText(this, "已保存，正在刷新…", Toast.LENGTH_SHORT).show();
+                    }
                 })
-                .setNegativeButton("取消", null)
+                .setNegativeButton("取消",null)
                 .show();
     }
 
-    /**
-     * 历史记录弹窗
-     */
-    private void showHistoryDialog(String key, String title) {
+    private void showHistoryDialog(String title, String key) {
         String history = sp.getString(key, "");
         if (TextUtils.isEmpty(history)) {
-            Toast.makeText(this, "暂无历史记录", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "无记录", Toast.LENGTH_SHORT).show();
             return;
         }
-        String[] list = history.split("\n");
+        String[] list = history.split("\\|");
         new AlertDialog.Builder(this)
                 .setTitle(title)
-                .setItems(list, null)
-                .setPositiveButton("清空", (dialog, which) -> {
-                    sp.edit().putString(key, "").apply();
-                    Toast.makeText(this, "已清空", Toast.LENGTH_SHORT).show();
+                .setItems(list, (d, w) -> {
+                    String url = list[w];
+                    sp.edit().putString(key.contains("live") ? "custom_live_url" : "custom_epg_url", url).apply();
+                    addHistory(key.contains("live") ? "live_history" : "epg_history", url);
+                    sendBroadcast(new Intent("com.tv.live.REFRESH_LIVE_AND_EPG"));
+                    Toast.makeText(this, "已切换，正在刷新…", Toast.LENGTH_SHORT).show();
                 })
                 .setNegativeButton("关闭", null)
                 .show();
     }
 
-    /**
-     * 设置项数据类
-     */
-    static class SettingItem {
-        String title;
-        String desc;
-
-        SettingItem(String title, String desc) {
-            this.title = title;
-            this.desc = desc;
-        }
-    }
-
-    /**
-     * 设置列表适配器（带蓝色高亮逻辑）
-     */
-    static class SettingsAdapter extends BaseAdapter {
-        private final Context context;
-        private final List<SettingItem> items;
-        private int selectedPosition = -1; // 当前选中的项
-
-        SettingsAdapter(Context context, List<SettingItem> items) {
-            this.context = context;
-            this.items = items;
-        }
-
-        /**
-         * 外部调用：更新选中位置
-         */
-        void setSelectedPosition(int position) {
-            this.selectedPosition = position;
-            notifyDataSetChanged();
-        }
-
-        @Override
-        public int getCount() {
-            return items.size();
-        }
-
-        @Override
-        public Object getItem(int position) {
-            return items.get(position);
-        }
-
-        @Override
-        public long getItemId(int position) {
-            return position;
-        }
-
-        @Override
-        public View getView(int position, View convertView, ViewGroup parent) {
-            TextView tv;
-            if (convertView == null) {
-                convertView = LayoutInflater.from(context).inflate(R.layout.item_settings, parent, false);
+    private void addHistory(String key, String url) {
+        String history = sp.getString(key, "");
+        StringBuilder sb = new StringBuilder();
+        sb.append(url);
+        if (!history.isEmpty()) {
+            String[] arr = history.split("\\|");
+            for (String s : arr) {
+                if (!s.equals(url) && sb.length() < 1000) {
+                    sb.append("|").append(s);
+                }
             }
-            tv = (TextView) convertView;
-
-            SettingItem item = items.get(position);
-            tv.setText(item.title);
-
-            // 关键：选中项文字变蓝色，其他保持白色
-            if (position == selectedPosition) {
-                tv.setTextColor(0xFF40A9FF); // 蓝色高亮
-            } else {
-                tv.setTextColor(0xFFFFFFFF); // 默认白色
-            }
-
-            return convertView;
         }
+        sp.edit().putString(key, sb.toString()).apply();
     }
 }

@@ -1,4 +1,5 @@
 package com.tv.live.widget;
+
 import android.app.AlarmManager;
 import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
@@ -25,12 +26,20 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+/**
+ * 节目单管理器：负责显示、日期筛选、预约
+ */
 public class EpgManagerWrapper {
+
     private final ListView lvEpg;
     private final Context context;
     private EpgAdapter adapter;
+
+    // 预约记录
     private final Set<String> bookedSet = new HashSet<>();
     private static final String ACTION_ALARM = "com.tv.live.ALARM_PLAY";
+
+    // 当前选中行
     private int selectedPosition = -1;
 
     public EpgManagerWrapper(Context context, ListView lvEpg) {
@@ -39,29 +48,40 @@ public class EpgManagerWrapper {
         registerAlarmReceiver();
     }
 
+    /**
+     * 刷新节目单
+     */
     public void refresh(Channel currentChannel, List<Channel> channelSourceList) {
         refresh(currentChannel, channelSourceList, 0);
     }
 
+    /**
+     * 按日期刷新节目单
+     */
     public void refresh(Channel currentChannel, List<Channel> channelSourceList, int dateIndex) {
         if (currentChannel == null) {
             showEmpty();
             return;
         }
+
         new Thread(() -> {
             try {
                 List<Channel.EpgItem> epgList = EpgManager.getInstance().getEpg(currentChannel.getName());
                 List<Channel.EpgItem> data = new ArrayList<>();
+
                 if (epgList != null && !epgList.isEmpty()) {
                     String[] dayNames = {"今天", "周一", "周二", "周三", "周四", "周五", "周六"};
                     String targetDay = (dateIndex >= 0 && dateIndex < dayNames.length) ? dayNames[dateIndex] : "今天";
+
                     for (Channel.EpgItem item : epgList) {
                         if (targetDay.equals(item.dayName)) {
                             data.add(item);
                         }
                     }
+                    // 按时间排序
                     Collections.sort(data, Comparator.comparing(o -> o.time));
                 }
+
                 updateUi(currentChannel, data);
             } catch (Exception e) {
                 updateUi(currentChannel, new ArrayList<>());
@@ -69,10 +89,16 @@ public class EpgManagerWrapper {
         }).start();
     }
 
+    /**
+     * 显示空节目
+     */
     private void showEmpty() {
         updateUi(null, new ArrayList<>());
     }
 
+    /**
+     * 更新界面，并自动定位到当前播放节目
+     */
     private void updateUi(Channel channel, List<Channel.EpgItem> list) {
         lvEpg.post(() -> {
             if (adapter == null) {
@@ -81,28 +107,50 @@ public class EpgManagerWrapper {
             } else {
                 adapter.setData(channel, list);
             }
+
+            // 自动滚动到当前播放
+            int pos = 0;
+            for (int i = 0; i < list.size(); i++) {
+                if (list.get(i).isPlaying) {
+                    pos = i;
+                    break;
+                }
+            }
+            lvEpg.setSelection(pos);
         });
     }
 
+    /**
+     * 设置选中行
+     */
     public void setSelectedPosition(int position) {
         this.selectedPosition = position;
         if (adapter != null) adapter.notifyDataSetChanged();
     }
 
+    /**
+     * 清空节目单
+     */
     public void clearEpg() {
         updateUi(null, new ArrayList<>());
     }
 
+    /**
+     * 设置预约闹钟
+     */
     private void setAlarm(Context ctx, long reqCode, String title, String playUrl) {
         AlarmManager alarmManager = (AlarmManager) ctx.getSystemService(Context.ALARM_SERVICE);
         Intent intent = new Intent(ACTION_ALARM);
         intent.putExtra("title", title);
         intent.putExtra("playUrl", playUrl);
+
         int flag = PendingIntent.FLAG_UPDATE_CURRENT;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             flag |= PendingIntent.FLAG_IMMUTABLE;
         }
+
         PendingIntent pi = PendingIntent.getBroadcast(ctx, (int) reqCode, intent, flag);
+
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, System.currentTimeMillis() + 5000, pi);
@@ -114,6 +162,9 @@ public class EpgManagerWrapper {
         }
     }
 
+    /**
+     * 注册广播：定时播放
+     */
     private void registerAlarmReceiver() {
         BroadcastReceiver receiver = new BroadcastReceiver() {
             @Override
@@ -132,6 +183,9 @@ public class EpgManagerWrapper {
 
     public void onBackPressed() {}
 
+    /**
+     * 节目单适配器
+     */
     private class EpgAdapter extends ArrayAdapter<Channel.EpgItem> {
         private final LayoutInflater inflater;
         private Channel currentChannel;
@@ -144,6 +198,9 @@ public class EpgManagerWrapper {
             items = list;
         }
 
+        /**
+         * 更新数据
+         */
         public void setData(Channel channel, List<Channel.EpgItem> list) {
             currentChannel = channel;
             items.clear();
@@ -167,11 +224,13 @@ public class EpgManagerWrapper {
             }
 
             Channel.EpgItem item = items.get(position);
+
+            // 赋值
             holder.tv_dayName.setText(item.dayName);
             holder.tv_time.setText(item.time);
             holder.tv_title.setText(item.title);
 
-            // ========== 日期+时间+标题 全部蓝色高亮 ==========
+            // 选中高亮蓝色
             if (position == selectedPosition) {
                 holder.tv_dayName.setTextColor(Color.parseColor("#40A9FF"));
                 holder.tv_time.setTextColor(Color.parseColor("#40A9FF"));
@@ -181,9 +240,10 @@ public class EpgManagerWrapper {
                 holder.tv_time.setTextColor(Color.parseColor("#CCCCCC"));
                 holder.tv_title.setTextColor(Color.WHITE);
             }
-            // =================================================
 
+            // 按钮逻辑：播放中 / 已预约 / 可预约
             String key = currentChannel != null ? currentChannel.getName() + "_" + position : "";
+
             if (item.isPlaying) {
                 holder.tv_action.setText("播放中");
                 holder.tv_action.setBackgroundColor(0xFFFF9800);

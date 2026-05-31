@@ -19,7 +19,6 @@ public class LivePlayerActivity extends AppCompatActivity {
     private TextView tvNow, tvNowTime, tvRemain, tvNext, tvNextTime;
     private ProgressBar progress;
 
-    // 用于隐藏信息栏的Handler和Runnable
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final Runnable hide = new Runnable() {
         @Override
@@ -35,7 +34,7 @@ public class LivePlayerActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_live_player);
 
-        // 绑定控件（ID和你原来的完全一致）
+        // 绑定控件
         playerView = findViewById(R.id.player_view);
         infoBar = findViewById(R.id.info_bar);
         tvChannel = findViewById(R.id.tv_channel_name);
@@ -49,7 +48,7 @@ public class LivePlayerActivity extends AppCompatActivity {
         tvNext = findViewById(R.id.tv_next_program_name);
         tvNextTime = findViewById(R.id.tv_next_time_range);
 
-        // 强制显示一次，方便你调试
+        // 初始化时强制显示，确保能看到
         infoBar.setVisibility(View.VISIBLE);
         mainHandler.postDelayed(hide, 5000);
 
@@ -59,15 +58,7 @@ public class LivePlayerActivity extends AppCompatActivity {
         mgr.attachPlayerView(playerView);
         mgr.playUrl(url);
 
-        // 方案1：触摸事件监听（修复版）
-        playerView.setOnTouchListener((v, ev) -> {
-            if (ev.getAction() == MotionEvent.ACTION_DOWN || ev.getAction() == MotionEvent.ACTION_MOVE) {
-                showInfoBar();
-            }
-            return false;
-        });
-
-        // 方案2：按键事件监听（电视遥控器必用，这个一定能触发）
+        // 监听遥控器按键（电视设备必用，这个一定能触发）
         playerView.setOnKeyListener((v, keyCode, event) -> {
             if (event.getAction() == KeyEvent.ACTION_DOWN) {
                 showInfoBar();
@@ -75,13 +66,12 @@ public class LivePlayerActivity extends AppCompatActivity {
             return false;
         });
 
-        // 启动自动刷新（用匿名内部类，避免Lambda兼容性问题）
+        // 启动自动刷新（用匿名内部类）
         mgr.startAutoRefresh(url, new TVPlayerManager.OnPlayInfoListener() {
             @Override
             public void onSuccess(TVPlayerManager.PlayInfo info) {
                 if (info == null) return;
 
-                // 更新节目信息
                 tvChannel.setText(info.channel != null ? info.channel : "未知频道");
                 tvNow.setText(info.nowTitle != null ? info.nowTitle : "暂无节目");
                 tvNowTime.setText(info.nowTime != null ? info.nowTime : "");
@@ -90,7 +80,6 @@ public class LivePlayerActivity extends AppCompatActivity {
                 tvNext.setText(info.nextTitle != null ? info.nextTitle : "");
                 tvNextTime.setText(info.nextTime != null ? info.nextTime : "");
 
-                // 更新播放信息
                 TVPlayerManager.LiveInfo live = mgr.getLiveInfo();
                 tvFhd.setText(live.quality);
                 tvAudio.setText(live.audio);
@@ -99,7 +88,6 @@ public class LivePlayerActivity extends AppCompatActivity {
         });
     }
 
-    // 显示信息栏的统一方法
     private void showInfoBar() {
         if (infoBar != null) {
             infoBar.setVisibility(View.VISIBLE);
@@ -111,7 +99,6 @@ public class LivePlayerActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        // 停止刷新，移除回调，防止内存泄漏
         if (mgr != null) {
             mgr.stopAutoRefresh();
             mgr.release();

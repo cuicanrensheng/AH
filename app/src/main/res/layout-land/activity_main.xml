@@ -30,7 +30,7 @@
         <!-- 2 频道列表 -->
         <ListView
             android:id="@+id/lv_channel_list"
-            android:layout_width="150dp"
+            android:layout_width="200dp"
             android:layout_height="match_parent"
             android:background="#CC000000"/>
 

@@ -1,4 +1,5 @@
 package com.tv.live;
+import com.tv.live.SettingsActivity;
 import android.content.Context;
 import android.net.Uri;
 import android.widget.Toast;
@@ -66,6 +67,20 @@ public class TVPlayerManager {
 
     public void playUrl(String url) {
         if (player == null || url == null || url.isEmpty()) return;
+            // --- 关键：日志写入 ---
+    SettingsActivity.log("=== 开始播放 ===");
+    SettingsActivity.log("频道名称：" + ch.getName());
+    SettingsActivity.log("原始地址：" + ch.getPlayUrl());
+
+    // 解析真实地址
+    String realUrl = getRealPlayUrl(ch.getPlayUrl());
+    SettingsActivity.log("解析后地址：" + realUrl);
+
+    // 调用播放器
+    playerStateListener.setCurrentChannelName(ch.getName());
+    mPlayerManager.play(realUrl);
+
+    // 其他原有代码不变
         new Thread(() -> {
             new Handler(context.getMainLooper()).post(() -> {
                 try {

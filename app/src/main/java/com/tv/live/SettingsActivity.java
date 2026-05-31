@@ -1,5 +1,4 @@
 package com.tv.live;
-
 import android.app.AlertDialog;
 import android.content.Context;
 import android.content.Intent;
@@ -24,15 +23,11 @@ import android.widget.ImageView;
 import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
-
 import androidx.appcompat.app.AppCompatActivity;
-
 import com.google.zxing.BarcodeFormat;
 import com.google.zxing.common.BitMatrix;
 import com.google.zxing.qrcode.QRCodeWriter;
-
 import org.json.JSONObject;
-
 import java.io.InputStreamReader;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
@@ -77,6 +72,9 @@ public class SettingsActivity extends AppCompatActivity {
         tv_qr_code = findViewById(R.id.tv_qr_code);
         tv_player_engine = findViewById(R.id.tv_player_engine);
 
+        // ====================== 【我只加了这一行：显示当前播放器】 ======================
+        updatePlayerDisplay();
+
         sw_boot.setChecked(sp.getBoolean("boot_auto_start", false));
         sw_boot.setOnCheckedChangeListener((buttonView, isChecked) -> {
             sp.edit().putBoolean("boot_auto_start", isChecked).apply();
@@ -107,16 +105,24 @@ public class SettingsActivity extends AppCompatActivity {
             Toast.makeText(this, "数字选台" + (isChecked ? "已开启" : "已关闭"), Toast.LENGTH_SHORT).show();
         });
 
+        // ====================== 【我只优化了这里：切换后自动重启生效】 ======================
         tv_player_engine.setOnClickListener(v -> {
             String[] items = {"ExoPlayer（默认）", "VLC 播放器"};
             int current = sp.getInt("player_engine", 0);
             new AlertDialog.Builder(this)
                     .setTitle("选择播放器")
                     .setSingleChoiceItems(items, current, (dialog, which) -> {
-                        sp.edit().putInt("player_engine", which).apply();
-                        Toast.makeText(this, "已切换：" + items[which], Toast.LENGTH_SHORT).show();
-                        dialog.dismiss();
+                        if (which != current) {
+                            sp.edit().putInt("player_engine", which).apply();
+                            updatePlayerDisplay();
+                            Toast.makeText(this, "已切换：" + items[which] + "，即将重启生效", Toast.LENGTH_LONG).show();
+                            dialog.dismiss();
+                            new Handler().postDelayed(this::restartApp, 1000);
+                        } else {
+                            dialog.dismiss();
+                        }
                     })
+                    .setNegativeButton("取消", null)
                     .show();
         });
 
@@ -128,6 +134,21 @@ public class SettingsActivity extends AppCompatActivity {
         initListeners();
         currentWebUrl = "http://" + getDeviceIPAddress() + ":" + PORT;
         startPushServer();
+    }
+
+    // ====================== 【我只加了这个方法：更新显示当前播放器】 ======================
+    private void updatePlayerDisplay() {
+        int type = sp.getInt("player_engine", 0);
+        tv_player_engine.setText(type == 0 ? "当前：ExoPlayer" : "当前：VLC 播放器");
+    }
+
+    // ====================== 【我只加了这个方法：重启APP】 ======================
+    private void restartApp() {
+        Intent intent = new Intent(this, MainActivity.class);
+        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_NEW_TASK);
+        startActivity(intent);
+        finish();
+        android.os.Process.killProcess(android.os.Process.myPid());
     }
 
     private void initListeners() {
@@ -262,31 +283,26 @@ public class SettingsActivity extends AppCompatActivity {
                             char[] buffer = new char[2048];
                             int len = reader.read(buffer);
                             JSONObject json = new JSONObject(new String(buffer, 0, len));
-
                             handler.post(() -> {
                                 boolean hasUpdate = false;
-
                                 String liveUrl = json.optString("live_url");
                                 if (!liveUrl.isEmpty()) {
                                     sp.edit().putString("custom_live_url", liveUrl).apply();
                                     addHistory("live_history", liveUrl);
                                     hasUpdate = true;
                                 }
-
                                 String epgUrl = json.optString("epg_url");
                                 if (!epgUrl.isEmpty()) {
-                                    sp.edit().putString("custom_epg_url", epgUrl).apply();
+                                    sp.edit().putString("epg_url", epgUrl).apply();
                                     addHistory("epg_history", epgUrl);
                                     hasUpdate = true;
                                 }
-
                                 if (hasUpdate) {
                                     Intent intent = new Intent("com.tv.live.REFRESH_LIVE_AND_EPG");
                                     sendBroadcast(intent);
                                     Toast.makeText(SettingsActivity.this, "扫码配置已同步", Toast.LENGTH_SHORT).show();
                                 }
                             });
-
                             socket.close();
                         } catch (Exception e) {
                             e.printStackTrace();
@@ -304,8 +320,7 @@ public class SettingsActivity extends AppCompatActivity {
         super.onDestroy();
         try {
             if (serverSocket != null) serverSocket.close();
-        } catch (Exception ignored) {
-        }
+        } catch (Exception ignored) {}
     }
 
     private static class SettingsAdapter extends ArrayAdapter<String> {

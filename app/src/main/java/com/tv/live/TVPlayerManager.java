@@ -37,10 +37,10 @@ public class TVPlayerManager {
     private boolean isPlaying = false;
     private int currentChannelNumber = 0;
 
-    // 频道号控件 + 5秒自动隐藏
+    // 频道号控件 + 3秒自动隐藏
     private TextView channelNumText;
     private final Handler mHandler = new Handler(Looper.getMainLooper());
-    private static final long CHANNEL_SHOW_DURATION = 5000L;
+    private static final long CHANNEL_SHOW_DURATION = 3000L;
 
     // 日志时间格式
     private final SimpleDateFormat logSdf = new SimpleDateFormat("HH:mm:ss", Locale.getDefault());
@@ -88,7 +88,7 @@ public class TVPlayerManager {
         this.channelNumText = textView;
     }
 
-    // 5秒后隐藏频道号
+    // 3秒后隐藏频道号
     private void showChannelAndAutoHide() {
         if (channelNumText == null) return;
         mHandler.removeCallbacks(hideChannelRunnable);
@@ -118,9 +118,7 @@ public class TVPlayerManager {
         DefaultRenderersFactory renderersFactory = new DefaultRenderersFactory(context);
         renderersFactory.setEnableDecoderFallback(true);
 
-        // ========== 已修改缓冲参数 ==========
-        // 最小缓冲：1000ms(1秒)  最大缓冲：2000ms(2秒)
-        // 起播缓冲：800ms(0.8秒)  断流恢复缓冲：800ms(0.8秒)
+        // 缓冲配置：最小缓冲1秒，起播缓冲0.8秒
         DefaultLoadControl loadControl = new DefaultLoadControl.Builder()
                 .setBufferDurationsMs(
                         1000,
@@ -208,32 +206,14 @@ public class TVPlayerManager {
             player.prepare();
             player.play();
 
-            // 播放器状态监听
+            // 播放器状态监听（兼容低版本ExoPlayer）
             player.addListener(new Player.Listener() {
                 @Override
                 public void onPlayerError(PlaybackException error) {
-                    // 细分各类播放异常 + 打印完整崩溃堆栈
+                    // 兼容旧版：移除 type 与 TYPE 常量，保留完整异常信息+堆栈
                     Log.e(TAG, getLogTime() + " ========== 播放异常/解析失败 ==========");
-                    Log.e(TAG, getLogTime() + " 错误类型：" + error.type);
-                    Log.e(TAG, getLogTime() + " 错误码：" + error.errorCode);
-                    Log.e(TAG, getLogTime() + " 异常信息：" + error.getMessage());
-
-                    // 区分错误场景
-                    switch (error.type) {
-                        case PlaybackException.TYPE_SOURCE:
-                            Log.e(TAG, getLogTime() + " 归类：源解析失败 / 链接失效 / 防盗链拦截");
-                            break;
-                        case PlaybackException.TYPE_RENDERER:
-                            Log.e(TAG, getLogTime() + " 归类：音视频解码失败");
-                            break;
-                        case PlaybackException.TYPE_IO:
-                            Log.e(TAG, getLogTime() + " 归类：网络IO错误 / 超时 / 连接失败");
-                            break;
-                        case PlaybackException.TYPE_UNEXPECTED:
-                            Log.e(TAG, getLogTime() + " 归类：未知崩溃异常");
-                            break;
-                    }
-                    // 打印完整堆栈，定位崩溃代码
+                    Log.e(TAG, getLogTime() + " 错误信息：" + error.getMessage());
+                    // 打印完整异常堆栈，定位崩溃代码
                     Log.e(TAG, getLogTime() + " 异常堆栈：", error);
                 }
 

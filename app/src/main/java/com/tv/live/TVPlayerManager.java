@@ -25,44 +25,89 @@ import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 
+/**
+ * 电视播放器管理类（适配你项目路径 + FFmpeg兜底）
+ * 单例模式，负责ExoPlayer的初始化、播放、切换比例、异常处理
+ */
 public class TVPlayerManager {
+    // 日志TAG
     private static final String TAG = "TVPlayerLog";
+
+    // 单例实例
     private static TVPlayerManager instance;
-    private ExoPlayer player;
+
+    // 主播放器：ExoPlayer（优先用，性能高）
+    private ExoPlayer exoPlayer;
+
+    // 备用播放器：FFmpeg软解码器（ExoPlayer失败时兜底，解决虎牙流黑屏/兼容问题）
+    private FFmpegDecoder ffmpegDecoder;
+
+    // 上下文
     private Context context;
+
+    // 播放视图
     private PlayerView playerView;
+
+    // 画面比例模式：自适应、拉伸填充、裁剪全屏
     public enum ScaleMode { FIT, FILL, ZOOM }
+
+    // 播放状态监听
     private OnPlayStateListener listener;
+
+    // 当前播放地址
     private String currentUrl = "";
+
+    // 是否正在播放
     private boolean isPlaying = false;
+
+    // 当前频道号
     private int currentChannelNumber = 0;
 
-    // 频道号控件 + 3秒自动隐藏
+    // 频道号显示控件
     private TextView channelNumText;
+
+    // 主线程Handler，用于延迟隐藏频道号、播放超时检测
     private final Handler mHandler = new Handler(Looper.getMainLooper());
+
+    // 频道号显示时长：3秒
     private static final long CHANNEL_SHOW_DURATION = 3000L;
 
-    // 日志时间格式
+    // 播放超时检测：3秒（判断ExoPlayer是否黑屏/失败）
+    private static final long PLAY_TIMEOUT = 3000L;
+
+    // 日志时间格式化
     private final SimpleDateFormat logSdf = new SimpleDateFormat("HH:mm:ss", Locale.getDefault());
 
-    // 外部回调接口
+    // 直播信息更新监听
     private OnLiveInfoUpdateListener infoUpdateListener;
 
+    /**
+     * 直播信息实体
+     */
     public static class LiveInfo {
-        public String quality;
-        public String audio;
-        public String bitrate;
-        public int channelNum;
+        public String quality;    // 画质
+        public String audio;      // 音频
+        public String bitrate;    // 码率
+        public int channelNum;    // 频道号
     }
 
+    /**
+     * 直播信息回调接口
+     */
     public interface OnLiveInfoUpdateListener {
         void onLiveInfoUpdate(LiveInfo info);
     }
 
+    /**
+     * 设置直播信息监听
+     */
     public void setOnLiveInfoUpdateListener(OnLiveInfoUpdateListener listener) {
         this.infoUpdateListener = listener;
     }
 
+    /**
+     * 获取当前直播信息
+     */
     public LiveInfo getLiveInfo() {
         LiveInfo info = new LiveInfo();
         info.quality = "HD";
@@ -72,10 +117,16 @@ public class TVPlayerManager {
         return info;
     }
 
+    /**
+     * 设置当前频道号
+     */
     public void setCurrentChannelNumber(int num) {
         this.currentChannelNumber = num;
     }
 
+    /**
+     * 通知更新直播信息
+     */
     private void notifyLiveInfoUpdate() {
         if (infoUpdateListener != null) {
             new Handler(Looper.getMainLooper()).post(() ->
@@ -83,20 +134,28 @@ public class TVPlayerManager {
         }
     }
 
-    // 绑定频道号TextView
+    /**
+     * 绑定频道号显示TextView
+     */
     public void bindChannelText(TextView textView) {
         this.channelNumText = textView;
     }
 
-    // 3秒后隐藏频道号
+    /**
+     * 显示频道号，并在3秒后自动隐藏
+     */
     private void showChannelAndAutoHide() {
         if (channelNumText == null) return;
+
         mHandler.removeCallbacks(hideChannelRunnable);
         channelNumText.setText("频道：" + currentChannelNumber);
         channelNumText.setVisibility(android.view.View.VISIBLE);
         mHandler.postDelayed(hideChannelRunnable, CHANNEL_SHOW_DURATION);
     }
 
+    /**
+     * 隐藏频道号的任务
+     */
     private final Runnable hideChannelRunnable = new Runnable() {
         @Override
         public void run() {
@@ -106,6 +165,9 @@ public class TVPlayerManager {
         }
     };
 
+    /**
+     * 获取单例
+     */
     public static TVPlayerManager getInstance(Context ctx) {
         if (instance == null) {
             instance = new TVPlayerManager(ctx);
@@ -113,36 +175,51 @@ public class TVPlayerManager {
         return instance;
     }
 
+    /**
+     * 私有构造（单例）
+     * 初始化ExoPlayer、FFmpeg解码器、缓冲策略、Cookie
+     */
     private TVPlayerManager(Context ctx) {
         context = ctx.getApplicationContext();
+
+        // 1. 初始化ExoPlayer主播放器（开启解码器自动降级兼容）
         DefaultRenderersFactory renderersFactory = new DefaultRenderersFactory(context);
         renderersFactory.setEnableDecoderFallback(true);
 
-        // 缓冲配置：最小缓冲1秒，起播缓冲0.8秒
+        // 【原版默认缓冲配置，已恢复】
         DefaultLoadControl loadControl = new DefaultLoadControl.Builder()
                 .setBufferDurationsMs(
-                        1000,
-                        2000,
-                        800,
-                        800
+                        5000,    // 最小缓冲 5秒
+                        20000,   // 最大缓冲 20秒
+                        2500,    // 起播缓冲 2.5秒
+                        5000     // 回放缓冲 5秒
                 )
                 .build();
 
-        player = new ExoPlayer.Builder(context)
+        exoPlayer = new ExoPlayer.Builder(context)
                 .setRenderersFactory(renderersFactory)
                 .setLoadControl(loadControl)
                 .build();
 
-        // 初始化Cookie
+        // 2. 初始化FFmpeg软解码器（备用方案，适配你项目里的lib-decoder-ffmpeg-release.aar）
+        ffmpegDecoder = new FFmpegDecoder(context);
+
+        // 初始化Cookie支持（适配虎牙防盗链）
         CookieSyncManager.createInstance(context);
         CookieManager.getInstance().setAcceptCookie(true);
     }
 
+    /**
+     * 绑定PlayerView（给ExoPlayer和FFmpeg共用）
+     */
     public void attachPlayerView(PlayerView view) {
         playerView = view;
-        playerView.setPlayer(player);
+        exoPlayer.setPlayerView(view); // 给ExoPlayer绑定视图
     }
 
+    /**
+     * 设置屏幕常亮
+     */
     private void updateWakeLock(boolean enable) {
         isPlaying = enable;
         if (playerView != null) {
@@ -150,17 +227,24 @@ public class TVPlayerManager {
         }
     }
 
-    // 构造日志时间前缀
+    /**
+     * 获取带时间的日志前缀
+     */
     private String getLogTime() {
         return "[" + logSdf.format(new Date()) + "]";
     }
 
-    // 请求头：固定UA + 自动Referer + 自动Cookie
+    /**
+     * 构建播放请求头：适配虎牙防盗链的UA、Referer、Cookie
+     */
     private Map<String, String> getHeaders(String url) {
         Map<String, String> headers = new HashMap<>();
-        headers.put("User-Agent", "ExoPlayer");
+        // 虎牙必须带浏览器UA，避免被拦截
+        headers.put("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
         headers.put("Accept", "*/*");
         headers.put("Connection", "keep-alive");
+        // 虎牙必须带Referer，否则拉不到流
+        headers.put("Referer", "https://www.huya.com/");
 
         try {
             URI uri = new URI(url);
@@ -169,6 +253,7 @@ public class TVPlayerManager {
             Log.e(TAG, getLogTime() + " Referer 生成异常", e);
         }
 
+        // 自动携带Cookie
         String cookies = CookieManager.getInstance().getCookie(url);
         if (cookies != null) {
             headers.put("Cookie", cookies);
@@ -176,70 +261,127 @@ public class TVPlayerManager {
         return headers;
     }
 
+    /**
+     * 对外播放接口（自动双播放器兜底，直接调用即可）
+     */
     public void play(String url) {
-        playUrl(url);
+        playWithFallback(url);
     }
 
-    public void playUrl(String url) {
-        // 全局捕获异常，防止APP崩溃
+    /**
+     * 核心：带FFmpeg兜底的播放逻辑
+     * 1. 先尝试ExoPlayer播放（性能高）
+     * 2. 3秒后如果失败/黑屏，自动切换到FFmpeg软解码（兼容虎牙流）
+     */
+    private void playWithFallback(String url) {
         try {
-            if (player == null || url == null || url.trim().isEmpty()) {
-                Log.e(TAG, getLogTime() + " 播放失败：URL为空 或 播放器未初始化");
+            // 空值判断
+            if (url == null || url.trim().isEmpty()) {
+                Log.e(TAG, getLogTime() + " 播放失败：URL为空");
                 return;
             }
+
             currentUrl = url.trim();
-            Log.i(TAG, getLogTime() + " 开始播放，地址：" + currentUrl);
+            Log.i(TAG, getLogTime() + " 尝试用ExoPlayer播放虎牙流，地址：" + currentUrl);
 
-            // 重置播放器
-            player.stop();
-            player.clearMediaItems();
+            // 先释放之前的播放器
+            releaseAllPlayers();
 
+            // 重置ExoPlayer
+            exoPlayer.stop();
+            exoPlayer.clearMediaItems();
+
+            // 构建带虎牙请求头的HTTP数据源
             DefaultHttpDataSource.Factory httpFactory = new DefaultHttpDataSource.Factory();
             httpFactory.setDefaultRequestProperties(getHeaders(currentUrl));
-            httpFactory.setAllowCrossProtocolRedirects(true); // 允许301/302重定向
+            httpFactory.setAllowCrossProtocolRedirects(true);
 
-            // 构建HLS源
+            // 构建HLS媒体源
             HlsMediaSource mediaSource = new HlsMediaSource.Factory(httpFactory)
                     .createMediaSource(MediaItem.fromUri(currentUrl));
 
-            player.setMediaSource(mediaSource);
-            player.prepare();
-            player.play();
+            exoPlayer.setMediaSource(mediaSource);
+            exoPlayer.prepare();
+            exoPlayer.play();
 
-            // 播放器状态监听（兼容低版本ExoPlayer）
-            player.addListener(new Player.Listener() {
+            // 启动超时检测：3秒后检查ExoPlayer状态
+            mHandler.postDelayed(playTimeoutRunnable, PLAY_TIMEOUT);
+
+            // 监听ExoPlayer播放状态与错误
+            exoPlayer.addListener(new Player.Listener() {
                 @Override
                 public void onPlayerError(PlaybackException error) {
-                    // 兼容旧版：移除 type 与 TYPE 常量，保留完整异常信息+堆栈
-                    Log.e(TAG, getLogTime() + " ========== 播放异常/解析失败 ==========");
-                    Log.e(TAG, getLogTime() + " 错误信息：" + error.getMessage());
-                    // 打印完整异常堆栈，定位崩溃代码
-                    Log.e(TAG, getLogTime() + " 异常堆栈：", error);
+                    Log.e(TAG, getLogTime() + " ExoPlayer播放失败，错误：" + error.getMessage());
+                    // 取消超时检测，直接切换到FFmpeg
+                    mHandler.removeCallbacks(playTimeoutRunnable);
+                    switchToFFmpeg();
                 }
 
                 @Override
                 public void onPlaybackStateChanged(int state) {
-                    Log.d(TAG, getLogTime() + " 播放状态码：" + state);
+                    Log.d(TAG, getLogTime() + " ExoPlayer状态：" + state);
                     if (state == Player.STATE_READY) {
-                        Log.i(TAG, getLogTime() + " 播放就绪，正常播放");
+                        // 播放就绪，取消超时检测
+                        mHandler.removeCallbacks(playTimeoutRunnable);
+                        Log.i(TAG, getLogTime() + " ExoPlayer播放就绪，正常播放");
                         updateWakeLock(true);
                         notifyLiveInfoUpdate();
                         showChannelAndAutoHide();
-                    } else {
+                    } else if (state == Player.STATE_ENDED || state == Player.STATE_IDLE) {
+                        // 播放结束/空闲，更新状态
                         updateWakeLock(false);
                     }
                 }
             });
 
         } catch (Exception e) {
-            // 外层全局异常：防止初始化/构建源阶段直接APP崩溃
-            Log.e(TAG, getLogTime() + " ========== 播放器全局崩溃异常 ==========", e);
+            // ExoPlayer全局异常，直接切换到FFmpeg
+            Log.e(TAG, getLogTime() + " ExoPlayer全局异常，切换到FFmpeg", e);
+            switchToFFmpeg();
         }
     }
 
+    /**
+     * 切换到FFmpeg软解码播放（适配你项目里的lib-decoder-ffmpeg-release.aar）
+     */
+    private void switchToFFmpeg() {
+        try {
+            Log.i(TAG, getLogTime() + " 切换到FFmpeg软解码播放虎牙流：" + currentUrl);
+            // 先释放ExoPlayer
+            releaseExoPlayer();
+            // 启动FFmpeg播放，渲染到绑定的PlayerView上
+            ffmpegDecoder.play(currentUrl, playerView);
+            updateWakeLock(true);
+            notifyLiveInfoUpdate();
+            showChannelAndAutoHide();
+        } catch (Exception e) {
+            Log.e(TAG, getLogTime() + " FFmpeg播放也失败：" + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 播放超时任务：ExoPlayer3秒没就绪，直接切换到FFmpeg
+     */
+    private final Runnable playTimeoutRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (exoPlayer.getPlaybackState() != Player.STATE_READY || exoPlayer.hasError()) {
+                Log.e(TAG, getLogTime() + " ExoPlayer播放超时，切换到FFmpeg");
+                switchToFFmpeg();
+            }
+        }
+    };
+
+    /**
+     * 设置画面显示比例（只对ExoPlayer生效，FFmpeg会自动适配）
+     * FIT：自适应（原始比例）
+     * FILL：拉伸填充全屏
+     * ZOOM：等比例裁剪全屏
+     */
     public void setScaleMode(ScaleMode mode) {
         try {
             if (playerView == null) return;
+
             switch (mode) {
                 case FIT:
                     playerView.setResizeMode(com.google.android.exoplayer2.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT);
@@ -256,6 +398,9 @@ public class TVPlayerManager {
         }
     }
 
+    /**
+     * 播放状态回调接口
+     */
     public interface OnPlayStateListener {
         void onIdle();
         void onBuffering();
@@ -264,44 +409,89 @@ public class TVPlayerManager {
         void onPlayError(String msg);
     }
 
+    /**
+     * 设置播放状态监听
+     */
     public void setOnPlayStateListener(OnPlayStateListener l) {
         listener = l;
     }
 
+    /**
+     * 暂停播放
+     */
     public void pause() {
         try {
-            if (player != null) {
-                player.pause();
-                updateWakeLock(false);
+            if (exoPlayer != null && exoPlayer.isPlaying()) {
+                exoPlayer.pause();
             }
+            if (ffmpegDecoder != null) {
+                ffmpegDecoder.pause();
+            }
+            updateWakeLock(false);
         } catch (Exception e) {
             Log.e(TAG, getLogTime() + " 暂停异常", e);
         }
     }
 
+    /**
+     * 恢复播放
+     */
     public void resume() {
         try {
-            if (player != null) {
-                player.play();
-                updateWakeLock(true);
+            if (exoPlayer != null && !exoPlayer.isPlaying()) {
+                exoPlayer.play();
             }
+            if (ffmpegDecoder != null) {
+                ffmpegDecoder.resume();
+            }
+            updateWakeLock(true);
         } catch (Exception e) {
             Log.e(TAG, getLogTime() + " 恢复播放异常", e);
         }
     }
 
+    /**
+     * 释放ExoPlayer资源
+     */
+    private void releaseExoPlayer() {
+        if (exoPlayer != null) {
+            exoPlayer.stop();
+            exoPlayer.clearMediaItems();
+            exoPlayer.release();
+        }
+    }
+
+    /**
+     * 释放所有播放器资源（ExoPlayer + FFmpeg）
+     */
     public void release() {
         try {
             mHandler.removeCallbacks(hideChannelRunnable);
+            mHandler.removeCallbacks(playTimeoutRunnable);
             updateWakeLock(false);
-            if (player != null) {
-                player.release();
-                player = null;
+
+            // 释放ExoPlayer
+            releaseExoPlayer();
+
+            // 释放FFmpeg解码器
+            if (ffmpegDecoder != null) {
+                ffmpegDecoder.release();
             }
+
             instance = null;
-            Log.i(TAG, getLogTime() + " 播放器已释放");
+            Log.i(TAG, getLogTime() + " 所有播放器已释放");
         } catch (Exception e) {
             Log.e(TAG, getLogTime() + " 释放播放器异常", e);
+        }
+    }
+
+    /**
+     * 释放所有播放器（内部工具方法）
+     */
+    private void releaseAllPlayers() {
+        releaseExoPlayer();
+        if (ffmpegDecoder != null) {
+            ffmpegDecoder.stop();
         }
     }
 }

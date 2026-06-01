@@ -1,5 +1,4 @@
 package com.tv.live;
-
 import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
@@ -17,6 +16,7 @@ import com.google.android.exoplayer2.upstream.DataSource;
 import com.google.android.exoplayer2.upstream.DefaultDataSource;
 import com.google.android.exoplayer2.upstream.DefaultHttpDataSource;
 import com.google.android.exoplayer2.upstream.HttpDataSource;
+import java.net.URI;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -25,16 +25,12 @@ public class TVPlayerManager {
     private ExoPlayer player;
     private Context context;
     private PlayerView playerView;
-
     public enum ScaleMode { FIT, FILL, ZOOM }
     private OnPlayStateListener listener;
-
     private String currentUrl = "";
-    private String autoCookie = "";
     private boolean isPlaying = false;
     private int currentChannelNumber = 0;
 
-    // 播放信息（画质、音频、码率、频道号）
     public static class LiveInfo {
         public String quality;
         public String audio;
@@ -42,23 +38,18 @@ public class TVPlayerManager {
         public int channelNum;
     }
 
-    // 实时刷新回调
     public interface OnLiveInfoUpdateListener {
         void onLiveInfoUpdate(LiveInfo info);
     }
     private OnLiveInfoUpdateListener infoUpdateListener;
 
     public static TVPlayerManager getInstance(Context ctx) {
-        if (instance == null) {
-            instance = new TVPlayerManager(ctx);
-        }
+        if (instance == null) instance = new TVPlayerManager(ctx);
         return instance;
     }
 
-    // 构造：自动识别数据源 + 解码兼容（不黑屏）
     private TVPlayerManager(Context ctx) {
         context = ctx.getApplicationContext();
-
         DefaultRenderersFactory renderersFactory = new DefaultRenderersFactory(context);
         renderersFactory.setEnableDecoderFallback(true);
 
@@ -66,21 +57,11 @@ public class TVPlayerManager {
                 .setBufferDurationsMs(15000, 30000, 5000, 10000)
                 .build();
 
-        // 自动识别 OkHttp / 系统 HTTP
-        HttpDataSource.Factory httpFactory = new DefaultHttpDataSource.Factory()
-                .setUserAgent("Mozilla/5.0")
-                .setDefaultRequestProperties(getHeaders());
-
-        DataSource.Factory dataSourceFactory = new DefaultDataSource.Factory(context, httpFactory);
-        DefaultMediaSourceFactory mediaSourceFactory = new DefaultMediaSourceFactory(dataSourceFactory);
-
         player = new ExoPlayer.Builder(context)
                 .setRenderersFactory(renderersFactory)
                 .setLoadControl(loadControl)
-                .setMediaSourceFactory(mediaSourceFactory)
                 .build();
 
-        // Cookie 完整保留
         CookieSyncManager.createInstance(context);
         CookieManager.getInstance().setAcceptCookie(true);
     }
@@ -95,30 +76,40 @@ public class TVPlayerManager {
         if (playerView != null) playerView.setKeepScreenOn(enable);
     }
 
-    // 请求头 + Cookie 都在
-    private Map<String, String> getHeaders() {
+    // 自动根据URL生成 Referer、UA、Cookie
+    private Map<String, String> getAutoHeaders(String url) {
         Map<String, String> headers = new HashMap<>();
-        headers.put("User-Agent", "Mozilla/5.0");
-        headers.put("Referer", "http://hwrr.jx.chinamobile.com:8080/");
+        headers.put("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36");
         headers.put("Accept", "*/*");
         headers.put("Connection", "keep-alive");
-        if (autoCookie != null && !autoCookie.isEmpty()) {
-            headers.put("Cookie", autoCookie);
+
+        String host = "";
+        String scheme = "http";
+        try {
+            URI uri = new URI(url);
+            host = uri.getHost();
+            scheme = uri.getScheme();
+        } catch (Exception ignored) {}
+
+        String referer = scheme + "://" + host + "/";
+        headers.put("Referer", referer);
+
+        String cookie = CookieManager.getInstance().getCookie(url);
+        if (cookie != null && !cookie.isEmpty()) {
+            headers.put("Cookie", cookie);
         }
         return headers;
     }
 
-    // 设置频道号
     public void setCurrentChannelNumber(int num) {
         this.currentChannelNumber = num;
     }
 
-    // 自动获取播放信息
     public LiveInfo getLiveInfo() {
         LiveInfo info = new LiveInfo();
-        info.quality = "HD";
+        info.quality = "SD";
         info.audio = "立体声";
-        info.bitrate = "0.0MB/s";
+        info.bitrate = "0.0Mbps";
         info.channelNum = currentChannelNumber;
 
         if (player != null && player.getPlaybackState() == Player.STATE_READY) {
@@ -129,7 +120,7 @@ public class TVPlayerManager {
                 else info.quality = "SD";
 
                 long b = player.getVideoFormat().bitrate;
-                info.bitrate = String.format("%.1fMB/s", b / 1000000.0);
+                if (b > 0) info.bitrate = String.format("%.1fMbps", b / 1000000.0);
             }
             if (player.getAudioFormat() != null) {
                 info.audio = player.getAudioFormat().channelCount >= 2 ? "立体声" : "单声道";
@@ -138,41 +129,57 @@ public class TVPlayerManager {
         return info;
     }
 
+    // 万能播放方法
     public void playUrl(String url) {
         if (player == null || url == null || url.isEmpty()) return;
         currentUrl = url;
-
         SettingsActivity.log("▶ 播放：" + url);
 
+        Map<String, String> headers = getAutoHeaders(url);
+
+        HttpDataSource.Factory httpFactory = new DefaultHttpDataSource.Factory()
+                .setDefaultRequestProperties(headers)
+                .setAllowCrossProtocolRedirects(true);
+
+        DataSource.Factory dataSourceFactory = new DefaultDataSource.Factory(context, httpFactory);
+        DefaultMediaSourceFactory mediaSourceFactory = new DefaultMediaSourceFactory(dataSourceFactory);
+        player.setMediaSourceFactory(mediaSourceFactory);
+
+        player.clearListeners();
         player.addListener(new Player.Listener() {
             @Override
             public void onPlayerError(PlaybackException error) {
-                SettingsActivity.log("❌ 错误：" + error.getMessage() + " 码：" + error.errorCode);
+                SettingsActivity.log("❌ 播放错误：" + error.getMessage() + " 码：" + error.errorCode);
+                if (listener != null) listener.onPlayError(error.getMessage());
             }
 
             @Override
             public void onPlaybackStateChanged(int state) {
-                if (state == Player.STATE_READY) {
-                    updateWakeLock(true);
-                    notifyLiveInfoUpdate();
-                } else if (state == Player.STATE_IDLE || state == Player.STATE_ENDED) {
-                    updateWakeLock(false);
+                switch (state) {
+                    case Player.STATE_BUFFERING: if (listener != null) listener.onBuffering(); break;
+                    case Player.STATE_READY:
+                        updateWakeLock(true);
+                        notifyLiveInfoUpdate();
+                        if (listener != null) listener.onPlayReady();
+                        break;
+                    case Player.STATE_ENDED:
+                    case Player.STATE_IDLE:
+                        updateWakeLock(false);
+                        break;
                 }
             }
         });
 
-        MediaItem item = MediaItem.fromUri(url);
-        player.setMediaItem(item);
+        player.setMediaItem(MediaItem.fromUri(url));
         player.prepare();
         player.play();
     }
 
-    // 通知界面刷新
     private void notifyLiveInfoUpdate() {
         if (infoUpdateListener != null) {
-            new Handler(Looper.getMainLooper()).post(() -> {
-                infoUpdateListener.onLiveInfoUpdate(getLiveInfo());
-            });
+            new Handler(Looper.getMainLooper()).post(() ->
+                    infoUpdateListener.onLiveInfoUpdate(getLiveInfo())
+            );
         }
     }
 
@@ -182,7 +189,6 @@ public class TVPlayerManager {
 
     public void play(String url) { playUrl(url); }
 
-    // 画面比例
     public void setScaleMode(ScaleMode mode) {
         if (playerView == null) return;
         switch (mode) {
@@ -192,13 +198,11 @@ public class TVPlayerManager {
         }
     }
 
-    // 播放状态监听
     public interface OnPlayStateListener {
         void onIdle(); void onBuffering(); void onPlayReady(); void onPlayEnd(); void onPlayError(String msg);
     }
-    public void setOnPlayStateListener(OnPlayStateListener l) { listener = l; }
 
-    // 播放控制
+    public void setOnPlayStateListener(OnPlayStateListener l) { listener = l; }
     public void pause() { if (player != null) { player.pause(); updateWakeLock(false); } }
     public void resume() { if (player != null) { player.play(); updateWakeLock(true); } }
     public void release() { updateWakeLock(false); if (player != null) player.release(); instance = null; }

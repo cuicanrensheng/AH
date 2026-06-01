@@ -138,7 +138,6 @@ public class TVPlayerManager {
         playUrl(url);
     }
 
-    // ====================== 【日志完整】播放入口 ======================
     public void playUrl(String url) {
         if (player == null || url == null || url.isEmpty()) return;
         currentUrl = url;
@@ -150,10 +149,8 @@ public class TVPlayerManager {
         player.addListener(new Player.Listener() {
             @Override
             public void onPlayerError(PlaybackException error) {
-                // ====================== 【错误日志全输出】 ======================
                 String errorMsg = "❌ 播放错误：" + error.getMessage() + "，错误码：" + error.errorCode;
                 SettingsActivity.log(errorMsg);
-                // 把完整异常也写进日志
                 SettingsActivity.log("❌ 异常堆栈：" + android.util.Log.getStackTraceString(error));
                 handleAutoRecover(error);
             }
@@ -219,7 +216,6 @@ public class TVPlayerManager {
                 player.prepare();
                 player.play();
             } catch (Exception e) {
-                // ====================== 【捕获所有异常】 ======================
                 SettingsActivity.log("❌ 播放异常：" + e.getMessage());
                 SettingsActivity.log("❌ 异常堆栈：" + android.util.Log.getStackTraceString(e));
             }
@@ -334,12 +330,15 @@ public class TVPlayerManager {
 
         @Override
         public int read(byte[] buffer, int offset, int length) {
+            // 修复：确保 open() 已执行，inputStream 不为 null
+            if (inputStream == null) {
+                return -1;
+            }
             try {
                 int read = inputStream.read(buffer, offset, length);
                 if (read > 0) bytesTransferred(read);
                 return read;
             } catch (Exception e) {
-                SettingsActivity.log("❌ 读取流失败：" + e.getMessage());
                 return -1;
             }
         }

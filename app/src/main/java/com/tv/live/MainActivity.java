@@ -47,7 +47,6 @@ public class MainActivity extends AppCompatActivity {
     private GroupListManager groupListManager;
     private DateListManager dateListManager;
     private EpgManagerWrapper epgManagerWrapper;
-    private ChannelSwitchManager switchManager;
     private boolean epgPanelOpen = false;
     private boolean isControllerVisible = false;
     private boolean epg_enable;
@@ -63,9 +62,6 @@ public class MainActivity extends AppCompatActivity {
     private android.widget.ProgressBar progress_program;
     private TextView tv_channel_num;
 
-    // 你圈出来的【正在播放】控件
-    private TextView tv_playing_tip;
-
     private final Runnable hideInfoBar = new Runnable() {
         @Override
         public void run() {
@@ -74,8 +70,6 @@ public class MainActivity extends AppCompatActivity {
     };
     private long lastChannelChangeTime = 0;
     private static final long CHANNEL_COOLDOWN = 300;
-    private float touchStartY = 0;
-    private static final float SLIDE_THRESHOLD = 80;
     public static List<String> logList = new ArrayList<>();
 
     public static void log(String msg) {
@@ -130,13 +124,6 @@ public class MainActivity extends AppCompatActivity {
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         tv_channel_num = findViewById(R.id.tv_channel_num);
         initInfoBar();
-
-        // ====================== 核心修改：只隐藏你圈的【正在播放】 ======================
-        tv_playing_tip = findViewById(R.id.tv_playing_tip);
-        if (tv_playing_tip != null) {
-            tv_playing_tip.setVisibility(View.GONE);
-        }
-        // ==============================================================================
 
         appConfig = AppConfig.getInstance(this);
         loadSettings();
@@ -219,16 +206,6 @@ public class MainActivity extends AppCompatActivity {
         mPlayerManager = TVPlayerManager.getInstance();
         mPlayerManager.attachPlayerView(playerView);
 
-        // 空监听，不使用 PlayerStateListenerImpl
-        mPlayerManager.setOnPlayStateListener(new TVPlayerManager.OnPlayStateListener() {
-            @Override public void onPlayStarted() {}
-            @Override public void onPlayPaused() {}
-            @Override public void onPlayCompleted() {}
-            @Override public void onPlayError(Exception e) {}
-            @Override public void onBuffering() {}
-            @Override public void onPlaying() {}
-        });
-
         mPlayerManager.setOnLiveInfoUpdateListener(new TVPlayerManager.OnLiveInfoUpdateListener() {
             @Override
             public void onLiveInfoUpdate(TVPlayerManager.LiveInfo info) {
@@ -250,7 +227,6 @@ public class MainActivity extends AppCompatActivity {
             }
         });
         keyEventManager = new KeyEventManager(this);
-        switchManager = ChannelSwitchManager.getInstance();
         currentPlayIndex = appConfig.getLastPlayIndex();
         log("【播放】记录上次播放索引：" + currentPlayIndex);
         loadLiveAndEpg();
@@ -269,7 +245,6 @@ public class MainActivity extends AppCompatActivity {
         tv_remaining_time = findViewById(R.id.tv_remaining_time);
         tv_next_program_name = findViewById(R.id.tv_next_program_name);
         tv_next_time_range = findViewById(R.id.tv_next_time_range);
-        tv_playing_tip = findViewById(R.id.tv_playing_tip);
     }
 
     private void loadSettings() {
@@ -300,8 +275,6 @@ public class MainActivity extends AppCompatActivity {
                 log("【直播源】加载成功，频道总数：" + channels.size());
                 channelSourceList.clear();
                 channelSourceList.addAll(channels);
-                switchManager.setChannelList(channelSourceList);
-                switchManager.setCurrentIndex(currentPlayIndex);
                 groupListManager.setGroups(channelSourceList);
                 channelListManager.setChannels(channelSourceList, currentPlayIndex);
                 playChannel(currentPlayIndex);
@@ -334,8 +307,7 @@ public class MainActivity extends AppCompatActivity {
         long now = System.currentTimeMillis();
         if (now - lastChannelChangeTime < CHANNEL_COOLDOWN) return;
         lastChannelChangeTime = now;
-        log("【切台】上一台");
-        int idx = channel_reverse ? switchManager.next() : switchManager.prev();
+        int idx = channel_reverse ? ChannelSwitchManager.getInstance().next() : ChannelSwitchManager.getInstance().prev();
         playChannel(idx);
     }
 
@@ -343,32 +315,18 @@ public class MainActivity extends AppCompatActivity {
         long now = System.currentTimeMillis();
         if (now - lastChannelChangeTime < CHANNEL_COOLDOWN) return;
         lastChannelChangeTime = now;
-        log("【切台】下一台");
-        int idx = channel_reverse ? switchManager.prev() : switchManager.next();
+        int idx = channel_reverse ? ChannelSwitchManager.getInstance().prev() : ChannelSwitchManager.getInstance().next();
         playChannel(idx);
     }
 
-    // ====================== 完整 playChannel 方法（只隐藏你圈的） ======================
     public void playChannel(int index) {
-        if (channelSourceList == null || channelSourceList.isEmpty()) {
-            log("【播放】频道列表为空，无法播放");
-            return;
-        }
+        if (channelSourceList == null || channelSourceList.isEmpty()) return;
         index = Math.max(0, Math.min(index, channelSourceList.size() - 1));
         currentPlayIndex = index;
         Channel ch = channelSourceList.get(index);
-        if (ch == null || TextUtils.isEmpty(ch.getPlayUrl())) {
-            log("【播放】频道地址为空");
-            return;
-        }
-        String url = ch.getPlayUrl();
-        log("========================================");
-        log("【播放】频道名称：" + ch.getName());
-        log("【播放】频道地址：" + url);
-        log("【播放】当前索引：" + index);
-        log("========================================");
+        if (ch == null || TextUtils.isEmpty(ch.getPlayUrl())) return;
 
-        mPlayerManager.playUrl(url);
+        mPlayerManager.playUrl(ch.getPlayUrl());
         showChannelNum(index + 1);
         appConfig.setLastPlayIndex(index);
         channelListManager.setChannels(channelSourceList, index);
@@ -383,44 +341,24 @@ public class MainActivity extends AppCompatActivity {
             tv_tag_fhd.setText(live.quality);
             tv_tag_audio.setText(live.audio);
             tv_bitrate.setText(live.bitrate);
-
-            // ====================== 只隐藏你圈的【正在播放】 ======================
-            if (tv_playing_tip != null) {
-                tv_playing_tip.setVisibility(View.GONE);
-            }
-            // ====================================================================
         }
     }
 
     public void showChannelNum(int num) {
         tv_channel_num.setText(String.valueOf(num));
         tv_channel_num.setVisibility(View.VISIBLE);
-        new Handler().postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                tv_channel_num.setVisibility(View.GONE);
-            }
-        }, 3000);
+        new Handler().postDelayed(() -> tv_channel_num.setVisibility(View.GONE), 3000);
     }
 
     private void initListViewClick() {
         ListView lvChannelList = findViewById(R.id.lv_channel_list);
-        lvChannelList.setOnItemClickListener(new AdapterView.OnItemClickListener() {
-            @Override
-            public void onItemClick(AdapterView<?> p, View v, int pos, long id) {
-                if (!currentGroupChannelList.isEmpty() && pos < currentGroupChannelList.size()) {
-                    Channel selectedChannel = currentGroupChannelList.get(pos);
-                    int globalIndex = channelSourceList.indexOf(selectedChannel);
-                    if (globalIndex != -1) {
-                        log("【列表点击】切换到全局索引：" + globalIndex);
-                        playChannel(globalIndex);
-                        togglePanel();
-                    }
-                } else {
-                    playChannel(pos);
-                    togglePanel();
-                }
-            }
+        lvChannelList.setOnItemClickListener((p, v, pos, id) -> {
+            if (!currentGroupChannelList.isEmpty() && pos < currentGroupChannelList.size()) {
+                Channel selectedChannel = currentGroupChannelList.get(pos);
+                int globalIndex = channelSourceList.indexOf(selectedChannel);
+                if (globalIndex != -1) playChannel(globalIndex);
+            } else playChannel(pos);
+            togglePanel();
         });
     }
 
@@ -437,14 +375,7 @@ public class MainActivity extends AppCompatActivity {
         config.setCustomUrls(liveUrl, epgUrl);
         if (liveUrl != null) UrlConfig.LIVE_URL = liveUrl;
         if (epgUrl != null) UrlConfig.EPG_URL = epgUrl;
-        log("【远程配置】更新直播源：" + liveUrl);
-        log("【远程配置】更新EPG：" + epgUrl);
-        runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-                loadLiveAndEpg();
-            }
-        });
+        runOnUiThread(this::loadLiveAndEpg);
     }
 
     @Override
@@ -456,25 +387,20 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onPause() {
         super.onPause();
-        log("【主页】onPause -> 切到后台");
-        if (mPlayerManager != null)
-            mPlayerManager.onBackground();
+        if (mPlayerManager != null) mPlayerManager.onBackground();
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        log("【主页】onResume -> 回到前台");
         loadSettings();
         screenRatioManager.apply();
-        if (mPlayerManager != null)
-            mPlayerManager.onForeground();
+        if (mPlayerManager != null) mPlayerManager.onForeground();
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        log("【主页】onDestroy -> 页面销毁");
         try { unregisterReceiver(toggleControllerReceiver); } catch (Exception ignored) {}
         try { unregisterReceiver(refreshReceiver); } catch (Exception ignored) {}
         mPlayerManager.release();

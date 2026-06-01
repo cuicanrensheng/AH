@@ -19,7 +19,7 @@ import com.google.android.exoplayer2.ui.PlayerView;
 import com.google.android.exoplayer2.upstream.DefaultHttpDataSource;
 
 // 你自己的 FFmpeg 解码器（aar 已自带）
-import com.tv.live.decoder.FFmpegDecoder;
+import app/libs/lib-decoder-ffmpeg-release.aar;
 
 import java.net.URI;
 import java.text.SimpleDateFormat;

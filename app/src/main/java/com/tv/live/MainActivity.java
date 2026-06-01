@@ -76,7 +76,7 @@ public class MainActivity extends AppCompatActivity {
     private float touchStartY = 0;
     private static final float SLIDE_THRESHOLD = 80;
 
-    // ====================== 本地日志，最新在前，最多100条 ======================
+    // 本地日志：最新在前，最多100条
     public static List<String> logList = new ArrayList<>();
     public static void log(String msg) {
         logList.add(0, msg);
@@ -447,7 +447,7 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
-        if (keyEventManager.dispatchKey(code)) return true;
+        if (keyEventManager.dispatchKey(keyCode)) return true;
         return super.onKeyDown(keyCode, event);
     }
 

@@ -1,5 +1,4 @@
 package com.tv.live;
-
 import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
@@ -7,17 +6,16 @@ import android.util.Log;
 import android.webkit.CookieManager;
 import android.webkit.CookieSyncManager;
 import android.widget.TextView;
-
 import com.google.android.exoplayer2.DefaultLoadControl;
 import com.google.android.exoplayer2.DefaultRenderersFactory;
 import com.google.android.exoplayer2.ExoPlayer;
 import com.google.android.exoplayer2.MediaItem;
 import com.google.android.exoplayer2.PlaybackException;
 import com.google.android.exoplayer2.Player;
+import com.google.android.exoplayer2.source.ProgressiveMediaSource;
 import com.google.android.exoplayer2.source.hls.HlsMediaSource;
 import com.google.android.exoplayer2.ui.PlayerView;
 import com.google.android.exoplayer2.upstream.DefaultHttpDataSource;
-
 import java.net.URI;
 import java.text.SimpleDateFormat;
 import java.util.Date;
@@ -36,16 +34,10 @@ public class TVPlayerManager {
     private String currentUrl = "";
     private boolean isPlaying = false;
     private int currentChannelNumber = 0;
-
-    // 频道号控件 + 3秒自动隐藏
     private TextView channelNumText;
     private final Handler mHandler = new Handler(Looper.getMainLooper());
     private static final long CHANNEL_SHOW_DURATION = 3000L;
-
-    // 日志时间格式
     private final SimpleDateFormat logSdf = new SimpleDateFormat("HH:mm:ss", Locale.getDefault());
-
-    // 外部回调接口
     private OnLiveInfoUpdateListener infoUpdateListener;
 
     public static class LiveInfo {
@@ -83,12 +75,10 @@ public class TVPlayerManager {
         }
     }
 
-    // 绑定频道号TextView
     public void bindChannelText(TextView textView) {
         this.channelNumText = textView;
     }
 
-    // 3秒后隐藏频道号
     private void showChannelAndAutoHide() {
         if (channelNumText == null) return;
         mHandler.removeCallbacks(hideChannelRunnable);
@@ -101,7 +91,7 @@ public class TVPlayerManager {
         @Override
         public void run() {
             if (channelNumText != null) {
-                channelNumText.setVisibility(android.view.View.GONE);
+                channelNumText.setVisibility(View.GONE);
             }
         }
     };
@@ -118,14 +108,8 @@ public class TVPlayerManager {
         DefaultRenderersFactory renderersFactory = new DefaultRenderersFactory(context);
         renderersFactory.setEnableDecoderFallback(true);
 
-        // 缓冲配置：最小缓冲1秒，起播缓冲0.8秒
         DefaultLoadControl loadControl = new DefaultLoadControl.Builder()
-                .setBufferDurationsMs(
-                        1000,
-                        2000,
-                        800,
-                        800
-                )
+                .setBufferDurationsMs(1000,2000,800,800)
                 .build();
 
         player = new ExoPlayer.Builder(context)
@@ -133,7 +117,6 @@ public class TVPlayerManager {
                 .setLoadControl(loadControl)
                 .build();
 
-        // 初始化Cookie
         CookieSyncManager.createInstance(context);
         CookieManager.getInstance().setAcceptCookie(true);
     }
@@ -150,22 +133,23 @@ public class TVPlayerManager {
         }
     }
 
-    // 构造日志时间前缀
     private String getLogTime() {
         return "[" + logSdf.format(new Date()) + "]";
     }
 
-    // 请求头：固定UA + 自动Referer + 自动Cookie
+    // ====================== 修复：浏览器UA + 完整请求头 ======================
     private Map<String, String> getHeaders(String url) {
         Map<String, String> headers = new HashMap<>();
-        headers.put("User-Agent", "ExoPlayer");
+        headers.put("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36");
         headers.put("Accept", "*/*");
         headers.put("Connection", "keep-alive");
+        headers.put("Icy-MetaData", "1");
 
         try {
             URI uri = new URI(url);
             headers.put("Referer", uri.getScheme() + "://" + uri.getHost() + "/");
         } catch (Exception e) {
+            headers.put("Referer", "https://www.huya.com/");
             Log.e(TAG, getLogTime() + " Referer 生成异常", e);
         }
 
@@ -180,8 +164,8 @@ public class TVPlayerManager {
         playUrl(url);
     }
 
+    // ====================== 修复：自动支持 m3u8 / flv ======================
     public void playUrl(String url) {
-        // 全局捕获异常，防止APP崩溃
         try {
             if (player == null || url == null || url.trim().isEmpty()) {
                 Log.e(TAG, getLogTime() + " 播放失败：URL为空 或 播放器未初始化");
@@ -190,31 +174,37 @@ public class TVPlayerManager {
             currentUrl = url.trim();
             Log.i(TAG, getLogTime() + " 开始播放，地址：" + currentUrl);
 
-            // 重置播放器
             player.stop();
             player.clearMediaItems();
 
             DefaultHttpDataSource.Factory httpFactory = new DefaultHttpDataSource.Factory();
             httpFactory.setDefaultRequestProperties(getHeaders(currentUrl));
-            httpFactory.setAllowCrossProtocolRedirects(true); // 允许301/302重定向
+            httpFactory.setFollowRedirects(true);
+            httpFactory.setAllowCrossProtocolRedirects(true);
 
-            // 构建HLS源
-            HlsMediaSource mediaSource = new HlsMediaSource.Factory(httpFactory)
-                    .createMediaSource(MediaItem.fromUri(currentUrl));
+            MediaItem mediaItem = MediaItem.fromUri(currentUrl);
+            Object mediaSource;
 
-            player.setMediaSource(mediaSource);
+            // 自动识别格式
+            if (currentUrl.toLowerCase().contains("m3u8")) {
+                mediaSource = new HlsMediaSource.Factory(httpFactory).createMediaSource(mediaItem);
+            } else {
+                mediaSource = new ProgressiveMediaSource.Factory(httpFactory).createMediaSource(mediaItem);
+            }
+
+            player.setMediaSource((com.google.android.exoplayer2.source.MediaSource) mediaSource);
             player.prepare();
             player.play();
 
-            // 播放器状态监听（兼容低版本ExoPlayer）
             player.addListener(new Player.Listener() {
                 @Override
                 public void onPlayerError(PlaybackException error) {
-                    // 兼容旧版：移除 type 与 TYPE 常量，保留完整异常信息+堆栈
                     Log.e(TAG, getLogTime() + " ========== 播放异常/解析失败 ==========");
                     Log.e(TAG, getLogTime() + " 错误信息：" + error.getMessage());
-                    // 打印完整异常堆栈，定位崩溃代码
                     Log.e(TAG, getLogTime() + " 异常堆栈：", error);
+                    if (listener != null) {
+                        listener.onPlayError(error.getMessage());
+                    }
                 }
 
                 @Override
@@ -225,6 +215,13 @@ public class TVPlayerManager {
                         updateWakeLock(true);
                         notifyLiveInfoUpdate();
                         showChannelAndAutoHide();
+                        if (listener != null) listener.onPlayReady();
+                    } else if (state == Player.STATE_BUFFERING) {
+                        if (listener != null) listener.onBuffering();
+                    } else if (state == Player.STATE_ENDED) {
+                        if (listener != null) listener.onPlayEnd();
+                    } else if (state == Player.STATE_IDLE) {
+                        if (listener != null) listener.onIdle();
                     } else {
                         updateWakeLock(false);
                     }
@@ -232,8 +229,10 @@ public class TVPlayerManager {
             });
 
         } catch (Exception e) {
-            // 外层全局异常：防止初始化/构建源阶段直接APP崩溃
             Log.e(TAG, getLogTime() + " ========== 播放器全局崩溃异常 ==========", e);
+            if (listener != null) {
+                listener.onPlayError(e.getMessage());
+            }
         }
     }
 

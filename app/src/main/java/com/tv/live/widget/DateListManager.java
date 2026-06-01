@@ -11,21 +11,24 @@ import java.util.Calendar;
 import java.util.List;
 
 /**
- * 日期列表管理器（今天、周一、周二...）
- * 功能：日期选中项变为蓝色
+ * 日期列表管理器（今天、周一～周日）
+ * 功能：TV遥控器滑动选中项自动变蓝，日期切换可正常显示节目单
  */
 public class DateListManager {
     private final ListView lvDate;
-    private final Context context;
     private int selectedPosition = 0;
 
     public DateListManager(Context context, ListView lvDate) {
-        this.context = context;
         this.lvDate = lvDate;
+        lvDate.setItemsCanFocus(true);
+        lvDate.setOnItemSelectedListener((parent, view, pos, id) -> {
+            selectedPosition = pos;
+            parent.invalidateViews();
+        });
     }
 
     /**
-     * 初始化日期：今天 + 未来7天正确星期
+     * 初始化日期列表：今天 + 未来7天，自动对应星期几
      */
     public void initDate() {
         List<String> dates = new ArrayList<>();
@@ -39,14 +42,12 @@ public class DateListManager {
             dates.add(weekName[idx]);
         }
 
-        ArrayAdapter<String> adapter = new ArrayAdapter<String>(context, android.R.layout.simple_list_item_1, dates) {
+        ArrayAdapter<String> adapter = new ArrayAdapter<String>(lvDate.getContext(), android.R.layout.simple_list_item_1, dates) {
             @Override
             public View getView(int position, View convertView, ViewGroup parent) {
                 View view = super.getView(position, convertView, parent);
                 TextView tv = view.findViewById(android.R.id.text1);
-
-                // 选中蓝色，未选中白色
-                if (position == selectedPosition) {
+                if (position == selectedPosition || view.isFocused()) {
                     tv.setTextColor(Color.parseColor("#40A9FF"));
                 } else {
                     tv.setTextColor(Color.WHITE);
@@ -54,18 +55,13 @@ public class DateListManager {
                 return view;
             }
         };
-
         lvDate.setAdapter(adapter);
     }
 
-    /**
-     * 设置选中日期
-     */
     public void setSelectedPosition(int position) {
-        this.selectedPosition = position;
-        if (lvDate.getAdapter() != null) {
-            ((ArrayAdapter<?>) lvDate.getAdapter()).notifyDataSetChanged();
-        }
+        selectedPosition = position;
+        lvDate.setSelection(position);
+        lvDate.invalidateViews();
     }
 
     public void onBackPressed() {}

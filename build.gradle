@@ -1,17 +1,11 @@
-// Top-level build file where you can add configuration options common to all sub-projects/modules.
 plugins {
-    id 'com.android.application' version '8.3.2' apply false
-    id 'com.android.library' version '8.3.2' apply false
+    id 'com.android.application' version '8.5.0' apply false
+    id 'com.android.library' version '8.5.0' apply false
 }
 
 allprojects {
     repositories {
         google()
-        mavenCentral()
-        maven { url 'https://jitpack.io' } // 保留，适配Glide、UtilCodex等第三方库
+        mavenCentral() // 必须有这个，VLC 才下得到
     }
-}
-
-task clean(type: Delete) {
-    delete rootProject.buildDir
 }

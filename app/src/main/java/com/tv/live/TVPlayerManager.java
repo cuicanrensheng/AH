@@ -43,8 +43,13 @@ public class TVPlayerManager {
     }
     private OnLiveInfoUpdateListener infoUpdateListener;
 
+    // 自己保存 listener，模拟 clearListeners
+    private Player.Listener mInternalListener;
+
     public static TVPlayerManager getInstance(Context ctx) {
-        if (instance == null) instance = new TVPlayerManager(ctx);
+        if (instance == null) {
+            instance = new TVPlayerManager(ctx);
+        }
         return instance;
     }
 
@@ -66,6 +71,23 @@ public class TVPlayerManager {
         CookieManager.getInstance().setAcceptCookie(true);
     }
 
+    // ==============================
+    // 补齐方法 1：clearListeners()
+    // ==============================
+    private void clearListeners() {
+        if (player != null && mInternalListener != null) {
+            player.removeListener(mInternalListener);
+        }
+        mInternalListener = null;
+    }
+
+    // ==============================
+    // 补齐方法 2：setMediaSourceFactory()
+    // ==============================
+    private void setMediaSourceFactory(DefaultMediaSourceFactory factory) {
+        // 旧版不支持直接set，改用创建媒体源的方式兼容
+    }
+
     public void attachPlayerView(PlayerView view) {
         playerView = view;
         playerView.setPlayer(player);
@@ -76,7 +98,6 @@ public class TVPlayerManager {
         if (playerView != null) playerView.setKeepScreenOn(enable);
     }
 
-    // 自动根据URL生成 Referer、UA、Cookie
     private Map<String, String> getAutoHeaders(String url) {
         Map<String, String> headers = new HashMap<>();
         headers.put("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36");
@@ -129,24 +150,30 @@ public class TVPlayerManager {
         return info;
     }
 
-    // 万能播放方法
     public void playUrl(String url) {
         if (player == null || url == null || url.isEmpty()) return;
         currentUrl = url;
         SettingsActivity.log("▶ 播放：" + url);
 
-        Map<String, String> headers = getAutoHeaders(url);
+        // 调用补齐的方法
+        clearListeners();
 
+        Map<String, String> headers = getAutoHeaders(url);
         HttpDataSource.Factory httpFactory = new DefaultHttpDataSource.Factory()
                 .setDefaultRequestProperties(headers)
                 .setAllowCrossProtocolRedirects(true);
 
         DataSource.Factory dataSourceFactory = new DefaultDataSource.Factory(context, httpFactory);
         DefaultMediaSourceFactory mediaSourceFactory = new DefaultMediaSourceFactory(dataSourceFactory);
-        player.setMediaSourceFactory(mediaSourceFactory);
 
-        player.clearListeners();
-        player.addListener(new Player.Listener() {
+        // 调用补齐的方法
+        setMediaSourceFactory(mediaSourceFactory);
+
+        MediaItem mediaItem = MediaItem.fromUri(url);
+        player.setMediaSource(mediaSourceFactory.createMediaSource(mediaItem));
+
+        // 自己管理 listener
+        mInternalListener = new Player.Listener() {
             @Override
             public void onPlayerError(PlaybackException error) {
                 SettingsActivity.log("❌ 播放错误：" + error.getMessage() + " 码：" + error.errorCode);
@@ -168,9 +195,9 @@ public class TVPlayerManager {
                         break;
                 }
             }
-        });
+        };
 
-        player.setMediaItem(MediaItem.fromUri(url));
+        player.addListener(mInternalListener);
         player.prepare();
         player.play();
     }

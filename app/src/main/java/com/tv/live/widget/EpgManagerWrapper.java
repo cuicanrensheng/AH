@@ -1,5 +1,4 @@
 package com.tv.live.widget;
-
 import android.app.AlarmManager;
 import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
@@ -45,7 +44,7 @@ public class EpgManagerWrapper {
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int pos, long id) {
                 selectedPosition = pos;
-                parent.invalidateViews();
+                ((ArrayAdapter<?>) parent.getAdapter()).notifyDataSetChanged();
             }
             @Override
             public void onNothingSelected(AdapterView<?> parent) {}

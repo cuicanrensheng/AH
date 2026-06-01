@@ -6,6 +6,12 @@ android {
     namespace "com.tv.live"
     compileSdk 34
 
+    // ========== 新增：固定Java版本，解决注解编译空指针 ==========
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
     buildFeatures {
         buildConfig true
     }
@@ -70,7 +76,7 @@ dependencies {
     // JSON
     implementation 'com.google.code.gson:gson:2.10.1'
 
-    // ExoPlayer 纯播放器（无 VLC）
+    // ExoPlayer 统一版本 2.19.1 (保持不变，版本兼容)
     implementation "com.google.android.exoplayer:exoplayer:2.19.1"
     implementation "com.google.android.exoplayer:exoplayer-ui:2.19.1"
     implementation "com.google.android.exoplayer:exoplayer-hls:2.19.1"
@@ -81,9 +87,11 @@ dependencies {
     implementation "com.squareup.retrofit2:retrofit:2.11.0"
     implementation "com.squareup.retrofit2:converter-gson:2.11.0"
 
-    // 图片加载
+    // ========== 修复Glide编译冲突：升级Glide + 配套注解编译器 ==========
     implementation "com.github.bumptech.glide:glide:4.16.0"
     annotationProcessor "com.github.bumptech.glide:compiler:4.16.0"
+    // 新增：AndroidX 标准注解库，修复 TypeElement 空指针
+    annotationProcessor "androidx.annotation:annotation:1.8.0"
 
     // 工具
     implementation "org.apache.commons:commons-lang3:3.14.0"

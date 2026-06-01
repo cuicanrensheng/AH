@@ -1,12 +1,12 @@
 package com.tv.live;
-
 import android.content.Context;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
 import android.webkit.CookieManager;
 import android.webkit.CookieSyncManager;
-
+import com.google.android.exoplayer2.DefaultLoadControl;
+import com.google.android.exoplayer2.DefaultRenderersFactory;
 import com.google.android.exoplayer2.ExoPlayer;
 import com.google.android.exoplayer2.MediaItem;
 import com.google.android.exoplayer2.PlaybackException;
@@ -15,18 +15,15 @@ import com.google.android.exoplayer2.source.MediaSource;
 import com.google.android.exoplayer2.source.ProgressiveMediaSource;
 import com.google.android.exoplayer2.source.hls.HlsMediaSource;
 import com.google.android.exoplayer2.ui.PlayerView;
+import com.google.android.exoplayer2.upstream.BaseDataSource;
 import com.google.android.exoplayer2.upstream.DataSource;
 import com.google.android.exoplayer2.upstream.DataSpec;
-import com.google.android.exoplayer2.upstream.BaseDataSource;
-import com.google.android.exoplayer2.DefaultLoadControl;
-import com.google.android.exoplayer2.DefaultRenderersFactory;
-
 import java.net.HttpURLConnection;
+import java.net.URI;
 import java.net.URL;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.regex.Pattern;
-
+import java.util.concurrent.TimeUnit;
 import okhttp3.Cookie;
 import okhttp3.CookieJar;
 import okhttp3.HttpUrl;
@@ -39,10 +36,8 @@ public class TVPlayerManager {
     private ExoPlayer player;
     private Context context;
     private PlayerView playerView;
-
     public enum ScaleMode { FIT, FILL, ZOOM }
     private OnPlayStateListener listener;
-
     private final OkHttpClient okHttpClient;
     private String currentUrl = "";
     private final Map<Integer, Boolean> triedTypes = new HashMap<>();
@@ -50,6 +45,9 @@ public class TVPlayerManager {
     private static final int TYPE_NORMAL = 2;
     private String autoCookie = "";
     private boolean isPlaying = false;
+
+    private int currentChannelNumber = 0;
+    private OnLiveInfoUpdateListener infoUpdateListener;
 
     public static TVPlayerManager getInstance(Context ctx) {
         if (instance == null) {
@@ -60,7 +58,6 @@ public class TVPlayerManager {
 
     private TVPlayerManager(Context ctx) {
         context = ctx.getApplicationContext();
-
         DefaultRenderersFactory renderersFactory = new DefaultRenderersFactory(context);
         renderersFactory.setEnableDecoderFallback(true);
 
@@ -74,8 +71,8 @@ public class TVPlayerManager {
                 .build();
 
         okHttpClient = new OkHttpClient.Builder()
-                .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
-                .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+                .connectTimeout(15, TimeUnit.SECONDS)
+                .readTimeout(30, TimeUnit.SECONDS)
                 .followRedirects(true)
                 .followSslRedirects(true)
                 .cookieJar(new CookieJar() {
@@ -109,14 +106,35 @@ public class TVPlayerManager {
         } catch (Exception e) {}
     }
 
-    private Map<String, String> getHeaders() {
+    // ======================================================
+    // ✅ 【全能自动】动态 UA + Referer + Cookie
+    // ======================================================
+    private Map<String, String> getAutoHeaders(String url) {
         Map<String, String> headers = new HashMap<>();
-        headers.put("User-Agent", "ExoPlayer2");
+
+        // 1. 自动 UA（浏览器级，防拦截）
+        headers.put("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36");
         headers.put("Accept", "*/*");
         headers.put("Connection", "keep-alive");
-        if (autoCookie != null && !autoCookie.isEmpty()) {
+
+        // 2. 自动 Referer（根据当前URL自动生成，防盗链神器）
+        try {
+            URI uri = new URI(url);
+            String scheme = uri.getScheme();
+            String host = uri.getHost();
+            headers.put("Referer", scheme + "://" + host);
+        } catch (Exception ignored) {
+            headers.put("Referer", "");
+        }
+
+        // 3. 自动 Cookie（双来源：系统Cookie + 虎牙自动Cookie）
+        String webCookie = CookieManager.getInstance().getCookie(url);
+        if (webCookie != null && !webCookie.isEmpty()) {
+            headers.put("Cookie", webCookie);
+        } else if (autoCookie != null && !autoCookie.isEmpty()) {
             headers.put("Cookie", autoCookie);
         }
+
         return headers;
     }
 
@@ -125,13 +143,49 @@ public class TVPlayerManager {
             try {
                 URL url = new URL("https://www.huya.com/");
                 HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36");
+                conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36");
                 conn.connect();
                 String c = conn.getHeaderField("Set-Cookie");
                 if (c != null) autoCookie = c;
                 conn.disconnect();
             } catch (Exception ignored) {}
         }).start();
+    }
+
+    public void setCurrentChannelNumber(int num) {
+        this.currentChannelNumber = num;
+    }
+
+    public static class LiveInfo {
+        public String quality;
+        public String audio;
+        public String bitrate;
+        public int channelNum;
+    }
+
+    public interface OnLiveInfoUpdateListener {
+        void onLiveInfoUpdate(LiveInfo info);
+    }
+
+    public void setOnLiveInfoUpdateListener(OnLiveInfoUpdateListener listener) {
+        this.infoUpdateListener = listener;
+    }
+
+    public LiveInfo getLiveInfo() {
+        LiveInfo info = new LiveInfo();
+        info.quality = "HD";
+        info.audio = "立体声";
+        info.bitrate = "4.5MB/s";
+        info.channelNum = currentChannelNumber;
+        return info;
+    }
+
+    private void notifyLiveInfoUpdate() {
+        if (infoUpdateListener != null) {
+            new Handler(Looper.getMainLooper()).post(() -> {
+                infoUpdateListener.onLiveInfoUpdate(getLiveInfo());
+            });
+        }
     }
 
     public void play(String url) {
@@ -143,16 +197,22 @@ public class TVPlayerManager {
         currentUrl = url;
         triedTypes.clear();
         refreshHuyaCookie();
-
         SettingsActivity.log("▶ 开始播放：" + url);
 
+        player.clearListeners();
+
         player.addListener(new Player.Listener() {
+            // ======================================================
+            // ✅ 【错误日志增强】
+            // ======================================================
             @Override
             public void onPlayerError(PlaybackException error) {
                 String errorMsg = "❌ 播放错误：" + error.getMessage() + "，错误码：" + error.errorCode;
                 SettingsActivity.log(errorMsg);
                 SettingsActivity.log("❌ 异常堆栈：" + android.util.Log.getStackTraceString(error));
+                SettingsActivity.log("❌ 当前地址：" + currentUrl);
                 handleAutoRecover(error);
+                if (listener != null) listener.onPlayError(errorMsg);
             }
 
             @Override
@@ -160,18 +220,23 @@ public class TVPlayerManager {
                 switch (state) {
                     case Player.STATE_BUFFERING:
                         SettingsActivity.log("⌛ 状态：缓冲中");
+                        if (listener != null) listener.onBuffering();
                         break;
                     case Player.STATE_READY:
                         SettingsActivity.log("✅ 状态：播放就绪");
                         updateWakeLock(true);
+                        notifyLiveInfoUpdate();
+                        if (listener != null) listener.onPlayReady();
                         break;
                     case Player.STATE_IDLE:
                         SettingsActivity.log("⏹ 状态：空闲");
                         updateWakeLock(false);
+                        if (listener != null) listener.onIdle();
                         break;
                     case Player.STATE_ENDED:
                         SettingsActivity.log("⏹ 状态：播放结束");
                         updateWakeLock(false);
+                        if (listener != null) listener.onPlayEnd();
                         break;
                 }
             }
@@ -187,7 +252,6 @@ public class TVPlayerManager {
             player.prepare();
             return;
         }
-
         if (!triedTypes.containsKey(TYPE_HLS)) {
             SettingsActivity.log("🔄 自动重试：切换 HLS 模式");
             startPlay(currentUrl, TYPE_HLS);
@@ -199,10 +263,11 @@ public class TVPlayerManager {
     private void startPlay(String url, Integer forceType) {
         new Handler(Looper.getMainLooper()).post(() -> {
             try {
-                DataSource.Factory dataSourceFactory = new OkHttpDataSourceFactory(okHttpClient, getHeaders());
+                // ✅ 自动头传入数据源
+                DataSource.Factory dataSourceFactory = new OkHttpDataSourceFactory(okHttpClient, getAutoHeaders(url));
                 int type = forceType != null ? forceType : TYPE_HLS;
-
                 MediaSource mediaSource;
+
                 if (type == TYPE_HLS) {
                     mediaSource = new HlsMediaSource.Factory(dataSourceFactory)
                             .createMediaSource(MediaItem.fromUri(url));
@@ -272,29 +337,13 @@ public class TVPlayerManager {
         instance = null;
     }
 
-    public static class LiveInfo {
-        public String quality;
-        public String audio;
-        public String bitrate;
-    }
-
-    public LiveInfo getLiveInfo() {
-        LiveInfo info = new LiveInfo();
-        info.quality = "HD";
-        info.audio = "立体声";
-        info.bitrate = "4.5MB/s";
-        return info;
-    }
-
     private static class OkHttpDataSourceFactory implements DataSource.Factory {
         private final OkHttpClient client;
         private final Map<String, String> headers;
-
         public OkHttpDataSourceFactory(OkHttpClient client, Map<String, String> headers) {
             this.client = client;
             this.headers = headers;
         }
-
         @Override
         public DataSource createDataSource() {
             return new OkHttpDataSource(client, headers);
@@ -307,13 +356,11 @@ public class TVPlayerManager {
         private Response response;
         private java.io.InputStream inputStream;
         private Uri uri;
-
         public OkHttpDataSource(OkHttpClient client, Map<String, String> headers) {
             super(true);
             this.client = client;
             this.headers = headers;
         }
-
         @Override
         public long open(DataSpec dataSpec) throws java.io.IOException {
             uri = dataSpec.uri;
@@ -327,13 +374,9 @@ public class TVPlayerManager {
             inputStream = response.body().byteStream();
             return response.body().contentLength();
         }
-
         @Override
         public int read(byte[] buffer, int offset, int length) {
-            // 修复：确保 open() 已执行，inputStream 不为 null
-            if (inputStream == null) {
-                return -1;
-            }
+            if (inputStream == null) return -1;
             try {
                 int read = inputStream.read(buffer, offset, length);
                 if (read > 0) bytesTransferred(read);
@@ -342,12 +385,10 @@ public class TVPlayerManager {
                 return -1;
             }
         }
-
         @Override
         public Uri getUri() {
             return uri;
         }
-
         @Override
         public void close() {
             try { if (response != null) response.close(); } catch (Exception ignored) {}

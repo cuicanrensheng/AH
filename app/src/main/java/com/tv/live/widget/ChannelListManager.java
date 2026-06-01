@@ -12,41 +12,39 @@ import java.util.List;
 
 /**
  * 频道列表管理器
- * 功能：显示频道列表，当前选中项变为蓝色
+ * 功能：TV遥控器滑动选中项自动变蓝
  */
 public class ChannelListManager {
     private final ListView lvChannelList;
-    private final Context context;
-    private int selectedPosition = 0; // 当前选中位置
+    private int selectedPosition = 0;
 
     public ChannelListManager(Context context, ListView lvChannelList) {
-        this.context = context;
         this.lvChannelList = lvChannelList;
+        // TV遥控器必加：允许item获取焦点
+        lvChannelList.setItemsCanFocus(true);
+        // 监听遥控器选中事件，更新选中位置并刷新颜色
+        lvChannelList.setOnItemSelectedListener((parent, view, pos, id) -> {
+            selectedPosition = pos;
+            parent.invalidateViews();
+        });
     }
 
     /**
-     * 设置全部频道列表
+     * 设置全频道列表
      */
     public void setChannels(List<Channel> channelSourceList, int currentPlayIndex) {
         if (channelSourceList == null || channelSourceList.isEmpty()) return;
-
         List<String> names = new ArrayList<>();
-        for (Channel c : channelSourceList) {
-            names.add(c.getName());
-        }
+        for (Channel c : channelSourceList) names.add(c.getName());
+        selectedPosition = currentPlayIndex;
 
-        this.selectedPosition = currentPlayIndex;
-
-        ArrayAdapter<String> adapter = new ArrayAdapter<String>(context, android.R.layout.simple_list_item_1, names) {
+        ArrayAdapter<String> adapter = new ArrayAdapter<String>(lvChannelList.getContext(), android.R.layout.simple_list_item_1, names) {
             @Override
             public View getView(int position, View convertView, ViewGroup parent) {
                 View view = super.getView(position, convertView, parent);
                 TextView tv = view.findViewById(android.R.id.text1);
-
-                // ======================
-                // 核心：选中 = 蓝色，未选中 = 白色
-                // ======================
-                if (position == selectedPosition) {
+                // 选中/焦点项变蓝，未选中白色
+                if (position == selectedPosition || view.isFocused()) {
                     tv.setTextColor(Color.parseColor("#40A9FF"));
                 } else {
                     tv.setTextColor(Color.WHITE);
@@ -54,7 +52,6 @@ public class ChannelListManager {
                 return view;
             }
         };
-
         lvChannelList.setAdapter(adapter);
         lvChannelList.setSelection(currentPlayIndex);
     }
@@ -64,30 +61,23 @@ public class ChannelListManager {
      */
     public void setChannelsByGroup(List<Channel> channelSourceList, String group, int currentPlayIndex) {
         if (channelSourceList == null || channelSourceList.isEmpty()) return;
-
         List<String> names = new ArrayList<>();
         int realIndex = 0;
-
         for (int i = 0; i < channelSourceList.size(); i++) {
             Channel c = channelSourceList.get(i);
             if (group == null || group.isEmpty() || group.equals(c.getGroup())) {
                 names.add(c.getName());
-                if (i == currentPlayIndex) {
-                    realIndex = names.size() - 1;
-                }
+                if (i == currentPlayIndex) realIndex = names.size() - 1;
             }
         }
+        selectedPosition = realIndex;
 
-        this.selectedPosition = realIndex;
-
-        ArrayAdapter<String> adapter = new ArrayAdapter<String>(context, android.R.layout.simple_list_item_1, names) {
+        ArrayAdapter<String> adapter = new ArrayAdapter<String>(lvChannelList.getContext(), android.R.layout.simple_list_item_1, names) {
             @Override
             public View getView(int position, View convertView, ViewGroup parent) {
                 View view = super.getView(position, convertView, parent);
                 TextView tv = view.findViewById(android.R.id.text1);
-
-                // 统一选中变色规则
-                if (position == selectedPosition) {
+                if (position == selectedPosition || view.isFocused()) {
                     tv.setTextColor(Color.parseColor("#40A9FF"));
                 } else {
                     tv.setTextColor(Color.WHITE);
@@ -95,19 +85,14 @@ public class ChannelListManager {
                 return view;
             }
         };
-
         lvChannelList.setAdapter(adapter);
         lvChannelList.setSelection(realIndex);
     }
 
-    /**
-     * 更新选中位置并刷新列表
-     */
     public void setSelectedPosition(int position) {
-        this.selectedPosition = position;
-        if (lvChannelList.getAdapter() != null) {
-            ((ArrayAdapter<?>) lvChannelList.getAdapter()).notifyDataSetChanged();
-        }
+        selectedPosition = position;
+        lvChannelList.setSelection(position);
+        lvChannelList.invalidateViews();
     }
 
     public void onBackPressed() {}

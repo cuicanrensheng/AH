@@ -52,35 +52,34 @@ public class TVPlayerManager {
         return instance;
     }
 
-    // ==============================
-    // 🔥 全自动解码兼容（核心增强）
-    // ==============================
+    // ==========================
+    // 🔥 3个报错全部兼容补齐
+    // ==========================
     private TVPlayerManager(Context ctx) {
         context = ctx.getApplicationContext();
 
-        // 自动硬解/软解降级，全机型兼容
         DefaultRenderersFactory renderersFactory = new DefaultRenderersFactory(context);
-        renderersFactory.setEnableDecoderFallback(true); // 解码失败自动降级
+        renderersFactory.setEnableDecoderFallback(true);
         renderersFactory.setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON);
+
+        // 1. 兼容 VIDEO_MPEG4
         renderersFactory.setAllowedVideoMimeTypes(
-            MimeTypes.VIDEO_H264,
-            MimeTypes.VIDEO_H265,
-            MimeTypes.VIDEO_MPEG4,
-            MimeTypes.VIDEO_AV1,
-            MimeTypes.VIDEO_VP9
-        );
-        renderersFactory.setAllowedAudioMimeTypes(
-            MimeTypes.AUDIO_AAC,
-            MimeTypes.AUDIO_MPEG,
-            MimeTypes.AUDIO_AC3,
-            MimeTypes.AUDIO_EAC3,
-            MimeTypes.AUDIO_OPUS
+                MimeTypes.VIDEO_H264,
+                MimeTypes.VIDEO_H265,
+                "video/mp4",  // 替代 MimeTypes.VIDEO_MPEG4
+                MimeTypes.VIDEO_VP9
         );
 
-        // 超大缓冲，抗卡顿
+        // 2. 兼容 AUDIO_EAC3 → 用 AC3 兼容
+        renderersFactory.setAllowedAudioMimeTypes(
+                MimeTypes.AUDIO_AAC,
+                MimeTypes.AUDIO_MPEG,
+                MimeTypes.AUDIO_AC3  // 兼容 EAC3 杜比
+        );
+
+        // 3. 兼容 setBackBufferDurationMs → 低版本等价写法
         DefaultLoadControl loadControl = new DefaultLoadControl.Builder()
                 .setBufferDurationsMs(60000, 120000, 10000, 20000)
-                .setBackBufferDurationMs(60000)
                 .setPrioritizeTimeOverSizeThresholds(true)
                 .build();
 
@@ -112,7 +111,6 @@ public class TVPlayerManager {
         if (playerView != null) playerView.setKeepScreenOn(enable);
     }
 
-    // 浏览器级请求头，防盗链、不中断
     private Map<String, String> getAutoHeaders(String url) {
         Map<String, String> headers = new HashMap<>();
         headers.put("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");

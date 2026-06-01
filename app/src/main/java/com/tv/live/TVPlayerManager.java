@@ -17,9 +17,7 @@ import com.google.android.exoplayer2.source.hls.HlsMediaSource;
 import com.google.android.exoplayer2.ui.PlayerView;
 import com.google.android.exoplayer2.upstream.DataSource;
 import com.google.android.exoplayer2.upstream.DefaultHttpDataSource;
-import java.net.HttpURLConnection;
 import java.net.URI;
-import java.net.URL;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -34,9 +32,7 @@ public class TVPlayerManager {
     private final Map<Integer, Boolean> triedTypes = new HashMap<>();
     private static final int TYPE_HLS = 1;
     private static final int TYPE_NORMAL = 2;
-    private String autoCookie = "";
     private boolean isPlaying = false;
-
     private int currentChannelNumber = 0;
     private OnLiveInfoUpdateListener infoUpdateListener;
 
@@ -72,49 +68,34 @@ public class TVPlayerManager {
 
     private void updateWakeLock(boolean enable) {
         this.isPlaying = enable;
-        if (playerView == null) return;
-        try {
-            playerView.setKeepScreenOn(enable);
-        } catch (Exception e) {}
+        if (playerView != null) playerView.setKeepScreenOn(enable);
     }
 
-    // ✅ 自动识别数据源 + 动态请求头
-    private Map<String, String> getAutoHeaders(String url) {
+    // ✅ 关键修复：模拟浏览器请求头，解决被拦截问题
+    private Map<String, String> getBrowserHeaders(String url) {
         Map<String, String> headers = new HashMap<>();
-        headers.put("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36");
+        // 1. 真实浏览器 UA，和你手机浏览器完全一致
+        headers.put("User-Agent", "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36");
         headers.put("Accept", "*/*");
+        headers.put("Accept-Encoding", "gzip, deflate");
         headers.put("Connection", "keep-alive");
 
+        // 2. 自动生成 Referer，和当前 URL 域名一致
         try {
             URI uri = new URI(url);
             String scheme = uri.getScheme();
             String host = uri.getHost();
-            headers.put("Referer", scheme + "://" + host);
+            headers.put("Referer", scheme + "://" + host + "/");
         } catch (Exception ignored) {
             headers.put("Referer", "");
         }
 
+        // 3. 带上系统 Cookie，和浏览器共享会话
         String webCookie = CookieManager.getInstance().getCookie(url);
         if (webCookie != null && !webCookie.isEmpty()) {
             headers.put("Cookie", webCookie);
-        } else if (autoCookie != null && !autoCookie.isEmpty()) {
-            headers.put("Cookie", autoCookie);
         }
         return headers;
-    }
-
-    private void refreshHuyaCookie() {
-        new Thread(() -> {
-            try {
-                URL url = new URL("https://www.huya.com/");
-                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36");
-                conn.connect();
-                String c = conn.getHeaderField("Set-Cookie");
-                if (c != null) autoCookie = c;
-                conn.disconnect();
-            } catch (Exception ignored) {}
-        }).start();
     }
 
     public void setCurrentChannelNumber(int num) {
@@ -161,10 +142,9 @@ public class TVPlayerManager {
         if (player == null || url == null || url.isEmpty()) return;
         currentUrl = url;
         triedTypes.clear();
-        refreshHuyaCookie();
         SettingsActivity.log("▶ 开始播放：" + url);
 
-        // 强制重置播放器，解决黑屏/卡死
+        // 强制重置播放器，避免状态卡死
         player.stop();
         player.clearMediaItems();
 
@@ -227,11 +207,9 @@ public class TVPlayerManager {
     private void startPlay(String url, Integer forceType) {
         new Handler(Looper.getMainLooper()).post(() -> {
             try {
-                // ✅ 改用 ExoPlayer 原生 DefaultHttpDataSource，自动识别协议
+                // 使用带浏览器头的数据源工厂
                 DefaultHttpDataSource.Factory httpFactory = new DefaultHttpDataSource.Factory();
-                httpFactory.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36");
-                httpFactory.setDefaultRequestProperties(getAutoHeaders(url));
-
+                httpFactory.setDefaultRequestProperties(getBrowserHeaders(url));
                 int type = forceType != null ? forceType : TYPE_HLS;
                 MediaSource mediaSource;
 

@@ -1,4 +1,5 @@
 package com.tv.live;
+
 import com.tv.live.SettingsActivity;
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -206,7 +207,7 @@ public class MainActivity extends AppCompatActivity {
         tv_current_program_name = findViewById(R.id.tv_current_program_name);
         tv_current_time_range = findViewById(R.id.tv_current_time_range);
         progress_program = findViewById(R.id.progress_program);
-        tv_remaining_time = findViewById(R.id.tv_remaining_time);
+        tv_remaining_time = findViewById(R.id.remaining_time);
         tv_next_program_name = findViewById(R.id.tv_next_program_name);
         tv_next_time_range = findViewById(R.id.tv_next_time_range);
     }
@@ -276,7 +277,7 @@ public class MainActivity extends AppCompatActivity {
         Channel ch = channelSourceList.get(index);
         if (ch == null || TextUtils.isEmpty(ch.getPlayUrl())) return;
 
-        // 直接播放原始地址，完全交给 TVPlayerManager 处理
+        // 直接播放原始地址
         String url = ch.getPlayUrl();
 
         SettingsActivity.log("=== 播放 ===");
@@ -284,7 +285,7 @@ public class MainActivity extends AppCompatActivity {
         SettingsActivity.log("地址：" + url);
 
         playerStateListener.setCurrentChannelName(ch.getName());
-        mPlayerManager.playUrl(url); // 直接播，不解析
+        mPlayerManager.playUrl(url);
 
         appConfig.setLastPlayIndex(index);
         channelListManager.setChannels(channelSourceList, index);

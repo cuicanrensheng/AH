@@ -1,8 +1,10 @@
 package com.tv.live.widget;
+
 import android.content.Context;
 import android.graphics.Color;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.ListView;
 import android.widget.TextView;
@@ -10,10 +12,6 @@ import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.List;
 
-/**
- * 日期列表管理器（今天、周一～周日）
- * 功能：TV遥控器滑动选中项自动变蓝，日期切换可正常显示节目单
- */
 public class DateListManager {
     private final ListView lvDate;
     private int selectedPosition = 0;
@@ -21,25 +19,26 @@ public class DateListManager {
     public DateListManager(Context context, ListView lvDate) {
         this.lvDate = lvDate;
         lvDate.setItemsCanFocus(true);
-        lvDate.setOnItemSelectedListener((parent, view, pos, id) -> {
-            selectedPosition = pos;
-            parent.invalidateViews();
+
+        lvDate.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View view, int pos, long id) {
+                selectedPosition = pos;
+                parent.invalidateViews();
+            }
+            @Override
+            public void onNothingSelected(AdapterView<?> parent) {}
         });
     }
 
-    /**
-     * 初始化日期列表：今天 + 未来7天，自动对应星期几
-     */
     public void initDate() {
         List<String> dates = new ArrayList<>();
         Calendar cal = Calendar.getInstance();
-        int todayWeek = cal.get(Calendar.DAY_OF_WEEK);
-        String[] weekName = {"周日", "周一", "周二", "周三", "周四", "周五", "周六"};
-
-        dates.add("今天");
-        for (int i = 1; i <= 7; i++) {
-            int idx = (todayWeek + i - 1) % 7;
-            dates.add(weekName[idx]);
+        String[] week = {"周日", "周一", "周二", "周三", "周四", "周五", "周六"};
+        for (int i = 0; i < 8; i++) {
+            if (i == 0) dates.add("今天");
+            else dates.add(week[cal.get(Calendar.DAY_OF_WEEK) % 7]);
+            cal.add(Calendar.DAY_OF_YEAR, 1);
         }
 
         ArrayAdapter<String> adapter = new ArrayAdapter<String>(lvDate.getContext(), android.R.layout.simple_list_item_1, dates) {

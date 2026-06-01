@@ -16,6 +16,7 @@ import com.google.android.exoplayer2.upstream.DataSource;
 import com.google.android.exoplayer2.upstream.DefaultDataSource;
 import com.google.android.exoplayer2.upstream.DefaultHttpDataSource;
 import com.google.android.exoplayer2.upstream.HttpDataSource;
+import com.google.android.exoplayer2.util.MimeTypes;
 import java.net.URI;
 import java.util.HashMap;
 import java.util.Map;
@@ -42,8 +43,6 @@ public class TVPlayerManager {
         void onLiveInfoUpdate(LiveInfo info);
     }
     private OnLiveInfoUpdateListener infoUpdateListener;
-
-    // 自己保存 listener，模拟 clearListeners
     private Player.Listener mInternalListener;
 
     public static TVPlayerManager getInstance(Context ctx) {
@@ -53,13 +52,36 @@ public class TVPlayerManager {
         return instance;
     }
 
+    // ==============================
+    // 🔥 全自动解码兼容（核心增强）
+    // ==============================
     private TVPlayerManager(Context ctx) {
         context = ctx.getApplicationContext();
-        DefaultRenderersFactory renderersFactory = new DefaultRenderersFactory(context);
-        renderersFactory.setEnableDecoderFallback(true);
 
+        // 自动硬解/软解降级，全机型兼容
+        DefaultRenderersFactory renderersFactory = new DefaultRenderersFactory(context);
+        renderersFactory.setEnableDecoderFallback(true); // 解码失败自动降级
+        renderersFactory.setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON);
+        renderersFactory.setAllowedVideoMimeTypes(
+            MimeTypes.VIDEO_H264,
+            MimeTypes.VIDEO_H265,
+            MimeTypes.VIDEO_MPEG4,
+            MimeTypes.VIDEO_AV1,
+            MimeTypes.VIDEO_VP9
+        );
+        renderersFactory.setAllowedAudioMimeTypes(
+            MimeTypes.AUDIO_AAC,
+            MimeTypes.AUDIO_MPEG,
+            MimeTypes.AUDIO_AC3,
+            MimeTypes.AUDIO_EAC3,
+            MimeTypes.AUDIO_OPUS
+        );
+
+        // 超大缓冲，抗卡顿
         DefaultLoadControl loadControl = new DefaultLoadControl.Builder()
-                .setBufferDurationsMs(15000, 30000, 5000, 10000)
+                .setBufferDurationsMs(60000, 120000, 10000, 20000)
+                .setBackBufferDurationMs(60000)
+                .setPrioritizeTimeOverSizeThresholds(true)
                 .build();
 
         player = new ExoPlayer.Builder(context)
@@ -71,9 +93,6 @@ public class TVPlayerManager {
         CookieManager.getInstance().setAcceptCookie(true);
     }
 
-    // ==============================
-    // 补齐方法 1：clearListeners()
-    // ==============================
     private void clearListeners() {
         if (player != null && mInternalListener != null) {
             player.removeListener(mInternalListener);
@@ -81,12 +100,7 @@ public class TVPlayerManager {
         mInternalListener = null;
     }
 
-    // ==============================
-    // 补齐方法 2：setMediaSourceFactory()
-    // ==============================
-    private void setMediaSourceFactory(DefaultMediaSourceFactory factory) {
-        // 旧版不支持直接set，改用创建媒体源的方式兼容
-    }
+    private void setMediaSourceFactory(DefaultMediaSourceFactory factory) {}
 
     public void attachPlayerView(PlayerView view) {
         playerView = view;
@@ -98,22 +112,19 @@ public class TVPlayerManager {
         if (playerView != null) playerView.setKeepScreenOn(enable);
     }
 
+    // 浏览器级请求头，防盗链、不中断
     private Map<String, String> getAutoHeaders(String url) {
         Map<String, String> headers = new HashMap<>();
-        headers.put("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36");
+        headers.put("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
         headers.put("Accept", "*/*");
         headers.put("Connection", "keep-alive");
 
-        String host = "";
-        String scheme = "http";
         try {
             URI uri = new URI(url);
-            host = uri.getHost();
-            scheme = uri.getScheme();
+            String host = uri.getHost();
+            String scheme = uri.getScheme();
+            headers.put("Referer", scheme + "://" + host);
         } catch (Exception ignored) {}
-
-        String referer = scheme + "://" + host + "/";
-        headers.put("Referer", referer);
 
         String cookie = CookieManager.getInstance().getCookie(url);
         if (cookie != null && !cookie.isEmpty()) {
@@ -155,28 +166,26 @@ public class TVPlayerManager {
         currentUrl = url;
         SettingsActivity.log("▶ 播放：" + url);
 
-        // 调用补齐的方法
         clearListeners();
 
         Map<String, String> headers = getAutoHeaders(url);
+
         HttpDataSource.Factory httpFactory = new DefaultHttpDataSource.Factory()
                 .setDefaultRequestProperties(headers)
-                .setAllowCrossProtocolRedirects(true);
+                .setAllowCrossProtocolRedirects(true)
+                .setConnectTimeoutMs(30000)
+                .setReadTimeoutMs(60000);
 
         DataSource.Factory dataSourceFactory = new DefaultDataSource.Factory(context, httpFactory);
         DefaultMediaSourceFactory mediaSourceFactory = new DefaultMediaSourceFactory(dataSourceFactory);
 
-        // 调用补齐的方法
-        setMediaSourceFactory(mediaSourceFactory);
-
         MediaItem mediaItem = MediaItem.fromUri(url);
         player.setMediaSource(mediaSourceFactory.createMediaSource(mediaItem));
 
-        // 自己管理 listener
         mInternalListener = new Player.Listener() {
             @Override
             public void onPlayerError(PlaybackException error) {
-                SettingsActivity.log("❌ 播放错误：" + error.getMessage() + " 码：" + error.errorCode);
+                SettingsActivity.log("❌ 错误：" + error.getMessage());
                 if (listener != null) listener.onPlayError(error.getMessage());
             }
 
@@ -226,7 +235,11 @@ public class TVPlayerManager {
     }
 
     public interface OnPlayStateListener {
-        void onIdle(); void onBuffering(); void onPlayReady(); void onPlayEnd(); void onPlayError(String msg);
+        void onIdle();
+        void onBuffering();
+        void onPlayReady();
+        void onPlayEnd();
+        void onPlayError(String msg);
     }
 
     public void setOnPlayStateListener(OnPlayStateListener l) { listener = l; }

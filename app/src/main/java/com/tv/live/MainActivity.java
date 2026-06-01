@@ -1,8 +1,8 @@
 package com.tv.live;
-import com.tv.live.ChannelListManager;
-import com.tv.live.GroupListManager;
-import com.tv.live.DateListManager;
-import com.tv.live.EpgManagerWrapper;
+import com.tv.live.widget.ChannelListManager;
+import com.tv.live.widget.GroupListManager;
+import com.tv.live.widget.DateListManager;
+import com.tv.live.widget.EpgManagerWrapper;
 
 import com.tv.live.SettingsActivity;
 import android.content.BroadcastReceiver;

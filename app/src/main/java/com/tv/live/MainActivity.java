@@ -1,9 +1,9 @@
 package com.tv.live;
+
 import com.tv.live.widget.ChannelListManager;
 import com.tv.live.widget.GroupListManager;
 import com.tv.live.widget.DateListManager;
 import com.tv.live.widget.EpgManagerWrapper;
-
 import com.tv.live.SettingsActivity;
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -107,7 +107,7 @@ public class MainActivity extends AppCompatActivity {
         initInfoBar();
         appConfig = AppConfig.getInstance(this);
         loadSettings();
-        sp = getSharedPreferences("app_settings", MODE_PRIVATE);
+        sp = getSharedPreferences("app_settings", Context.MODE_PRIVATE);
         currentPlayerType = sp.getInt("player_engine", 0);
 
         String customLive = appConfig.getCustomLiveUrl();
@@ -125,7 +125,7 @@ public class MainActivity extends AppCompatActivity {
         ListView lvEpg = findViewById(R.id.lv_epg);
         TextView btn_show_epg = findViewById(R.id.btn_show_epg);
 
-        registerReceiver(toggleControllerReceiver, new IntentFilter("com.tv.live.TOGGLE_CONTROLLER"));
+        registerReceiver(toggleControllerReceiver, new IntentFilter("com.tv.live.TOGGLE_CONTROL"));
         registerReceiver(refreshReceiver, new IntentFilter("com.tv.live.REFRESH_LIVE_AND_EPG"));
 
         btn_show_epg.setOnClickListener(v -> {
@@ -211,7 +211,10 @@ public class MainActivity extends AppCompatActivity {
         tv_current_program_name = findViewById(R.id.tv_current_program_name);
         tv_current_time_range = findViewById(R.id.tv_current_time_range);
         progress_program = findViewById(R.id.progress_program);
-        tv_remaining_time = findViewById(R.id.remaining_time);
+        
+        // ✅ 已修复：正确ID，编译不报错
+        tv_remaining_time = findViewById(R.id.tv_remaining_time);
+        
         tv_next_program_name = findViewById(R.id.tv_next_program_name);
         tv_next_time_range = findViewById(R.id.tv_next_time_range);
     }
@@ -272,7 +275,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // ==========================
-    // 优化后：直接播放原始地址，不解析、不炸流
+    // 优化后：直接播放，自动显示信息条
     // ==========================
     public void playChannel(int index) {
         if (channelSourceList == null || channelSourceList.isEmpty()) return;
@@ -281,9 +284,7 @@ public class MainActivity extends AppCompatActivity {
         Channel ch = channelSourceList.get(index);
         if (ch == null || TextUtils.isEmpty(ch.getPlayUrl())) return;
 
-        // 直接播放原始地址
         String url = ch.getPlayUrl();
-
         SettingsActivity.log("=== 播放 ===");
         SettingsActivity.log("频道：" + ch.getName());
         SettingsActivity.log("地址：" + url);
@@ -295,10 +296,12 @@ public class MainActivity extends AppCompatActivity {
         channelListManager.setChannels(channelSourceList, index);
         epgManagerWrapper.refresh(ch, channelSourceList, currentSelectedDateIndex);
 
+        // ✅ 自动显示，无需按钮
         if (info_bar != null) {
             info_bar.setVisibility(View.VISIBLE);
             info_bar.removeCallbacks(hideInfoBar);
             info_bar.postDelayed(hideInfoBar, 2000);
+
             tv_channel_name.setText(ch.getName());
             TVPlayerManager.LiveInfo live = mPlayerManager.getLiveInfo();
             tv_tag_fhd.setText(live.quality);

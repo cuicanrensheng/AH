@@ -32,6 +32,14 @@ public class TVPlayerManager {
     private ExoPlayer player;
     private Context context;
     private PlayerView playerView;
+
+    // 保留三种屏幕比例模式：原始、填充、全屏
+    public enum ScaleMode {
+        ORIGIN,  // 原始比例(自适应设备，不变形，留黑边)
+        FILL,    // 填充(拉伸铺满屏幕)
+        FULL     // 全屏(等比例裁剪，无黑边)
+    }
+
     private OnPlayStateListener listener;
     private String currentUrl = "";
     private boolean isPlaying = false;
@@ -118,7 +126,7 @@ public class TVPlayerManager {
         DefaultRenderersFactory renderersFactory = new DefaultRenderersFactory(context);
         renderersFactory.setEnableDecoderFallback(true);
 
-        // 缓冲配置：最小缓冲1000ms(1秒)，起播缓冲800ms(0.8秒)
+        // 缓冲配置：最小缓冲1秒，起播缓冲0.8秒
         DefaultLoadControl loadControl = new DefaultLoadControl.Builder()
                 .setBufferDurationsMs(
                         1000,
@@ -141,8 +149,31 @@ public class TVPlayerManager {
     public void attachPlayerView(PlayerView view) {
         playerView = view;
         playerView.setPlayer(player);
-        // 固定：视频按原始比例 + 自动适配设备屏幕，全局自适应
-        playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
+        // 默认使用【原始比例】自适应设备屏幕
+        setScaleMode(ScaleMode.ORIGIN);
+    }
+
+    // 对外暴露：切换屏幕比例方法
+    public void setScaleMode(ScaleMode mode) {
+        try {
+            if (playerView == null) return;
+            switch (mode) {
+                case ORIGIN:
+                    // 原始比例：自适应设备，保持画面比例不变形
+                    playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
+                    break;
+                case FILL:
+                    // 填充：拉伸画面铺满全屏
+                    playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
+                    break;
+                case FULL:
+                    // 全屏：等比例裁剪，铺满屏幕无黑边
+                    playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_ZOOM);
+                    break;
+            }
+        } catch (Exception e) {
+            Log.e(TAG, getLogTime() + " 画面比例切换异常", e);
+        }
     }
 
     private void updateWakeLock(boolean enable) {

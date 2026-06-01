@@ -22,10 +22,10 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class TVPlayerManager {
-    // 单例实例
+    // 单例实例（全局唯一播放器）
     private static TVPlayerManager instance;
 
-    // ExoPlayer 播放器核心
+    // ExoPlayer 核心对象
     private ExoPlayer player;
 
     // 上下文
@@ -37,7 +37,7 @@ public class TVPlayerManager {
     // 画面缩放模式
     public enum ScaleMode { FIT, FILL, ZOOM }
 
-    // 播放状态监听
+    // 播放状态回调
     private OnPlayStateListener listener;
 
     // 当前播放地址
@@ -49,7 +49,7 @@ public class TVPlayerManager {
     // 当前频道号
     private int currentChannelNumber = 0;
 
-    // 直播信息：画质、音频、码率、频道号
+    // 直播信息实体：清晰度、音频、码率、频道号
     public static class LiveInfo {
         public String quality;
         public String audio;
@@ -61,14 +61,13 @@ public class TVPlayerManager {
     public interface OnLiveInfoUpdateListener {
         void onLiveInfoUpdate(LiveInfo info);
     }
-
     private OnLiveInfoUpdateListener infoUpdateListener;
 
-    // 用于管理监听，避免重复添加
+    // 内部监听器（避免重复添加）
     private Player.Listener mInternalListener;
 
     // ==============================
-    // 单例获取（全局唯一播放器）
+    // 获取单例（全局复用）
     // ==============================
     public static TVPlayerManager getInstance(Context ctx) {
         if (instance == null) {
@@ -78,38 +77,19 @@ public class TVPlayerManager {
     }
 
     // ==============================
-    // 构造方法：初始化播放器 + 兼容所有解码器
+    // 构造方法：初始化播放器（最稳定原版）
+    // 【重要】这里删除了所有会导致卡顿的兼容代码
     // ==============================
     private TVPlayerManager(Context ctx) {
         context = ctx.getApplicationContext();
 
-        // 初始化渲染器，开启解码失败自动降级（兼容所有机型）
+        // 渲染工厂：只开自动解码降级，不做多余限制
         DefaultRenderersFactory renderersFactory = new DefaultRenderersFactory(context);
         renderersFactory.setEnableDecoderFallback(true);
 
-        // ==============================
-        // 【兼容补齐】方法1：设置支持的视频格式（旧版无此方法，空实现兼容）
-        // ==============================
-        setAllowedVideoMimeTypes(renderersFactory,
-                "video/avc",    // H.264
-                "video/hevc",   // H.265
-                "video/mp4",    // MP4
-                "video/x-vp9"   // VP9
-        );
-
-        // ==============================
-        // 【兼容补齐】方法2：设置支持的音频格式（旧版无此方法，空实现兼容）
-        // ==============================
-        setAllowedAudioMimeTypes(renderersFactory,
-                "audio/mp4a-latm", // AAC
-                "audio/mpeg",      // MP3
-                "audio/ac3"        // AC3
-        );
-
-        // 缓冲配置：超大缓冲，抗卡顿、抗网络波动
+        // 缓冲配置：流畅不卡、不拖慢启动
         DefaultLoadControl loadControl = new DefaultLoadControl.Builder()
-                .setBufferDurationsMs(60000, 120000, 10000, 20000)
-                .setPrioritizeTimeOverSizeThresholds(true)
+                .setBufferDurationsMs(15000, 30000, 5000, 10000)
                 .build();
 
         // 创建播放器
@@ -118,27 +98,13 @@ public class TVPlayerManager {
                 .setLoadControl(loadControl)
                 .build();
 
-        // 初始化Cookie，支持需要登录的直播源
+        // 初始化 Cookie（支持需要登录的源）
         CookieSyncManager.createInstance(context);
         CookieManager.getInstance().setAcceptCookie(true);
     }
 
     // ==============================
-    // 兼容补齐：允许的视频格式（低版本 Exo 无此方法，空实现兼容）
-    // ==============================
-    private void setAllowedVideoMimeTypes(DefaultRenderersFactory factory, String... types) {
-        // 低版本 Exo 不支持此方法，保留结构用于兼容，不影响播放
-    }
-
-    // ==============================
-    // 兼容补齐：允许的音频格式（低版本 Exo 无此方法，空实现兼容）
-    // ==============================
-    private void setAllowedAudioMimeTypes(DefaultRenderersFactory factory, String... types) {
-        // 低版本 Exo 不支持此方法，保留结构用于兼容，不影响播放
-    }
-
-    // ==============================
-    // 清空监听（避免重复）
+    // 清空监听器（防止重复）
     // ==============================
     private void clearListeners() {
         if (player != null && mInternalListener != null) {
@@ -148,11 +114,9 @@ public class TVPlayerManager {
     }
 
     // ==============================
-    // 兼容补齐：setMediaSourceFactory（低版本不支持）
+    // 兼容占位：旧版不支持，空实现
     // ==============================
-    private void setMediaSourceFactory(DefaultMediaSourceFactory factory) {
-        // 兼容占位，无逻辑
-    }
+    private void setMediaSourceFactory(DefaultMediaSourceFactory factory) {}
 
     // ==============================
     // 绑定播放视图
@@ -163,15 +127,18 @@ public class TVPlayerManager {
     }
 
     // ==============================
-    // 设置屏幕常亮
+    // 屏幕常亮
     // ==============================
     private void updateWakeLock(boolean enable) {
         isPlaying = enable;
-        if (playerView != null) playerView.setKeepScreenOn(enable);
+        if (playerView != null) {
+            playerView.setKeepScreenOn(enable);
+        }
     }
 
     // ==============================
-    // 自动生成请求头（防盗链通用）
+    // 自动生成请求头（防盗链必备）
+    // 自动 Referer + UA + Cookie
     // ==============================
     private Map<String, String> getAutoHeaders(String url) {
         Map<String, String> headers = new HashMap<>();
@@ -179,7 +146,6 @@ public class TVPlayerManager {
         headers.put("Accept", "*/*");
         headers.put("Connection", "keep-alive");
 
-        // 自动提取 Referer，解决防盗链
         try {
             URI uri = new URI(url);
             String host = uri.getHost();
@@ -187,7 +153,6 @@ public class TVPlayerManager {
             headers.put("Referer", scheme + "://" + host);
         } catch (Exception ignored) {}
 
-        // 自动携带Cookie
         String cookie = CookieManager.getInstance().getCookie(url);
         if (cookie != null && !cookie.isEmpty()) {
             headers.put("Cookie", cookie);
@@ -213,7 +178,6 @@ public class TVPlayerManager {
         info.channelNum = currentChannelNumber;
 
         if (player != null && player.getPlaybackState() == Player.STATE_READY) {
-            // 自动识别画质
             if (player.getVideoFormat() != null) {
                 int h = player.getVideoFormat().height;
                 if (h >= 1080) info.quality = "FHD";
@@ -223,7 +187,6 @@ public class TVPlayerManager {
                 long b = player.getVideoFormat().bitrate;
                 if (b > 0) info.bitrate = String.format("%.1fMbps", b / 1000000.0);
             }
-            // 自动识别音频通道
             if (player.getAudioFormat() != null) {
                 info.audio = player.getAudioFormat().channelCount >= 2 ? "立体声" : "单声道";
             }
@@ -239,31 +202,26 @@ public class TVPlayerManager {
         currentUrl = url;
         SettingsActivity.log("▶ 播放：" + url);
 
-        // 清空旧监听
         clearListeners();
 
-        // 获取自动生成的请求头
         Map<String, String> headers = getAutoHeaders(url);
 
-        // 配置HTTP数据源
         HttpDataSource.Factory httpFactory = new DefaultHttpDataSource.Factory()
                 .setDefaultRequestProperties(headers)
                 .setAllowCrossProtocolRedirects(true)
-                .setConnectTimeoutMs(30000)
-                .setReadTimeoutMs(60000);
+                .setConnectTimeoutMs(20000)
+                .setReadTimeoutMs(20000);
 
         DataSource.Factory dataSourceFactory = new DefaultDataSource.Factory(context, httpFactory);
         DefaultMediaSourceFactory mediaSourceFactory = new DefaultMediaSourceFactory(dataSourceFactory);
 
-        // 设置播放资源
         MediaItem mediaItem = MediaItem.fromUri(url);
         player.setMediaSource(mediaSourceFactory.createMediaSource(mediaItem));
 
-        // 添加播放监听
         mInternalListener = new Player.Listener() {
             @Override
             public void onPlayerError(PlaybackException error) {
-                SettingsActivity.log("❌ 错误：" + error.getMessage());
+                SettingsActivity.log("❌ 播放错误：" + error.getMessage());
                 if (listener != null) listener.onPlayError(error.getMessage());
             }
 
@@ -303,7 +261,7 @@ public class TVPlayerManager {
     }
 
     // ==============================
-    // 设置信息更新监听
+    // 设置信息监听
     // ==============================
     public void setOnLiveInfoUpdateListener(OnLiveInfoUpdateListener listener) {
         this.infoUpdateListener = listener;
@@ -312,7 +270,9 @@ public class TVPlayerManager {
     // ==============================
     // 快捷播放
     // ==============================
-    public void play(String url) { playUrl(url); }
+    public void play(String url) {
+        playUrl(url);
+    }
 
     // ==============================
     // 设置画面比例
@@ -320,9 +280,15 @@ public class TVPlayerManager {
     public void setScaleMode(ScaleMode mode) {
         if (playerView == null) return;
         switch (mode) {
-            case FIT: playerView.setResizeMode(com.google.android.exoplayer2.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT); break;
-            case FILL: playerView.setResizeMode(com.google.android.exoplayer2.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL); break;
-            case ZOOM: playerView.setResizeMode(com.google.android.exoplayer2.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM); break;
+            case FIT:
+                playerView.setResizeMode(com.google.android.exoplayer2.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT);
+                break;
+            case FILL:
+                playerView.setResizeMode(com.google.android.exoplayer2.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL);
+                break;
+            case ZOOM:
+                playerView.setResizeMode(com.google.android.exoplayer2.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM);
+                break;
         }
     }
 
@@ -337,7 +303,9 @@ public class TVPlayerManager {
         void onPlayError(String msg);
     }
 
-    public void setOnPlayStateListener(OnPlayStateListener l) { listener = l; }
+    public void setOnPlayStateListener(OnPlayStateListener l) {
+        listener = l;
+    }
 
     // ==============================
     // 暂停

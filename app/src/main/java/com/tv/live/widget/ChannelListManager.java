@@ -58,7 +58,7 @@ public class ChannelListManager {
         List<String> names = new ArrayList<>();
         int realIndex = 0;
         for (int i = 0; i < channelSourceList.size(); i++) {
-            Channel c : channelSourceList.get(i);
+            Channel c = channelSourceList.get(i);
             if (group == null || group.isEmpty() || group.equals(c.getGroup())) {
                 names.add(c.getName());
                 if (i == currentPlayIndex) realIndex = names.size() - 1;

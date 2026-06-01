@@ -29,6 +29,47 @@ public class TVPlayerManager {
     private boolean isPlaying = false;
     private int currentChannelNumber = 0;
 
+    // 👇 补全 MainActivity 需要的 3 个核心（解决编译报错）
+    private OnLiveInfoUpdateListener infoUpdateListener;
+
+    public static class LiveInfo {
+        public String quality;
+        public String audio;
+        public String bitrate;
+        public int channelNum;
+    }
+
+    public interface OnLiveInfoUpdateListener {
+        void onLiveInfoUpdate(LiveInfo info);
+    }
+
+    public void setOnLiveInfoUpdateListener(OnLiveInfoUpdateListener listener) {
+        this.infoUpdateListener = listener;
+    }
+
+    public LiveInfo getLiveInfo() {
+        LiveInfo info = new LiveInfo();
+        info.quality = "HD";
+        info.audio = "立体声";
+        info.bitrate = "4.5MB/s";
+        info.channelNum = currentChannelNumber;
+        return info;
+    }
+
+    public void setCurrentChannelNumber(int num) {
+        this.currentChannelNumber = num;
+    }
+
+    private void notifyLiveInfoUpdate() {
+        if (infoUpdateListener != null) {
+            new Handler(Looper.getMainLooper()).post(() -> {
+                infoUpdateListener.onLiveInfoUpdate(getLiveInfo());
+            });
+        }
+    }
+
+    // ==================================================
+
     public static TVPlayerManager getInstance(Context ctx) {
         if (instance == null) instance = new TVPlayerManager(ctx);
         return instance;
@@ -59,17 +100,13 @@ public class TVPlayerManager {
         if (playerView != null) playerView.setKeepScreenOn(enable);
     }
 
-    // ==============================================
-    // ✅ 自动 Referer + 自动 UA + 自动 Cookie（全能）
-    // ==============================================
+    // ✅ 自动 Referer + UA + Cookie
     private Map<String, String> getAutoHeaders(String url) {
         Map<String, String> headers = new HashMap<>();
-        // 自动UA
         headers.put("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36");
         headers.put("Accept", "*/*");
         headers.put("Connection", "keep-alive");
 
-        // 自动 Referer（根据当前链接自动生成）
         try {
             URI uri = new URI(url);
             String scheme = uri.getScheme();
@@ -77,7 +114,6 @@ public class TVPlayerManager {
             headers.put("Referer", scheme + "://" + host);
         } catch (Exception ignored) {}
 
-        // 自动 Cookie（系统Webview Cookie）
         String cookie = CookieManager.getInstance().getCookie(url);
         if (cookie != null) {
             headers.put("Cookie", cookie);
@@ -96,12 +132,10 @@ public class TVPlayerManager {
         player.stop();
         player.clearMediaItems();
 
-        // 自动头 + 自动跳转
         DefaultHttpDataSource.Factory httpFactory = new DefaultHttpDataSource.Factory();
         httpFactory.setDefaultRequestProperties(getAutoHeaders(url));
         httpFactory.setAllowCrossProtocolRedirects(true);
 
-        // 直接播放，不解析、不处理
         HlsMediaSource mediaSource = new HlsMediaSource.Factory(httpFactory)
                 .createMediaSource(MediaItem.fromUri(url));
 
@@ -114,8 +148,12 @@ public class TVPlayerManager {
             public void onPlayerError(PlaybackException error) {}
             @Override
             public void onPlaybackStateChanged(int state) {
-                if (state == Player.STATE_READY) updateWakeLock(true);
-                else updateWakeLock(false);
+                if (state == Player.STATE_READY) {
+                    updateWakeLock(true);
+                    notifyLiveInfoUpdate();
+                } else {
+                    updateWakeLock(false);
+                }
             }
         });
     }

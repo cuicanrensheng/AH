@@ -61,7 +61,6 @@ public class TVPlayerManager {
     private TVPlayerManager(Context ctx) {
         context = ctx.getApplicationContext();
 
-        // 解码器自动回退（硬解失败→软解，专治黑屏）
         DefaultRenderersFactory renderersFactory = new DefaultRenderersFactory(context);
         renderersFactory.setEnableDecoderFallback(true);
 
@@ -97,13 +96,11 @@ public class TVPlayerManager {
         CookieManager.getInstance().setAcceptCookie(true);
     }
 
-    // 绑定播放器（无getSurfaceView，绝对安全）
     public void attachPlayerView(PlayerView view) {
         playerView = view;
         playerView.setPlayer(player);
     }
 
-    // 播放时阻止熄屏休眠
     private void updateWakeLock(boolean enable) {
         this.isPlaying = enable;
         if (playerView == null) return;
@@ -112,7 +109,6 @@ public class TVPlayerManager {
         } catch (Exception e) {}
     }
 
-    // 请求头
     private Map<String, String> getHeaders() {
         Map<String, String> headers = new HashMap<>();
         headers.put("User-Agent", "ExoPlayer2");
@@ -142,26 +138,42 @@ public class TVPlayerManager {
         playUrl(url);
     }
 
+    // ====================== 【日志完整】播放入口 ======================
     public void playUrl(String url) {
         if (player == null || url == null || url.isEmpty()) return;
         currentUrl = url;
         triedTypes.clear();
         refreshHuyaCookie();
 
+        SettingsActivity.log("▶ 开始播放：" + url);
+
         player.addListener(new Player.Listener() {
             @Override
             public void onPlayerError(PlaybackException error) {
+                // ====================== 【错误日志全输出】 ======================
+                String errorMsg = "❌ 播放错误：" + error.getMessage() + "，错误码：" + error.errorCode;
+                SettingsActivity.log(errorMsg);
+                // 把完整异常也写进日志
+                SettingsActivity.log("❌ 异常堆栈：" + android.util.Log.getStackTraceString(error));
                 handleAutoRecover(error);
             }
 
             @Override
             public void onPlaybackStateChanged(int state) {
                 switch (state) {
+                    case Player.STATE_BUFFERING:
+                        SettingsActivity.log("⌛ 状态：缓冲中");
+                        break;
                     case Player.STATE_READY:
+                        SettingsActivity.log("✅ 状态：播放就绪");
                         updateWakeLock(true);
                         break;
                     case Player.STATE_IDLE:
+                        SettingsActivity.log("⏹ 状态：空闲");
+                        updateWakeLock(false);
+                        break;
                     case Player.STATE_ENDED:
+                        SettingsActivity.log("⏹ 状态：播放结束");
                         updateWakeLock(false);
                         break;
                 }
@@ -173,12 +185,17 @@ public class TVPlayerManager {
 
     private void handleAutoRecover(PlaybackException e) {
         if (e.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
+            SettingsActivity.log("🔄 自动修复：直播窗口过期，跳到最新");
             player.seekToDefaultPosition();
             player.prepare();
             return;
         }
+
         if (!triedTypes.containsKey(TYPE_HLS)) {
+            SettingsActivity.log("🔄 自动重试：切换 HLS 模式");
             startPlay(currentUrl, TYPE_HLS);
+        } else {
+            SettingsActivity.log("❌ 自动重试失败：所有模式都试过了");
         }
     }
 
@@ -202,7 +219,9 @@ public class TVPlayerManager {
                 player.prepare();
                 player.play();
             } catch (Exception e) {
-                SettingsActivity.log("播放异常：" + e.getMessage());
+                // ====================== 【捕获所有异常】 ======================
+                SettingsActivity.log("❌ 播放异常：" + e.getMessage());
+                SettingsActivity.log("❌ 异常堆栈：" + android.util.Log.getStackTraceString(e));
             }
         });
     }
@@ -271,7 +290,6 @@ public class TVPlayerManager {
         return info;
     }
 
-    // ==================== OkHttp 数据源（无报错版） ====================
     private static class OkHttpDataSourceFactory implements DataSource.Factory {
         private final OkHttpClient client;
         private final Map<String, String> headers;
@@ -321,6 +339,7 @@ public class TVPlayerManager {
                 if (read > 0) bytesTransferred(read);
                 return read;
             } catch (Exception e) {
+                SettingsActivity.log("❌ 读取流失败：" + e.getMessage());
                 return -1;
             }
         }

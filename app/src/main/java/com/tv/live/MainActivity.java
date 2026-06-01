@@ -21,12 +21,6 @@ import com.tv.live.listener.PlayerStateListenerImpl;
 import com.tv.live.loader.LiveSourceLoader;
 import com.tv.live.manager.*;
 import com.tv.live.service.HttpConfigService;
-import com.tv.live.widget.*;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.Response;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -57,55 +51,14 @@ public class MainActivity extends AppCompatActivity {
     private boolean number_channel_enable;
     private boolean auto_update_source;
     private int currentSelectedDateIndex = 0;
-
     private SharedPreferences sp;
     private int currentPlayerType;
-
     private View info_bar;
     private TextView tv_channel_name, tv_tag_fhd, tv_tag_audio, tv_bitrate;
     private TextView tv_current_program_name, tv_current_time_range, tv_remaining_time;
     private TextView tv_next_program_name, tv_next_time_range;
     private android.widget.ProgressBar progress_program;
     private final Runnable hideInfoBar = () -> info_bar.setVisibility(View.GONE);
-
-    // ====================== 【兜底：解析PHP真实播放地址】 ======================
-    private String getRealPlayUrl(String url) {
-        if (url == null) return url;
-        if (url.contains(".m3u8") || url.contains(".m3u") || url.contains(".ts")) {
-            return url;
-        }
-
-        OkHttpClient client = new OkHttpClient.Builder()
-                .followRedirects(true)
-                .followSslRedirects(true)
-                .build();
-
-        Request request = new Request.Builder()
-                .url(url)
-                .addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36")
-                .addHeader("Referer", "https://www.huya.com/")
-                .addHeader("Origin", "https://www.huya.com")
-                .addHeader("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-                .build();
-
-        try (Response response = client.newCall(request).execute()) {
-            if (!response.isSuccessful() || response.body() == null) return url;
-
-            String body = response.body().string();
-            String finalUrl = response.request().url().toString();
-
-            if (finalUrl.contains(".m3u8")) return finalUrl;
-
-            Pattern p = Pattern.compile("https?://[^\\s\"']+\\.m3u8");
-            Matcher m = p.matcher(body);
-            if (m.find()) return m.group();
-
-            return finalUrl;
-        } catch (Exception e) {
-            e.printStackTrace();
-            return url;
-        }
-    }
 
     private final BroadcastReceiver toggleControllerReceiver = new BroadcastReceiver() {
         @Override
@@ -144,14 +97,11 @@ public class MainActivity extends AppCompatActivity {
                         | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
         );
         setContentView(R.layout.activity_main);
-
-        // 播放不息屏
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
         initInfoBar();
         appConfig = AppConfig.getInstance(this);
         loadSettings();
-
         sp = getSharedPreferences("app_settings", MODE_PRIVATE);
         currentPlayerType = sp.getInt("player_engine", 0);
 
@@ -163,6 +113,7 @@ public class MainActivity extends AppCompatActivity {
         playerView = findViewById(R.id.player_view);
         playerView.setUseController(false);
         panel_layout = findViewById(R.id.panel_layout);
+
         ListView lvGroup = findViewById(R.id.lv_group);
         ListView lvChannelList = findViewById(R.id.lv_channel_list);
         ListView lvDate = findViewById(R.id.lv_date);
@@ -222,23 +173,26 @@ public class MainActivity extends AppCompatActivity {
         panelManager = new PanelManager(panel_layout, channelListManager, epgManagerWrapper);
 
         mPlayerManager = TVPlayerManager.getInstance(this);
-
         mPlayerManager.attachPlayerView(playerView);
         playerStateListener = new PlayerStateListenerImpl(this);
         mPlayerManager.setOnPlayStateListener(playerStateListener);
+
         screenRatioManager = new ScreenRatioManager(mPlayerManager, appConfig);
         screenRatioManager.apply();
+
         gestureManager = new GestureManager(this);
         PlayerGestureHelper gestureHelper = gestureManager.create();
         playerView.setOnTouchListener((v, event) -> {
             gestureHelper.handleTouch(event);
             return true;
         });
+
         keyEventManager = new KeyEventManager(this);
         httpService = HttpConfigService.getInstance();
         httpService.start();
         switchManager = ChannelSwitchManager.getInstance();
         currentPlayIndex = appConfig.getLastPlayIndex();
+
         loadLiveAndEpg();
         initListViewClick();
     }
@@ -287,11 +241,13 @@ public class MainActivity extends AppCompatActivity {
                 channelListManager.setChannels(channelSourceList, currentPlayIndex);
                 playChannel(currentPlayIndex);
             }
+
             @Override
             public void onError(String errorMsg) {
                 Toast.makeText(MainActivity.this, "加载失败：" + errorMsg, Toast.LENGTH_SHORT).show();
             }
         });
+
         EpgManager.getInstance().setEpgUrl(UrlConfig.EPG_URL);
         EpgManager.getInstance().loadEpg(() -> runOnUiThread(() -> {
             if (!channelSourceList.isEmpty()) {
@@ -310,44 +266,41 @@ public class MainActivity extends AppCompatActivity {
         playChannel(idx);
     }
 
+    // ==========================
+    // 优化后：直接播放原始地址，不解析、不炸流
+    // ==========================
     public void playChannel(int index) {
-    if (channelSourceList == null || channelSourceList.isEmpty()) return;
-    index = Math.max(0, Math.min(index, channelSourceList.size() - 1));
-    currentPlayIndex = index;
-    Channel ch = channelSourceList.get(index);
-    if (ch == null || TextUtils.isEmpty(ch.getPlayUrl())) return;
+        if (channelSourceList == null || channelSourceList.isEmpty()) return;
+        index = Math.max(0, Math.min(index, channelSourceList.size() - 1));
+        currentPlayIndex = index;
+        Channel ch = channelSourceList.get(index);
+        if (ch == null || TextUtils.isEmpty(ch.getPlayUrl())) return;
 
-    // 1. 日志：记录播放前信息
-    SettingsActivity.log("=== 开始播放 ===");
-    SettingsActivity.log("频道名称：" + ch.getName());
-    SettingsActivity.log("原始地址：" + ch.getPlayUrl());
+        // 直接播放原始地址，完全交给 TVPlayerManager 处理
+        String url = ch.getPlayUrl();
 
-    // 2. 解析真实地址（只定义一次 realUrl，关键！）
-    String realUrl = getRealPlayUrl(ch.getPlayUrl());
+        SettingsActivity.log("=== 播放 ===");
+        SettingsActivity.log("频道：" + ch.getName());
+        SettingsActivity.log("地址：" + url);
 
-    // 3. 日志：记录解析后的地址
-    SettingsActivity.log("解析后地址：" + realUrl);
+        playerStateListener.setCurrentChannelName(ch.getName());
+        mPlayerManager.playUrl(url); // 直接播，不解析
 
-    // 4. 调用播放器（只播放一次）
-    playerStateListener.setCurrentChannelName(ch.getName());
-    mPlayerManager.play(realUrl);
+        appConfig.setLastPlayIndex(index);
+        channelListManager.setChannels(channelSourceList, index);
+        epgManagerWrapper.refresh(ch, channelSourceList, currentSelectedDateIndex);
 
-    // 其他原有代码（全部保留，不要动）
-    appConfig.setLastPlayIndex(index);
-    channelListManager.setChannels(channelSourceList, index);
-    epgManagerWrapper.refresh(ch, channelSourceList, currentSelectedDateIndex);
-
-    if (info_bar != null) {
-        info_bar.setVisibility(View.VISIBLE);
-        info_bar.removeCallbacks(hideInfoBar);
-        info_bar.postDelayed(hideInfoBar, 2000);
-        tv_channel_name.setText(ch.getName());
-        TVPlayerManager.LiveInfo live = mPlayerManager.getLiveInfo();
-        tv_tag_fhd.setText(live.quality);
-        tv_tag_audio.setText(live.audio);
-        tv_bitrate.setText(live.bitrate);
+        if (info_bar != null) {
+            info_bar.setVisibility(View.VISIBLE);
+            info_bar.removeCallbacks(hideInfoBar);
+            info_bar.postDelayed(hideInfoBar, 2000);
+            tv_channel_name.setText(ch.getName());
+            TVPlayerManager.LiveInfo live = mPlayerManager.getLiveInfo();
+            tv_tag_fhd.setText(live.quality);
+            tv_tag_audio.setText(live.audio);
+            tv_bitrate.setText(live.bitrate);
+        }
     }
-}
 
     private void initListViewClick() {
         ListView lvChannelList = findViewById(R.id.lv_channel_list);
@@ -391,9 +344,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onPause() {
         super.onPause();
-        if (mPlayerManager != null) {
-            mPlayerManager.pause();
-        }
+        if (mPlayerManager != null) mPlayerManager.pause();
     }
 
     @Override
@@ -401,9 +352,7 @@ public class MainActivity extends AppCompatActivity {
         super.onResume();
         loadSettings();
         screenRatioManager.apply();
-        if (mPlayerManager != null) {
-            mPlayerManager.resume();
-        }
+        if (mPlayerManager != null) mPlayerManager.resume();
     }
 
     @Override

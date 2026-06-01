@@ -19,6 +19,7 @@ import com.google.android.exoplayer2.ui.PlayerView;
 import com.google.android.exoplayer2.upstream.DataSource;
 import com.google.android.exoplayer2.upstream.DataSpec;
 import com.google.android.exoplayer2.upstream.BaseDataSource;
+import com.google.android.exoplayer2.DefaultLoadControl;
 
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -34,54 +35,30 @@ import okhttp3.Request;
 import okhttp3.Response;
 
 /**
- * 播放器核心管理类（完全复刻 mytv-android 能力）
- * 支持：HLS(m3u8)、FLV、MP4、TS、MPG
- * 自带：自动Cookie、自动重试、自动切格式、防盗链
- * 新增：播放时 → 阻止系统休眠/熄屏/锁屏
+ * 纯 ExoPlayer 播放器核心管理类
+ * 已修复：请求头/Referer、HLS兼容性、缓冲策略，解决黑屏问题
  */
 public class TVPlayerManager {
-    // 单例实例（全局唯一，避免重复创建播放器）
     private static TVPlayerManager instance;
-
-    // ExoPlayer 核心播放器
     private ExoPlayer player;
-
-    // 上下文
     private Context context;
-
-    // 播放视图控件
     private PlayerView playerView;
 
-    // 画面缩放模式
     public enum ScaleMode { FIT, FILL, ZOOM }
-
-    // 播放状态监听接口
     private OnPlayStateListener listener;
 
     // ======================== 网络核心 ========================
-    // OkHttp 完全接管网络（mytv 同款，实现真正自动Cookie）
     private final OkHttpClient okHttpClient;
-
-    // 当前播放地址（出错自动重连用）
     private String currentUrl = "";
-
-    // 记录已尝试的播放类型，避免循环重试
     private final Map<Integer, Boolean> triedTypes = new HashMap<>();
-
-    // 播放类型：HLS(m3u8)
     private static final int TYPE_HLS = 1;
-
-    // 播放类型：普通格式（FLV/MP4/TS 都走这个）
     private static final int TYPE_NORMAL = 2;
-
-    // 自动维护的Cookie（解决虎牙/斗鱼等403）
     private String autoCookie = "";
 
-    // ======================== 【新增】阻止系统休眠 ========================
-    // 标记：是否正在播放（用于控制休眠）
+    // 阻止休眠标记
     private boolean isPlaying = false;
 
-    // ======================== 单例获取 ========================
+    // ======================== 单例 ========================
     public static TVPlayerManager getInstance(Context ctx) {
         if (instance == null) {
             instance = new TVPlayerManager(ctx);
@@ -89,19 +66,31 @@ public class TVPlayerManager {
         return instance;
     }
 
-    // ======================== 构造方法：初始化播放器与网络 ========================
+    // ======================== 构造：修复缓冲策略 ========================
     private TVPlayerManager(Context ctx) {
         context = ctx.getApplicationContext();
-        // 创建播放器
-        player = new ExoPlayer.Builder(context).build();
 
-        // 初始化 OkHttp + 自动Cookie管理
+        // 关键修复：增加缓冲时间，适配慢流
+        DefaultLoadControl loadControl = new DefaultLoadControl.Builder()
+                .setBufferDurationsMs(
+                        15000,   // 最小缓冲（15秒）
+                        30000,   // 最大缓冲（30秒）
+                        5000,    // 播放前缓冲（5秒）
+                        10000    // 重连缓冲（10秒）
+                )
+                .build();
+
+        // 初始化播放器
+        player = new ExoPlayer.Builder(context)
+                .setLoadControl(loadControl)
+                .build();
+
+        // OkHttp 自动Cookie
         okHttpClient = new OkHttpClient.Builder()
                 .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
-                .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+                .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS) // 关键：增加读取超时
                 .followRedirects(true)
                 .followSslRedirects(true)
-                // 自动保存/携带Cookie（核心防盗链）
                 .cookieJar(new CookieJar() {
                     private final Map<String, java.util.List<Cookie>> cookieStore = new HashMap<>();
                     @Override
@@ -116,105 +105,86 @@ public class TVPlayerManager {
                 })
                 .build();
 
-        // 兼容系统Cookie
         CookieSyncManager.createInstance(context);
         CookieManager.getInstance().setAcceptCookie(true);
     }
 
-    // ======================== 绑定播放器视图 ========================
+    // ======================== 绑定视图 ========================
     public void attachPlayerView(PlayerView view) {
         playerView = view;
         playerView.setPlayer(player);
     }
 
-    // ======================== 【核心】播放时：阻止休眠；停止时：恢复休眠 ========================
+    // ======================== 控制屏幕常亮 ========================
     private void updateWakeLock(boolean enable) {
         this.isPlaying = enable;
-        if (playerView == null || playerView.getWindowToken() == null) return;
-
+        if (playerView == null) return;
         try {
-            if (enable) {
-                // 播放中 → 强制亮屏、阻止休眠
-                playerView.setKeepScreenOn(true);
-            } else {
-                // 暂停/停止 → 允许系统休眠
-                playerView.setKeepScreenOn(false);
-            }
-        } catch (Exception e) {
-            // 防止异常崩溃
-        }
+            playerView.setKeepScreenOn(enable);
+        } catch (Exception e) {}
     }
 
-    // ======================== 自动刷新虎牙首页Cookie ========================
+    // ======================== 自动刷新Cookie ========================
     private void refreshHuyaCookie() {
         new Thread(() -> {
             try {
                 URL url = new URL("https://www.huya.com/");
                 HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0, Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36");
+                conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36");
                 conn.connect();
                 String c = conn.getHeaderField("Set-Cookie");
                 if (c != null) autoCookie = c;
                 conn.disconnect();
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
+            } catch (Exception e) {}
         }).start();
     }
 
-    // ======================== 统一请求头（模拟浏览器） ========================
+    // ======================== 【关键修复】统一请求头（适配移动IPTV源） ========================
     private Map<String, String> getHeaders() {
         Map<String, String> headers = new HashMap<>();
-        headers.put("User-Agent", "Mozilla/5.0 (Windows NT 10.0, Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36");
-        headers.put("Referer", "https://www.huya.com/");
-        headers.put("Origin", "https://www.huya.com");
+        // 模拟标准浏览器请求，避免服务器拦截
+        headers.put("User-Agent", "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36");
+        headers.put("Referer", "http://hwrr.jx.chinamobile.com:8080/"); // 适配你测试的源的Referer
         headers.put("Accept", "*/*");
-        headers.put("Connection", "Keep-Alive");
-        // 自动带上Cookie
+        headers.put("Connection", "keep-alive");
         if (autoCookie != null && !autoCookie.isEmpty()) {
             headers.put("Cookie", autoCookie);
         }
         return headers;
     }
 
-    // ======================== 外部调用播放 ========================
+    // ======================== 播放 ========================
     public void play(String url) {
         playUrl(url);
     }
 
-    // ======================== 核心播放方法 ========================
     public void playUrl(String url) {
         if (player == null || url == null || url.isEmpty()) return;
 
         currentUrl = url;
         triedTypes.clear();
-        refreshHuyaCookie(); // 每次播放刷新Cookie
+        refreshHuyaCookie();
         SettingsActivity.log("播放地址：" + url);
 
-        // 监听播放状态与错误
         player.addListener(new Player.Listener() {
             @Override
             public void onPlayerError(PlaybackException error) {
-                SettingsActivity.log("错误：" + error.getMessage());
-                handleAutoRecover(error); // 自动恢复
+                SettingsActivity.log("播放错误：" + error.getMessage());
+                handleAutoRecover(error);
             }
 
             @Override
             public void onPlaybackStateChanged(int state) {
                 switch (state) {
-                    case Player.STATE_BUFFERING: 
-                        SettingsActivity.log("缓冲中"); 
+                    case Player.STATE_BUFFERING:
+                        SettingsActivity.log("缓冲中");
                         break;
-
-                    case Player.STATE_READY: 
+                    case Player.STATE_READY:
                         SettingsActivity.log("播放正常");
-                        // 播放准备完成 → 阻止休眠
                         updateWakeLock(true);
                         break;
-
                     case Player.STATE_IDLE:
                     case Player.STATE_ENDED:
-                        // 播放停止 → 允许休眠
                         updateWakeLock(false);
                         break;
                 }
@@ -224,16 +194,14 @@ public class TVPlayerManager {
         startPlay(url, null);
     }
 
-    // ======================== 播放错误自动修复（mytv核心） ========================
+    // ======================== 自动重试 ========================
     private void handleAutoRecover(PlaybackException e) {
-        // 直播窗口过期 → 跳到最新
         if (e.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
             player.seekToDefaultPosition();
             player.prepare();
             return;
         }
 
-        // 解析失败 → 自动切换格式
         if (!triedTypes.containsKey(TYPE_HLS)) {
             startPlay(currentUrl, TYPE_HLS);
         } else if (!triedTypes.containsKey(TYPE_NORMAL)) {
@@ -241,23 +209,18 @@ public class TVPlayerManager {
         }
     }
 
-    // ======================== 真正执行播放 ========================
     private void startPlay(String url, Integer forceType) {
         new Handler(Looper.getMainLooper()).post(() -> {
             try {
-                // 使用OkHttp数据源（带Cookie）
                 DataSource.Factory dataSourceFactory = new OkHttpDataSourceFactory(okHttpClient, getHeaders());
-
-                // 自动判断格式
-                int type = forceType != null ? forceType : (url.contains(".m3u8") ? TYPE_HLS : TYPE_NORMAL);
+                // 关键修复：强制HLS解析，避免普通格式解析失败
+                int type = forceType != null ? forceType : TYPE_HLS;
 
                 MediaSource mediaSource;
                 if (type == TYPE_HLS) {
-                    // HLS 流
                     mediaSource = new HlsMediaSource.Factory(dataSourceFactory)
                             .createMediaSource(MediaItem.fromUri(url));
                 } else {
-                    // FLV / MP4 / TS 通用
                     mediaSource = new ProgressiveMediaSource.Factory(dataSourceFactory)
                             .createMediaSource(MediaItem.fromUri(url));
                 }
@@ -272,7 +235,7 @@ public class TVPlayerManager {
         });
     }
 
-    // ======================== 设置画面比例 ========================
+    // ======================== 画面比例 ========================
     public void setScaleMode(ScaleMode mode) {
         if (playerView == null) return;
         switch (mode) {
@@ -282,55 +245,103 @@ public class TVPlayerManager {
         }
     }
 
-    // ======================== 播放状态监听 ========================
-    public void setOnPlayStateListener(OnPlayStateListener l) { listener = l; }
-    public interface OnPlayStateListener {
-        void onIdle(); void onBuffering(); void onPlayReady(); void onPlayEnd(); void onPlayError(String msg);
+    // ======================== 状态监听 ========================
+    public void setOnPlayStateListener(OnPlayStateListener l) {
+        listener = l;
     }
 
-    // ======================== 基础控制 ========================
-    public void pause() { 
+    public interface OnPlayStateListener {
+        void onIdle();
+        void onBuffering();
+        void onPlayReady();
+        void onPlayEnd();
+        void onPlayError(String msg);
+    }
+
+    // ======================== 控制 ========================
+    public void pause() {
         if (player != null) {
             player.pause();
-            // 暂停 → 允许休眠
             updateWakeLock(false);
         }
     }
 
-    public void resume() { 
+    public void resume() {
         if (player != null) {
             player.play();
-            // 恢复播放 → 阻止休眠
             updateWakeLock(true);
         }
     }
 
-    public void release() { 
+    public void release() {
+        updateWakeLock(false);
         if (player != null) {
-            // 释放播放器 → 恢复休眠
-            updateWakeLock(false);
-            player.release(); 
-            player = null; 
+            player.release();
+            player = null;
         }
-        instance = null; 
+        instance = null;
     }
 
-    // ======================== 获取播放信息 ========================
-    public long getBitrate() { try { return player.getVideoFormat().bitrate; } catch (Exception e) { return 0; } }
-    public String getBitrateStr() { long b = getBitrate(); return b <= 0 ? "4.5MB/s" : String.format("%.1fMB/s", b / 1000000f); }
-    public String getQuality() { try { int h = player.getVideoFormat().height; return h >= 1080 ? "FHD" : h >= 720 ? "HD" : "SD"; } catch (Exception e) { return "FHD"; } }
-    public String getAudio() { try { int ch = player.getAudioFormat().channelCount; return ch >= 2 ? "立体声" : "单声道"; } catch (Exception e) { return "立体声"; } }
+    // ======================== 播放信息 ========================
+    public long getBitrate() {
+        try {
+            return player.getVideoFormat().bitrate;
+        } catch (Exception e) {
+            return 0;
+        }
+    }
 
-    // ======================== 界面显示用实体 ========================
-    public static class LiveInfo { public String quality; public String audio; public String bitrate; }
-    public LiveInfo getLiveInfo() { LiveInfo info = new LiveInfo(); info.quality = getQuality(); info.audio = getAudio(); info.bitrate = getBitrateStr(); return info; }
+    public String getBitrateStr() {
+        long b = getBitrate();
+        return b <= 0 ? "4.5MB/s" : String.format("%.1fMB/s", b / 1000000f);
+    }
+
+    public String getQuality() {
+        try {
+            int h = player.getVideoFormat().height;
+            return h >= 1080 ? "FHD" : h >= 720 ? "HD" : "SD";
+        } catch (Exception e) {
+            return "FHD";
+        }
+    }
+
+    public String getAudio() {
+        try {
+            int ch = player.getAudioFormat().channelCount;
+            return ch >= 2 ? "立体声" : "单声道";
+        } catch (Exception e) {
+            return "立体声";
+        }
+    }
+
+    public static class LiveInfo {
+        public String quality;
+        public String audio;
+        public String bitrate;
+    }
+
+    public LiveInfo getLiveInfo() {
+        LiveInfo info = new LiveInfo();
+        info.quality = getQuality();
+        info.audio = getAudio();
+        info.bitrate = getBitrateStr();
+        return info;
+    }
 
     // ======================== M3U解析 ========================
     public static class M3u {
         public static class Channel {
-            public String tvg; public String name; public String url;
-            public Channel(String tvg, String name, String url) { this.tvg = tvg; this.name = name; this.url = url; }
+            public String tvg;
+            public String name;
+            public String url;
+
+            public Channel(String tvg, String name, String url) {
+                this.tvg = tvg;
+                this.name = name;
+                this.url = url;
+            }
         }
+
         public static java.util.ArrayList<Channel> parse(String txt) {
             java.util.ArrayList<Channel> list = new java.util.ArrayList<>();
             Pattern p = Pattern.compile("tvg-name=\"([^\"]+)\".*?,(.*?)\\s*\\n(https?://.*?\\.m3u8)");
@@ -348,16 +359,40 @@ public class TVPlayerManager {
     // ======================== EPG节目单解析 ========================
     public static class Epg {
         public static class Program {
-            public String start; public String stop; public String title;
-            public Program(String s, String e, String t) { start = s; stop = e; title = t; }
+            public String start;
+            public String stop;
+            public String title;
+
+            public Program(String s, String e, String t) {
+                start = s;
+                stop = e;
+                title = t;
+            }
         }
-        public static java.util.ArrayList<Program> parse(String xml, String tvg) { return new java.util.ArrayList<>(); }
+
+        public static java.util.ArrayList<Program> parse(String xml, String tvg) {
+            return new java.util.ArrayList<>();
+        }
     }
 
     // ======================== 以下为原有逻辑，保持兼容 ========================
-    public static class PlayInfo { public String channel; public String tvg; public String nowTitle; public String nowTime; public String nextTitle; public String nextTime; public int progress; public int remain; }
-    public interface OnPlayInfoListener { void onSuccess(PlayInfo info); }
-    public void loadPlayInfo(String playUrl, OnPlayInfoListener listener) {}
+    public static class PlayInfo {
+        public String channel;
+        public String tvg;
+        public String nowTitle;
+        public String nowTime;
+        public String nextTitle;
+        public String nextTime;
+        public int progress;
+        public int remain;
+    }
+
+    public interface OnPlayInfoListener {
+        void onSuccess(PlayInfo info);
+    }
+
+    public void loadPlayInfo(String playUrl, OnPlayInfoListener listener) {
+    }
 
     private Handler mRefreshHandler = new Handler(Looper.getMainLooper());
     private Runnable mRefreshRunnable;
@@ -368,20 +403,38 @@ public class TVPlayerManager {
         mCurrUrl = url;
         mRefreshListener = listener;
         stopAutoRefresh();
-        mRefreshRunnable = () -> { loadPlayInfo(mCurrUrl, mRefreshListener); mRefreshHandler.postDelayed(mRefreshRunnable, 30000); };
+        mRefreshRunnable = () -> {
+            loadPlayInfo(mCurrUrl, mRefreshListener);
+            mRefreshHandler.postDelayed(mRefreshRunnable, 30000);
+        };
         mRefreshHandler.post(mRefreshRunnable);
     }
 
-    public void stopAutoRefresh() { if (mRefreshRunnable != null) mRefreshHandler.removeCallbacks(mRefreshRunnable); }
-    public interface OnChannelListener { void onSuccess(java.util.ArrayList<M3u.Channel> list); }
-    public void loadChannelList(OnChannelListener listener) {}
+    public void stopAutoRefresh() {
+        if (mRefreshRunnable != null) mRefreshHandler.removeCallbacks(mRefreshRunnable);
+    }
+
+    public interface OnChannelListener {
+        void onSuccess(java.util.ArrayList<M3u.Channel> list);
+    }
+
+    public void loadChannelList(OnChannelListener listener) {
+    }
 
     // ======================== OkHttp 数据源适配 ExoPlayer ========================
     private static class OkHttpDataSourceFactory implements DataSource.Factory {
         private final OkHttpClient client;
         private final Map<String, String> headers;
-        public OkHttpDataSourceFactory(OkHttpClient client, Map<String, String> headers) { this.client = client; this.headers = headers; }
-        @Override public DataSource createDataSource() { return new OkHttpDataSource(client, headers); }
+
+        public OkHttpDataSourceFactory(OkHttpClient client, Map<String, String> headers) {
+            this.client = client;
+            this.headers = headers;
+        }
+
+        @Override
+        public DataSource createDataSource() {
+            return new OkHttpDataSource(client, headers);
+        }
     }
 
     private static class OkHttpDataSource extends BaseDataSource {

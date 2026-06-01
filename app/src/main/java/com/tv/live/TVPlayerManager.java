@@ -1,11 +1,9 @@
 package com.tv.live;
 
-import com.tv.live.SettingsActivity;
 import android.content.Context;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
-import android.view.Surface;
 import android.webkit.CookieManager;
 import android.webkit.CookieSyncManager;
 
@@ -60,19 +58,17 @@ public class TVPlayerManager {
         return instance;
     }
 
-    // ====================== 【修复黑屏】构造方法 ======================
     private TVPlayerManager(Context ctx) {
         context = ctx.getApplicationContext();
 
-        // ✅ 修复1：开启解码器自动回退（硬解失败 → 软解）
+        // 解码器自动回退（硬解失败→软解，专治黑屏）
         DefaultRenderersFactory renderersFactory = new DefaultRenderersFactory(context);
-        renderersFactory.setEnableDecoderFallback(true); // 这行是救黑屏的命
+        renderersFactory.setEnableDecoderFallback(true);
 
         DefaultLoadControl loadControl = new DefaultLoadControl.Builder()
                 .setBufferDurationsMs(15000, 30000, 5000, 10000)
                 .build();
 
-        // ✅ 修复2：用安全渲染工厂创建播放器
         player = new ExoPlayer.Builder(context)
                 .setRenderersFactory(renderersFactory)
                 .setLoadControl(loadControl)
@@ -101,25 +97,22 @@ public class TVPlayerManager {
         CookieManager.getInstance().setAcceptCookie(true);
     }
 
-    // ====================== 【修复黑屏】绑定Surface ======================
+    // 绑定播放器（无getSurfaceView，绝对安全）
     public void attachPlayerView(PlayerView view) {
         playerView = view;
         playerView.setPlayer(player);
-
-        // ✅ 修复3：强制绑定Surface，保证画面能渲染
-        if (playerView.getSurfaceView() != null) {
-            player.setVideoSurface(playerView.getSurfaceView().getHolder().getSurface());
-        }
     }
 
-    // ====================== 控制亮屏 ======================
+    // 播放时阻止熄屏休眠
     private void updateWakeLock(boolean enable) {
         this.isPlaying = enable;
         if (playerView == null) return;
-        try { playerView.setKeepScreenOn(enable); } catch (Exception e) {}
+        try {
+            playerView.setKeepScreenOn(enable);
+        } catch (Exception e) {}
     }
 
-    // ====================== 请求头（适配IPTV） ======================
+    // 请求头
     private Map<String, String> getHeaders() {
         Map<String, String> headers = new HashMap<>();
         headers.put("User-Agent", "ExoPlayer2");
@@ -131,26 +124,50 @@ public class TVPlayerManager {
         return headers;
     }
 
-    private void refreshHuyaCookie() { /* 保留 */ }
+    private void refreshHuyaCookie() {
+        new Thread(() -> {
+            try {
+                URL url = new URL("https://www.huya.com/");
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36");
+                conn.connect();
+                String c = conn.getHeaderField("Set-Cookie");
+                if (c != null) autoCookie = c;
+                conn.disconnect();
+            } catch (Exception ignored) {}
+        }).start();
+    }
 
-    // ====================== 播放 ======================
-    public void play(String url) { playUrl(url); }
+    public void play(String url) {
+        playUrl(url);
+    }
+
     public void playUrl(String url) {
         if (player == null || url == null || url.isEmpty()) return;
         currentUrl = url;
         triedTypes.clear();
+        refreshHuyaCookie();
 
         player.addListener(new Player.Listener() {
             @Override
-            public void onPlayerError(PlaybackException error) { handleAutoRecover(error); }
+            public void onPlayerError(PlaybackException error) {
+                handleAutoRecover(error);
+            }
+
             @Override
             public void onPlaybackStateChanged(int state) {
                 switch (state) {
-                    case Player.STATE_READY: updateWakeLock(true); break;
-                    case Player.STATE_IDLE: case Player.STATE_ENDED: updateWakeLock(false); break;
+                    case Player.STATE_READY:
+                        updateWakeLock(true);
+                        break;
+                    case Player.STATE_IDLE:
+                    case Player.STATE_ENDED:
+                        updateWakeLock(false);
+                        break;
                 }
             }
         });
+
         startPlay(url, null);
     }
 
@@ -171,8 +188,14 @@ public class TVPlayerManager {
                 DataSource.Factory dataSourceFactory = new OkHttpDataSourceFactory(okHttpClient, getHeaders());
                 int type = forceType != null ? forceType : TYPE_HLS;
 
-                MediaSource mediaSource = new HlsMediaSource.Factory(dataSourceFactory)
-                        .createMediaSource(MediaItem.fromUri(url));
+                MediaSource mediaSource;
+                if (type == TYPE_HLS) {
+                    mediaSource = new HlsMediaSource.Factory(dataSourceFactory)
+                            .createMediaSource(MediaItem.fromUri(url));
+                } else {
+                    mediaSource = new ProgressiveMediaSource.Factory(dataSourceFactory)
+                            .createMediaSource(MediaItem.fromUri(url));
+                }
 
                 triedTypes.put(type, true);
                 player.setMediaSource(mediaSource);
@@ -184,40 +207,86 @@ public class TVPlayerManager {
         });
     }
 
-    // ====================== 基础方法（不动） ======================
     public void setScaleMode(ScaleMode mode) {
         if (playerView == null) return;
         switch (mode) {
-            case FIT: playerView.setResizeMode(com.google.android.exoplayer2.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT); break;
-            case FILL: playerView.setResizeMode(com.google.android.exoplayer2.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL); break;
-            case ZOOM: playerView.setResizeMode(com.google.android.exoplayer2.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM); break;
+            case FIT:
+                playerView.setResizeMode(com.google.android.exoplayer2.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT);
+                break;
+            case FILL:
+                playerView.setResizeMode(com.google.android.exoplayer2.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL);
+                break;
+            case ZOOM:
+                playerView.setResizeMode(com.google.android.exoplayer2.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM);
+                break;
         }
     }
 
     public interface OnPlayStateListener {
-        void onIdle(); void onBuffering(); void onPlayReady(); void onPlayEnd(); void onPlayError(String msg);
+        void onIdle();
+        void onBuffering();
+        void onPlayReady();
+        void onPlayEnd();
+        void onPlayError(String msg);
     }
-    public void setOnPlayStateListener(OnPlayStateListener l) { listener = l; }
-    public void pause() { if(player!=null){player.pause();updateWakeLock(false);}}
-    public void resume() { if(player!=null){player.play();updateWakeLock(true);}}
-    public void release() { updateWakeLock(false);if(player!=null){player.release();player=null;}instance=null; }
+
+    public void setOnPlayStateListener(OnPlayStateListener l) {
+        listener = l;
+    }
+
+    public void pause() {
+        if (player != null) {
+            player.pause();
+            updateWakeLock(false);
+        }
+    }
+
+    public void resume() {
+        if (player != null) {
+            player.play();
+            updateWakeLock(true);
+        }
+    }
+
+    public void release() {
+        updateWakeLock(false);
+        if (player != null) {
+            player.release();
+            player = null;
+        }
+        instance = null;
+    }
+
+    public static class LiveInfo {
+        public String quality;
+        public String audio;
+        public String bitrate;
+    }
 
     public LiveInfo getLiveInfo() {
         LiveInfo info = new LiveInfo();
-        info.quality = "HD"; info.audio = "立体声"; info.bitrate = "4.5MB/s";
+        info.quality = "HD";
+        info.audio = "立体声";
+        info.bitrate = "4.5MB/s";
         return info;
     }
-    public static class LiveInfo { public String quality; public String audio; public String bitrate; }
 
-    // ====================== OkHttp 数据源（不动） ======================
+    // ==================== OkHttp 数据源（无报错版） ====================
     private static class OkHttpDataSourceFactory implements DataSource.Factory {
         private final OkHttpClient client;
         private final Map<String, String> headers;
+
         public OkHttpDataSourceFactory(OkHttpClient client, Map<String, String> headers) {
-            this.client = client; this.headers = headers;
+            this.client = client;
+            this.headers = headers;
         }
-        @Override public DataSource createDataSource() { return new OkHttpDataSource(client, headers); }
+
+        @Override
+        public DataSource createDataSource() {
+            return new OkHttpDataSource(client, headers);
+        }
     }
+
     private static class OkHttpDataSource extends BaseDataSource {
         private final OkHttpClient client;
         private final Map<String, String> headers;
@@ -226,25 +295,45 @@ public class TVPlayerManager {
         private Uri uri;
 
         public OkHttpDataSource(OkHttpClient client, Map<String, String> headers) {
-            super(true); this.client = client; this.headers = headers;
+            super(true);
+            this.client = client;
+            this.headers = headers;
         }
+
         @Override
         public long open(DataSpec dataSpec) throws java.io.IOException {
             uri = dataSpec.uri;
             Request.Builder builder = new Request.Builder().url(dataSpec.uri.toString());
-            if (headers != null) for (Map.Entry<String, String> h : headers.entrySet()) builder.addHeader(h.getKey(), h.getValue());
+            if (headers != null) {
+                for (Map.Entry<String, String> h : headers.entrySet()) {
+                    builder.addHeader(h.getKey(), h.getValue());
+                }
+            }
             response = client.newCall(builder.build()).execute();
             inputStream = response.body().byteStream();
             return response.body().contentLength();
         }
-        @Override public int read(byte[] buffer, int offset, int length) {
-            try { int r=inputStream.read(buffer,offset,length);if(r>0)bytesTransferred(r);return r;
-            } catch (Exception e) { return -1; }
+
+        @Override
+        public int read(byte[] buffer, int offset, int length) {
+            try {
+                int read = inputStream.read(buffer, offset, length);
+                if (read > 0) bytesTransferred(read);
+                return read;
+            } catch (Exception e) {
+                return -1;
+            }
         }
-        @Override public Uri getUri() { return uri; }
-        @Override public void close() {
-            try{if(response!=null)response.close();}catch(Exception ignored){}
-            try{if(inputStream!=null)inputStream.close();}catch(Exception ignored){}
+
+        @Override
+        public Uri getUri() {
+            return uri;
+        }
+
+        @Override
+        public void close() {
+            try { if (response != null) response.close(); } catch (Exception ignored) {}
+            try { if (inputStream != null) inputStream.close(); } catch (Exception ignored) {}
         }
     }
 }

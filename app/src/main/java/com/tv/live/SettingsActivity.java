@@ -1,4 +1,5 @@
 package com.tv.live;
+
 import android.app.AlertDialog;
 import android.content.Context;
 import android.content.Intent;
@@ -38,7 +39,7 @@ import java.util.List;
 
 public class SettingsActivity extends AppCompatActivity {
     private Switch sw_boot, sw_epg, sw_auto_update, sw_reverse, sw_num_channel;
-    private TextView tv_screen_ratio, tv_custom_source, tv_custom_epg, tv_multi_source, tv_multi_epg, tv_qr_code, tv_player_engine;
+    private TextView tv_screen_ratio, tv_custom_source, tv_custom_epg, tv_multi_source, tv_multi_epg, tv_qr_code;
     private SharedPreferences sp;
     private String currentWebUrl;
     private ServerSocket serverSocket;
@@ -46,54 +47,44 @@ public class SettingsActivity extends AppCompatActivity {
     private static final int PORT = 10481;
     private SettingsAdapter adapter;
 
-        // ====================== 全局日志系统（已修复） ======================
-    // 使用 StringBuilder 存储日志，更稳定高效；volatile 确保多线程可见性
+    // ====================== 全局日志系统 ======================
     public static volatile StringBuilder PLAY_LOG = new StringBuilder();
 
-    // 记录日志的静态方法，所有地方都可以调用
     public static void log(String msg) {
         if (PLAY_LOG == null) {
             PLAY_LOG = new StringBuilder();
         }
         String time = android.text.format.DateFormat.format("HH:mm:ss", new java.util.Date()).toString();
         PLAY_LOG.append("[").append(time).append("] ").append(msg).append("\n");
-
-        // 日志过长时自动裁剪，防止内存占用过高
         if (PLAY_LOG.length() > 20000) {
             PLAY_LOG.delete(0, PLAY_LOG.length() - 15000);
         }
     }
 
-    // 查看日志弹窗
     private void showLogDialog() {
         ScrollView scrollView = new ScrollView(this);
         TextView tv = new TextView(this);
-
-        // 读取日志内容，如果为空则显示提示
         if (PLAY_LOG == null || PLAY_LOG.length() == 0) {
             tv.setText("暂无日志内容，请先播放一个频道再查看。");
         } else {
             tv.setText(PLAY_LOG.toString());
         }
-
         tv.setTextSize(12);
         tv.setPadding(40, 40, 40, 40);
         tv.setTextColor(Color.BLACK);
         scrollView.addView(tv);
-
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("📄 解析 & 播放日志");
         builder.setView(scrollView);
         builder.setPositiveButton("关闭", null);
         builder.setNeutralButton("清空日志", (dialog, which) -> {
             if (PLAY_LOG != null) {
-                PLAY_LOG.setLength(0); // 清空 StringBuilder
+                PLAY_LOG.setLength(0);
             }
             Toast.makeText(this, "日志已清空", Toast.LENGTH_SHORT).show();
         });
         builder.show();
     }
-    // =================================================================
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -104,6 +95,7 @@ public class SettingsActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
         setContentView(R.layout.activity_settings);
+
         sp = getSharedPreferences("app_settings", MODE_PRIVATE);
 
         sw_boot = findViewById(R.id.sw_boot);
@@ -111,90 +103,60 @@ public class SettingsActivity extends AppCompatActivity {
         sw_auto_update = findViewById(R.id.sw_auto_update);
         sw_reverse = findViewById(R.id.sw_reverse);
         sw_num_channel = findViewById(R.id.sw_num_channel);
+
         tv_screen_ratio = findViewById(R.id.tv_screen_ratio);
         tv_custom_source = findViewById(R.id.tv_custom_source);
         tv_custom_epg = findViewById(R.id.tv_custom_epg);
         tv_multi_source = findViewById(R.id.tv_multi_source);
         tv_multi_epg = findViewById(R.id.tv_multi_epg);
         tv_qr_code = findViewById(R.id.tv_qr_code);
-        tv_player_engine = findViewById(R.id.tv_player_engine);
 
-        // ====================== 查看日志按钮点击 ======================
+        // 日志查看
         findViewById(R.id.log_viewer).setOnClickListener(v -> showLogDialog());
 
-        updatePlayerDisplay();
-
+        // 开机自启
         sw_boot.setChecked(sp.getBoolean("boot_auto_start", false));
         sw_boot.setOnCheckedChangeListener((buttonView, isChecked) -> {
             sp.edit().putBoolean("boot_auto_start", isChecked).apply();
             Toast.makeText(this, "开机自启" + (isChecked ? "已开启" : "已关闭"), Toast.LENGTH_SHORT).show();
         });
 
+        // EPG开关
         sw_epg.setChecked(sp.getBoolean("epg_enable", true));
         sw_epg.setOnCheckedChangeListener((buttonView, isChecked) -> {
             sp.edit().putBoolean("epg_enable", isChecked).apply();
             Toast.makeText(this, "节目单" + (isChecked ? "已开启" : "已关闭"), Toast.LENGTH_SHORT).show();
         });
 
+        // 自动更新源
         sw_auto_update.setChecked(sp.getBoolean("auto_update_source", true));
         sw_auto_update.setOnCheckedChangeListener((buttonView, isChecked) -> {
             sp.edit().putBoolean("auto_update_source", isChecked).apply();
             Toast.makeText(this, "自动更新源" + (isChecked ? "已开启" : "已关闭"), Toast.LENGTH_SHORT).show();
         });
 
+        // 换台反转
         sw_reverse.setChecked(sp.getBoolean("channel_reverse", false));
         sw_reverse.setOnCheckedChangeListener((buttonView, isChecked) -> {
             sp.edit().putBoolean("channel_reverse", isChecked).apply();
             Toast.makeText(this, "换台反转" + (isChecked ? "已开启" : "已关闭"), Toast.LENGTH_SHORT).show();
         });
 
+        // 数字选台
         sw_num_channel.setChecked(sp.getBoolean("number_channel_enable", true));
         sw_num_channel.setOnCheckedChangeListener((buttonView, isChecked) -> {
             sp.edit().putBoolean("number_channel_enable", isChecked).apply();
             Toast.makeText(this, "数字选台" + (isChecked ? "已开启" : "已关闭"), Toast.LENGTH_SHORT).show();
         });
 
-        tv_player_engine.setOnClickListener(v -> {
-            String[] items = {"ExoPlayer（默认）", "VLC 播放器"};
-            int current = sp.getInt("player_engine", 0);
-            new AlertDialog.Builder(this)
-                    .setTitle("选择播放器")
-                    .setSingleChoiceItems(items, current, (dialog, which) -> {
-                        if (which != current) {
-                            sp.edit().putInt("player_engine", which).apply();
-                            updatePlayerDisplay();
-                            Toast.makeText(this, "已切换：" + items[which] + "，即将重启生效", Toast.LENGTH_LONG).show();
-                            dialog.dismiss();
-                            new Handler().postDelayed(this::restartApp, 1000);
-                        } else {
-                            dialog.dismiss();
-                        }
-                    })
-                    .setNegativeButton("取消", null)
-                    .show();
-        });
-
+        // 检查更新
         findViewById(R.id.btn_check_update).setOnClickListener(v -> {
             Toast.makeText(this, "已是最新版本", Toast.LENGTH_SHORT).show();
         });
 
-        loadConfig();
         initListeners();
         currentWebUrl = "http://" + getDeviceIPAddress() + ":" + PORT;
         startPushServer();
-    }
-
-    private void updatePlayerDisplay() {
-        int type = sp.getInt("player_engine", 0);
-        tv_player_engine.setText(type == 0 ? "当前：ExoPlayer" : "当前：VLC 播放器");
-    }
-
-    private void restartApp() {
-        Intent intent = new Intent(this, MainActivity.class);
-        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_NEW_TASK);
-        startActivity(intent);
-        finish();
-        android.os.Process.killProcess(android.os.Process.myPid());
     }
 
     private void initListeners() {
@@ -204,14 +166,6 @@ public class SettingsActivity extends AppCompatActivity {
         tv_multi_source.setOnClickListener(v -> showHistoryDialog("直播源历史", "live_history"));
         tv_multi_epg.setOnClickListener(v -> showHistoryDialog("节目单历史", "epg_history"));
         tv_qr_code.setOnClickListener(v -> showQRCodeDialog());
-    }
-
-    private void loadConfig() {
-        sw_boot.setChecked(sp.getBoolean("boot_auto_start", false));
-        sw_epg.setChecked(sp.getBoolean("epg_enable", true));
-        sw_auto_update.setChecked(sp.getBoolean("auto_update_source", true));
-        sw_reverse.setChecked(sp.getBoolean("channel_reverse", false));
-        sw_num_channel.setChecked(sp.getBoolean("number_channel_enable", true));
     }
 
     private void showRatioDialog() {
@@ -339,7 +293,7 @@ public class SettingsActivity extends AppCompatActivity {
                                 }
                                 String epgUrl = json.optString("epg_url");
                                 if (!epgUrl.isEmpty()) {
-                                    sp.edit().putString("epg_url", epgUrl).apply();
+                                    sp.edit().putString("custom_epg_url", epgUrl).apply();
                                     addHistory("epg_history", epgUrl);
                                     hasUpdate = true;
                                 }

@@ -15,6 +15,7 @@ import com.google.android.exoplayer2.MediaItem;
 import com.google.android.exoplayer2.PlaybackException;
 import com.google.android.exoplayer2.Player;
 import com.google.android.exoplayer2.source.hls.HlsMediaSource;
+import com.google.android.exoplayer2.ui.AspectRatioFrameLayout;
 import com.google.android.exoplayer2.ui.PlayerView;
 import com.google.android.exoplayer2.upstream.DefaultHttpDataSource;
 
@@ -31,7 +32,6 @@ public class TVPlayerManager {
     private ExoPlayer player;
     private Context context;
     private PlayerView playerView;
-    public enum ScaleMode { FIT, FILL, ZOOM }
     private OnPlayStateListener listener;
     private String currentUrl = "";
     private boolean isPlaying = false;
@@ -118,7 +118,7 @@ public class TVPlayerManager {
         DefaultRenderersFactory renderersFactory = new DefaultRenderersFactory(context);
         renderersFactory.setEnableDecoderFallback(true);
 
-        // 缓冲配置：最小缓冲1秒，起播缓冲0.8秒
+        // 缓冲配置：最小缓冲1000ms(1秒)，起播缓冲800ms(0.8秒)
         DefaultLoadControl loadControl = new DefaultLoadControl.Builder()
                 .setBufferDurationsMs(
                         1000,
@@ -141,6 +141,8 @@ public class TVPlayerManager {
     public void attachPlayerView(PlayerView view) {
         playerView = view;
         playerView.setPlayer(player);
+        // 固定：视频按原始比例 + 自动适配设备屏幕，全局自适应
+        playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
     }
 
     private void updateWakeLock(boolean enable) {
@@ -210,10 +212,8 @@ public class TVPlayerManager {
             player.addListener(new Player.Listener() {
                 @Override
                 public void onPlayerError(PlaybackException error) {
-                    // 兼容旧版：移除 type 与 TYPE 常量，保留完整异常信息+堆栈
                     Log.e(TAG, getLogTime() + " ========== 播放异常/解析失败 ==========");
                     Log.e(TAG, getLogTime() + " 错误信息：" + error.getMessage());
-                    // 打印完整异常堆栈，定位崩溃代码
                     Log.e(TAG, getLogTime() + " 异常堆栈：", error);
                 }
 
@@ -232,27 +232,7 @@ public class TVPlayerManager {
             });
 
         } catch (Exception e) {
-            // 外层全局异常：防止初始化/构建源阶段直接APP崩溃
             Log.e(TAG, getLogTime() + " ========== 播放器全局崩溃异常 ==========", e);
-        }
-    }
-
-    public void setScaleMode(ScaleMode mode) {
-        try {
-            if (playerView == null) return;
-            switch (mode) {
-                case FIT:
-                    playerView.setResizeMode(com.google.android.exoplayer2.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT);
-                    break;
-                case FILL:
-                    playerView.setResizeMode(com.google.android.exoplayer2.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL);
-                    break;
-                case ZOOM:
-                    playerView.setResizeMode(com.google.android.exoplayer2.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM);
-                    break;
-            }
-        } catch (Exception e) {
-            Log.e(TAG, getLogTime() + " 画面缩放设置异常", e);
         }
     }
 

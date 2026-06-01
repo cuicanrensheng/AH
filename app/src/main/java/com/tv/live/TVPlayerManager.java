@@ -1,297 +1,184 @@
 package com.tv.live;
 
 import android.content.Context;
-import android.os.Handler;
-import android.os.Looper;
-import android.util.Log;
-import android.view.View;
-import android.webkit.CookieManager;
-import android.webkit.CookieSyncManager;
-import android.widget.TextView;
-import com.google.android.exoplayer2.DefaultLoadControl;
-import com.google.android.exoplayer2.DefaultRenderersFactory;
+import android.net.Uri;
 import com.google.android.exoplayer2.ExoPlayer;
 import com.google.android.exoplayer2.MediaItem;
-import com.google.android.exoplayer2.PlaybackException;
+import com.google.android.exoplayer2.PlaybackParameters;
 import com.google.android.exoplayer2.Player;
-import com.google.android.exoplayer2.source.ProgressiveMediaSource;
-import com.google.android.exoplayer2.source.hls.HlsMediaSource;
 import com.google.android.exoplayer2.ui.PlayerView;
 import com.google.android.exoplayer2.upstream.DefaultHttpDataSource;
-import java.net.URI;
-import java.text.SimpleDateFormat;
-import java.util.Date;
+import com.google.android.exoplayer2.util.Util;
 import java.util.HashMap;
-import java.util.Locale;
 import java.util.Map;
 
 public class TVPlayerManager {
-    private static final String TAG = "TVPlayerLog";
     private static TVPlayerManager instance;
     private ExoPlayer player;
-    private Context context;
     private PlayerView playerView;
+    private OnLiveInfoUpdateListener liveInfoUpdateListener;
 
-    public enum ScaleMode { FIT, FILL, ZOOM }
-
-    private OnPlayStateListener listener;
-    private String currentUrl = "";
-    private boolean isPlaying = false;
-    private int currentChannelNumber = 0;
-
-    private TextView channelNumText;
-    private final Handler mHandler = new Handler(Looper.getMainLooper());
-    private static final long CHANNEL_SHOW_DURATION = 3000L;
-    private final SimpleDateFormat logSdf = new SimpleDateFormat("HH:mm:ss", Locale.getDefault());
-    private OnLiveInfoUpdateListener infoUpdateListener;
-
-    public static class LiveInfo {
-        public String quality;
-        public String audio;
-        public String bitrate;
-        public int channelNum;
-    }
-
+    // 直播信息回调接口
     public interface OnLiveInfoUpdateListener {
         void onLiveInfoUpdate(LiveInfo info);
     }
 
-    public void setOnLiveInfoUpdateListener(OnLiveInfoUpdateListener listener) {
-        this.infoUpdateListener = listener;
+    public static class LiveInfo {
+        public String quality = "未知";
+        public String audio = "未知";
+        public String bitrate = "未知";
     }
 
-    public LiveInfo getLiveInfo() {
-        LiveInfo info = new LiveInfo();
-        info.quality = "HD";
-        info.audio = "立体声";
-        info.bitrate = "4.5MB/s";
-        info.channelNum = currentChannelNumber;
-        return info;
+    private TVPlayerManager() {
+        // 私有构造，单例模式
     }
 
-    public void setCurrentChannelNumber(int num) {
-        this.currentChannelNumber = num;
-    }
-
-    private void notifyLiveInfoUpdate() {
-        if (infoUpdateListener != null) {
-            new Handler(Looper.getMainLooper()).post(() ->
-                    infoUpdateListener.onLiveInfoUpdate(getLiveInfo()));
-        }
-    }
-
-    public void bindChannelText(TextView textView) {
-        this.channelNumText = textView;
-    }
-
-    private void showChannelAndAutoHide() {
-        if (channelNumText == null) return;
-        mHandler.removeCallbacks(hideChannelRunnable);
-        channelNumText.setText("频道：" + currentChannelNumber);
-        channelNumText.setVisibility(View.VISIBLE);
-        mHandler.postDelayed(hideChannelRunnable, CHANNEL_SHOW_DURATION);
-    }
-
-    private final Runnable hideChannelRunnable = new Runnable() {
-        @Override
-        public void run() {
-            if (channelNumText != null) {
-                channelNumText.setVisibility(View.GONE);
-            }
-        }
-    };
-
-    public static TVPlayerManager getInstance(Context ctx) {
+    public static TVPlayerManager getInstance() {
         if (instance == null) {
-            instance = new TVPlayerManager(ctx);
+            synchronized (TVPlayerManager.class) {
+                if (instance == null) {
+                    instance = new TVPlayerManager();
+                }
+            }
         }
         return instance;
     }
 
-    private TVPlayerManager(Context ctx) {
-        context = ctx.getApplicationContext();
-        DefaultRenderersFactory renderersFactory = new DefaultRenderersFactory(context);
-        renderersFactory.setEnableDecoderFallback(true);
-
-        DefaultLoadControl loadControl = new DefaultLoadControl.Builder()
-                .setBufferDurationsMs(3000, 30000, 1500, 3000)
-                .build();
-
-        player = new ExoPlayer.Builder(context)
-                .setRenderersFactory(renderersFactory)
-                .setLoadControl(loadControl)
-                .build();
-
-        CookieSyncManager.createInstance(context);
-        CookieManager.getInstance().setAcceptCookie(true);
-    }
-
-    public void onForeground() {
-        try {
-            if (player != null && playerView != null) {
-                playerView.setPlayer(player);
-                player.play();
-            }
-        } catch (Exception e) {}
-    }
-
-    public void onBackground() {
-        try {
-            if (player != null) {
-                player.pause();
-            }
-        } catch (Exception e) {}
-    }
-
-    public void attachPlayerView(PlayerView view) {
-        playerView = view;
+    /**
+     * 绑定 PlayerView
+     */
+    public void attachPlayerView(PlayerView playerView) {
+        this.playerView = playerView;
+        Context context = playerView.getContext();
+        if (player == null) {
+            // 关键：创建带完整请求头和重定向支持的播放器
+            createExoPlayer(context);
+        }
         playerView.setPlayer(player);
     }
 
-    private void updateWakeLock(boolean enable) {
-        isPlaying = enable;
-        if (playerView != null) {
-            playerView.setKeepScreenOn(enable);
-        }
+    /**
+     * 创建 ExoPlayer，核心配置在这里
+     */
+    private void createExoPlayer(Context context) {
+        // 1. 创建支持重定向和自定义请求头的 DataSource
+        DefaultHttpDataSource.Factory dataSourceFactory = new DefaultHttpDataSource.Factory()
+                // 和浏览器一致的 User-Agent，绕过反爬
+                .setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36")
+                // 关键：允许 HTTP -> HTTPS 跨协议重定向
+                .setAllowCrossProtocolRedirects(true)
+                // 关键：带上抓包中验证过的 Referer 等请求头
+                .setDefaultRequestProperties(getHeaders());
+
+        // 2. 创建 ExoPlayer
+        player = new ExoPlayer.Builder(context)
+                .setMediaSourceFactory(new com.google.android.exoplayer2.source.DefaultMediaSourceFactory(dataSourceFactory))
+                .build();
+
+        // 可选：添加播放状态监听
+        player.addListener(new Player.Listener() {
+            @Override
+            public void onPlaybackStateChanged(int state) {
+                // 这里可以处理播放状态，如缓冲、播放完成等
+            }
+        });
     }
 
-    private String getLogTime() {
-        return "[" + logSdf.format(new Date()) + "]";
-    }
-
-    private Map<String, String> getHeaders(String url) {
+    /**
+     * 返回和抓包中一致的请求头
+     */
+    private Map<String, String> getHeaders() {
         Map<String, String> headers = new HashMap<>();
-        headers.put("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36");
+        headers.put("Referer", "http://cdn.jdshipin.com/");
         headers.put("Accept", "*/*");
-        headers.put("Connection", "keep-alive");
         headers.put("Icy-MetaData", "1");
-
-        try {
-            URI uri = new URI(url);
-            headers.put("Referer", uri.getScheme() + "://" + uri.getHost() + "/");
-        } catch (Exception e) {
-            headers.put("Referer", "https://www.huya.com/");
-        }
-
-        String cookies = CookieManager.getInstance().getCookie(url);
-        if (cookies != null) {
-            headers.put("Cookie", cookies);
-        }
+        headers.put("Accept-Encoding", "identity");
         return headers;
     }
 
-    public void play(String url) {
-        playUrl(url);
-    }
-
+    /**
+     * 播放指定 URL 的直播流
+     */
     public void playUrl(String url) {
-        try {
-            if (player == null || url == null || url.trim().isEmpty()) return;
-            currentUrl = url.trim();
+        if (player == null) return;
+        player.stop();
+        player.clearMediaItems();
 
-            player.stop();
-            player.clearMediaItems();
+        // 创建媒体项并播放
+        MediaItem mediaItem = MediaItem.fromUri(Uri.parse(url));
+        player.setMediaItem(mediaItem);
+        player.prepare();
+        player.play();
 
-            DefaultHttpDataSource.Factory httpFactory = new DefaultHttpDataSource.Factory()
-                    .setDefaultRequestProperties(getHeaders(currentUrl))
-                    .setConnectTimeoutMs(5000)
-                    .setReadTimeoutMs(10000)
-                    .setAllowCrossProtocolRedirects(true);
-
-            MediaItem mediaItem = MediaItem.fromUri(currentUrl);
-            Object mediaSource;
-
-            if (currentUrl.toLowerCase().contains("m3u8")) {
-                mediaSource = new HlsMediaSource.Factory(httpFactory).createMediaSource(mediaItem);
-            } else {
-                mediaSource = new ProgressiveMediaSource.Factory(httpFactory).createMediaSource(mediaItem);
-            }
-
-            player.setMediaSource((com.google.android.exoplayer2.source.MediaSource) mediaSource);
-            player.prepare();
-            player.play();
-
-            player.addListener(new Player.Listener() {
-                @Override
-                public void onPlayerError(PlaybackException error) {
-                    Log.e(TAG, "播放异常: " + error.getMessage());
-                    if (listener != null) listener.onPlayError(error.getMessage());
-
-                    new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                        playUrl(currentUrl);
-                    }, 1000);
-                }
-
-                @Override
-                public void onPlaybackStateChanged(int state) {
-                    if (state == Player.STATE_READY) {
-                        updateWakeLock(true);
-                        notifyLiveInfoUpdate();
-                        showChannelAndAutoHide();
-                        if (listener != null) listener.onPlayReady();
-                    } else if (state == Player.STATE_BUFFERING) {
-                        if (listener != null) listener.onBuffering();
-                    } else if (state == Player.STATE_ENDED) {
-                        if (listener != null) listener.onPlayEnd();
-                    } else if (state == Player.STATE_IDLE) {
-                        if (listener != null) listener.onIdle();
-                    } else {
-                        updateWakeLock(false);
-                    }
-                }
-            });
-
-        } catch (Exception e) {
-            Log.e(TAG, "全局异常", e);
+        // 模拟直播信息更新（你可以根据实际情况扩展）
+        if (liveInfoUpdateListener != null) {
+            LiveInfo info = new LiveInfo();
+            info.quality = "高清";
+            info.audio = "立体声";
+            info.bitrate = "直播流";
+            liveInfoUpdateListener.onLiveInfoUpdate(info);
         }
     }
 
-    public void setScaleMode(ScaleMode mode) {
-        try {
-            if (playerView == null) return;
-            switch (mode) {
-                case FIT:
-                    playerView.setResizeMode(com.google.android.exoplayer2.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT);
-                    break;
-                case FILL:
-                    playerView.setResizeMode(com.google.android.exoplayer2.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL);
-                    break;
-                case ZOOM:
-                    playerView.setResizeMode(com.google.android.exoplayer2.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM);
-                    break;
-            }
-        } catch (Exception e) {}
+    /**
+     * 设置直播信息回调
+     */
+    public void setOnLiveInfoUpdateListener(OnLiveInfoUpdateListener listener) {
+        this.liveInfoUpdateListener = listener;
     }
 
-    public interface OnPlayStateListener {
-        void onIdle();
-        void onBuffering();
-        void onPlayReady();
-        void onPlayEnd();
-        void onPlayError(String msg);
-    }
-
-    public void setOnPlayStateListener(OnPlayStateListener l) {
-        listener = l;
-    }
-
+    /**
+     * 暂停
+     */
     public void pause() {
-        try { if (player != null) player.pause(); } catch (Exception e) {}
+        if (player != null) {
+            player.pause();
+        }
     }
 
+    /**
+     * 恢复播放
+     */
     public void resume() {
-        try { if (player != null) player.play(); } catch (Exception e) {}
+        if (player != null) {
+            player.play();
+        }
     }
 
+    /**
+     * 切到后台时调用
+     */
+    public void onBackground() {
+        pause();
+    }
+
+    /**
+     * 切回前台时调用
+     */
+    public void onForeground() {
+        resume();
+    }
+
+    /**
+     * 释放播放器资源
+     */
     public void release() {
-        try {
-            mHandler.removeCallbacks(hideChannelRunnable);
-            updateWakeLock(false);
-            if (player != null) {
-                player.release();
-                player = null;
-            }
-            instance = null;
-        } catch (Exception e) {}
+        if (player != null) {
+            player.stop();
+            player.release();
+            player = null;
+        }
+        playerView = null;
+    }
+
+    /**
+     * 获取当前直播信息
+     */
+    public LiveInfo getLiveInfo() {
+        LiveInfo info = new LiveInfo();
+        info.quality = "高清";
+        info.audio = "立体声";
+        info.bitrate = "直播流";
+        return info;
     }
 }

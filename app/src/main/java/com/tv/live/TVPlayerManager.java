@@ -4,8 +4,6 @@ import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
-import android.webkit.CookieManager;
-import android.webkit.CookieSyncManager;
 import android.widget.TextView;
 
 import com.google.android.exoplayer2.DefaultLoadControl;
@@ -49,6 +47,7 @@ public class TVPlayerManager {
     private TextView channelNumText;
     private final Handler mHandler = new Handler(Looper.getMainLooper());
     private static final long CHANNEL_SHOW_DURATION = 3000L;
+    private static final long RENDER_TIMEOUT = 3000L; // 渲染超时时间：3秒
 
     // 日志时间格式
     private final SimpleDateFormat logSdf = new SimpleDateFormat("HH:mm:ss", Locale.getDefault());
@@ -123,8 +122,10 @@ public class TVPlayerManager {
 
     private TVPlayerManager(Context ctx) {
         context = ctx.getApplicationContext();
+        // 关键优化：强制优先使用硬件解码器
         DefaultRenderersFactory renderersFactory = new DefaultRenderersFactory(context);
-        renderersFactory.setEnableDecoderFallback(true);
+        renderersFactory.setEnableDecoderFallback(false); // 禁用软件解码 fallback，强制使用硬件解码
+        renderersFactory.setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF);
 
         // 缓冲配置：最小缓冲1秒，起播缓冲0.8秒
         DefaultLoadControl loadControl = new DefaultLoadControl.Builder()
@@ -142,14 +143,14 @@ public class TVPlayerManager {
                 .build();
 
         // 初始化Cookie
-        CookieSyncManager.createInstance(context);
-        CookieManager.getInstance().setAcceptCookie(true);
+        android.webkit.CookieSyncManager.createInstance(context);
+        android.webkit.CookieManager.getInstance().setAcceptCookie(true);
     }
 
     public void attachPlayerView(PlayerView view) {
         playerView = view;
         playerView.setPlayer(player);
-        // 默认使用【原始比例】自适应设备屏幕
+        // 默认使用【原始比例】自适应设备屏幕，避免画面被裁剪/缩放异常
         setScaleMode(ScaleMode.ORIGIN);
     }
 
@@ -163,7 +164,7 @@ public class TVPlayerManager {
                     playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
                     break;
                 case FILL:
-                    // 填充：拉伸画面铺满全屏
+                    // 填充：拉伸画面铺满屏幕
                     playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
                     break;
                 case FULL:
@@ -202,7 +203,7 @@ public class TVPlayerManager {
             Log.e(TAG, getLogTime() + " Referer 生成异常", e);
         }
 
-        String cookies = CookieManager.getInstance().getCookie(url);
+        String cookies = android.webkit.CookieManager.getInstance().getCookie(url);
         if (cookies != null) {
             headers.put("Cookie", cookies);
         }
@@ -239,6 +240,9 @@ public class TVPlayerManager {
             player.prepare();
             player.play();
 
+            // 增加渲染超时检测
+            mHandler.postDelayed(renderTimeoutRunnable, RENDER_TIMEOUT);
+
             // 播放器状态监听（兼容低版本ExoPlayer）
             player.addListener(new Player.Listener() {
                 @Override
@@ -246,6 +250,7 @@ public class TVPlayerManager {
                     Log.e(TAG, getLogTime() + " ========== 播放异常/解析失败 ==========");
                     Log.e(TAG, getLogTime() + " 错误信息：" + error.getMessage());
                     Log.e(TAG, getLogTime() + " 异常堆栈：", error);
+                    mHandler.removeCallbacks(renderTimeoutRunnable);
                 }
 
                 @Override
@@ -256,6 +261,7 @@ public class TVPlayerManager {
                         updateWakeLock(true);
                         notifyLiveInfoUpdate();
                         showChannelAndAutoHide();
+                        mHandler.removeCallbacks(renderTimeoutRunnable);
                     } else {
                         updateWakeLock(false);
                     }
@@ -266,6 +272,19 @@ public class TVPlayerManager {
             Log.e(TAG, getLogTime() + " ========== 播放器全局崩溃异常 ==========", e);
         }
     }
+
+    // 渲染超时任务
+    private final Runnable renderTimeoutRunnable = new Runnable() {
+        @Override
+        public void run() {
+            Log.e(TAG, getLogTime() + " 渲染超时，尝试重置播放器");
+            if (player != null) {
+                player.stop();
+                player.prepare();
+                player.play();
+            }
+        }
+    };
 
     public interface OnPlayStateListener {
         void onIdle();
@@ -304,6 +323,7 @@ public class TVPlayerManager {
     public void release() {
         try {
             mHandler.removeCallbacks(hideChannelRunnable);
+            mHandler.removeCallbacks(renderTimeoutRunnable);
             updateWakeLock(false);
             if (player != null) {
                 player.release();

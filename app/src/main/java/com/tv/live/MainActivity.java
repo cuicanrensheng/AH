@@ -12,6 +12,7 @@ import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
 import android.os.Bundle;
+import android.os.Handler;
 import android.text.TextUtils;
 import android.view.KeyEvent;
 import android.view.View;
@@ -57,12 +58,14 @@ public class MainActivity extends AppCompatActivity {
     private boolean auto_update_source;
     private int currentSelectedDateIndex = 0;
     private SharedPreferences sp;
-
     private View info_bar;
     private TextView tv_channel_name, tv_tag_fhd, tv_tag_audio, tv_bitrate;
     private TextView tv_current_program_name, tv_current_time_range, tv_remaining_time;
     private TextView tv_next_program_name, tv_next_time_range;
     private android.widget.ProgressBar progress_program;
+
+    // 右上角频道号控件
+    private TextView tv_channel_num;
 
     private final Runnable hideInfoBar = () -> info_bar.setVisibility(View.GONE);
 
@@ -104,6 +107,10 @@ public class MainActivity extends AppCompatActivity {
         );
         setContentView(R.layout.activity_main);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+
+        // 初始化右上角频道号
+        tv_channel_num = findViewById(R.id.tv_channel_num);
+
         initInfoBar();
         appConfig = AppConfig.getInstance(this);
         loadSettings();
@@ -174,25 +181,19 @@ public class MainActivity extends AppCompatActivity {
         dateListManager.initDate();
         panelManager = new PanelManager(panel_layout, channelListManager, epgManagerWrapper);
 
-        // ====================== 播放器初始化（已加实时刷新） ======================
         mPlayerManager = TVPlayerManager.getInstance(this);
         mPlayerManager.attachPlayerView(playerView);
         playerStateListener = new PlayerStateListenerImpl(this);
         mPlayerManager.setOnPlayStateListener(playerStateListener);
 
-        // 实时刷新：画质、音频、码率
-        mPlayerManager.setOnLiveInfoUpdateListener(new TVPlayerManager.OnLiveInfoUpdateListener() {
-            @Override
-            public void onLiveInfoUpdate(TVPlayerManager.LiveInfo info) {
-                tv_tag_fhd.setText(info.quality);
-                tv_tag_audio.setText(info.audio);
-                tv_bitrate.setText(info.bitrate);
-            }
+        mPlayerManager.setOnLiveInfoUpdateListener(info -> {
+            tv_tag_fhd.setText(info.quality);
+            tv_tag_audio.setText(info.audio);
+            tv_bitrate.setText(info.bitrate);
         });
 
         screenRatioManager = new ScreenRatioManager(mPlayerManager, appConfig);
         screenRatioManager.apply();
-
         gestureManager = new GestureManager(this);
         PlayerGestureHelper gestureHelper = gestureManager.create();
         playerView.setOnTouchListener((v, event) -> {
@@ -278,7 +279,7 @@ public class MainActivity extends AppCompatActivity {
         playChannel(idx);
     }
 
-    // ====================== 播放频道（已加频道号） ======================
+    // 播放频道，并显示右上角频道号
     public void playChannel(int index) {
         if (channelSourceList == null || channelSourceList.isEmpty()) return;
         index = Math.max(0, Math.min(index, channelSourceList.size() - 1));
@@ -290,12 +291,12 @@ public class MainActivity extends AppCompatActivity {
         SettingsActivity.log("频道：" + ch.getName());
         SettingsActivity.log("地址：" + url);
         playerStateListener.setCurrentChannelName(ch.getName());
-
         mPlayerManager.playUrl(url);
-        // 自动设置频道号
-        mPlayerManager.setCurrentChannelNumber(index + 1);
-        appConfig.setLastPlayIndex(index);
 
+        // 显示右上角频道号（3秒后隐藏）
+        showChannelNum(index + 1);
+
+        appConfig.setLastPlayIndex(index);
         channelListManager.setChannels(channelSourceList, index);
         epgManagerWrapper.refresh(ch, channelSourceList, currentSelectedDateIndex);
 
@@ -309,6 +310,13 @@ public class MainActivity extends AppCompatActivity {
             tv_tag_audio.setText(live.audio);
             tv_bitrate.setText(live.bitrate);
         }
+    }
+
+    // 显示右上角频道号
+    public void showChannelNum(int num) {
+        tv_channel_num.setText(String.valueOf(num));
+        tv_channel_num.setVisibility(View.VISIBLE);
+        new Handler().postDelayed(() -> tv_channel_num.setVisibility(View.GONE), 3000);
     }
 
     private void initListViewClick() {

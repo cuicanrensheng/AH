@@ -1,155 +1,297 @@
 package com.tv.live;
-import android.os.Bundle;
-import android.view.KeyEvent;
-import android.view.MotionEvent;
-import androidx.appcompat.app.AppCompatActivity;
+
+import android.content.Context;
+import android.os.Handler;
+import android.os.Looper;
+import android.util.Log;
+import android.view.View;
+import android.webkit.CookieManager;
+import android.webkit.CookieSyncManager;
+import android.widget.TextView;
+import com.google.android.exoplayer2.DefaultLoadControl;
+import com.google.android.exoplayer2.DefaultRenderersFactory;
+import com.google.android.exoplayer2.ExoPlayer;
+import com.google.android.exoplayer2.MediaItem;
+import com.google.android.exoplayer2.PlaybackException;
+import com.google.android.exoplayer2.Player;
+import com.google.android.exoplayer2.source.ProgressiveMediaSource;
+import com.google.android.exoplayer2.source.hls.HlsMediaSource;
 import com.google.android.exoplayer2.ui.PlayerView;
-import java.util.ArrayList;
+import com.google.android.exoplayer2.upstream.DefaultHttpDataSource;
+import java.net.URI;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.HashMap;
-import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 
-public class LivePlayerActivity extends AppCompatActivity {
-
+public class TVPlayerManager {
+    private static final String TAG = "TVPlayerLog";
+    private static TVPlayerManager instance;
+    private ExoPlayer player;
+    private Context context;
     private PlayerView playerView;
-    private int currentChannel = 1;
-    private String currentPlayUrl = "";
 
-    // 全局直播源列表（自动生成）
-    public static List<ChannelItem> channelList = new ArrayList<>();
-    private HashMap<Integer, String> channelMap = new HashMap<>();
+    public enum ScaleMode { FIT, FILL, ZOOM }
 
-    // 切台防抖
-    private long lastChannelChangeTime = 0;
-    private static final long CHANNEL_COOLDOWN = 300;
-    private float touchStartY = 0;
-    private static final float SLIDE_THRESHOLD = 80;
+    private OnPlayStateListener listener;
+    private String currentUrl = "";
+    private boolean isPlaying = false;
+    private int currentChannelNumber = 0;
 
-    // 频道实体
-    public static class ChannelItem {
-        public int number;
-        public String url;
+    private TextView channelNumText;
+    private final Handler mHandler = new Handler(Looper.getMainLooper());
+    private static final long CHANNEL_SHOW_DURATION = 3000L;
+    private final SimpleDateFormat logSdf = new SimpleDateFormat("HH:mm:ss", Locale.getDefault());
+    private OnLiveInfoUpdateListener infoUpdateListener;
 
-        public ChannelItem(int number, String url) {
-            this.number = number;
-            this.url = url;
+    public static class LiveInfo {
+        public String quality;
+        public String audio;
+        public String bitrate;
+        public int channelNum;
+    }
+
+    public interface OnLiveInfoUpdateListener {
+        void onLiveInfoUpdate(LiveInfo info);
+    }
+
+    public void setOnLiveInfoUpdateListener(OnLiveInfoUpdateListener listener) {
+        this.infoUpdateListener = listener;
+    }
+
+    public LiveInfo getLiveInfo() {
+        LiveInfo info = new LiveInfo();
+        info.quality = "HD";
+        info.audio = "立体声";
+        info.bitrate = "4.5MB/s";
+        info.channelNum = currentChannelNumber;
+        return info;
+    }
+
+    public void setCurrentChannelNumber(int num) {
+        this.currentChannelNumber = num;
+    }
+
+    private void notifyLiveInfoUpdate() {
+        if (infoUpdateListener != null) {
+            new Handler(Looper.getMainLooper()).post(() ->
+                    infoUpdateListener.onLiveInfoUpdate(getLiveInfo()));
         }
     }
 
-    @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_live_player);
-        playerView = findViewById(R.id.player_view);
-
-        // 自动构建映射
-        buildChannelMap();
-
-        // 获取当前频道
-        currentChannel = getIntent().getIntExtra("channel_num", 1);
-        currentPlayUrl = getChannelUrl(currentChannel);
-
-        // 播放
-        TVPlayerManager manager = TVPlayerManager.getInstance(this);
-        manager.attachPlayerView(playerView);
-        manager.setCurrentChannelNumber(currentChannel);
-        manager.play(currentPlayUrl);
+    public void bindChannelText(TextView textView) {
+        this.channelNumText = textView;
     }
 
-    // 自动构建频道映射
-    private void buildChannelMap() {
-        channelMap.clear();
-        for (ChannelItem item : channelList) {
-            channelMap.put(item.number, item.url);
-        }
+    private void showChannelAndAutoHide() {
+        if (channelNumText == null) return;
+        mHandler.removeCallbacks(hideChannelRunnable);
+        channelNumText.setText("频道：" + currentChannelNumber);
+        channelNumText.setVisibility(View.VISIBLE);
+        mHandler.postDelayed(hideChannelRunnable, CHANNEL_SHOW_DURATION);
     }
 
-    // 自动取地址
-    private String getChannelUrl(int channelNumber) {
-        if (channelMap.containsKey(channelNumber)) {
-            return channelMap.get(channelNumber);
-        }
-        currentChannel = 1;
-        return channelMap.get(1);
-    }
-
-    @Override
-    protected void onResume() {
-        super.onResume();
-        TVPlayerManager.getInstance(this).onForeground();
-    }
-
-    @Override
-    protected void onPause() {
-        super.onPause();
-        TVPlayerManager.getInstance(this).onBackground();
-    }
-
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        TVPlayerManager.getInstance(this).release();
-    }
-
-    @Override
-    public boolean onKeyDown(int keyCode, KeyEvent event) {
-        long now = System.currentTimeMillis();
-        if (now - lastChannelChangeTime < CHANNEL_COOLDOWN) {
-            return true;
-        }
-
-        if (keyCode == KeyEvent.KEYCODE_DPAD_UP || keyCode == KeyEvent.KEYCODE_CHANNEL_UP) {
-            lastChannelChangeTime = now;
-            changeChannel(false);
-            return true;
-        }
-        if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN || keyCode == KeyEvent.KEYCODE_CHANNEL_DOWN) {
-            lastChannelChangeTime = now;
-            changeChannel(true);
-            return true;
-        }
-
-        return super.onKeyDown(keyCode, event);
-    }
-
-    @Override
-    public boolean onTouchEvent(MotionEvent event) {
-        switch (event.getAction()) {
-            case MotionEvent.ACTION_DOWN:
-                touchStartY = event.getY();
-                break;
-            case MotionEvent.ACTION_UP:
-                float offset = event.getY() - touchStartY;
-                long now = System.currentTimeMillis();
-
-                if (Math.abs(offset) > SLIDE_THRESHOLD && now - lastChannelChangeTime >= CHANNEL_COOLDOWN) {
-                    lastChannelChangeTime = now;
-                    if (offset < 0) {
-                        changeChannel(true);
-                    } else {
-                        changeChannel(false);
-                    }
-                }
-                break;
-        }
-        return true;
-    }
-
-    // 自动切台
-    private void changeChannel(boolean next) {
-        if (next) {
-            currentChannel++;
-        } else {
-            currentChannel--;
-            if (currentChannel < 1) {
-                currentChannel = 1;
-                return;
+    private final Runnable hideChannelRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (channelNumText != null) {
+                channelNumText.setVisibility(View.GONE);
             }
         }
+    };
 
-        currentPlayUrl = getChannelUrl(currentChannel);
+    public static TVPlayerManager getInstance(Context ctx) {
+        if (instance == null) {
+            instance = new TVPlayerManager(ctx);
+        }
+        return instance;
+    }
 
-        TVPlayerManager manager = TVPlayerManager.getInstance(this);
-        manager.setCurrentChannelNumber(currentChannel);
-        manager.play(currentPlayUrl);
+    private TVPlayerManager(Context ctx) {
+        context = ctx.getApplicationContext();
+        DefaultRenderersFactory renderersFactory = new DefaultRenderersFactory(context);
+        renderersFactory.setEnableDecoderFallback(true);
+
+        DefaultLoadControl loadControl = new DefaultLoadControl.Builder()
+                .setBufferDurationsMs(3000, 30000, 1500, 3000)
+                .build();
+
+        player = new ExoPlayer.Builder(context)
+                .setRenderersFactory(renderersFactory)
+                .setLoadControl(loadControl)
+                .build();
+
+        CookieSyncManager.createInstance(context);
+        CookieManager.getInstance().setAcceptCookie(true);
+    }
+
+    public void onForeground() {
+        try {
+            if (player != null && playerView != null) {
+                playerView.setPlayer(player);
+                player.play();
+            }
+        } catch (Exception e) {}
+    }
+
+    public void onBackground() {
+        try {
+            if (player != null) {
+                player.pause();
+            }
+        } catch (Exception e) {}
+    }
+
+    public void attachPlayerView(PlayerView view) {
+        playerView = view;
+        playerView.setPlayer(player);
+    }
+
+    private void updateWakeLock(boolean enable) {
+        isPlaying = enable;
+        if (playerView != null) {
+            playerView.setKeepScreenOn(enable);
+        }
+    }
+
+    private String getLogTime() {
+        return "[" + logSdf.format(new Date()) + "]";
+    }
+
+    private Map<String, String> getHeaders(String url) {
+        Map<String, String> headers = new HashMap<>();
+        headers.put("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36");
+        headers.put("Accept", "*/*");
+        headers.put("Connection", "keep-alive");
+        headers.put("Icy-MetaData", "1");
+
+        try {
+            URI uri = new URI(url);
+            headers.put("Referer", uri.getScheme() + "://" + uri.getHost() + "/");
+        } catch (Exception e) {
+            headers.put("Referer", "https://www.huya.com/");
+        }
+
+        String cookies = CookieManager.getInstance().getCookie(url);
+        if (cookies != null) {
+            headers.put("Cookie", cookies);
+        }
+        return headers;
+    }
+
+    public void play(String url) {
+        playUrl(url);
+    }
+
+    public void playUrl(String url) {
+        try {
+            if (player == null || url == null || url.trim().isEmpty()) return;
+            currentUrl = url.trim();
+
+            player.stop();
+            player.clearMediaItems();
+
+            DefaultHttpDataSource.Factory httpFactory = new DefaultHttpDataSource.Factory()
+                    .setDefaultRequestProperties(getHeaders(currentUrl))
+                    .setConnectTimeoutMs(5000)
+                    .setReadTimeoutMs(10000)
+                    .setAllowCrossProtocolRedirects(true);
+
+            MediaItem mediaItem = MediaItem.fromUri(currentUrl);
+            Object mediaSource;
+
+            if (currentUrl.toLowerCase().contains("m3u8")) {
+                mediaSource = new HlsMediaSource.Factory(httpFactory).createMediaSource(mediaItem);
+            } else {
+                mediaSource = new ProgressiveMediaSource.Factory(httpFactory).createMediaSource(mediaItem);
+            }
+
+            player.setMediaSource((com.google.android.exoplayer2.source.MediaSource) mediaSource);
+            player.prepare();
+            player.play();
+
+            player.addListener(new Player.Listener() {
+                @Override
+                public void onPlayerError(PlaybackException error) {
+                    Log.e(TAG, "播放异常: " + error.getMessage());
+                    if (listener != null) listener.onPlayError(error.getMessage());
+
+                    new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                        playUrl(currentUrl);
+                    }, 1000);
+                }
+
+                @Override
+                public void onPlaybackStateChanged(int state) {
+                    if (state == Player.STATE_READY) {
+                        updateWakeLock(true);
+                        notifyLiveInfoUpdate();
+                        showChannelAndAutoHide();
+                        if (listener != null) listener.onPlayReady();
+                    } else if (state == Player.STATE_BUFFERING) {
+                        if (listener != null) listener.onBuffering();
+                    } else if (state == Player.STATE_ENDED) {
+                        if (listener != null) listener.onPlayEnd();
+                    } else if (state == Player.STATE_IDLE) {
+                        if (listener != null) listener.onIdle();
+                    } else {
+                        updateWakeLock(false);
+                    }
+                }
+            });
+
+        } catch (Exception e) {
+            Log.e(TAG, "全局异常", e);
+        }
+    }
+
+    public void setScaleMode(ScaleMode mode) {
+        try {
+            if (playerView == null) return;
+            switch (mode) {
+                case FIT:
+                    playerView.setResizeMode(com.google.android.exoplayer2.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT);
+                    break;
+                case FILL:
+                    playerView.setResizeMode(com.google.android.exoplayer2.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL);
+                    break;
+                case ZOOM:
+                    playerView.setResizeMode(com.google.android.exoplayer2.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM);
+                    break;
+            }
+        } catch (Exception e) {}
+    }
+
+    public interface OnPlayStateListener {
+        void onIdle();
+        void onBuffering();
+        void onPlayReady();
+        void onPlayEnd();
+        void onPlayError(String msg);
+    }
+
+    public void setOnPlayStateListener(OnPlayStateListener l) {
+        listener = l;
+    }
+
+    public void pause() {
+        try { if (player != null) player.pause(); } catch (Exception e) {}
+    }
+
+    public void resume() {
+        try { if (player != null) player.play(); } catch (Exception e) {}
+    }
+
+    public void release() {
+        try {
+            mHandler.removeCallbacks(hideChannelRunnable);
+            updateWakeLock(false);
+            if (player != null) {
+                player.release();
+                player = null;
+            }
+            instance = null;
+        } catch (Exception e) {}
     }
 }

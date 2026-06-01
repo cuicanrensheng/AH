@@ -5,7 +5,8 @@ import android.os.Handler;
 import android.os.Looper;
 import android.webkit.CookieManager;
 import android.webkit.CookieSyncManager;
-
+import com.google.android.exoplayer2.DefaultLoadControl;
+import com.google.android.exoplayer2.DefaultRenderersFactory;
 import com.google.android.exoplayer2.ExoPlayer;
 import com.google.android.exoplayer2.MediaItem;
 import com.google.android.exoplayer2.PlaybackException;
@@ -14,11 +15,8 @@ import com.google.android.exoplayer2.source.DefaultMediaSourceFactory;
 import com.google.android.exoplayer2.ui.PlayerView;
 import com.google.android.exoplayer2.upstream.DataSource;
 import com.google.android.exoplayer2.upstream.DefaultDataSource;
-import com.google.android.exoplayer2.upstream.HttpDataSource;
 import com.google.android.exoplayer2.upstream.DefaultHttpDataSource;
-import com.google.android.exoplayer2.DefaultLoadControl;
-import com.google.android.exoplayer2.DefaultRenderersFactory;
-
+import com.google.android.exoplayer2.upstream.HttpDataSource;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -34,15 +32,17 @@ public class TVPlayerManager {
     private String currentUrl = "";
     private String autoCookie = "";
     private boolean isPlaying = false;
+    private int currentChannelNumber = 0;
 
-    // ====================== 播放信息结构 ======================
+    // 播放信息（画质、音频、码率、频道号）
     public static class LiveInfo {
-        public String quality;   // 画质等级：FHD/HD/SD
-        public String audio;     // 音频格式：立体声/单声道
-        public String bitrate;   // 实时码率：X.XMB/s
+        public String quality;
+        public String audio;
+        public String bitrate;
+        public int channelNum;
     }
 
-    // ====================== 信息更新回调接口 ======================
+    // 实时刷新回调
     public interface OnLiveInfoUpdateListener {
         void onLiveInfoUpdate(LiveInfo info);
     }
@@ -55,56 +55,47 @@ public class TVPlayerManager {
         return instance;
     }
 
+    // 构造：自动识别数据源 + 解码兼容（不黑屏）
     private TVPlayerManager(Context ctx) {
         context = ctx.getApplicationContext();
 
-        // 硬解失败自动切软解（治黑屏）
         DefaultRenderersFactory renderersFactory = new DefaultRenderersFactory(context);
         renderersFactory.setEnableDecoderFallback(true);
 
-        // 缓冲优化
         DefaultLoadControl loadControl = new DefaultLoadControl.Builder()
                 .setBufferDurationsMs(15000, 30000, 5000, 10000)
                 .build();
 
-        // 自动识别数据源（核心）
-        HttpDataSource.Factory httpDataSourceFactory = new DefaultHttpDataSource.Factory()
+        // 自动识别 OkHttp / 系统 HTTP
+        HttpDataSource.Factory httpFactory = new DefaultHttpDataSource.Factory()
                 .setUserAgent("Mozilla/5.0")
                 .setDefaultRequestProperties(getHeaders());
 
-        DataSource.Factory dataSourceFactory = new DefaultDataSource.Factory(
-                context,
-                httpDataSourceFactory
-        );
-
+        DataSource.Factory dataSourceFactory = new DefaultDataSource.Factory(context, httpFactory);
         DefaultMediaSourceFactory mediaSourceFactory = new DefaultMediaSourceFactory(dataSourceFactory);
 
-        // 创建播放器
         player = new ExoPlayer.Builder(context)
                 .setRenderersFactory(renderersFactory)
                 .setLoadControl(loadControl)
                 .setMediaSourceFactory(mediaSourceFactory)
                 .build();
 
+        // Cookie 完整保留
         CookieSyncManager.createInstance(context);
         CookieManager.getInstance().setAcceptCookie(true);
     }
 
-    // 绑定播放画面
     public void attachPlayerView(PlayerView view) {
         playerView = view;
         playerView.setPlayer(player);
     }
 
-    // 播放时屏幕常亮
     private void updateWakeLock(boolean enable) {
         isPlaying = enable;
-        if (playerView != null) {
-            playerView.setKeepScreenOn(enable);
-        }
+        if (playerView != null) playerView.setKeepScreenOn(enable);
     }
 
-    // 请求头 + Cookie
+    // 请求头 + Cookie 都在
     private Map<String, String> getHeaders() {
         Map<String, String> headers = new HashMap<>();
         headers.put("User-Agent", "Mozilla/5.0");
@@ -117,43 +108,36 @@ public class TVPlayerManager {
         return headers;
     }
 
-    // ====================== 自动识别播放信息 ======================
+    // 设置频道号
+    public void setCurrentChannelNumber(int num) {
+        this.currentChannelNumber = num;
+    }
+
+    // 自动获取播放信息
     public LiveInfo getLiveInfo() {
         LiveInfo info = new LiveInfo();
-        // 兜底默认值
         info.quality = "HD";
         info.audio = "立体声";
         info.bitrate = "0.0MB/s";
+        info.channelNum = currentChannelNumber;
 
-        // 播放就绪后，自动读取真实信息
         if (player != null && player.getPlaybackState() == Player.STATE_READY) {
-            // 1. 自动识别画质（分辨率）
             if (player.getVideoFormat() != null) {
-                int height = player.getVideoFormat().height;
-                if (height >= 1080) {
-                    info.quality = "FHD";
-                } else if (height >= 720) {
-                    info.quality = "HD";
-                } else {
-                    info.quality = "SD";
-                }
+                int h = player.getVideoFormat().height;
+                if (h >= 1080) info.quality = "FHD";
+                else if (h >= 720) info.quality = "HD";
+                else info.quality = "SD";
 
-                // 2. 自动计算实时码率
-                long bitrate = player.getVideoFormat().bitrate;
-                double mbps = bitrate / 1_000_000.0;
-                info.bitrate = String.format("%.1fMB/s", mbps);
+                long b = player.getVideoFormat().bitrate;
+                info.bitrate = String.format("%.1fMB/s", b / 1000000.0);
             }
-
-            // 3. 自动识别音频声道
             if (player.getAudioFormat() != null) {
-                int channels = player.getAudioFormat().channelCount;
-                info.audio = (channels >= 2) ? "立体声" : "单声道";
+                info.audio = player.getAudioFormat().channelCount >= 2 ? "立体声" : "单声道";
             }
         }
         return info;
     }
 
-    // ====================== 播放入口 ======================
     public void playUrl(String url) {
         if (player == null || url == null || url.isEmpty()) return;
         currentUrl = url;
@@ -168,31 +152,22 @@ public class TVPlayerManager {
 
             @Override
             public void onPlaybackStateChanged(int state) {
-                switch (state) {
-                    case Player.STATE_BUFFERING:
-                        SettingsActivity.log("⌛ 缓冲中");
-                        break;
-                    case Player.STATE_READY:
-                        SettingsActivity.log("✅ 播放正常");
-                        updateWakeLock(true);
-                        // 播放就绪后，立刻通知界面刷新信息
-                        notifyLiveInfoUpdate();
-                        break;
-                    case Player.STATE_IDLE:
-                    case Player.STATE_ENDED:
-                        updateWakeLock(false);
-                        break;
+                if (state == Player.STATE_READY) {
+                    updateWakeLock(true);
+                    notifyLiveInfoUpdate();
+                } else if (state == Player.STATE_IDLE || state == Player.STATE_ENDED) {
+                    updateWakeLock(false);
                 }
             }
         });
 
-        MediaItem mediaItem = MediaItem.fromUri(url);
-        player.setMediaItem(mediaItem);
+        MediaItem item = MediaItem.fromUri(url);
+        player.setMediaItem(item);
         player.prepare();
         player.play();
     }
 
-    // 通知界面刷新播放信息
+    // 通知界面刷新
     private void notifyLiveInfoUpdate() {
         if (infoUpdateListener != null) {
             new Handler(Looper.getMainLooper()).post(() -> {
@@ -201,62 +176,30 @@ public class TVPlayerManager {
         }
     }
 
-    // 给界面设置监听
     public void setOnLiveInfoUpdateListener(OnLiveInfoUpdateListener listener) {
         this.infoUpdateListener = listener;
     }
 
-    public void play(String url) {
-        playUrl(url);
-    }
+    public void play(String url) { playUrl(url); }
 
     // 画面比例
     public void setScaleMode(ScaleMode mode) {
         if (playerView == null) return;
         switch (mode) {
-            case FIT:
-                playerView.setResizeMode(com.google.android.exoplayer2.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT);
-                break;
-            case FILL:
-                playerView.setResizeMode(com.google.android.exoplayer2.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL);
-                break;
-            case ZOOM:
-                playerView.setResizeMode(com.google.android.exoplayer2.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM);
-                break;
+            case FIT: playerView.setResizeMode(com.google.android.exoplayer2.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT); break;
+            case FILL: playerView.setResizeMode(com.google.android.exoplayer2.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL); break;
+            case ZOOM: playerView.setResizeMode(com.google.android.exoplayer2.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM); break;
         }
     }
 
     // 播放状态监听
     public interface OnPlayStateListener {
-        void onIdle();
-        void onBuffering();
-        void onPlayReady();
-        void onPlayEnd();
-        void onPlayError(String msg);
+        void onIdle(); void onBuffering(); void onPlayReady(); void onPlayEnd(); void onPlayError(String msg);
     }
-
-    public void setOnPlayStateListener(OnPlayStateListener l) {
-        listener = l;
-    }
+    public void setOnPlayStateListener(OnPlayStateListener l) { listener = l; }
 
     // 播放控制
-    public void pause() {
-        if (player != null) {
-            player.pause();
-            updateWakeLock(false);
-        }
-    }
-
-    public void resume() {
-        if (player != null) {
-            player.play();
-            updateWakeLock(true);
-        }
-    }
-
-    public void release() {
-        updateWakeLock(false);
-        if (player != null) player.release();
-        instance = null;
-    }
+    public void pause() { if (player != null) { player.pause(); updateWakeLock(false); } }
+    public void resume() { if (player != null) { player.play(); updateWakeLock(true); } }
+    public void release() { updateWakeLock(false); if (player != null) player.release(); instance = null; }
 }

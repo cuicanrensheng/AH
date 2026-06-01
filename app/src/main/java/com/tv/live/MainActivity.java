@@ -18,6 +18,7 @@ import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
+import android.widget.AdapterView;
 import android.widget.ListView;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -63,18 +64,20 @@ public class MainActivity extends AppCompatActivity {
     private TextView tv_next_program_name, tv_next_time_range;
     private android.widget.ProgressBar progress_program;
     private TextView tv_channel_num;
-    private final Runnable hideInfoBar = () -> info_bar.setVisibility(View.GONE);
+    private final Runnable hideInfoBar = new Runnable() {
+        @Override
+        public void run() {
+            info_bar.setVisibility(View.GONE);
+        }
+    };
 
     private long lastChannelChangeTime = 0;
     private static final long CHANNEL_COOLDOWN = 300;
     private float touchStartY = 0;
     private static final float SLIDE_THRESHOLD = 80;
 
-    // ====================== 日志：最新在前，最多100条 ======================
     public static void log(String msg) {
-        // 新日志插入最前面
         SettingsActivity.logList.add(0, msg);
-        // 限制最多100条日志
         while (SettingsActivity.logList.size() > 100) {
             SettingsActivity.logList.remove(SettingsActivity.logList.size() - 1);
         }
@@ -92,14 +95,17 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public void onReceive(Context context, Intent intent) {
             if ("com.tv.live.REFRESH_LIVE_AND_EPG".equals(intent.getAction())) {
-                runOnUiThread(() -> {
-                    loadSettings();
-                    String customLive = appConfig.getCustomLiveUrl();
-                    String customEpg = appConfig.getCustomEpgUrl();
-                    if (customLive != null) UrlConfig.LIVE_URL = customLive;
-                    if (customEpg != null) UrlConfig.EPG_URL = customEpg;
-                    loadLiveAndEpg();
-                    Toast.makeText(MainActivity.this, "已刷新直播源/EPG", Toast.LENGTH_SHORT).show();
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        loadSettings();
+                        String customLive = appConfig.getCustomLiveUrl();
+                        String customEpg = appConfig.getCustomEpgUrl();
+                        if (customLive != null) UrlConfig.LIVE_URL = customLive;
+                        if (customEpg != null) UrlConfig.EPG_URL = customEpg;
+                        loadLiveAndEpg();
+                        Toast.makeText(MainActivity.this, "已刷新直播源/EPG", Toast.LENGTH_SHORT).show();
+                    }
                 });
             }
         }
@@ -151,44 +157,53 @@ public class MainActivity extends AppCompatActivity {
         registerReceiver(toggleControllerReceiver, new IntentFilter("com.tv.live.TOGGLE_CONTROL"));
         registerReceiver(refreshReceiver, new IntentFilter("com.tv.live.REFRESH_LIVE_AND_EPG"));
 
-        btn_show_epg.setOnClickListener(v -> {
-            if (!epg_enable) {
-                Toast.makeText(this, "节目单功能已关闭", Toast.LENGTH_SHORT).show();
-                return;
-            }
-            epgPanelOpen = !epgPanelOpen;
-            lvDate.setVisibility(epgPanelOpen ? View.VISIBLE : View.GONE);
-            lvEpg.setVisibility(epgPanelOpen ? View.VISIBLE : View.GONE);
-            if (epgPanelOpen && !channelSourceList.isEmpty()) {
-                Channel curr = channelSourceList.get(currentPlayIndex);
-                epgManagerWrapper.refresh(curr, channelSourceList, currentSelectedDateIndex);
-            }
-        });
-
-        lvDate.setOnItemClickListener((parent, view, position, id) => {
-            currentSelectedDateIndex = position;
-            if (!channelSourceList.isEmpty()) {
-                Channel curr = channelSourceList.get(currentPlayIndex);
-                epgManagerWrapper.refresh(curr, channelSourceList, currentSelectedDateIndex);
-            }
-        });
-
-        lvGroup.setOnItemClickListener((parent, view, position, id) => {
-            lvGroup.setItemChecked(position, true);
-            lvGroup.setSelection(position);
-            String groupName = groupListManager.getCurrentGroup(position);
-            currentGroupChannelList.clear();
-            for (Channel c : channelSourceList) {
-                if (groupName.equals(c.getGroup())) {
-                    currentGroupChannelList.add(c);
+        btn_show_epg.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (!epg_enable) {
+                    Toast.makeText(MainActivity.this, "节目单功能已关闭", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                epgPanelOpen = !epgPanelOpen;
+                lvDate.setVisibility(epgPanelOpen ? View.VISIBLE : View.GONE);
+                lvEpg.setVisibility(epgPanelOpen ? View.VISIBLE : View.GONE);
+                if (epgPanelOpen && !channelSourceList.isEmpty()) {
+                    Channel curr = channelSourceList.get(currentPlayIndex);
+                    epgManagerWrapper.refresh(curr, channelSourceList, currentSelectedDateIndex);
                 }
             }
-            channelListManager.setChannelsByGroup(channelSourceList, groupName, currentPlayIndex);
-            if (!currentGroupChannelList.isEmpty()) {
-                Channel firstChannel = currentGroupChannelList.get(0);
-                int globalIndex = channelSourceList.indexOf(firstChannel);
-                if (globalIndex != -1) {
-                    playChannel(globalIndex);
+        });
+
+        lvDate.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+            @Override
+            public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
+                currentSelectedDateIndex = position;
+                if (!channelSourceList.isEmpty()) {
+                    Channel curr = channelSourceList.get(currentPlayIndex);
+                    epgManagerWrapper.refresh(curr, channelSourceList, currentSelectedDateIndex);
+                }
+            }
+        });
+
+        lvGroup.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+            @Override
+            public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
+                lvGroup.setItemChecked(position, true);
+                lvGroup.setSelection(position);
+                String groupName = groupListManager.getCurrentGroup(position);
+                currentGroupChannelList.clear();
+                for (Channel c : channelSourceList) {
+                    if (groupName.equals(c.getGroup())) {
+                        currentGroupChannelList.add(c);
+                    }
+                }
+                channelListManager.setChannelsByGroup(channelSourceList, groupName, currentPlayIndex);
+                if (!currentGroupChannelList.isEmpty()) {
+                    Channel firstChannel = currentGroupChannelList.get(0);
+                    int globalIndex = channelSourceList.indexOf(firstChannel);
+                    if (globalIndex != -1) {
+                        playChannel(globalIndex);
+                    }
                 }
             }
         });
@@ -204,20 +219,26 @@ public class MainActivity extends AppCompatActivity {
         mPlayerManager.attachPlayerView(playerView);
         playerStateListener = new PlayerStateListenerImpl(this);
         mPlayerManager.setOnPlayStateListener(playerStateListener);
-        mPlayerManager.setOnLiveInfoUpdateListener(info -> {
-            tv_tag_fhd.setText(info.quality);
-            tv_tag_audio.setText(info.audio);
-            tv_bitrate.setText(info.bitrate);
+        mPlayerManager.setOnLiveInfoUpdateListener(new TVPlayerManager.OnLiveInfoUpdateListener() {
+            @Override
+            public void onLiveInfoUpdate(TVPlayerManager.LiveInfo info) {
+                tv_tag_fhd.setText(info.quality);
+                tv_tag_audio.setText(info.audio);
+                tv_bitrate.setText(info.bitrate);
+            }
         });
 
         screenRatioManager = new ScreenRatioManager(mPlayerManager, appConfig);
         screenRatioManager.apply();
         gestureManager = new GestureManager(this);
-        PlayerGestureHelper gestureHelper = gestureManager.create();
+        final PlayerGestureHelper gestureHelper = gestureManager.create();
 
-        playerView.setOnTouchListener((v, event) => {
-            gestureHelper.handleTouch(event);
-            return true;
+        playerView.setOnTouchListener(new View.OnTouchListener() {
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                gestureHelper.handleTouch(event);
+                return true;
+            }
         });
 
         keyEventManager = new KeyEventManager(this);
@@ -290,11 +311,19 @@ public class MainActivity extends AppCompatActivity {
 
         log("【EPG】加载节目单：" + UrlConfig.EPG_URL);
         EpgManager.getInstance().setEpgUrl(UrlConfig.EPG_URL);
-        EpgManager.getInstance().loadEpg(() -> runOnUiThread(() -> {
-            if (!channelSourceList.isEmpty()) {
-                epgManagerWrapper.refresh(channelSourceList.get(currentPlayIndex), channelSourceList, currentSelectedDateIndex);
+        EpgManager.getInstance().loadEpg(new Runnable() {
+            @Override
+            public void run() {
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        if (!channelSourceList.isEmpty()) {
+                            epgManagerWrapper.refresh(channelSourceList.get(currentPlayIndex), channelSourceList, currentSelectedDateIndex);
+                        }
+                    }
+                });
             }
-        }));
+        });
     }
 
     public void playPrev() {
@@ -361,23 +390,31 @@ public class MainActivity extends AppCompatActivity {
     public void showChannelNum(int num) {
         tv_channel_num.setText(String.valueOf(num));
         tv_channel_num.setVisibility(View.VISIBLE);
-        new Handler().postDelayed(() -> tv_channel_num.setVisibility(View.GONE), 3000);
+        new Handler().postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                tv_channel_num.setVisibility(View.GONE);
+            }
+        }, 3000);
     }
 
     private void initListViewClick() {
         ListView lvChannelList = findViewById(R.id.lv_channel_list);
-        lvChannelList.setOnItemClickListener((p, v, pos, id) => {
-            if (!currentGroupChannelList.isEmpty() && pos < currentGroupChannelList.size()) {
-                Channel selectedChannel = currentGroupChannelList.get(pos);
-                int globalIndex = channelSourceList.indexOf(selectedChannel);
-                if (globalIndex != -1) {
-                    log("【列表点击】切换到全局索引：" + globalIndex);
-                    playChannel(globalIndex);
+        lvChannelList.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+            @Override
+            public void onItemClick(AdapterView<?> p, View v, int pos, long id) {
+                if (!currentGroupChannelList.isEmpty() && pos < currentGroupChannelList.size()) {
+                    Channel selectedChannel = currentGroupChannelList.get(pos);
+                    int globalIndex = channelSourceList.indexOf(selectedChannel);
+                    if (globalIndex != -1) {
+                        log("【列表点击】切换到全局索引：" + globalIndex);
+                        playChannel(globalIndex);
+                        togglePanel();
+                    }
+                } else {
+                    playChannel(pos);
                     togglePanel();
                 }
-            } else {
-                playChannel(pos);
-                togglePanel();
             }
         });
     }
@@ -390,7 +427,7 @@ public class MainActivity extends AppCompatActivity {
         startActivity(new Intent(this, SettingsActivity.class));
     }
 
-    public void onReceiveConfig(String liveUrl, String epgUrl) {
+    public void onReceiveConfig(final String liveUrl, final String epgUrl) {
         AppConfig config = AppConfig.getInstance(this);
         config.setCustomUrls(liveUrl, epgUrl);
         if (liveUrl != null) UrlConfig.LIVE_URL = liveUrl;
@@ -398,7 +435,12 @@ public class MainActivity extends AppCompatActivity {
 
         log("【远程配置】更新直播源：" + liveUrl);
         log("【远程配置】更新EPG：" + epgUrl);
-        runOnUiThread(this::loadLiveAndEpg);
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                loadLiveAndEpg();
+            }
+        });
     }
 
     @Override
@@ -411,7 +453,8 @@ public class MainActivity extends AppCompatActivity {
     protected void onPause() {
         super.onPause();
         log("【主页】onPause -> 切到后台");
-        if (mPlayerManager != null) mPlayerManager.onBackground();
+        if (mPlayerManager != null)
+            mPlayerManager.onBackground();
     }
 
     @Override
@@ -420,7 +463,8 @@ public class MainActivity extends AppCompatActivity {
         log("【主页】onResume -> 回到前台");
         loadSettings();
         screenRatioManager.apply();
-        if (mPlayerManager != null) mPlayerManager.onForeground();
+        if (mPlayerManager != null)
+            mPlayerManager.onForeground();
     }
 
     @Override

@@ -15,14 +15,18 @@ public class TVPlayerManager {
     private ExoPlayer player;
     private PlayerView playerView;
     private OnLiveInfoUpdateListener liveInfoUpdateListener;
-    private OnPlayStateListener playStateListener;
 
-    // 直播信息回调接口
+    // 播放缩放模式（修复ScreenRatioManager报错）
+    public enum ScaleMode {
+        FIT, FILL, ZOOM
+    }
+
+    // 直播信息回调
     public interface OnLiveInfoUpdateListener {
         void onLiveInfoUpdate(LiveInfo info);
     }
 
-    // 播放状态回调接口
+    // 播放状态接口（保持兼容）
     public interface OnPlayStateListener {
         void onPlayStarted();
         void onPlayPaused();
@@ -49,10 +53,7 @@ public class TVPlayerManager {
         return instance;
     }
 
-    // 设置播放状态监听
-    public void setOnPlayStateListener(OnPlayStateListener listener) {
-        this.playStateListener = listener;
-    }
+    public void setOnPlayStateListener(OnPlayStateListener listener) {}
 
     public void attachPlayerView(PlayerView playerView) {
         this.playerView = playerView;
@@ -70,33 +71,6 @@ public class TVPlayerManager {
         player = new ExoPlayer.Builder(context)
                 .setMediaSourceFactory(new com.google.android.exoplayer2.source.DefaultMediaSourceFactory(dataSourceFactory))
                 .build();
-
-        player.addListener(new Player.Listener() {
-            @Override
-            public void onPlaybackStateChanged(int state) {
-                if (playStateListener == null) return;
-                switch (state) {
-                    case ExoPlayer.STATE_BUFFERING:
-                        playStateListener.onBuffering();
-                        break;
-                    case ExoPlayer.STATE_READY:
-                        playStateListener.onPlaying();
-                        break;
-                    case ExoPlayer.STATE_ENDED:
-                        playStateListener.onPlayCompleted();
-                        break;
-                    case ExoPlayer.STATE_IDLE:
-                        break;
-                }
-            }
-
-            @Override
-            public void onPlayerError(com.google.android.exoplayer2.ExoPlaybackException error) {
-                if (playStateListener != null) {
-                    playStateListener.onPlayError(error);
-                }
-            }
-        });
     }
 
     private Map<String, String> getHeaders() {
@@ -116,7 +90,6 @@ public class TVPlayerManager {
         player.setMediaItem(mediaItem);
         player.prepare();
         player.play();
-        if (playStateListener != null) playStateListener.onPlayStarted();
     }
 
     public void setOnLiveInfoUpdateListener(OnLiveInfoUpdateListener listener) {
@@ -124,10 +97,7 @@ public class TVPlayerManager {
     }
 
     public void pause() {
-        if (player != null) {
-            player.pause();
-            if (playStateListener != null) playStateListener.onPlayPaused();
-        }
+        if (player != null) player.pause();
     }
 
     public void resume() {
@@ -152,5 +122,16 @@ public class TVPlayerManager {
         info.audio = "立体声";
         info.bitrate = "直播流";
         return info;
+    }
+
+    // 修复缩放模式
+    public void setScaleMode(ScaleMode scaleMode) {
+        if (playerView != null) {
+            playerView.setResizeMode(
+                    scaleMode == ScaleMode.FIT ? PlayerView.RESIZE_MODE_FIT :
+                    scaleMode == ScaleMode.FILL ? PlayerView.RESIZE_MODE_FILL :
+                    PlayerView.RESIZE_MODE_ZOOM
+            );
+        }
     }
 }

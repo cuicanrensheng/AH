@@ -1,5 +1,4 @@
 package com.tv.live.widget;
-
 import android.content.Context;
 import android.graphics.Color;
 import android.view.View;
@@ -24,7 +23,7 @@ public class ChannelListManager {
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int pos, long id) {
                 selectedPosition = pos;
-                parent.invalidateViews();
+                ((ArrayAdapter<?>) parent.getAdapter()).notifyDataSetChanged();
             }
             @Override
             public void onNothingSelected(AdapterView<?> parent) {}
@@ -42,7 +41,7 @@ public class ChannelListManager {
             public View getView(int position, View convertView, ViewGroup parent) {
                 View view = super.getView(position, convertView, parent);
                 TextView tv = view.findViewById(android.R.id.text1);
-                if (position == selectedPosition || view.isFocused()) {
+                if (position == selectedPosition) {
                     tv.setTextColor(Color.parseColor("#40A9FF"));
                 } else {
                     tv.setTextColor(Color.WHITE);
@@ -59,7 +58,7 @@ public class ChannelListManager {
         List<String> names = new ArrayList<>();
         int realIndex = 0;
         for (int i = 0; i < channelSourceList.size(); i++) {
-            Channel c = channelSourceList.get(i);
+            Channel c : channelSourceList.get(i);
             if (group == null || group.isEmpty() || group.equals(c.getGroup())) {
                 names.add(c.getName());
                 if (i == currentPlayIndex) realIndex = names.size() - 1;
@@ -72,7 +71,7 @@ public class ChannelListManager {
             public View getView(int position, View convertView, ViewGroup parent) {
                 View view = super.getView(position, convertView, parent);
                 TextView tv = view.findViewById(android.R.id.text1);
-                if (position == selectedPosition || view.isFocused()) {
+                if (position == selectedPosition) {
                     tv.setTextColor(Color.parseColor("#40A9FF"));
                 } else {
                     tv.setTextColor(Color.WHITE);
@@ -87,7 +86,6 @@ public class ChannelListManager {
     public void setSelectedPosition(int position) {
         selectedPosition = position;
         lvChannelList.setSelection(position);
-        lvChannelList.invalidateViews();
     }
 
     public void onBackPressed() {}

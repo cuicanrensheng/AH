@@ -106,18 +106,13 @@ public class TVPlayerManager {
         } catch (Exception e) {}
     }
 
-    // ======================================================
-    // ✅ 【全能自动】动态 UA + Referer + Cookie
-    // ======================================================
+    // 全能自动 UA + Referer + Cookie
     private Map<String, String> getAutoHeaders(String url) {
         Map<String, String> headers = new HashMap<>();
-
-        // 1. 自动 UA（浏览器级，防拦截）
         headers.put("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36");
         headers.put("Accept", "*/*");
         headers.put("Connection", "keep-alive");
 
-        // 2. 自动 Referer（根据当前URL自动生成，防盗链神器）
         try {
             URI uri = new URI(url);
             String scheme = uri.getScheme();
@@ -127,14 +122,12 @@ public class TVPlayerManager {
             headers.put("Referer", "");
         }
 
-        // 3. 自动 Cookie（双来源：系统Cookie + 虎牙自动Cookie）
         String webCookie = CookieManager.getInstance().getCookie(url);
         if (webCookie != null && !webCookie.isEmpty()) {
             headers.put("Cookie", webCookie);
         } else if (autoCookie != null && !autoCookie.isEmpty()) {
             headers.put("Cookie", autoCookie);
         }
-
         return headers;
     }
 
@@ -199,12 +192,8 @@ public class TVPlayerManager {
         refreshHuyaCookie();
         SettingsActivity.log("▶ 开始播放：" + url);
 
-        player.clearListeners();
-
         player.addListener(new Player.Listener() {
-            // ======================================================
-            // ✅ 【错误日志增强】
-            // ======================================================
+            // 错误日志增强
             @Override
             public void onPlayerError(PlaybackException error) {
                 String errorMsg = "❌ 播放错误：" + error.getMessage() + "，错误码：" + error.errorCode;
@@ -263,7 +252,6 @@ public class TVPlayerManager {
     private void startPlay(String url, Integer forceType) {
         new Handler(Looper.getMainLooper()).post(() -> {
             try {
-                // ✅ 自动头传入数据源
                 DataSource.Factory dataSourceFactory = new OkHttpDataSourceFactory(okHttpClient, getAutoHeaders(url));
                 int type = forceType != null ? forceType : TYPE_HLS;
                 MediaSource mediaSource;

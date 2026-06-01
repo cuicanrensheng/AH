@@ -30,88 +30,37 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 主界面（电视直播全屏界面）
- * 功能：播放、换台、EPG、频道列表、手势、设置
- * 新增：播放时全局保持亮屏、阻止系统休眠
+ * 电视直播主界面
+ * 纯 ExoPlayer 无 VLC 版本
  */
 public class MainActivity extends AppCompatActivity {
-    // 当前实例（方便其他类调用）
     public static MainActivity mInstance;
-
-    // 全部频道源数据
     public List<Channel> channelSourceList = new ArrayList<>();
-
-    // 当前分组下的频道
     public List<Channel> currentGroupChannelList = new ArrayList<>();
-
-    // 当前播放索引
     public int currentPlayIndex = 0;
-
-    // 面板布局（频道列表、EPG）
     private View panel_layout;
-
-    // 播放器核心管理类
     public TVPlayerManager mPlayerManager;
-
-    // 播放器视图
     private PlayerView playerView;
-
-    // 配置
     private AppConfig appConfig;
-
-    // 画面比例管理器
     private ScreenRatioManager screenRatioManager;
-
-    // 面板控制
     private PanelManager panelManager;
-
-    // 手势控制
     private GestureManager gestureManager;
-
-    // 按键事件
     private KeyEventManager keyEventManager;
-
-    // 网络配置服务
     private HttpConfigService httpService;
-
-    // 频道列表管理
     private ChannelListManager channelListManager;
-
-    // 分组管理
     private GroupListManager groupListManager;
-
-    // 日期管理（EPG）
     private DateListManager dateListManager;
-
-    // EPG节目单管理
     private EpgManagerWrapper epgManagerWrapper;
-
-    // 播放状态监听
     private PlayerStateListenerImpl playerStateListener;
-
-    // 频道切换管理
     private ChannelSwitchManager switchManager;
-
-    // EPG面板是否打开
     private boolean epgPanelOpen = false;
-
-    // 是否显示控制条
     private boolean isControllerVisible = false;
-
-    // 设置项
-    private boolean epg_enable;         // EPG开关
-    private boolean channel_reverse;    // 换台方向反转
-    private boolean number_channel_enable; // 数字键选台
-    private boolean auto_update_source; // 自动更新源
-
-    // 当前选择的日期（EPG）
+    private boolean epg_enable;
+    private boolean channel_reverse;
+    private boolean number_channel_enable;
+    private boolean auto_update_source;
     private int currentSelectedDateIndex = 0;
-
-    // 配置
     private SharedPreferences sp;
-
-    // 播放器类型
-    private int currentPlayerType;
 
     // 顶部信息条
     private View info_bar;
@@ -120,10 +69,9 @@ public class MainActivity extends AppCompatActivity {
     private TextView tv_next_program_name, tv_next_time_range;
     private android.widget.ProgressBar progress_program;
 
-    // 自动隐藏信息条任务
     private final Runnable hideInfoBar = () -> info_bar.setVisibility(View.GONE);
 
-    // 广播：显示/隐藏控制条
+    // 广播接收器
     private final BroadcastReceiver toggleControllerReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
@@ -132,7 +80,6 @@ public class MainActivity extends AppCompatActivity {
         }
     };
 
-    // 广播：刷新直播源与EPG
     private final BroadcastReceiver refreshReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
@@ -158,7 +105,7 @@ public class MainActivity extends AppCompatActivity {
         // 强制横屏
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
 
-        // 全屏 + 隐藏导航栏
+        // 全屏沉浸模式
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
         getWindow().getDecorView().setSystemUiVisibility(
                 View.SYSTEM_UI_FLAG_FULLSCREEN
@@ -166,51 +113,40 @@ public class MainActivity extends AppCompatActivity {
                         | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
         );
 
-        // 加载布局
         setContentView(R.layout.activity_main);
 
-        // ======================== 【全局】保持屏幕常亮（最强休眠阻止） ========================
+        // 播放时阻止休眠
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
-        // 初始化顶部信息条
         initInfoBar();
-
-        // 配置实例
         appConfig = AppConfig.getInstance(this);
-
-        // 加载设置
         loadSettings();
-
         sp = getSharedPreferences("app_settings", Context.MODE_PRIVATE);
-        currentPlayerType = sp.getInt("player_engine", 0);
 
-        // 自定义源地址
         String customLive = appConfig.getCustomLiveUrl();
         String customEpg = appConfig.getCustomEpgUrl();
         if (customLive != null) UrlConfig.LIVE_URL = customLive;
         if (customEpg != null) UrlConfig.EPG_URL = customEpg;
 
-        // 绑定播放器控件
         playerView = findViewById(R.id.player_view);
-        playerView.setUseController(false); // 禁用默认控制条
-
-        // 绑定面板
+        playerView.setUseController(false);
         panel_layout = findViewById(R.id.panel_layout);
 
-        // 列表控件
         ListView lvGroup = findViewById(R.id.lv_group);
         ListView lvChannelList = findViewById(R.id.lv_channel_list);
         ListView lvDate = findViewById(R.id.lv_date);
         ListView lvEpg = findViewById(R.id.lv_epg);
         TextView btn_show_epg = findViewById(R.id.btn_show_epg);
 
-        // 注册广播
         registerReceiver(toggleControllerReceiver, new IntentFilter("com.tv.live.TOGGLE_CONTROL"));
         registerReceiver(refreshReceiver, new IntentFilter("com.tv.live.REFRESH_LIVE_AND_EPG"));
 
-        // EPG显示按钮
+        // EPG 切换
         btn_show_epg.setOnClickListener(v -> {
-            if (!epg_enable) { Toast.makeText(this, "节目单功能已关闭", Toast.LENGTH_SHORT).show(); return; }
+            if (!epg_enable) {
+                Toast.makeText(this, "节目单功能已关闭", Toast.LENGTH_SHORT).show();
+                return;
+            }
             epgPanelOpen = !epgPanelOpen;
             lvDate.setVisibility(epgPanelOpen ? View.VISIBLE : View.GONE);
             lvEpg.setVisibility(epgPanelOpen ? View.VISIBLE : View.GONE);
@@ -220,7 +156,6 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        // EPG日期切换
         lvDate.setOnItemClickListener((parent, view, position, id) -> {
             currentSelectedDateIndex = position;
             if (!channelSourceList.isEmpty()) {
@@ -229,7 +164,7 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        // 分组点击
+        // 分组切换
         lvGroup.setOnItemClickListener((parent, view, position, id) -> {
             lvGroup.setItemChecked(position, true);
             lvGroup.setSelection(position);
@@ -244,29 +179,24 @@ public class MainActivity extends AppCompatActivity {
             if (!currentGroupChannelList.isEmpty()) {
                 Channel firstChannel = currentGroupChannelList.get(0);
                 int globalIndex = channelSourceList.indexOf(firstChannel);
-                if (globalIndex != -1) playChannel(globalIndex);
+                if (globalIndex != -1) {
+                    playChannel(globalIndex);
+                }
             }
         });
 
-        // 初始化各列表管理
         channelListManager = new ChannelListManager(this, lvChannelList);
         groupListManager = new GroupListManager(this, lvGroup);
         dateListManager = new DateListManager(this, lvDate);
         epgManagerWrapper = new EpgManagerWrapper(this, lvEpg);
         dateListManager.initDate();
-
-        // 面板管理
         panelManager = new PanelManager(panel_layout, channelListManager, epgManagerWrapper);
 
-        // 初始化播放器
+        // 初始化纯 ExoPlayer 播放器
         mPlayerManager = TVPlayerManager.getInstance(this);
         mPlayerManager.attachPlayerView(playerView);
-
-        // 播放状态监听
         playerStateListener = new PlayerStateListenerImpl(this);
         mPlayerManager.setOnPlayStateListener(playerStateListener);
-
-        // 画面比例
         screenRatioManager = new ScreenRatioManager(mPlayerManager, appConfig);
         screenRatioManager.apply();
 
@@ -278,29 +208,17 @@ public class MainActivity extends AppCompatActivity {
             return true;
         });
 
-        // 按键
         keyEventManager = new KeyEventManager(this);
-
-        // 网络配置服务
         httpService = HttpConfigService.getInstance();
         httpService.start();
-
-        // 频道切换
         switchManager = ChannelSwitchManager.getInstance();
-
-        // 读取上次播放记录
         currentPlayIndex = appConfig.getLastPlayIndex();
 
-        // 加载直播源与EPG
         loadLiveAndEpg();
-
-        // 列表点击事件
         initListViewClick();
     }
 
-    /**
-     * 初始化顶部信息条
-     */
+    // 初始化顶部信息展示
     private void initInfoBar() {
         info_bar = findViewById(R.id.info_bar);
         tv_channel_name = findViewById(R.id.tv_channel_name);
@@ -315,9 +233,7 @@ public class MainActivity extends AppCompatActivity {
         tv_next_time_range = findViewById(R.id.tv_next_time_range);
     }
 
-    /**
-     * 加载设置
-     */
+    // 读取设置
     private void loadSettings() {
         SharedPreferences sp = getSharedPreferences("app_settings", Context.MODE_PRIVATE);
         epg_enable = sp.getBoolean("epg_enable", true);
@@ -326,9 +242,6 @@ public class MainActivity extends AppCompatActivity {
         auto_update_source = sp.getBoolean("auto_update_source", true);
     }
 
-    /**
-     * 返回键逻辑
-     */
     @Override
     public void onBackPressed() {
         if (panel_layout.getVisibility() == View.VISIBLE) {
@@ -339,9 +252,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    /**
-     * 加载直播源与EPG
-     */
+    // 加载直播源与节目单
     public void loadLiveAndEpg() {
         LiveSourceLoader.getInstance(this).load(new LiveSourceLoader.LoadCallback() {
             @Override
@@ -369,25 +280,19 @@ public class MainActivity extends AppCompatActivity {
         }));
     }
 
-    /**
-     * 上一个频道
-     */
+    // 上一频道
     public void playPrev() {
         int idx = channel_reverse ? switchManager.next() : switchManager.prev();
         playChannel(idx);
     }
 
-    /**
-     * 下一个频道
-     */
+    // 下一频道
     public void playNext() {
         int idx = channel_reverse ? switchManager.prev() : switchManager.next();
         playChannel(idx);
     }
 
-    /**
-     * 播放指定索引频道
-     */
+    // 播放指定频道
     public void playChannel(int index) {
         if (channelSourceList == null || channelSourceList.isEmpty()) return;
         index = Math.max(0, Math.min(index, channelSourceList.size() - 1));
@@ -401,12 +306,12 @@ public class MainActivity extends AppCompatActivity {
         SettingsActivity.log("地址：" + url);
 
         playerStateListener.setCurrentChannelName(ch.getName());
-        mPlayerManager.playUrl(url); // 调用播放器播放
-        appConfig.setLastPlayIndex(index); // 保存最后播放记录
-        channelListManager.setChannels(channelSourceList, index); // 更新列表选中状态
-        epgManagerWrapper.refresh(ch, channelSourceList, currentSelectedDateIndex); // 刷新EPG
+        mPlayerManager.playUrl(url);
+        appConfig.setLastPlayIndex(index);
+        channelListManager.setChannels(channelSourceList, index);
+        epgManagerWrapper.refresh(ch, channelSourceList, currentSelectedDateIndex);
 
-        // 显示信息条，2秒后自动隐藏
+        // 显示频道信息，2秒后消失
         if (info_bar != null) {
             info_bar.setVisibility(View.VISIBLE);
             info_bar.removeCallbacks(hideInfoBar);
@@ -419,9 +324,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    /**
-     * 频道列表点击
-     */
+    // 频道列表点击
     private void initListViewClick() {
         ListView lvChannelList = findViewById(R.id.lv_channel_list);
         lvChannelList.setOnItemClickListener((p, v, pos, id) -> {
@@ -439,23 +342,17 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    /**
-     * 显示/隐藏频道面板
-     */
+    // 显示/隐藏频道面板
     public void togglePanel() {
         panelManager.toggle(channelSourceList, currentPlayIndex);
     }
 
-    /**
-     * 打开设置
-     */
+    // 打开设置
     public void openSettings() {
         startActivity(new Intent(this, SettingsActivity.class));
     }
 
-    /**
-     * 接收远程配置
-     */
+    // 接收远程配置
     public void onReceiveConfig(String liveUrl, String epgUrl) {
         AppConfig config = AppConfig.getInstance(this);
         config.setCustomUrls(liveUrl, epgUrl);
@@ -464,9 +361,7 @@ public class MainActivity extends AppCompatActivity {
         runOnUiThread(this::loadLiveAndEpg);
     }
 
-    /**
-     * 按键事件
-     */
+    // 按键监听
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         if (keyEventManager.dispatchKey(keyCode)) return true;

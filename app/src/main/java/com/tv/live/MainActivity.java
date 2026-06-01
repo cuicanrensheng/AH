@@ -54,7 +54,6 @@ public class MainActivity extends AppCompatActivity {
     private PanelManager panelManager; // 面板管理
     private GestureManager gestureManager; // 手势
     private KeyEventManager keyEventManager; // 按键
-    private HttpConfigService httpService; // 网络配置服务
 
     // 列表相关
     private ChannelListManager channelListManager; // 频道列表
@@ -258,8 +257,6 @@ public class MainActivity extends AppCompatActivity {
 
         // 按键
         keyEventManager = new KeyEventManager(this);
-        httpService = HttpConfigService.getInstance();
-        httpService.start();
 
         // 频道切换
         switchManager = ChannelSwitchManager.getInstance();
@@ -472,7 +469,6 @@ public class MainActivity extends AppCompatActivity {
         super.onDestroy();
         try { unregisterReceiver(toggleControllerReceiver); } catch (Exception ignored) {}
         try { unregisterReceiver(refreshReceiver); } catch (Exception ignored) {}
-        httpService.stop();
         mPlayerManager.release(); // 释放播放器
         mInstance = null;
     }

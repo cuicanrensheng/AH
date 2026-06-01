@@ -1,5 +1,4 @@
 package com.tv.live.widget;
-
 import android.content.Context;
 import android.graphics.Color;
 import android.view.View;
@@ -24,7 +23,7 @@ public class DateListManager {
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int pos, long id) {
                 selectedPosition = pos;
-                parent.invalidateViews();
+                ((ArrayAdapter<?>) parent.getAdapter()).notifyDataSetChanged();
             }
             @Override
             public void onNothingSelected(AdapterView<?> parent) {}
@@ -46,7 +45,7 @@ public class DateListManager {
             public View getView(int position, View convertView, ViewGroup parent) {
                 View view = super.getView(position, convertView, parent);
                 TextView tv = view.findViewById(android.R.id.text1);
-                if (position == selectedPosition || view.isFocused()) {
+                if (position == selectedPosition) {
                     tv.setTextColor(Color.parseColor("#40A9FF"));
                 } else {
                     tv.setTextColor(Color.WHITE);
@@ -60,7 +59,6 @@ public class DateListManager {
     public void setSelectedPosition(int position) {
         selectedPosition = position;
         lvDate.setSelection(position);
-        lvDate.invalidateViews();
     }
 
     public void onBackPressed() {}

@@ -15,21 +15,13 @@ import com.google.android.exoplayer2.source.MediaSource;
 import com.google.android.exoplayer2.source.ProgressiveMediaSource;
 import com.google.android.exoplayer2.source.hls.HlsMediaSource;
 import com.google.android.exoplayer2.ui.PlayerView;
-import com.google.android.exoplayer2.upstream.BaseDataSource;
 import com.google.android.exoplayer2.upstream.DataSource;
-import com.google.android.exoplayer2.upstream.DataSpec;
+import com.google.android.exoplayer2.upstream.DefaultHttpDataSource;
 import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URL;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
-import okhttp3.Cookie;
-import okhttp3.CookieJar;
-import okhttp3.HttpUrl;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.Response;
 
 public class TVPlayerManager {
     private static TVPlayerManager instance;
@@ -38,7 +30,6 @@ public class TVPlayerManager {
     private PlayerView playerView;
     public enum ScaleMode { FIT, FILL, ZOOM }
     private OnPlayStateListener listener;
-    private final OkHttpClient okHttpClient;
     private String currentUrl = "";
     private final Map<Integer, Boolean> triedTypes = new HashMap<>();
     private static final int TYPE_HLS = 1;
@@ -70,25 +61,6 @@ public class TVPlayerManager {
                 .setLoadControl(loadControl)
                 .build();
 
-        okHttpClient = new OkHttpClient.Builder()
-                .connectTimeout(15, TimeUnit.SECONDS)
-                .readTimeout(30, TimeUnit.SECONDS)
-                .followRedirects(true)
-                .followSslRedirects(true)
-                .cookieJar(new CookieJar() {
-                    private final Map<String, java.util.List<Cookie>> cookieStore = new HashMap<>();
-                    @Override
-                    public void saveFromResponse(HttpUrl url, java.util.List<Cookie> cookies) {
-                        cookieStore.put(url.host(), cookies);
-                    }
-                    @Override
-                    public java.util.List<Cookie> loadForRequest(HttpUrl url) {
-                        java.util.List<Cookie> cookies = cookieStore.get(url.host());
-                        return cookies != null ? cookies : java.util.Collections.emptyList();
-                    }
-                })
-                .build();
-
         CookieSyncManager.createInstance(context);
         CookieManager.getInstance().setAcceptCookie(true);
     }
@@ -106,7 +78,7 @@ public class TVPlayerManager {
         } catch (Exception e) {}
     }
 
-    // 全能自动 UA + Referer + Cookie
+    // ✅ 自动识别数据源 + 动态请求头
     private Map<String, String> getAutoHeaders(String url) {
         Map<String, String> headers = new HashMap<>();
         headers.put("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36");
@@ -192,8 +164,11 @@ public class TVPlayerManager {
         refreshHuyaCookie();
         SettingsActivity.log("▶ 开始播放：" + url);
 
+        // 强制重置播放器，解决黑屏/卡死
+        player.stop();
+        player.clearMediaItems();
+
         player.addListener(new Player.Listener() {
-            // 错误日志增强
             @Override
             public void onPlayerError(PlaybackException error) {
                 String errorMsg = "❌ 播放错误：" + error.getMessage() + "，错误码：" + error.errorCode;
@@ -252,15 +227,19 @@ public class TVPlayerManager {
     private void startPlay(String url, Integer forceType) {
         new Handler(Looper.getMainLooper()).post(() -> {
             try {
-                DataSource.Factory dataSourceFactory = new OkHttpDataSourceFactory(okHttpClient, getAutoHeaders(url));
+                // ✅ 改用 ExoPlayer 原生 DefaultHttpDataSource，自动识别协议
+                DefaultHttpDataSource.Factory httpFactory = new DefaultHttpDataSource.Factory();
+                httpFactory.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36");
+                httpFactory.setDefaultRequestProperties(getAutoHeaders(url));
+
                 int type = forceType != null ? forceType : TYPE_HLS;
                 MediaSource mediaSource;
 
                 if (type == TYPE_HLS) {
-                    mediaSource = new HlsMediaSource.Factory(dataSourceFactory)
+                    mediaSource = new HlsMediaSource.Factory(httpFactory)
                             .createMediaSource(MediaItem.fromUri(url));
                 } else {
-                    mediaSource = new ProgressiveMediaSource.Factory(dataSourceFactory)
+                    mediaSource = new ProgressiveMediaSource.Factory(httpFactory)
                             .createMediaSource(MediaItem.fromUri(url));
                 }
 
@@ -323,64 +302,5 @@ public class TVPlayerManager {
             player = null;
         }
         instance = null;
-    }
-
-    private static class OkHttpDataSourceFactory implements DataSource.Factory {
-        private final OkHttpClient client;
-        private final Map<String, String> headers;
-        public OkHttpDataSourceFactory(OkHttpClient client, Map<String, String> headers) {
-            this.client = client;
-            this.headers = headers;
-        }
-        @Override
-        public DataSource createDataSource() {
-            return new OkHttpDataSource(client, headers);
-        }
-    }
-
-    private static class OkHttpDataSource extends BaseDataSource {
-        private final OkHttpClient client;
-        private final Map<String, String> headers;
-        private Response response;
-        private java.io.InputStream inputStream;
-        private Uri uri;
-        public OkHttpDataSource(OkHttpClient client, Map<String, String> headers) {
-            super(true);
-            this.client = client;
-            this.headers = headers;
-        }
-        @Override
-        public long open(DataSpec dataSpec) throws java.io.IOException {
-            uri = dataSpec.uri;
-            Request.Builder builder = new Request.Builder().url(dataSpec.uri.toString());
-            if (headers != null) {
-                for (Map.Entry<String, String> h : headers.entrySet()) {
-                    builder.addHeader(h.getKey(), h.getValue());
-                }
-            }
-            response = client.newCall(builder.build()).execute();
-            inputStream = response.body().byteStream();
-            return response.body().contentLength();
-        }
-        @Override
-        public int read(byte[] buffer, int offset, int length) {
-            if (inputStream == null) return -1;
-            try {
-                int read = inputStream.read(buffer, offset, length);
-                if (read > 0) bytesTransferred(read);
-                return read;
-            } catch (Exception e) {
-                return -1;
-            }
-        }
-        @Override
-        public Uri getUri() {
-            return uri;
-        }
-        @Override
-        public void close() {
-            try { if (response != null) response.close(); } catch (Exception ignored) {}
-            try { if (inputStream != null) inputStream.close(); } catch (Exception ignored) {}
-        }
     }
 }

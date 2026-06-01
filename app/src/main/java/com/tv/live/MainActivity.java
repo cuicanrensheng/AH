@@ -76,11 +76,14 @@ public class MainActivity extends AppCompatActivity {
     private float touchStartY = 0;
     private static final float SLIDE_THRESHOLD = 80;
 
+    // ====================== 本地日志，最新在前，最多100条 ======================
+    public static List<String> logList = new ArrayList<>();
     public static void log(String msg) {
-        SettingsActivity.logList.add(0, msg);
-        while (SettingsActivity.logList.size() > 100) {
-            SettingsActivity.logList.remove(SettingsActivity.logList.size() - 1);
+        logList.add(0, msg);
+        while (logList.size() > 100) {
+            logList.remove(logList.size() - 1);
         }
+        SettingsActivity.log(msg);
     }
 
     private BroadcastReceiver toggleControllerReceiver = new BroadcastReceiver() {
@@ -144,7 +147,6 @@ public class MainActivity extends AppCompatActivity {
         playerView = findViewById(R.id.player_view);
         playerView.setUseController(false);
         playerView.setControllerVisibilityListener(null);
-        playerView.setAutoShow(false);
 
         panel_layout = findViewById(R.id.panel_layout);
 
@@ -445,7 +447,7 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
-        if (keyEventManager.dispatchKey(keyCode)) return true;
+        if (keyEventManager.dispatchKey(code)) return true;
         return super.onKeyDown(keyCode, event);
     }
 

@@ -37,10 +37,10 @@ public class TVPlayerManager {
     private boolean isPlaying = false;
     private int currentChannelNumber = 0;
 
-    // 频道号控件 + 3秒自动隐藏
+    // 频道号控件 + 5秒自动隐藏
     private TextView channelNumText;
     private final Handler mHandler = new Handler(Looper.getMainLooper());
-    private static final long CHANNEL_SHOW_DURATION = 3000L;
+    private static final long CHANNEL_SHOW_DURATION = 5000L;
 
     // 日志时间格式
     private final SimpleDateFormat logSdf = new SimpleDateFormat("HH:mm:ss", Locale.getDefault());
@@ -88,7 +88,7 @@ public class TVPlayerManager {
         this.channelNumText = textView;
     }
 
-    // 3秒后隐藏频道号
+    // 5秒后隐藏频道号
     private void showChannelAndAutoHide() {
         if (channelNumText == null) return;
         mHandler.removeCallbacks(hideChannelRunnable);

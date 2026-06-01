@@ -3,6 +3,7 @@ import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
+import android.view.View;
 import android.webkit.CookieManager;
 import android.webkit.CookieSyncManager;
 import android.widget.TextView;
@@ -83,7 +84,7 @@ public class TVPlayerManager {
         if (channelNumText == null) return;
         mHandler.removeCallbacks(hideChannelRunnable);
         channelNumText.setText("频道：" + currentChannelNumber);
-        channelNumText.setVisibility(android.view.View.VISIBLE);
+        channelNumText.setVisibility(View.VISIBLE);
         mHandler.postDelayed(hideChannelRunnable, CHANNEL_SHOW_DURATION);
     }
 
@@ -137,7 +138,6 @@ public class TVPlayerManager {
         return "[" + logSdf.format(new Date()) + "]";
     }
 
-    // ====================== 修复：浏览器UA + 完整请求头 ======================
     private Map<String, String> getHeaders(String url) {
         Map<String, String> headers = new HashMap<>();
         headers.put("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36");
@@ -164,7 +164,6 @@ public class TVPlayerManager {
         playUrl(url);
     }
 
-    // ====================== 修复：自动支持 m3u8 / flv ======================
     public void playUrl(String url) {
         try {
             if (player == null || url == null || url.trim().isEmpty()) {
@@ -179,13 +178,11 @@ public class TVPlayerManager {
 
             DefaultHttpDataSource.Factory httpFactory = new DefaultHttpDataSource.Factory();
             httpFactory.setDefaultRequestProperties(getHeaders(currentUrl));
-            httpFactory.setFollowRedirects(true);
             httpFactory.setAllowCrossProtocolRedirects(true);
 
             MediaItem mediaItem = MediaItem.fromUri(currentUrl);
             Object mediaSource;
 
-            // 自动识别格式
             if (currentUrl.toLowerCase().contains("m3u8")) {
                 mediaSource = new HlsMediaSource.Factory(httpFactory).createMediaSource(mediaItem);
             } else {

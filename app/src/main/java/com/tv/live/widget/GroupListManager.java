@@ -1,5 +1,4 @@
 package com.tv.live.widget;
-
 import android.content.Context;
 import android.graphics.Color;
 import android.view.View;
@@ -27,7 +26,7 @@ public class GroupListManager {
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int pos, long id) {
                 selectedPosition = pos;
-                parent.invalidateViews();
+                ((ArrayAdapter<?>) parent.getAdapter()).notifyDataSetChanged();
             }
             @Override
             public void onNothingSelected(AdapterView<?> parent) {}
@@ -45,7 +44,7 @@ public class GroupListManager {
             public View getView(int position, View convertView, ViewGroup parent) {
                 View view = super.getView(position, convertView, parent);
                 TextView tv = view.findViewById(android.R.id.text1);
-                if (position == selectedPosition || view.isFocused()) {
+                if (position == selectedPosition) {
                     tv.setTextColor(Color.parseColor("#40A9FF"));
                 } else {
                     tv.setTextColor(Color.WHITE);
@@ -59,7 +58,6 @@ public class GroupListManager {
     public void setSelectedPosition(int position) {
         selectedPosition = position;
         lvGroup.setSelection(position);
-        lvGroup.invalidateViews();
     }
 
     public String getCurrentGroup(int position) {

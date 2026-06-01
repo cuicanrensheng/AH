@@ -197,6 +197,16 @@ public class MainActivity extends AppCompatActivity {
         mPlayerManager.attachPlayerView(playerView);
         playerStateListener = new PlayerStateListenerImpl(this);
         mPlayerManager.setOnPlayStateListener(playerStateListener);
+        // ====================== 新增：播放信息实时刷新 ======================
+        mPlayerManager.setOnLiveInfoUpdateListener(new TVPlayerManager.OnLiveInfoUpdateListener() {
+        @Override
+        public void onLiveInfoUpdate(TVPlayerManager.LiveInfo info) {
+        // 自动更新到界面控件（按你现有的ID）
+        tv_tag_fhd.setText(info.quality);
+        tv_tag_audio.setText(info.audio);
+        tv_bitrate.setText(info.bitrate);
+    }
+});
         screenRatioManager = new ScreenRatioManager(mPlayerManager, appConfig);
         screenRatioManager.apply();
 

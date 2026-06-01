@@ -60,31 +60,55 @@ public class SettingsActivity extends AppCompatActivity {
             PLAY_LOG.delete(0, PLAY_LOG.length() - 15000);
         }
     }
+    
+private void showLogDialog() {
+    ScrollView scrollView = new ScrollView(this);
+    TextView tv = new TextView(this);
 
-    private void showLogDialog() {
-        ScrollView scrollView = new ScrollView(this);
-        TextView tv = new TextView(this);
-        if (PLAY_LOG == null || PLAY_LOG.length() == 0) {
-            tv.setText("暂无日志内容，请先播放一个频道再查看。");
-        } else {
-            tv.setText(PLAY_LOG.toString());
-        }
-        tv.setTextSize(12);
-        tv.setPadding(40, 40, 40, 40);
-        tv.setTextColor(Color.BLACK);
-        scrollView.addView(tv);
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("📄 解析 & 播放日志");
-        builder.setView(scrollView);
-        builder.setPositiveButton("关闭", null);
-        builder.setNeutralButton("清空日志", (dialog, which) -> {
-            if (PLAY_LOG != null) {
-                PLAY_LOG.setLength(0);
+    if (PLAY_LOG == null || PLAY_LOG.length() == 0) {
+        tv.setText("暂无日志内容，请先播放一个频道再查看。");
+    } else {
+        // ======================
+        // 核心修改：把日志倒序 → 最新显示在最上面
+        // ======================
+        String originalLog = PLAY_LOG.toString();
+        // 按换行符分割成单行日志
+        String[] lines = originalLog.split("\n");
+        StringBuilder reversedLog = new StringBuilder();
+
+        // 倒序遍历：从最后一行（最新）加到第一行
+        for (int i = lines.length - 1; i >= 0; i--) {
+            if (!lines[i].trim().isEmpty()) {
+                reversedLog.append(lines[i]).append("\n");
             }
-            Toast.makeText(this, "日志已清空", Toast.LENGTH_SHORT).show();
-        });
-        builder.show();
+        }
+
+        // 设置倒序后的日志
+        tv.setText(reversedLog.toString());
     }
+
+    tv.setTextSize(12);
+    tv.setPadding(40, 40, 40, 40);
+    tv.setTextColor(Color.BLACK);
+
+    scrollView.addView(tv);
+    AlertDialog.Builder builder = new AlertDialog.Builder(this);
+    builder.setTitle("📄 解析 & 播放日志");
+    builder.setView(scrollView);
+
+    // 关闭按钮
+    builder.setPositiveButton("关闭", null);
+
+    // 清空日志按钮
+    builder.setNeutralButton("清空日志", (dialog, which) -> {
+        if (PLAY_LOG != null) {
+            PLAY_LOG.setLength(0);
+        }
+        Toast.makeText(this, "日志已清空", Toast.LENGTH_SHORT).show();
+    });
+
+    builder.show();
+}
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {

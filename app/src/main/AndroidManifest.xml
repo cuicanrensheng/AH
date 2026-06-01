@@ -2,7 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.tv.live">
 
-    <!-- 原有权限 -->
+    <!-- ========== 原有权限 ========== -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -18,7 +18,7 @@
         android:theme="@style/Theme.AppCompat.NoActionBar"
         android:usesCleartextTraffic="true">
 
-        <!-- 你原有全部 Activity 完全不动 -->
+        <!-- ========== 原有 Activity 完全保留 ========== -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -41,13 +41,13 @@
             android:screenOrientation="sensorLandscape"
             android:configChanges="orientation|screenSize" />
 
-        <!-- ✅ 只新增这一个播放器页面，其他全部不动 -->
+        <!-- ========== 新增：直播播放器页面 ========== -->
         <activity
             android:name=".LivePlayerActivity"
             android:screenOrientation="sensorLandscape"
             android:configChanges="orientation|screenSize" />
 
-        <!-- 原有广播 -->
+        <!-- ========== 原有广播接收器 ========== -->
         <receiver
             android:name=".BootReceiver"
             android:enabled="true"
@@ -58,7 +58,7 @@
             </intent-filter>
         </receiver>
 
-        <!-- 原有 FileProvider -->
+        <!-- ========== 原有 FileProvider 配置 ========== -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

@@ -1,8 +1,10 @@
 package com.tv.live.widget;
+
 import android.content.Context;
 import android.graphics.Color;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.ListView;
 import android.widget.TextView;
@@ -12,10 +14,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-/**
- * 频道分组管理器（央视、卫视、地方等）
- * 功能：TV遥控器滑动选中项自动变蓝
- */
 public class GroupListManager {
     private final ListView lvGroup;
     private List<String> groupList;
@@ -24,15 +22,18 @@ public class GroupListManager {
     public GroupListManager(Context context, ListView lvGroup) {
         this.lvGroup = lvGroup;
         lvGroup.setItemsCanFocus(true);
-        lvGroup.setOnItemSelectedListener((parent, view, pos, id) -> {
-            selectedPosition = pos;
-            parent.invalidateViews();
+
+        lvGroup.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View view, int pos, long id) {
+                selectedPosition = pos;
+                parent.invalidateViews();
+            }
+            @Override
+            public void onNothingSelected(AdapterView<?> parent) {}
         });
     }
 
-    /**
-     * 加载所有分组
-     */
     public void setGroups(List<Channel> channelSourceList) {
         if (channelSourceList == null || channelSourceList.isEmpty()) return;
         Set<String> groupSet = new HashSet<>();

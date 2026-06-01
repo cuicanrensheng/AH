@@ -6,11 +6,6 @@ android {
     namespace "com.tv.live"
     compileSdk 34
 
-    compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
-    }
-
     buildFeatures {
         buildConfig true
     }
@@ -75,12 +70,11 @@ dependencies {
     // JSON
     implementation 'com.google.code.gson:gson:2.10.1'
 
-    // 🔥 升级到 Media3（ExoPlayer 官方接替版）
-    def media3_version = "1.10.1"
-    implementation "androidx.media3:media3-exoplayer:$media3_version"
-    implementation "androidx.media3:media3-ui:$media3_version"
-    implementation "androidx.media3:media3-hls:$media3_version"
-    implementation "androidx.media3:media3-dash:$media3_version"
+    // ExoPlayer 纯播放器（无 VLC）
+    implementation "com.google.android.exoplayer:exoplayer:2.19.1"
+    implementation "com.google.android.exoplayer:exoplayer-ui:2.19.1"
+    implementation "com.google.android.exoplayer:exoplayer-hls:2.19.1"
+    implementation "com.google.android.exoplayer:exoplayer-dash:2.19.1"
 
     // 网络
     implementation "com.squareup.okhttp3:okhttp:4.12.0"

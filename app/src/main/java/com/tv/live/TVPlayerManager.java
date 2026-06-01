@@ -5,7 +5,6 @@ import android.content.Context;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
-import android.view.WindowManager;
 import android.webkit.CookieManager;
 import android.webkit.CookieSyncManager;
 
@@ -18,6 +17,8 @@ import com.google.android.exoplayer2.source.ProgressiveMediaSource;
 import com.google.android.exoplayer2.source.hls.HlsMediaSource;
 import com.google.android.exoplayer2.ui.PlayerView;
 import com.google.android.exoplayer2.upstream.DataSource;
+import com.google.android.exoplayer2.upstream.DataSpec;
+import com.google.android.exoplayer2.upstream.BaseDataSource;
 
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -150,7 +151,7 @@ public class TVPlayerManager {
             try {
                 URL url = new URL("https://www.huya.com/");
                 HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36");
+                conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0, Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36");
                 conn.connect();
                 String c = conn.getHeaderField("Set-Cookie");
                 if (c != null) autoCookie = c;
@@ -164,7 +165,7 @@ public class TVPlayerManager {
     // ======================== 统一请求头（模拟浏览器） ========================
     private Map<String, String> getHeaders() {
         Map<String, String> headers = new HashMap<>();
-        headers.put("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36");
+        headers.put("User-Agent", "Mozilla/5.0 (Windows NT 10.0, Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36");
         headers.put("Referer", "https://www.huya.com/");
         headers.put("Origin", "https://www.huya.com");
         headers.put("Accept", "*/*");
@@ -383,24 +384,53 @@ public class TVPlayerManager {
         @Override public DataSource createDataSource() { return new OkHttpDataSource(client, headers); }
     }
 
-    private static class OkHttpDataSource extends com.google.android.exoplayer2.upstream.BaseDataSource {
+    private static class OkHttpDataSource extends BaseDataSource {
         private final OkHttpClient client;
         private final Map<String, String> headers;
         private Response response;
         private java.io.InputStream inputStream;
+        private Uri uri;
 
-        public OkHttpDataSource(OkHttpClient client, Map<String, String> headers) { super(true); this.client = client; this.headers = headers; }
+        public OkHttpDataSource(OkHttpClient client, Map<String, String> headers) {
+            super(true);
+            this.client = client;
+            this.headers = headers;
+        }
 
         @Override
-        public long open(com.google.android.exoplayer2.upstream.DataSpec dataSpec) throws java.io.IOException {
+        public long open(DataSpec dataSpec) throws java.io.IOException {
+            uri = dataSpec.uri;
             Request.Builder builder = new Request.Builder().url(dataSpec.uri.toString());
-            if (headers != null) for (Map.Entry<String, String> h : headers.entrySet()) builder.addHeader(h.getKey(), h.getValue());
+            if (headers != null) {
+                for (Map.Entry<String, String> h : headers.entrySet()) {
+                    builder.addHeader(h.getKey(), h.getValue());
+                }
+            }
             response = client.newCall(builder.build()).execute();
             inputStream = response.body().byteStream();
             return response.body().contentLength();
         }
 
-        @Override public int read(byte[] buffer, int offset, int length) { try { int r = inputStream.read(buffer, offset, length); if (r > 0) bytesTransferred(r); return r; } catch (Exception e) { return -1; } }
-        @Override public void close() { try { if (response != null) response.close(); } catch (Exception ignored) {} try { if (inputStream != null) inputStream.close(); } catch (Exception ignored) {} }
+        @Override
+        public int read(byte[] buffer, int offset, int length) {
+            try {
+                int read = inputStream.read(buffer, offset, length);
+                if (read > 0) bytesTransferred(read);
+                return read;
+            } catch (Exception e) {
+                return -1;
+            }
+        }
+
+        @Override
+        public Uri getUri() {
+            return uri;
+        }
+
+        @Override
+        public void close() {
+            try { if (response != null) response.close(); } catch (Exception ignored) {}
+            try { if (inputStream != null) inputStream.close(); } catch (Exception ignored) {}
+        }
     }
 }

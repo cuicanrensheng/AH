@@ -1,4 +1,5 @@
 package com.tv.live.widget;
+
 import android.app.AlarmManager;
 import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
@@ -7,6 +8,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.graphics.Color;
 import android.os.Build;
+import android.os.Handler;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -44,46 +46,60 @@ public class EpgManagerWrapper {
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int pos, long id) {
                 selectedPosition = pos;
-                ((ArrayAdapter<?>) parent.getAdapter()).notifyDataSetChanged();
+                if (parent.getAdapter() != null) {
+                    ((ArrayAdapter<?>) parent.getAdapter()).notifyDataSetChanged();
+                }
             }
             @Override
             public void onNothingSelected(AdapterView<?> parent) {}
         });
+
         registerReminderReceiver();
     }
 
+    // ==============================
+    // 刷新节目单（修复：自动识别播放中/已过/未开始）
+    // ==============================
     public void refresh(Channel currentChannel, List<Channel> channelSourceList, int dateIndex) {
         if (currentChannel == null) return;
+
         new Thread(() -> {
             List<Channel.EpgItem> epgList = EpgManager.getInstance().getEpg(currentChannel.getName());
             List<Channel.EpgItem> data = new ArrayList<>();
+
             if (epgList != null && !epgList.isEmpty()) {
                 Calendar cal = Calendar.getInstance();
                 cal.add(Calendar.DAY_OF_YEAR, dateIndex);
                 int w = cal.get(Calendar.DAY_OF_WEEK);
                 String[] weekMap = {"周日", "周一", "周二", "周三", "周四", "周五", "周六"};
                 String targetDay = dateIndex == 0 ? "今天" : weekMap[w % 7];
+
                 for (Channel.EpgItem item : epgList) {
-                    if (targetDay.equals(item.dayName)) data.add(item);
-                }
-                Collections.sort(data, Comparator.comparing(o -> o.time));
-                String now = getNow();
-                Channel.EpgItem playing = null;
-                for (int i = 0; i < data.size(); i++) {
-                    Channel.EpgItem curr = data.get(i);
-                    Channel.EpgItem next = i + 1 < data.size() ? data.get(i + 1) : null;
-                    curr.isPlaying = false;
-                    if (next != null && curr.time.compareTo(now) <= 0 && now.compareTo(next.time) < 0) {
-                        curr.isPlaying = true;
-                        playing = curr;
+                    if (targetDay.equals(item.dayName)) {
+                        data.add(item);
                     }
                 }
-                if (playing != null) {
-                    data.remove(playing);
-                    data.add(0, playing);
+
+                Collections.sort(data, Comparator.comparing(o -> o.time));
+                String now = getNow();
+
+                // 重置播放状态
+                for (Channel.EpgItem it : data) {
+                    it.isPlaying = false;
+                }
+
+                // 识别正在播放的节目
+                for (int i = 0; i < data.size(); i++) {
+                    Channel.EpgItem curr = data.get(i);
+                    Channel.EpgItem next = (i + 1 < data.size()) ? data.get(i + 1) : null;
+
+                    if (next != null && curr.time.compareTo(now) <= 0 && now.compareTo(next.time) < 0) {
+                        curr.isPlaying = true;
+                    }
                 }
             }
-            ((MainActivity) context).runOnUiThread(() -> {
+
+            new Handler(context.getMainLooper()).post(() -> {
                 if (adapter == null) {
                     adapter = new EpgAdapter(context, currentChannel, data);
                     lvEpg.setAdapter(adapter);
@@ -95,25 +111,73 @@ public class EpgManagerWrapper {
         }).start();
     }
 
+    // ==============================
+    // 获取当前时间 HH:mm
+    // ==============================
     private String getNow() {
         return String.format("%02d:%02d",
                 Calendar.getInstance().get(Calendar.HOUR_OF_DAY),
                 Calendar.getInstance().get(Calendar.MINUTE));
     }
 
+    // ==============================
+    // 注册节目开播提醒广播
+    // ==============================
     private void registerReminderReceiver() {
         BroadcastReceiver receiver = new BroadcastReceiver() {
             @Override
             public void onReceive(Context context, Intent intent) {
                 if (ACTION_REMINDER.equals(intent.getAction())) {
                     String title = intent.getStringExtra("title");
-                    Toast.makeText(context, "⏰ 节目提醒：" + title, Toast.LENGTH_LONG).show();
+                    Toast.makeText(context, "⏰ 节目开始：" + title, Toast.LENGTH_LONG).show();
                 }
             }
         };
         context.registerReceiver(receiver, new IntentFilter(ACTION_REMINDER));
     }
 
+    // ==============================
+    // 设置开播提醒（修复可用）
+    // ==============================
+    private void setReminder(Context context, String title, int hour, int minute) {
+        AlarmManager alarmManager = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
+        Intent intent = new Intent(ACTION_REMINDER);
+        intent.putExtra("title", title);
+
+        PendingIntent pi;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            pi = PendingIntent.getBroadcast(
+                    context,
+                    (int) System.currentTimeMillis(),
+                    intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+            );
+        } else {
+            pi = PendingIntent.getBroadcast(
+                    context,
+                    (int) System.currentTimeMillis(),
+                    intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT
+            );
+        }
+
+        Calendar calendar = Calendar.getInstance();
+        calendar.set(Calendar.HOUR_OF_DAY, hour);
+        calendar.set(Calendar.MINUTE, minute);
+        calendar.set(Calendar.SECOND, 0);
+
+        if (calendar.getTimeInMillis() < System.currentTimeMillis()) {
+            calendar.add(Calendar.DAY_OF_YEAR, 1);
+        }
+
+        if (alarmManager != null) {
+            alarmManager.setExact(AlarmManager.RTC_WAKEUP, calendar.getTimeInMillis(), pi);
+        }
+    }
+
+    // ==============================
+    // 节目列表适配器（修复全部状态）
+    // ==============================
     private class EpgAdapter extends ArrayAdapter<Channel.EpgItem> {
         private Context ctx;
         private Channel currentChannel;
@@ -151,11 +215,18 @@ public class EpgManagerWrapper {
             }
 
             Channel.EpgItem item = list.get(position);
+            String now = getNow();
+            boolean isPlaying = item.isPlaying;
+            boolean isPast = !isPlaying && item.time.compareTo(now) < 0;
+            boolean isFuture = !isPlaying && !isPast;
+
+            // 显示内容
             holder.tv_dayName.setText(item.dayName);
             holder.tv_time.setText(item.time);
             holder.tv_title.setText(item.title);
 
-            if (position == selectedPosition || item.isPlaying) {
+            // 颜色状态
+            if (isPlaying || position == selectedPosition) {
                 holder.tv_dayName.setTextColor(Color.parseColor("#40A9FF"));
                 holder.tv_time.setTextColor(Color.parseColor("#40A9FF"));
                 holder.tv_title.setTextColor(Color.parseColor("#40A9FF"));
@@ -166,18 +237,21 @@ public class EpgManagerWrapper {
             }
 
             String key = currentChannel.getName() + "_" + position;
-            boolean isPast = item.time.compareTo(getNow()) < 0;
 
-            if (item.isPlaying) {
+            // ==============================
+            // 按钮状态：播放中 / 回看 / 预约 / 已预约
+            // ==============================
+            if (isPlaying) {
                 holder.tv_action.setText("播放中");
                 holder.tv_action.setBackgroundColor(0xFFFF9800);
                 holder.tv_action.setEnabled(false);
             } else if (isPast) {
                 holder.tv_action.setText("回看");
                 holder.tv_action.setBackgroundColor(0xFF607D8B);
+                holder.tv_action.setEnabled(true);
                 holder.tv_action.setOnClickListener(v -> {
                     ((MainActivity) ctx).mPlayerManager.playUrl(currentChannel.getPlayUrl());
-                    Toast.makeText(ctx, "回看：" + item.title, Toast.LENGTH_SHORT).show();
+                    Toast.makeText(ctx, "正在回看：" + item.title, Toast.LENGTH_SHORT).show();
                 });
             } else {
                 if (bookedSet.contains(key)) {
@@ -185,16 +259,26 @@ public class EpgManagerWrapper {
                     holder.tv_action.setBackgroundColor(0xFF607D8B);
                     holder.tv_action.setOnClickListener(v -> {
                         bookedSet.remove(key);
-                        Toast.makeText(ctx, "已取消预约", Toast.LENGTH_SHORT).show();
                         notifyDataSetChanged();
+                        Toast.makeText(ctx, "已取消预约：" + item.title, Toast.LENGTH_SHORT).show();
                     });
                 } else {
                     holder.tv_action.setText("预约");
                     holder.tv_action.setBackgroundColor(0xFF4CAF50);
                     holder.tv_action.setOnClickListener(v -> {
                         bookedSet.add(key);
-                        Toast.makeText(ctx, "已预约：" + item.title, Toast.LENGTH_SHORT).show();
                         notifyDataSetChanged();
+                        Toast.makeText(ctx, "预约成功：" + item.title, Toast.LENGTH_SHORT).show();
+
+                        // 自动设置开播提醒
+                        try {
+                            String[] hm = item.time.split(":");
+                            int h = Integer.parseInt(hm[0]);
+                            int m = Integer.parseInt(hm[1]);
+                            setReminder(ctx, item.title, h, m);
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                        }
                     });
                 }
             }

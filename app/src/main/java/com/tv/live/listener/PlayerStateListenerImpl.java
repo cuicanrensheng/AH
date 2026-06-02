@@ -2,7 +2,7 @@ package com.tv.live.listener;
 
 import android.content.Context;
 import android.widget.Toast;
-import com.tv.live.manager.TVPlayerManager;
+import com.tv.live.TVPlayerManager;
 
 public class PlayerStateListenerImpl implements TVPlayerManager.OnPlayStateListener {
     private final Context context;

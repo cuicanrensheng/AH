@@ -53,7 +53,11 @@ public class TVPlayerManager {
         void onPlayError(String msg);
     }
 
-    // 单例获取（带上下文，完整版标准写法）
+    // 兼容旧代码无参getInstance
+    public static TVPlayerManager getInstance() {
+        return getInstance(null);
+    }
+
     public static TVPlayerManager getInstance(Context ctx) {
         if (instance == null) {
             instance = new TVPlayerManager(ctx);
@@ -63,7 +67,7 @@ public class TVPlayerManager {
 
     // 构造方法：缓冲、解码容错、请求头初始化全部保留
     private TVPlayerManager(Context ctx) {
-        context = ctx.getApplicationContext();
+        context = ctx != null ? ctx.getApplicationContext() : null;
         DefaultRenderersFactory renderersFactory = new DefaultRenderersFactory(context);
         renderersFactory.setEnableDecoderFallback(true);
         DefaultLoadControl loadControl = new DefaultLoadControl.Builder()
@@ -142,7 +146,7 @@ public class TVPlayerManager {
         return info;
     }
 
-    // 核心播放方法：Exo状态转发（修复回调失效关键，括号全部补全）
+    // 核心播放方法：Exo状态转发
     public void playUrl(String url) {
         if (player == null || url == null || url.isEmpty()) {
             return;
@@ -245,6 +249,14 @@ public class TVPlayerManager {
             player.play();
             updateWakeLock(true);
         }
+    }
+
+    // 补齐老方法
+    public void onBackground() {
+        pause();
+    }
+    public void onForeground() {
+        resume();
     }
 
     // 释放播放器资源

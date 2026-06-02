@@ -51,14 +51,14 @@ public class TVPlayerManager {
     /**
      * 播放状态监听接口
      */
-    public interface OnPlayStateListener {
-        void onPlayStarted();    // 开始播放
-        void onPlayPaused();     // 暂停
-        void onPlayCompleted();  // 播放完成
-        void onPlayError(Exception e); // 出错
-        void onBuffering();      // 缓冲中
-        void onPlaying();        // 播放中
-    }
+     public interface OnPlayStateListener {
+    void onIdle();
+    void onBuffering();
+    void onPlayReady();
+    void onPlayEnd();
+    void onPlayError(String msg);
+}
+
 
     /**
      * 直播信息实体：清晰度、音频、码率

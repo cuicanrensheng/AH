@@ -2,7 +2,7 @@ package com.tv.live.listener;
 
 import android.content.Context;
 import android.widget.Toast;
-import com.tv.live.TVPlayerManager;
+import com.tv.live.manager.TVPlayerManager;
 
 public class PlayerStateListenerImpl implements TVPlayerManager.OnPlayStateListener {
     private final Context context;
@@ -21,9 +21,8 @@ public class PlayerStateListenerImpl implements TVPlayerManager.OnPlayStateListe
 
     @Override
     public void onBuffering() {
-        if (!currentChannelName.isEmpty()) {
-            Toast.makeText(context, "正在播放：" + currentChannelName, Toast.LENGTH_SHORT).show();
-        }
+        // 这里清空：不弹“正在播放：xxx”
+        // Toast.makeText(context, "正在播放：" + currentChannelName, Toast.LENGTH_SHORT).show();
     }
 
     @Override

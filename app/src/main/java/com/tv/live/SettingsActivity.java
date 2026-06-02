@@ -507,7 +507,7 @@ public class SettingsActivity extends AppCompatActivity {
         }
 
         /** 条目缓存 */
-        static class ViewHolder {
+        class ViewHolder {
             TextView tvIdx, tvUrl;
             Button btnDel;
         }

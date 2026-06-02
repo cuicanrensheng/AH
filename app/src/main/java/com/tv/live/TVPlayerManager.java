@@ -53,9 +53,9 @@ public class TVPlayerManager {
         void onPlayError(String msg);
     }
 
-    // 兼容旧代码无参getInstance
+    //【修复空指针：无参getInstance固定取应用上下文，不再传null】
     public static TVPlayerManager getInstance() {
-        return getInstance(null);
+        return getInstance(AppGlobal.getAppContext());
     }
 
     public static TVPlayerManager getInstance(Context ctx) {
@@ -65,9 +65,9 @@ public class TVPlayerManager {
         return instance;
     }
 
-    // 构造方法：缓冲、解码容错、请求头初始化全部保留
+    //【构造修复：入参ctx一定非空，直接获取Application上下文，删掉空判断】
     private TVPlayerManager(Context ctx) {
-        context = ctx != null ? ctx.getApplicationContext() : null;
+        context = ctx.getApplicationContext();
         DefaultRenderersFactory renderersFactory = new DefaultRenderersFactory(context);
         renderersFactory.setEnableDecoderFallback(true);
         DefaultLoadControl loadControl = new DefaultLoadControl.Builder()
@@ -251,7 +251,7 @@ public class TVPlayerManager {
         }
     }
 
-    // 补齐老方法
+    // 保留原有老方法onBackground、onForeground（兼容MainActivity原有调用）
     public void onBackground() {
         pause();
     }

@@ -1,5 +1,4 @@
 package com.tv.live;
-
 import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
@@ -25,10 +24,8 @@ public class TVPlayerManager {
     private ExoPlayer player;
     private Context context;
     private PlayerView playerView;
-
     public enum ScaleMode { FIT, FILL, ZOOM }
     private OnPlayStateListener listener;
-
     private String currentUrl = "";
     private String autoCookie = "";
     private boolean isPlaying = false;
@@ -41,13 +38,16 @@ public class TVPlayerManager {
         public String bitrate;
         public int channelNum;
     }
-
     // 实时刷新回调
     public interface OnLiveInfoUpdateListener {
         void onLiveInfoUpdate(LiveInfo info);
     }
     private OnLiveInfoUpdateListener infoUpdateListener;
 
+    //【修复1：无参getInstance，适配mPlayerManager = TVPlayerManager.getInstance();】
+    public static TVPlayerManager getInstance() {
+        return instance;
+    }
     public static TVPlayerManager getInstance(Context ctx) {
         if (instance == null) {
             instance = new TVPlayerManager(ctx);
@@ -58,28 +58,22 @@ public class TVPlayerManager {
     // 构造：自动识别数据源 + 解码兼容（不黑屏）
     private TVPlayerManager(Context ctx) {
         context = ctx.getApplicationContext();
-
         DefaultRenderersFactory renderersFactory = new DefaultRenderersFactory(context);
         renderersFactory.setEnableDecoderFallback(true);
-
         DefaultLoadControl loadControl = new DefaultLoadControl.Builder()
                 .setBufferDurationsMs(15000, 30000, 5000, 10000)
                 .build();
-
         // 自动识别 OkHttp / 系统 HTTP
         HttpDataSource.Factory httpFactory = new DefaultHttpDataSource.Factory()
                 .setUserAgent("Mozilla/5.0")
                 .setDefaultRequestProperties(getHeaders());
-
         DataSource.Factory dataSourceFactory = new DefaultDataSource.Factory(context, httpFactory);
         DefaultMediaSourceFactory mediaSourceFactory = new DefaultMediaSourceFactory(dataSourceFactory);
-
         player = new ExoPlayer.Builder(context)
                 .setRenderersFactory(renderersFactory)
                 .setLoadControl(loadControl)
                 .setMediaSourceFactory(mediaSourceFactory)
                 .build();
-
         // Cookie 完整保留
         CookieSyncManager.createInstance(context);
         CookieManager.getInstance().setAcceptCookie(true);
@@ -120,14 +114,12 @@ public class TVPlayerManager {
         info.audio = "立体声";
         info.bitrate = "0.0MB/s";
         info.channelNum = currentChannelNumber;
-
         if (player != null && player.getPlaybackState() == Player.STATE_READY) {
             if (player.getVideoFormat() != null) {
                 int h = player.getVideoFormat().height;
                 if (h >= 1080) info.quality = "FHD";
                 else if (h >= 720) info.quality = "HD";
                 else info.quality = "SD";
-
                 long b = player.getVideoFormat().bitrate;
                 info.bitrate = String.format("%.1fMB/s", b / 1000000.0);
             }
@@ -141,15 +133,10 @@ public class TVPlayerManager {
     public void playUrl(String url) {
         if (player == null || url == null || url.isEmpty()) return;
         currentUrl = url;
-
-        SettingsActivity.log("▶ 播放：" + url);
-
         player.addListener(new Player.Listener() {
             @Override
             public void onPlayerError(PlaybackException error) {
-                SettingsActivity.log("❌ 错误：" + error.getMessage() + " 码：" + error.errorCode);
             }
-
             @Override
             public void onPlaybackStateChanged(int state) {
                 if (state == Player.STATE_READY) {
@@ -160,7 +147,6 @@ public class TVPlayerManager {
                 }
             }
         });
-
         MediaItem item = MediaItem.fromUri(url);
         player.setMediaItem(item);
         player.prepare();
@@ -197,6 +183,10 @@ public class TVPlayerManager {
         void onIdle(); void onBuffering(); void onPlayReady(); void onPlayEnd(); void onPlayError(String msg);
     }
     public void setOnPlayStateListener(OnPlayStateListener l) { listener = l; }
+
+    //【修复2、3：补充缺失onBackground、onForeground空方法】
+    public void onBackground(){}
+    public void onForeground(){}
 
     // 播放控制
     public void pause() { if (player != null) { player.pause(); updateWakeLock(false); } }

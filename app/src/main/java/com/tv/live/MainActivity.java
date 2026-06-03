@@ -252,32 +252,22 @@ public class MainActivity extends AppCompatActivity {
         checkIndexCycle(total);
         changeChannel(currentPlayIndex);
     }
-    public void togglePanel(){
-        panelManager.changePanel();
-    }
-    public void openSettings(){
-        startActivity(new Intent(this,SettingsActivity.class));
-        log("按键打开设置");
-    }
-    public void playChannel(int pos){
-        currentPlayIndex = pos;
-        changeChannel(pos);
-    }
-    public void onReceiveConfig(String live,String epg){
-        appConfig.saveCustomLiveUrl(live);
-        appConfig.saveCustomEpgUrl(epg);
-        UrlConfig.LIVE_URL = live;
-        UrlConfig.EPG_URL = epg;
-        loadLiveAndEpg();
-        Toast.makeText(this,"局域网配置已生效",Toast.LENGTH_SHORT).show();
-    }
-    private void checkIndexCycle(int total){
-        if(currentPlayIndex>=total)currentPlayIndex=0;
-        if(currentPlayIndex<0)currentPlayIndex=total-1;
-    }
-    private void changeChannel(int idx){
-        switchManager.switchChannel(idx);
-    }
+   public void togglePanel(){
+    panelManager.showHidePanel();
+}
+
+public void onReceiveConfig(String live,String epg){
+    sp.edit().putString("custom_live_url",live).putString("custom_epg",epg).apply();
+    UrlConfig.LIVE_URL = live;
+    UrlConfig.EPG_URL = epg;
+    loadLiveAndEpg();
+    Toast.makeText(this,"局域网配置已生效",Toast.LENGTH_SHORT).show();
+}
+
+private void changeChannel(int idx){
+    switchManager.playByIndex(idx);
+}
+
     //====================================================================
 
     private void loadSettings(){

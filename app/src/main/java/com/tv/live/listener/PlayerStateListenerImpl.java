@@ -21,8 +21,9 @@ public class PlayerStateListenerImpl implements TVPlayerManager.OnPlayStateListe
 
     @Override
     public void onBuffering() {
-        // 这里清空：不弹“正在播放：xxx”
-        // Toast.makeText(context, "正在播放：" + currentChannelName, Toast.LENGTH_SHORT).show();
+        if (!currentChannelName.isEmpty()) {
+            Toast.makeText(context, "正在播放：" + currentChannelName, Toast.LENGTH_SHORT).show();
+        }
     }
 
     @Override

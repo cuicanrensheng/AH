@@ -11,7 +11,8 @@
         android:orientation="vertical"
         android:padding="16dp"
         android:background="#B3000000">
-        <!--开机自启开关-->
+
+        <!-- 开机自启 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="55dp"
@@ -30,7 +31,9 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"/>
         </LinearLayout>
-        <!--节目单EPG开关-->
+
+    
+        <!-- 节目单开关 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="55dp"
@@ -40,6 +43,7 @@
             <TextView
                 android:layout_width="0dp"
                 android:layout_weight="1"
+                android:layout_height="wrap_content"
                 android:text="节目单开关"
                 android:textColor="#fff"
                 android:textSize="16sp"/>
@@ -48,16 +52,18 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"/>
         </LinearLayout>
-        <!--自动更新源开关-->
+
+        <!-- 自动更新源 -->
         <LinearLayout
             android:layout_width="match_parent"
-            android:gravity="center_vertical"
             android:layout_height="55dp"
+            android:gravity="center_vertical"
             android:paddingStart="16dp"
             android:paddingEnd="16dp">
             <TextView
                 android:layout_width="0dp"
                 android:layout_weight="1"
+                android:layout_height="wrap_content"
                 android:text="自动更新源"
                 android:textColor="#fff"
                 android:textSize="16sp"/>
@@ -66,7 +72,8 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"/>
         </LinearLayout>
-        <!--换台方向反转开关-->
+
+        <!-- 换台反转 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="55dp"
@@ -76,6 +83,7 @@
             <TextView
                 android:layout_width="0dp"
                 android:layout_weight="1"
+                android:layout_height="wrap_content"
                 android:text="换台反转"
                 android:textColor="#fff"
                 android:textSize="16sp"/>
@@ -84,7 +92,8 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"/>
         </LinearLayout>
-        <!--数字选台开关-->
+
+        <!-- 数字选台 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="55dp"
@@ -94,6 +103,7 @@
             <TextView
                 android:layout_width="0dp"
                 android:layout_weight="1"
+                android:layout_height="wrap_content"
                 android:text="数字选台"
                 android:textColor="#fff"
                 android:textSize="16sp"/>
@@ -102,7 +112,8 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"/>
         </LinearLayout>
-        <!--屏幕比例设置-->
+
+        <!-- 屏幕比例 -->
         <TextView
             android:id="@+id/tv_screen_ratio"
             android:layout_width="match_parent"
@@ -113,7 +124,8 @@
             android:text="屏幕比例"
             android:textColor="#fff"
             android:textSize="16sp"/>
-        <!--自定义订阅源录入-->
+
+        <!-- 自定义订阅源 -->
         <TextView
             android:id="@+id/tv_custom_source"
             android:layout_width="match_parent"
@@ -124,7 +136,8 @@
             android:text="自定义订阅源"
             android:textColor="#fff"
             android:textSize="16sp"/>
-        <!--自定义EPG录入-->
+
+        <!-- 自定义节目单 -->
         <TextView
             android:id="@+id/tv_custom_epg"
             android:layout_width="match_parent"
@@ -135,75 +148,56 @@
             android:text="自定义节目单"
             android:textColor="#fff"
             android:textSize="16sp"/>
-        <!--切换直播源（默认/自定义）-->
-        <TextView
-            android:id="@+id/tv_switch_live"
-            android:layout_width="match_parent"
-            android:layout_height="55dp"
-            android:gravity="center_vertical"
-            android:paddingStart="16dp"
-            android:text="切换直播源"
-            android:textColor="#fff"
-            android:textSize="16sp"/>
-        <!--切换EPG源（默认/自定义）-->
-        <TextView
-            android:id="@+id/tv_switch_epg"
-            android:layout_width="match_parent"
-            android:layout_height="55dp"
-            android:gravity="center_vertical"
-            android:paddingStart="16dp"
-            android:text="切换EPG源"
-            android:textColor="#fff"
-            android:textSize="16sp"/>
-        <!--多订阅源-->
+
+        <!-- 多订阅源 -->
         <TextView
             android:id="@+id/tv_multi_source"
             android:layout_width="match_parent"
             android:layout_height="55dp"
             android:gravity="center_vertical"
             android:paddingStart="16dp"
+            android:paddingEnd="16dp"
             android:text="多订阅源"
             android:textColor="#fff"
             android:textSize="16sp"/>
-        <!--多节目单-->
+
+        <!-- 多节目单 -->
         <TextView
             android:id="@+id/tv_multi_epg"
             android:layout_width="match_parent"
             android:layout_height="55dp"
             android:gravity="center_vertical"
             android:paddingStart="16dp"
+            android:paddingEnd="16dp"
             android:text="多节目单"
             android:textColor="#fff"
             android:textSize="16sp"/>
-        <!--二维码扫码配置-->
+
+        <!-- 扫码添加直播源/节目单 -->
         <TextView
             android:id="@+id/tv_qr_code"
             android:layout_width="match_parent"
             android:layout_height="55dp"
             android:gravity="center_vertical"
             android:paddingStart="16dp"
+            android:paddingEnd="16dp"
             android:text="扫码添加直播源/节目单"
             android:textColor="#fff"
             android:textSize="16sp"/>
-        <!--查看解析播放日志-->
+
+        <!-- 查看解析日志 -->
         <TextView
             android:id="@+id/log_viewer"
             android:layout_width="match_parent"
             android:layout_height="55dp"
             android:gravity="center_vertical"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
             android:text="📄 查看解析日志"
             android:textColor="#fff"
             android:textSize="16sp"/>
-        <!--查看操作日志-->
-        <TextView
-            android:id="@+id/setting_log_viewer"
-            android:layout_width="match_parent"
-            android:gravity="center_vertical"
-            android:layout_height="55dp"
-            android:text="⚙ 查看操作日志"
-            android:textColor="#fff"
-            android:textSize="16sp"/>
-        <!--版本检测-->
+
+        <!-- 检查更新 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="55dp"
@@ -213,23 +207,28 @@
             <TextView
                 android:layout_width="0dp"
                 android:layout_weight="1"
+                android:layout_height="wrap_content"
                 android:text="检查更新"
                 android:textColor="#fff"
                 android:textSize="16sp"/>
             <Button
                 android:id="@+id/btn_check_update"
                 android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
                 android:text="检查更新"
                 android:background="?attr/selectableItemBackgroundBorderless"/>
         </LinearLayout>
-        <!--局域网网页配置提示-->
+
+        <!-- 网页提示 -->
         <TextView
             android:layout_width="match_parent"
             android:layout_height="60dp"
             android:gravity="center"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
             android:text="网页设置：http://设备IP:10481"
             android:textColor="#999"
             android:textSize="14sp"/>
+
     </LinearLayout>
 </ScrollView>
-

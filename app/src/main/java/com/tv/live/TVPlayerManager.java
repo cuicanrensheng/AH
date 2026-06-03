@@ -18,9 +18,9 @@ import com.google.android.exoplayer2.upstream.DefaultHttpDataSource;
 import com.google.android.exoplayer2.upstream.HttpDataSource;
 import java.util.HashMap;
 import java.util.Map;
-
 public class TVPlayerManager {
     private static TVPlayerManager instance;
+    private static Context appContext;
     private ExoPlayer player;
     private Context context;
     private PlayerView playerView;
@@ -30,7 +30,6 @@ public class TVPlayerManager {
     private String autoCookie = "";
     private boolean isPlaying = false;
     private int currentChannelNumber = 0;
-
     // 播放信息（画质、音频、码率、频道号）
     public static class LiveInfo {
         public String quality;
@@ -44,8 +43,15 @@ public class TVPlayerManager {
     }
     private OnLiveInfoUpdateListener infoUpdateListener;
 
-    //【修复1：无参getInstance，适配mPlayerManager = TVPlayerManager.getInstance();】
+    public static void setAppContext(Context ctx){
+        appContext = ctx.getApplicationContext();
+    }
+
+    //修复无参单例，不会返回null
     public static TVPlayerManager getInstance() {
+        if(instance == null && appContext != null){
+            instance = new TVPlayerManager(appContext);
+        }
         return instance;
     }
     public static TVPlayerManager getInstance(Context ctx) {
@@ -54,7 +60,6 @@ public class TVPlayerManager {
         }
         return instance;
     }
-
     // 构造：自动识别数据源 + 解码兼容（不黑屏）
     private TVPlayerManager(Context ctx) {
         context = ctx.getApplicationContext();
@@ -78,17 +83,14 @@ public class TVPlayerManager {
         CookieSyncManager.createInstance(context);
         CookieManager.getInstance().setAcceptCookie(true);
     }
-
     public void attachPlayerView(PlayerView view) {
         playerView = view;
         playerView.setPlayer(player);
     }
-
     private void updateWakeLock(boolean enable) {
         isPlaying = enable;
         if (playerView != null) playerView.setKeepScreenOn(enable);
     }
-
     // 请求头 + Cookie 都在
     private Map<String, String> getHeaders() {
         Map<String, String> headers = new HashMap<>();
@@ -101,12 +103,10 @@ public class TVPlayerManager {
         }
         return headers;
     }
-
     // 设置频道号
     public void setCurrentChannelNumber(int num) {
         this.currentChannelNumber = num;
     }
-
     // 自动获取播放信息
     public LiveInfo getLiveInfo() {
         LiveInfo info = new LiveInfo();
@@ -129,7 +129,6 @@ public class TVPlayerManager {
         }
         return info;
     }
-
     public void playUrl(String url) {
         if (player == null || url == null || url.isEmpty()) return;
         currentUrl = url;
@@ -152,7 +151,6 @@ public class TVPlayerManager {
         player.prepare();
         player.play();
     }
-
     // 通知界面刷新
     private void notifyLiveInfoUpdate() {
         if (infoUpdateListener != null) {
@@ -161,13 +159,10 @@ public class TVPlayerManager {
             });
         }
     }
-
     public void setOnLiveInfoUpdateListener(OnLiveInfoUpdateListener listener) {
         this.infoUpdateListener = listener;
     }
-
     public void play(String url) { playUrl(url); }
-
     // 画面比例
     public void setScaleMode(ScaleMode mode) {
         if (playerView == null) return;
@@ -177,17 +172,13 @@ public class TVPlayerManager {
             case ZOOM: playerView.setResizeMode(com.google.android.exoplayer2.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM); break;
         }
     }
-
     // 播放状态监听
     public interface OnPlayStateListener {
         void onIdle(); void onBuffering(); void onPlayReady(); void onPlayEnd(); void onPlayError(String msg);
     }
     public void setOnPlayStateListener(OnPlayStateListener l) { listener = l; }
-
-    //【修复2、3：补充缺失onBackground、onForeground空方法】
     public void onBackground(){}
     public void onForeground(){}
-
     // 播放控制
     public void pause() { if (player != null) { player.pause(); updateWakeLock(false); } }
     public void resume() { if (player != null) { player.play(); updateWakeLock(true); } }

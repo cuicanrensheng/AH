@@ -4,14 +4,12 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#000000">
-
     <!-- 第一层：播放器画面（最底层，ExoPlayer播放画面全屏） -->
     <com.google.android.exoplayer2.ui.PlayerView
         android:id="@+id/player_view"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
-
-    <!-- 切台台号弹窗：右上角频道数字，切台弹出3秒消失 -->
+    <!-- 切台台号弹窗：右上角频道数字，切台弹出3秒消失（已改右上角） -->
     <TextView
         android:id="@+id/tv_channel_num"
         android:layout_width="wrap_content"
@@ -19,9 +17,10 @@
         android:layout_gravity="top|end"
         android:textSize="60sp"
         android:textColor="#ffffff"
+        android:layout_marginTop="24dp"
+        android:layout_marginEnd="24dp"
         android:visibility="gone"/>
-
-    <!-- 第二层：底部频道信息栏（频道名、码率、EPG节目信息，切台显示2秒） -->
+    <!-- 第二层：底部频道信息栏（频道名、码率、EPG节目信息，切台显示2秒）原样不动 -->
     <LinearLayout
         android:id="@+id/info_bar"
         android:layout_width="match_parent"
@@ -31,7 +30,6 @@
         android:padding="12dp"
         android:background="#CC000000"
         android:visibility="gone">
-
         <!-- 第一行：频道名称 + 音质/清晰度标签 -->
         <LinearLayout
             android:layout_width="match_parent"
@@ -69,7 +67,6 @@
                 android:gravity="end"
                 android:textColor="#FFF"/>
         </LinearLayout>
-
         <!-- 第二行：正在播放节目 + 时间进度 -->
         <LinearLayout
             android:layout_width="match_parent"
@@ -101,7 +98,6 @@
                 android:layout_height="wrap_content"
                 android:textColor="#cccccc"/>
         </LinearLayout>
-
         <!-- 第三行：下一档节目 -->
         <LinearLayout
             android:layout_width="match_parent"
@@ -125,15 +121,13 @@
                 android:layout_marginStart="8dp"/>
         </LinearLayout>
     </LinearLayout>
-
-    <!-- 第三层：侧边控制面板（分组+频道+EPG列表面板，遥控器呼出） -->
+    <!-- 第三层：侧边控制面板【重点改造：左分组→中频道→竖向节目单竖条→原日期+EPG完整保留，全部ID不变】 -->
     <LinearLayout
         android:id="@+id/panel_layout"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:orientation="horizontal"
         android:visibility="gone">
-
         <!-- 左侧：分组列表 -->
         <ListView
             android:id="@+id/lv_group"
@@ -146,7 +140,31 @@
             android:layout_width="180dp"
             android:layout_height="match_parent"
             android:background="#EE111111"/>
-        <!-- 右侧：日期+EPG节目单 -->
+
+        <!-- 新增：竖向节目单竖条（90°旋转文字+箭头，原版样式） -->
+        <LinearLayout
+            android:layout_width="62dp"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:background="#333333">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="节目单"
+                android:textColor="#FFFFFF"
+                android:textSize="22sp"
+                android:rotation="90"/>
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="》"
+                android:textColor="#FFFFFF"
+                android:textSize="26sp"
+                android:layout_marginTop="16dp"/>
+        </LinearLayout>
+
+        <!-- 右侧：保留原有顶部节目单按钮+横向日期栏+EPG列表【原ID全部不动，适配旧代码】 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="match_parent"
@@ -175,5 +193,4 @@
                 android:layout_height="match_parent"/>
         </LinearLayout>
     </LinearLayout>
-
 </FrameLayout>

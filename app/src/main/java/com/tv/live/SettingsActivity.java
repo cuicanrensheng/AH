@@ -189,31 +189,31 @@ public class SettingsActivity extends AppCompatActivity {
     }
 
     @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        // 全局未捕获异常拦截
-        Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> logCrash(throwable));
-        try {
-            super.onCreate(savedInstanceState);
-            // 屏幕常亮、弹窗半透明
-            getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-            getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-            getWindow().getAttributes().dimAmount = 0.6f;
-            getWindow().setFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND, WindowManager.LayoutParams.FLAG_DIM_BEHIND);
-            // 强制横屏
-            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
-            setContentView(R.layout.activity_settings);
-            sp = getSharedPreferences("app_settings", MODE_PRIVATE);
-            bindView();
-            initClick();
-            // 获取本机IP拼接二维码地址
-            currentWebUrl = "http://" + getDeviceIPAddress() + ":" + PORT;
-            // 启动局域网监听服务
-            startPushServer();
-            logSetting("进入设置页面");
-        } catch (Exception e) {
-            logCrash(e);
-        }
+protected void onCreate(Bundle savedInstanceState) {
+    // 全局未捕获异常拦截
+    Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> logCrash(throwable));
+    super.onCreate(savedInstanceState); // super固定放在try外部第一行
+    try {
+        // 屏幕常亮、弹窗半透明
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+        getWindow().getAttributes().dimAmount = 0.6f;
+        getWindow().setFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND, WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+        // 强制横屏
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+        setContentView(R.layout.activity_settings);
+        sp = getSharedPreferences("app_settings", MODE_PRIVATE);
+        bindView();
+        initClick();
+        // 获取本机IP拼接二维码地址
+        currentWebUrl = "http://" + getDeviceIPAddress() + ":" + PORT;
+        // 启动局域网监听服务
+        startPushServer();
+        logSetting("进入设置页面");
+    } catch (Exception e) {
+        logCrash(e);
     }
+}
 
     /**
      * 绑定所有控件ID

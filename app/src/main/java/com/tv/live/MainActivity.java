@@ -220,9 +220,8 @@ public class MainActivity extends AppCompatActivity {
                 if(rev) currentPlayIndex++;
                 else currentPlayIndex--;
             }
-            if(currentPlayIndex >= total) currentPlayIndex = 0;
-            if(currentPlayIndex < 0) currentPlayIndex = total -1;
-            switchManager.switchChannel(currentPlayIndex);
+            checkIndexCycle(total);
+            changeChannel(currentPlayIndex);
             lastChannelChangeTime = now;
             return true;
         }
@@ -234,7 +233,53 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    //下方原有代码不动
+    //=============新增缺失外部调用方法（修复全部找不到符号报错）=============
+    public void playPrev(){
+        boolean rev = channel_reverse;
+        int total = currentGroupChannelList.size();
+        if(total==0)return;
+        if(rev) currentPlayIndex++;
+        else currentPlayIndex--;
+        checkIndexCycle(total);
+        changeChannel(currentPlayIndex);
+    }
+    public void playNext(){
+        boolean rev = channel_reverse;
+        int total = currentGroupChannelList.size();
+        if(total==0)return;
+        if(rev) currentPlayIndex--;
+        else currentPlayIndex++;
+        checkIndexCycle(total);
+        changeChannel(currentPlayIndex);
+    }
+    public void togglePanel(){
+        panelManager.changePanel();
+    }
+    public void openSettings(){
+        startActivity(new Intent(this,SettingsActivity.class));
+        log("按键打开设置");
+    }
+    public void playChannel(int pos){
+        currentPlayIndex = pos;
+        changeChannel(pos);
+    }
+    public void onReceiveConfig(String live,String epg){
+        appConfig.saveCustomLiveUrl(live);
+        appConfig.saveCustomEpgUrl(epg);
+        UrlConfig.LIVE_URL = live;
+        UrlConfig.EPG_URL = epg;
+        loadLiveAndEpg();
+        Toast.makeText(this,"局域网配置已生效",Toast.LENGTH_SHORT).show();
+    }
+    private void checkIndexCycle(int total){
+        if(currentPlayIndex>=total)currentPlayIndex=0;
+        if(currentPlayIndex<0)currentPlayIndex=total-1;
+    }
+    private void changeChannel(int idx){
+        switchManager.switchChannel(idx);
+    }
+    //====================================================================
+
     private void loadSettings(){
         sp = getSharedPreferences("app_settings",MODE_PRIVATE);
         epg_enable = sp.getBoolean("epg_enable",true);

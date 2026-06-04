@@ -15,13 +15,13 @@ public class ScreenRatioManager {
 
     public void apply() {
         String ratio = appConfig.getScreenRatio();
-        if (ratio == null) ratio = "填充";
-
         switch (ratio) {
             case "原始":
                 mPlayerManager.setScaleMode(TVPlayerManager.ScaleMode.FIT);
                 break;
             case "填充":
+                mPlayerManager.setScaleMode(TVPlayerManager.ScaleMode.FILL);
+                break;
             default:
                 mPlayerManager.setScaleMode(TVPlayerManager.ScaleMode.FILL);
                 break;

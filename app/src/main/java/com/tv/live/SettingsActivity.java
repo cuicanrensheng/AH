@@ -1,37 +1,34 @@
 package com.tv.live;
 
-import android.app.AlertDialog;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
-import android.graphics.Bitmap;
-import android.graphics.Color;
-import android.graphics.drawable.ColorDrawable;
-import android.net.wifi.WifiInfo;
-import android.net.wifi.WifiManager;
 import android.os.Bundle;
 import android.os.Handler;
-import android.os.Looper;
 import android.text.TextUtils;
-import android.view.LayoutInflater;
+import android.view.KeyEvent;
 import android.view.View;
-import android.view.ViewGroup;
 import android.view.WindowManager;
-import android.widget.ArrayAdapter;
-import android.widget.EditText;
-import android.widget.ImageView;
-import android.widget.ScrollView;
-import android.widget.Switch;
+import android.widget.ListView;
 import android.widget.TextView;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
-import com.google.zxing.BarcodeFormat;
-import com.google.zxing.common.BitMatrix;
-import com.google.zxing.qrcode.QRCodeWriter;
+import com.google.android.exoplayer2.ui.PlayerView;
+import com.tv.live.config.AppConfig;
+import com.tv.live.loader.LiveSourceLoader;
+import com.tv.live.manager.*;
+import com.tv.live.widget.*;
+import java.io.*;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.net.URLDecoder;
 import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class SettingsActivity extends AppCompatActivity {
     private Switch sw_boot, sw_epg, sw_auto_update, sw_reverse, sw_num_channel;
@@ -42,8 +39,9 @@ public class SettingsActivity extends AppCompatActivity {
     private static final int PORT = 10481;
     private SettingsAdapter adapter;
 
-    // 直接在这里声明 NanoHTTPD
-    private NanoHTTPD nanoHTTPD;
+    // 网页服务相关
+    private NanoInnerServer nanoServer;
+    private boolean needRefreshFromWeb = false; // 网页保存标记
 
     //====================日志系统完整保留====================
     private static final List<String> OPERATION_LOG = new ArrayList<>();
@@ -148,14 +146,14 @@ public class SettingsActivity extends AppCompatActivity {
         sw_auto_update.setOnCheckedChangeListener((b,isChecked)->{
             sp.edit().putBoolean("auto_update_source",isChecked).apply();
             logOperation("自动更新源:"+(isChecked?"开启":"关闭"));
-            Toast.makeText(this,"自动更新源"+(isChecked?"已关闭":"已开启"),Toast.LENGTH_SHORT).show();
+            Toast.makeText(this,"自动更新源"+(isChecked?"已开启":"已关闭"),Toast.LENGTH_SHORT).show();
         });
 
         sw_reverse.setChecked(sp.getBoolean("channel_reverse",false));
         sw_reverse.setOnCheckedChangeListener((b,isChecked)->{
             sp.edit().putBoolean("channel_reverse",isChecked).apply();
             logOperation("换台反转:"+(isChecked?"开启":"关闭"));
-            Toast.makeText(this,"换台反转"+(isChecked?"已开启":"已关闭"),Toast.LENGTH_SHORT).show();
+            Toast.makeText(this,"换台反转"+(isChecked?"已关闭":"已开启"),Toast.LENGTH_SHORT).show();
         });
 
         sw_num_channel.setChecked(sp.getBoolean("number_channel_enable",true));
@@ -174,14 +172,39 @@ public class SettingsActivity extends AppCompatActivity {
         initListeners();
         currentWebUrl = "http://"+getDeviceIPAddress()+":"+PORT;
 
-        // ========== 直接在这里启动网页后台 ==========
-        try {
-            nanoHTTPD = new NanoHTTPD(PORT);
-            nanoHTTPD.start();
-            logOperation("网页后台启动成功：" + currentWebUrl);
-        } catch (Exception e) {
-            logCrash(e);
+        // 启动内置网页服务（只初始化一次，解决端口重复占用EADDRINUSE）
+        if(nanoServer == null){
+            nanoServer = new NanoInnerServer(PORT);
+            try {
+                nanoServer.start();
+                logOperation("设置页面打开 · 网页后台已启动");
+            } catch (Exception e) {
+                logCrash(e);
+            }
         }
+
+        // 主线程循环监听网页保存标记
+        handler.post(checkRefreshRunnable);
+    }
+
+    // 轮询任务：网页保存后置标记，自动刷新
+    private final Runnable checkRefreshRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if(needRefreshFromWeb){
+                needRefreshFromWeb = false;
+                logOperation("网页提交源，执行全局刷新");
+                // 发送全局刷新广播，Main接收自动重载
+                Intent refreshIntent = new Intent("com.tv.live.REFRESH_LIVE_AND_EPG");
+                sendBroadcast(refreshIntent);
+            }
+            handler.postDelayed(this,300);
+        }
+    };
+
+    // 给内部服务调用：开启刷新标记
+    public void setNeedRefresh(){
+        needRefreshFromWeb = true;
     }
 
     private void initListeners() {
@@ -319,11 +342,147 @@ public class SettingsActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        // 关闭网页后台
-        if (nanoHTTPD != null) {
-            nanoHTTPD.stop();
+        // 停止网页服务
+        if(nanoServer != null){
+            nanoServer.stop();
+            nanoServer = null;
+            logOperation("设置页面关闭 · 网页后台已停止");
         }
-        logOperation("设置页面关闭 · 网页后台已停止");
+        handler.removeCallbacks(checkRefreshRunnable);
+    }
+
+    // 内置网页服务类（内部类，可直接调用Settings方法，不用跨包导Intent）
+    private class NanoInnerServer {
+        private ServerSocket serverSocket;
+        private int port;
+        private boolean running;
+
+        public NanoInnerServer(int port) {
+            this.port = port;
+            serverSocket = null;
+            running = false;
+        }
+
+        public void start() throws IOException {
+            serverSocket = new ServerSocket(port);
+            serverSocket.setReuseAddress(true);
+            running = true;
+            new Thread(this::doListen).start();
+        }
+
+        public void stop() {
+            running = false;
+            try {
+                if (serverSocket != null) serverSocket.close();
+            } catch (Exception ignored) {}
+        }
+
+        private void doListen() {
+            while (running) {
+                try {
+                    Socket client = serverSocket.accept();
+                    new Thread(() -> handleClient(client)).start();
+                } catch (Exception ignored) {
+                    break;
+                }
+            }
+        }
+
+        private void handleClient(Socket socket) {
+            try {
+                BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+                OutputStream out = socket.getOutputStream();
+
+                String line = in.readLine();
+                if (line == null || !line.startsWith("GET ")) {
+                    send404(out);
+                    return;
+                }
+
+                String path = line.split(" ")[1];
+                if (path.equals("/")) {
+                    sendIndex(out);
+                } else if (path.startsWith("/apply")) {
+                    handleApply(out, path);
+                } else {
+                    send404(out);
+                }
+
+                in.close();
+                out.close();
+                socket.close();
+            } catch (Exception ignored) {}
+        }
+
+        private void sendIndex(OutputStream out) throws Exception {
+            String html = "<!DOCTYPE html>\n" +
+                    "<html>\n" +
+                    "<body style='background:#111;color:#fff;padding:30px;font-size:16px;'>\n" +
+                    "<h2>TV 后台配置</h2>\n" +
+                    "<form action='/apply'>\n" +
+                    "<p>直播源地址：</p>\n" +
+                    "<input type='text' name='live' style='width:100%;padding:8px;font-size:16px;' />\n" +
+                    "<p>EPG节目单：</p>\n" +
+                    "<input type='text' name='epg' style='width:100%;padding:8px;font-size:16px;' />\n" +
+                    "<br/><br/>\n" +
+                    "<button type='submit' style='width:100%;padding:12px;font-size:18px;'>保存并刷新</button>\n" +
+                    "</form>\n" +
+                    "</body>\n" +
+                    "</html>";
+
+            out.write(("HTTP/1.1 200 OK\r\nContent-Type:text/html;charset=UTF-8\r\n\r\n" + html).getBytes("UTF-8"));
+        }
+
+        private void handleApply(OutputStream out, String path) throws Exception {
+            String query = path.contains("?") ? path.split("\\?")[1] : "";
+            Map<String, String> params = parseQuery(query);
+
+            String live = params.get("live");
+            String epg = params.get("epg");
+
+            // 保存到SP
+            boolean changed = false;
+            SharedPreferences sp = getSharedPreferences("app_settings",MODE_PRIVATE);
+            if(live != null && !live.trim().isEmpty()){
+                sp.edit().putString("custom_live_url",live.trim()).apply();
+                addHistory("live_history",live.trim());
+                logOperation("网页保存直播源："+live);
+                changed = true;
+            }
+            if(epg != null && !epg.trim().isEmpty()){
+                sp.edit().putString("custom_epg_url",epg.trim()).apply();
+                addHistory("epg_history",epg.trim());
+                logOperation("网页保存EPG："+epg);
+                changed = true;
+            }
+
+            // 关键：置刷新标记，主线程自动发广播刷新APP
+            if(changed){
+                setNeedRefresh();
+            }
+
+            String ok = "<h2 style='color:#0c0;'>保存成功！已刷新</h2>";
+            out.write(("HTTP/1.1 200 OK\r\nContent-Type:text/html;charset=UTF-8\r\n\r\n" + ok).getBytes("UTF-8"));
+        }
+
+        private Map<String, String> parseQuery(String query) {
+            Map<String, String> map = new HashMap<>();
+            if (query.isEmpty()) return map;
+            String[] pairs = query.split("&");
+            for (String p : pairs) {
+                String[] kv = p.split("=");
+                if (kv.length == 2) {
+                    try {
+                        map.put(kv[0], URLDecoder.decode(kv[1], "UTF-8"));
+                    } catch (Exception ignored) {}
+                }
+            }
+            return map;
+        }
+
+        private void send404(OutputStream out) throws Exception {
+            out.write("HTTP/1.1 404 Not Found\r\n\r\n".getBytes());
+        }
     }
 
     private static class SettingsAdapter extends ArrayAdapter<String> {

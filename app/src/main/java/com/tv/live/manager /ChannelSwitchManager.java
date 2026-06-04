@@ -1,65 +1,226 @@
-package com.tv.live.manager;
+package com.tv.live;
 
-import com.tv.live.Channel;
+import android.os.Bundle;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.ArrayAdapter;
+import android.widget.LinearLayout;
+import android.widget.ListView;
+import android.widget.TextView;
+import androidx.appcompat.app.AppCompatActivity;
+import org.xmlpull.v1.XmlPullParser;
+import org.xmlpull.v1.XmlPullParserFactory;
+import java.io.StringReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 
-public class ChannelSwitchManager {
+public class ChannelListActivity extends AppCompatActivity {
+    private ListView lvChannels;
+    private ListView lvEpg;
+    private TextView tvShowEpg;
+    private LinearLayout llEpgPanel;
+    private LinearLayout llDateBar;
 
-    private static ChannelSwitchManager instance;
-    private List<Channel> channelList;
-    private int currentIndex = 0;
-    private boolean isSwitching = false;
+    // ==================== 你的原有数据 ====================
+    private List<MainActivity.Channel> channelList;
+    private List<String> channelNames = new ArrayList<>();
+    private List<String> epgShowList = new ArrayList<>();
+    private ArrayAdapter<String> epgAdapter;
+    private final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("yyyyMMdd", Locale.getDefault());
+    private final String TODAY = DATE_FORMAT.format(new Date());
 
-    private ChannelSwitchManager() {}
+    // ==================== 我新增：自动M3U频道列表 ====================
+    private ArrayList<TVPlayerManager.M3u.Channel> mChannelList;
 
-    public static ChannelSwitchManager getInstance() {
-        if (instance == null) {
-            instance = new ChannelSwitchManager();
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_channel_list);
+
+        lvChannels = findViewById(R.id.lv_channels);
+        lvEpg = findViewById(R.id.lv_epg);
+        tvShowEpg = findViewById(R.id.tv_show_epg);
+        llEpgPanel = findViewById(R.id.ll_epg_panel);
+        llDateBar = findViewById(R.id.ll_date_bar);
+
+        // 优先加载自动M3U频道
+        loadAutoChannelList();
+
+        // 你的原有逻辑（保留）
+        channelList = MainActivity.mInstance.channels;
+        for (MainActivity.Channel c : channelList) {
+            channelNames.add(c.name);
         }
-        return instance;
+
+        setupDateBar();
+        setupEpgList();
+        loadCurrentChannelEpg();
+
+        tvShowEpg.setOnClickListener(v -> {
+            if (llEpgPanel.getVisibility() == View.GONE) {
+                llEpgPanel.setVisibility(View.VISIBLE);
+            } else {
+                llEpgPanel.setVisibility(View.GONE);
+            }
+        });
     }
 
-    public void setChannelList(List<Channel> list) {
-        this.channelList = list;
+    // ==================== 我新增：自动从M3U加载频道 ====================
+    private void loadAutoChannelList() {
+        TVPlayerManager manager = TVPlayerManager.getInstance(this);
+        manager.loadChannelList(new TVPlayerManager.OnChannelListener() {
+            @Override
+            public void onSuccess(ArrayList<TVPlayerManager.M3u.Channel> list) {
+                mChannelList = list;
+                ArrayList<String> names = new ArrayList<>();
+                for (TVPlayerManager.M3u.Channel ch : list) {
+                    names.add(ch.name);
+                }
+
+                ArrayAdapter<String> adapter = new ArrayAdapter<String>(
+                        ChannelListActivity.this,
+                        android.R.layout.simple_list_item_1,
+                        names) {
+                    @Override
+                    public View getView(int position, View convertView, ViewGroup parent) {
+                        TextView tv = (TextView) super.getView(position, convertView, parent);
+                        tv.setTextSize(22);
+                        tv.setPadding(40, 20, 40, 20);
+                        tv.setTextColor(0xFFFFFFFF);
+                        return tv;
+                    }
+                };
+
+                lvChannels.setAdapter(adapter);
+
+                // 点击自动播放 + 传地址
+                lvChannels.setOnItemClickListener((parent, view, position, id) -> {
+                    String playUrl = mChannelList.get(position).url;
+                    Intent intent = new Intent(ChannelListActivity.this, LivePlayerActivity.class);
+                    intent.putExtra("url", playUrl);
+                    startActivity(intent);
+                });
+            }
+
+            @Override
+            public void onFail() {
+            }
+        });
     }
 
-    public void setCurrentIndex(int index) {
-        if (channelList == null || channelList.isEmpty()) {
-            currentIndex = 0;
-            return;
+    // ==================== 你的原有逻辑（完全保留） ====================
+    private void setupChannelList() {
+        ArrayAdapter<String> adapter = new ArrayAdapter<String>(
+                this,
+                android.R.layout.simple_list_item_1,
+                channelNames
+        ) {
+            @Override
+            public View getView(int position, View convertView, ViewGroup parent) {
+                TextView tv = (TextView) super.getView(position, convertView, parent);
+                tv.setTextSize(22);
+                tv.setPadding(40, 20, 40, 20);
+                return tv;
+            }
+        };
+        lvChannels.setAdapter(adapter);
+        lvChannels.setSelection(MainActivity.mInstance.currentPosition);
+        lvChannels.setOnItemClickListener((parent, view, pos, id) -> {
+            MainActivity.mInstance.play(pos);
+            loadEpgByChannelIndex(pos);
+            finish();
+        });
+    }
+
+    private void setupEpgList() {
+        epgAdapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, epgShowList);
+        lvEpg.setAdapter(epgAdapter);
+    }
+
+    private void setupDateBar() {
+        llDateBar.removeAllViews();
+        Calendar c = Calendar.getInstance();
+        int today = c.get(Calendar.DAY_OF_WEEK);
+        int[] weeks = {1, 2, 3, 4, 5, 6, 7};
+        String[] weekNames = {"日", "一", "二", "三", "四", "五", "六"};
+        for (int i = 0; i < 7; i++) {
+            int day = weeks[(today - 2 + i + 7) % 7];
+            c.set(Calendar.DAY_OF_WEEK, day);
+            String dateStr = new SimpleDateFormat("MM/dd", Locale.CHINA).format(c.getTime());
+            TextView tv = new TextView(this);
+            tv.setTextColor(0xFFFFFFFF);
+            tv.setTextSize(14);
+            tv.setPadding(20, 10, 20, 10);
+            tv.setText(weekNames[day - 1] + "\n" + dateStr);
+            llDateBar.addView(tv);
         }
-        if (index < 0) index = 0;
-        if (index >= channelList.size()) index = channelList.size() - 1;
-        currentIndex = index;
     }
 
-    // 上一台
-    public int prev() {
-        if (channelList == null || channelList.isEmpty() || isSwitching) return currentIndex;
-        isSwitching = true;
-        currentIndex--;
-        if (currentIndex < 0) {
-            currentIndex = channelList.size() - 1;
+    private void loadCurrentChannelEpg() {
+        int pos = MainActivity.mInstance.currentPosition;
+        if (pos >= 0 && pos < channelList.size()) {
+            loadEpgByChannelIndex(pos);
         }
-        // 切换完成后解锁
-        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> isSwitching = false, 100);
-        return currentIndex;
     }
 
-    // 下一台
-    public int next() {
-        if (channelList == null || channelList.isEmpty() || isSwitching) return currentIndex;
-        isSwitching = true;
-        currentIndex++;
-        if (currentIndex >= channelList.size()) {
-            currentIndex = 0;
-        }
-        // 切换完成后解锁
-        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> isSwitching = false, 100);
-        return currentIndex;
+    private void loadEpgByChannelIndex(int pos) {
+        MainActivity.Channel ch = channelList.get(pos);
+        String epgUrl = MainActivity.mInstance.epgUrl;
+        if (epgUrl == null || epgUrl.isEmpty()) return;
+        new Thread(() -> {
+            try {
+                URL url = new URL(epgUrl);
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setConnectTimeout(10000);
+                conn.setRequestMethod("GET");
+                XmlPullParserFactory factory = XmlPullParserFactory.newInstance();
+                XmlPullParser parser = factory.newPullParser();
+                parser.setInput(new StringReader(streamToString(conn.getInputStream())));
+                List<String> list = new ArrayList<>();
+                String channelId = ch.id;
+                String start = "", title = "";
+                while (parser.getEventType() != XmlPullParser.END_DOCUMENT) {
+                    String tag = parser.getName();
+                    if (parser.getEventType() == XmlPullParser.START_TAG) {
+                        if ("programme".equals(tag)) {
+                            String chId = parser.getAttributeValue(null, "channel");
+                            String startStr = parser.getAttributeValue(null, "start");
+                            if (chId != null && chId.equals(channelId) && startStr != null && startStr.startsWith(TODAY)) {
+                                start = startStr.substring(8, 10) + ":" + startStr.substring(10, 12);
+                            }
+                        }
+                        if ("title".equals(tag)) {
+                            title = parser.nextText();
+                        }
+                    } else if (parser.getEventType() == XmlPullParser.END_TAG && "programme".equals(tag)) {
+                        if (start != null && !start.isEmpty() && title != null) {
+                            list.add(start + "  " + title);
+                            start = "";
+                            title = "";
+                        }
+                    }
+                    parser.next();
+                }
+                conn.disconnect();
+                runOnUiThread(() -> {
+                    epgShowList.clear();
+                    epgShowList.addAll(list);
+                    epgAdapter.notifyDataSetChanged();
+                });
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }).start();
     }
 
-    public int getCurrentIndex() {
-        return currentIndex;
+    private String streamToString(java.io.InputStream is) {
+        java.util.Scanner s = new java.util.Scanner(is).useDelimiter("\\A");
+        return s.hasNext() ? s.next() : "";
     }
 }

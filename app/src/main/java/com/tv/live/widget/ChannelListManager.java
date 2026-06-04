@@ -14,8 +14,9 @@ import java.util.List;
 public class ChannelListManager {
     private final ListView lvChannelList;
     private int selectedPosition = 0;
+    private ArrayAdapter<String> adapter;
+    private List<String> channelNames = new ArrayList<>();
 
-    // 点击回调
     public interface OnChannelClickListener {
         void onChannelClick(int position);
     }
@@ -29,69 +30,7 @@ public class ChannelListManager {
         this.lvChannelList = lvChannelList;
         lvChannelList.setItemsCanFocus(true);
 
-        // 点击事件
-        lvChannelList.setOnItemClickListener((parent, view, position, id) -> {
-            selectedPosition = position;          // 【修复】点击后更新选中位置
-            ((ArrayAdapter<?>)parent.getAdapter()).notifyDataSetChanged(); // 刷新颜色
-            if (onChannelClickListener != null) {
-                onChannelClickListener.onChannelClick(position);
-            }
-        });
-
-        // 焦点选中
-        lvChannelList.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-            @Override
-            public void onItemSelected(AdapterView<?> parent, View view, int pos, long id) {
-                selectedPosition = pos;            // 【修复】焦点选中同步更新位置
-                ((ArrayAdapter<?>) parent.getAdapter()).notifyDataSetChanged();
-            }
-            @Override
-            public void onNothingSelected(AdapterView<?> parent) {}
-        });
-    }
-
-    // 显示全部频道
-    public void setChannels(List<Channel> channelSourceList, int currentPlayIndex) {
-        if (channelSourceList == null || channelSourceList.isEmpty()) return;
-        List<String> names = new ArrayList<>();
-        for (Channel c : channelSourceList) names.add(c.getName());
-        selectedPosition = currentPlayIndex;      // 【修复】初始选中当前播放台
-
-        ArrayAdapter<String> adapter = new ArrayAdapter<String>(lvChannelList.getContext(), android.R.layout.simple_list_item_1, names) {
-            @Override
-            public View getView(int position, View convertView, ViewGroup parent) {
-                View view = super.getView(position, convertView, parent);
-                TextView tv = view.findViewById(android.R.id.text1);
-                tv.setTextColor(Color.WHITE);
-                if (position == selectedPosition) {
-                    tv.setTextColor(Color.parseColor("#40A9FF")); // 高亮选中项
-                }
-                return view;
-            }
-        };
-        lvChannelList.setAdapter(adapter);
-        lvChannelList.setSelection(selectedPosition);
-    }
-
-    // 按分组显示频道
-    public void setChannelsByGroup(List<Channel> channelSourceList, String group, int currentPlayIndex) {
-        if (channelSourceList == null || channelSourceList.isEmpty()) return;
-        List<String> names = new ArrayList<>();
-        int realIndex = 0;
-
-        for (int i = 0; i < channelSourceList.size(); i++) {
-            Channel c = channelSourceList.get(i);
-            if (group == null || group.isEmpty() || group.equals(c.getGroup())) {
-                names.add(c.getName());
-                if (i == currentPlayIndex) {
-                    realIndex = names.size() - 1;
-                }
-            }
-        }
-
-        selectedPosition = realIndex;              // 【修复】分组切换后正确高亮
-
-        ArrayAdapter<String> adapter = new ArrayAdapter<String>(lvChannelList.getContext(), android.R.layout.simple_list_item_1, names) {
+        adapter = new ArrayAdapter<String>(context, android.R.layout.simple_list_item_1, channelNames) {
             @Override
             public View getView(int position, View convertView, ViewGroup parent) {
                 View view = super.getView(position, convertView, parent);
@@ -104,15 +43,58 @@ public class ChannelListManager {
             }
         };
         lvChannelList.setAdapter(adapter);
+
+        lvChannelList.setOnItemClickListener((parent, view, position, id) -> {
+            selectedPosition = position;
+            adapter.notifyDataSetChanged();
+            if (onChannelClickListener != null) {
+                onChannelClickListener.onChannelClick(position);
+            }
+        });
+
+        lvChannelList.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View view, int pos, long id) {
+                selectedPosition = pos;
+                adapter.notifyDataSetChanged();
+            }
+            @Override
+            public void onNothingSelected(AdapterView<?> parent) {}
+        });
+    }
+
+    public void setChannels(List<Channel> channelSourceList, int currentPlayIndex) {
+        if (channelSourceList == null || channelSourceList.isEmpty()) return;
+        channelNames.clear();
+        for (Channel c : channelSourceList) channelNames.add(c.getName());
+        selectedPosition = currentPlayIndex;
+        adapter.notifyDataSetChanged();
+        lvChannelList.setSelection(selectedPosition);
+    }
+
+    public void setChannelsByGroup(List<Channel> channelSourceList, String group, int currentPlayIndex) {
+        if (channelSourceList == null || channelSourceList.isEmpty()) return;
+        channelNames.clear();
+        int realIndex = 0;
+
+        for (int i = 0; i < channelSourceList.size(); i++) {
+            Channel c = channelSourceList.get(i);
+            if (group == null || group.isEmpty() || group.equals(c.getGroup())) {
+                channelNames.add(c.getName());
+                if (i == currentPlayIndex) {
+                    realIndex = channelNames.size() - 1;
+                }
+            }
+        }
+        selectedPosition = realIndex;
+        adapter.notifyDataSetChanged();
         lvChannelList.setSelection(selectedPosition);
     }
 
     public void setSelectedPosition(int position) {
         selectedPosition = position;
         lvChannelList.setSelection(position);
-        if (lvChannelList.getAdapter() != null) {
-            ((ArrayAdapter<?>) lvChannelList.getAdapter()).notifyDataSetChanged();
-        }
+        adapter.notifyDataSetChanged();
     }
 
     public void onBackPressed() {}

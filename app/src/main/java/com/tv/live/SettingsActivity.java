@@ -1,5 +1,4 @@
 package com.tv.live;
-
 import android.app.AlertDialog;
 import android.content.Context;
 import android.content.Intent;
@@ -39,7 +38,7 @@ import java.util.List;
 
 public class SettingsActivity extends AppCompatActivity {
     private Switch sw_boot, sw_epg, sw_auto_update, sw_reverse, sw_num_channel;
-    private TextView tv_screen_ratio, tv_custom_source, tv_custom_epg, tv_multi_source, tv_multi_epg, tv_qr_code;
+    private TextView tv_screen_ratio, tv_custom_source, tv_custom_epg, tv_multi_source, tv_multi_epg, tv_qr_code, tv_player_engine;
     private SharedPreferences sp;
     private String currentWebUrl;
     private ServerSocket serverSocket;
@@ -47,72 +46,58 @@ public class SettingsActivity extends AppCompatActivity {
     private static final int PORT = 10481;
     private SettingsAdapter adapter;
 
-    // ====================== 操作/崩溃日志系统 ======================
+    // ====================== 日志系统 ======================
     private static final List<String> OPERATION_LOG = new ArrayList<>();
-    private static final int MAX_OP_LOG = 200;
+    private static final int MAX_LOG_COUNT = 200;
 
     public static void logOperation(String msg) {
-        String time = android.text.format.DateFormat.format("HH:mm:ss", new java.util.Date()).toString();
-        String log = "[" + time + "] [操作] " + msg;
-
-        OPERATION_LOG.add(0, log);
-        if (OPERATION_LOG.size() > MAX_OP_LOG) {
+        if (OPERATION_LOG.size() > MAX_LOG_COUNT) {
             OPERATION_LOG.remove(OPERATION_LOG.size() - 1);
         }
+        OPERATION_LOG.add(0, "[" + android.text.format.DateFormat.format("HH:mm:ss", new java.util.Date()) + "] " + msg);
     }
 
     public static void logCrash(Throwable e) {
-        String time = android.text.format.DateFormat.format("HH:mm:ss", new java.util.Date()).toString();
-        StringBuilder sb = new StringBuilder();
-        sb.append("[").append(time).append("] [崩溃] ").append(e.getMessage()).append("\n");
-        for (StackTraceElement line : e.getStackTrace()) {
-            sb.append("         ").append(line.toString()).append("\n");
-        }
-
-        OPERATION_LOG.add(0, sb.toString());
-        if (OPERATION_LOG.size() > MAX_OP_LOG) {
-            OPERATION_LOG.remove(OPERATION_LOG.size() - 1);
-        }
+        String msg = e.getMessage();
+        if (msg == null) msg = "未知错误";
+        logOperation("崩溃: " + msg);
     }
 
     private void showOperationLogDialog() {
         ScrollView scrollView = new ScrollView(this);
         TextView tv = new TextView(this);
-
-        if (OPERATION_LOG.isEmpty()) {
-            tv.setText("暂无操作 & 崩溃日志");
-        } else {
-            StringBuilder sb = new StringBuilder();
-            for (String line : OPERATION_LOG) {
-                sb.append(line).append("\n");
-            }
-            tv.setText(sb.toString());
-        }
-
         tv.setTextSize(12);
         tv.setPadding(40, 40, 40, 40);
         tv.setTextColor(Color.BLACK);
 
+        StringBuilder sb = new StringBuilder();
+        for (String line : OPERATION_LOG) {
+            sb.append(line).append("\n");
+        }
+        tv.setText(sb.length() == 0 ? "暂无日志" : sb.toString());
+
         scrollView.addView(tv);
         new AlertDialog.Builder(this)
-                .setTitle("📌 操作 & 崩溃日志")
+                .setTitle("操作日志")
                 .setView(scrollView)
                 .setPositiveButton("关闭", null)
-                .setNeutralButton("清空", (d, w) -> {
+                .setNeutralButton("清空", (dialog, which) -> {
                     OPERATION_LOG.clear();
                     Toast.makeText(this, "已清空", Toast.LENGTH_SHORT).show();
                 })
                 .show();
     }
 
-    // ====================== 解析日志 ======================
-    private void showLogDialog() {
+    private void showParseLogDialog() {
         ScrollView scrollView = new ScrollView(this);
         TextView tv = new TextView(this);
-        List<String> logs = TVPlayerManager.getInstance(this).getLogList();
+        tv.setTextSize(12);
+        tv.setPadding(40, 40, 40, 40);
+        tv.setTextColor(Color.BLACK);
 
+        List<String> logs = TVPlayerManager.getInstance(this).getLogList();
         if (logs == null || logs.isEmpty()) {
-            tv.setText("暂无日志内容，请先播放一个频道再查看。");
+            tv.setText("暂无解析日志");
         } else {
             StringBuilder sb = new StringBuilder();
             for (String line : logs) {
@@ -121,29 +106,26 @@ public class SettingsActivity extends AppCompatActivity {
             tv.setText(sb.toString());
         }
 
-        tv.setTextSize(12);
-        tv.setPadding(40, 40, 40, 40);
-        tv.setTextColor(Color.BLACK);
         scrollView.addView(tv);
-
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("📄 解析 & 播放日志");
-        builder.setView(scrollView);
-        builder.setPositiveButton("关闭", null);
-        builder.setNeutralButton("清空日志", (dialog, which) -> {
-            TVPlayerManager.getInstance(this).clearLogs();
-            Toast.makeText(this, "日志已清空", Toast.LENGTH_SHORT).show();
-        });
-        builder.show();
+        new AlertDialog.Builder(this)
+                .setTitle("解析日志")
+                .setView(scrollView)
+                .setPositiveButton("清空", (dialog, which) -> {
+                    TVPlayerManager.getInstance(this).clearLogs();
+                    Toast.makeText(this, "已清空", Toast.LENGTH_SHORT).show();
+                })
+                .setNegativeButton("关闭", null)
+                .show();
     }
 
+    // ====================== 原有逻辑保持不变 ======================
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
         getWindow().getAttributes().dimAmount = 0.6f;
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND, WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+        super.onCreate(savedInstanceState);
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
         setContentView(R.layout.activity_settings);
 
@@ -156,91 +138,115 @@ public class SettingsActivity extends AppCompatActivity {
         sw_num_channel = findViewById(R.id.sw_num_channel);
 
         tv_screen_ratio = findViewById(R.id.tv_screen_ratio);
-        tv_custom_source = findViewById(R.id.tv_custom_source);
-        tv_custom_epg = findViewById(R.id.tv_custom_epg);
-        tv_multi_source = findViewById(R.id.tv_multi_source);
-        tv_multi_epg = findViewById(R.id.tv_multi_epg);
-        tv_qr_code = findViewById(R.id.tv_qr_code);
+        tv_custom_source = findViewById(R.id.custom_live_url);
+        tv_custom_epg = findViewById(R.id.custom_epg_url);
+        tv_multi_source = findViewById(R.id.multi_source);
+        tv_multi_epg = findViewById(R.id.multi_epg);
+        tv_qr_code = findViewById(R.id.qr_code);
+        tv_player_engine = findViewById(R.id.player_engine);
 
-        findViewById(R.id.log_viewer).setOnClickListener(v -> showLogDialog());
+        // 日志按钮
+        findViewById(R.id.log_viewer).setOnClickListener(v -> showParseLogDialog());
         findViewById(R.id.log_operation).setOnClickListener(v -> showOperationLogDialog());
 
-        initListeners();
-    }
-
-    private void initListeners() {
-        tv_screen_ratio.setOnClickListener(v -> {
-            logOperation("修改屏幕比例");
-            showRatioDialog();
-        });
-        tv_custom_source.setOnClickListener(v -> {
-            logOperation("打开自定义订阅源");
-            showInputDialog("自定义订阅源", "请输入直播源地址", "custom_live_url");
-        });
-        tv_custom_epg.setOnClickListener(v -> {
-            logOperation("打开自定义节目单");
-            showInputDialog("自定义节目单", "请输入EPG地址", "custom_epg_url");
-        });
-        tv_multi_source.setOnClickListener(v -> {
-            logOperation("打开多订阅源历史");
-            showHistoryDialog("直播源历史", "live_history");
-        });
-        tv_multi_epg.setOnClickListener(v -> {
-            logOperation("打开多节目单历史");
-            showHistoryDialog("节目单历史", "epg_history");
-        });
-        tv_qr_code.setOnClickListener(v -> {
-            logOperation("打开扫码管理");
-            currentWebUrl = "http://" + getDeviceIPAddress() + ":" + PORT;
-            startPushServer();
-            showQRCodeDialog();
-        });
+        updatePlayerDisplay();
 
         sw_boot.setChecked(sp.getBoolean("boot_auto_start", false));
-        sw_boot.setOnCheckedChangeListener((b, isChecked) -> {
-            logOperation("开机自启: " + (isChecked ? "开启" : "关闭"));
+        sw_boot.setOnCheckedChangeListener((buttonView, isChecked) -> {
             sp.edit().putBoolean("boot_auto_start", isChecked).apply();
-            sendRefreshBroadcast();
+            logOperation("开机自启: " + (isChecked ? "开启" : "关闭"));
+            Toast.makeText(this, "开机自启" + (isChecked ? "已开启" : "已关闭"), Toast.LENGTH_SHORT).show();
         });
 
         sw_epg.setChecked(sp.getBoolean("epg_enable", true));
-        sw_epg.setOnCheckedChangeListener((b, isChecked) -> {
-            logOperation("节目单: " + (isChecked ? "开启" : "关闭"));
+        sw_epg.setOnCheckedChangeListener((buttonView, isChecked) -> {
             sp.edit().putBoolean("epg_enable", isChecked).apply();
-            sendRefreshBroadcast();
+            logOperation("节目单: " + (isChecked ? "开启" : "关闭"));
+            Toast.makeText(this, "节目单" + (isChecked ? "已开启" : "已关闭"), Toast.LENGTH_SHORT).show();
         });
 
         sw_auto_update.setChecked(sp.getBoolean("auto_update_source", true));
-        sw_auto_update.setOnCheckedChangeListener((b, isChecked) -> {
-            logOperation("自动更新源: " + (isChecked ? "开启" : "关闭"));
+        sw_auto_update.setOnCheckedChangeListener((buttonView, isChecked) -> {
             sp.edit().putBoolean("auto_update_source", isChecked).apply();
-            sendRefreshBroadcast();
+            logOperation("自动更新源: " + (isChecked ? "开启" : "关闭"));
+            Toast.makeText(this, "自动更新源" + (isChecked ? "已开启" : "已关闭"), Toast.LENGTH_SHORT).show();
         });
 
         sw_reverse.setChecked(sp.getBoolean("channel_reverse", false));
-        sw_reverse.setOnCheckedChangeListener((b, isChecked) -> {
-            logOperation("换台反转: " + (isChecked ? "开启" : "关闭"));
+        sw_reverse.setOnCheckedChangeListener((buttonView, isChecked) -> {
             sp.edit().putBoolean("channel_reverse", isChecked).apply();
-            sendRefreshBroadcast();
+            logOperation("换台反转: " + (isChecked ? "开启" : "关闭"));
+            Toast.makeText(this, "换台反转" + (isChecked ? "已开启" : "已关闭"), Toast.LENGTH_SHORT).show();
         });
 
         sw_num_channel.setChecked(sp.getBoolean("number_channel_enable", true));
-        sw_num_channel.setOnCheckedChangeListener((b, isChecked) -> {
-            logOperation("数字选台: " + (isChecked ? "开启" : "关闭"));
+        sw_num_channel.setOnCheckedChangeListener((buttonView, isChecked) -> {
             sp.edit().putBoolean("number_channel_enable", isChecked).apply();
-            sendRefreshBroadcast();
+            logOperation("数字选台: " + (isChecked ? "开启" : "关闭"));
+            Toast.makeText(this, "数字选台" + (isChecked ? "已开启" : "已关闭"), Toast.LENGTH_SHORT).show();
         });
 
-        // 检查更新
-        findViewById(R.id.btn_check_update).setOnClickListener(v -> {
-            logOperation("点击检查更新");
-            Toast.makeText(SettingsActivity.this, "当前已是最新版本", Toast.LENGTH_SHORT).show();
+        tv_player_engine.setOnClickListener(v -> {
+            String[] items = {"ExoPlayer（默认）", "VLC 播放器"};
+            int current = sp.getInt("player_engine", 0);
+            new AlertDialog.Builder(this)
+                    .setTitle("选择播放器")
+                    .setSingleChoiceItems(items, current, (dialog, which) -> {
+                        if (which != current) {
+                            sp.edit().putInt("player_engine", which).apply();
+                            updatePlayerDisplay();
+                            logOperation("切换播放器至: " + items[which]);
+                            Toast.makeText(this, "已切换：" + items[which] + "，即将重启生效", Toast.LENGTH_LONG).show();
+                            dialog.dismiss();
+                            new Handler().postDelayed(this::restartApp, 1000);
+                        } else {
+                            dialog.dismiss();
+                        }
+                    })
+                    .setNegativeButton("取消", null)
+                    .show();
         });
+
+        findViewById(R.id.btn_check_update).setOnClickListener(v -> {
+            logOperation("检查更新: 已是最新版本");
+            Toast.makeText(this, "已是最新版本", Toast.LENGTH_SHORT).show();
+        });
+
+        loadConfig();
+        initListeners();
+        currentWebUrl = "http://" + getDeviceIPAddress() + ":" + PORT;
+        startPushServer();
+        logOperation("设置页面已打开");
     }
 
-    private void sendRefreshBroadcast() {
-        Intent intent = new Intent("com.tv.live.REFRESH_LIVE_AND_EPG");
-        sendBroadcast(intent);
+    private void updatePlayerDisplay() {
+        int type = sp.getInt("player_engine", 0);
+        tv_player_engine.setText(type == 0 ? "当前：ExoPlayer" : "当前：VLC 播放器");
+    }
+
+    private void restartApp() {
+        Intent intent = new Intent(this, MainActivity.class);
+        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_NEW_TASK);
+        startActivity(intent);
+        finish();
+        android.os.Process.killProcess(android.os.Process.myPid());
+    }
+
+    private void initListeners() {
+        tv_screen_ratio.setOnClickListener(v -> showRatioDialog());
+        tv_custom_source.setOnClickListener(v -> showInputDialog("自定义订阅源", "请输入直播源地址", "custom_live_url"));
+        tv_custom_epg.setOnClickListener(v -> showInputDialog("自定义节目单", "请输入EPG地址", "custom_epg_url"));
+        tv_multi_source.setOnClickListener(v -> showHistoryDialog("直播源历史", "live_history"));
+        tv_multi_epg.setOnClickListener(v -> showHistoryDialog("节目单历史", "epg_history"));
+        tv_qr_code.setOnClickListener(v -> showQRCodeDialog());
+    }
+
+    private void loadConfig() {
+        sw_boot.setChecked(sp.getBoolean("boot_auto_start", false));
+        sw_epg.setChecked(sp.getBoolean("epg_enable", true));
+        sw_auto_update.setChecked(sp.getBoolean("auto_update_source", true));
+        sw_reverse.setChecked(sp.getBoolean("channel_reverse", false));
+        sw_num_channel.setChecked(sp.getBoolean("number_channel_enable", true));
     }
 
     private void showRatioDialog() {
@@ -249,10 +255,9 @@ public class SettingsActivity extends AppCompatActivity {
                 .setItems(new String[]{"全屏", "填充", "原始"}, (d, w) -> {
                     String val = new String[]{"全屏", "填充", "原始"}[w];
                     sp.edit().putString("screen_ratio", val).apply();
-                    sendRefreshBroadcast();
-                    Toast.makeText(this, "已设置: " + val, Toast.LENGTH_SHORT).show();
-                })
-                .show();
+                    logOperation("设置画面比例: " + val);
+                    Toast.makeText(this, "已设置", Toast.LENGTH_SHORT).show();
+                }).show();
     }
 
     private void showInputDialog(String title, String hint, String key) {
@@ -267,9 +272,9 @@ public class SettingsActivity extends AppCompatActivity {
                     if (!url.isEmpty()) {
                         sp.edit().putString(key, url).apply();
                         addHistory(key.contains("live") ? "live_history" : "epg_history", url);
-                        sendRefreshBroadcast();
-                        logOperation("设置地址: " + url);
-                        Toast.makeText(this, "已保存并刷新", Toast.LENGTH_SHORT).show();
+                        sendBroadcast(new Intent("com.tv.live.REFRESH_LIVE_AND_EPG"));
+                        logOperation("设置" + hint + ": " + url);
+                        Toast.makeText(this, "已保存，正在刷新…", Toast.LENGTH_SHORT).show();
                     }
                 })
                 .setNegativeButton("取消", null)
@@ -290,9 +295,10 @@ public class SettingsActivity extends AppCompatActivity {
                     String url = list[w];
                     sp.edit().putString(key.contains("live") ? "custom_live_url" : "custom_epg_url", url).apply();
                     addHistory(key.contains("live") ? "live_history" : "epg_history", url);
-                    sendRefreshBroadcast();
-                    logOperation("切换地址: " + url);
-                    Toast.makeText(this, "已切换", Toast.LENGTH_SHORT).show();
+                    sendBroadcast(new Intent("com.tv.live.REFRESH_LIVE_AND_EPG"));
+                    adapter.setSelectedPosition(w);
+                    logOperation("切换源: " + url);
+                    Toast.makeText(this, "已切换，正在刷新…", Toast.LENGTH_SHORT).show();
                 })
                 .setNegativeButton("关闭", null)
                 .show();
@@ -321,6 +327,7 @@ public class SettingsActivity extends AppCompatActivity {
                 .setView(iv)
                 .setPositiveButton("关闭", null)
                 .show();
+        logOperation("打开扫码服务: " + currentWebUrl);
     }
 
     private Bitmap createQR(String text, int size) {
@@ -334,6 +341,7 @@ public class SettingsActivity extends AppCompatActivity {
             }
             return bmp;
         } catch (Exception e) {
+            logCrash(e);
             return null;
         }
     }
@@ -345,23 +353,17 @@ public class SettingsActivity extends AppCompatActivity {
             int ip = info.getIpAddress();
             return (ip & 0xFF) + "." + ((ip >> 8) & 0xFF) + "." + ((ip >> 16) & 0xFF) + "." + ((ip >> 24) & 0xFF);
         } catch (Exception e) {
+            logCrash(e);
             return "192.168.1.100";
         }
     }
 
     private void startPushServer() {
-        if (serverSocket != null) {
-            try {
-                if (!serverSocket.isClosed()) {
-                    Toast.makeText(this, "扫码服务已运行", Toast.LENGTH_SHORT).show();
-                    return;
-                }
-            } catch (Exception ignored) {}
-        }
-
         new Thread(() -> {
             try {
                 serverSocket = new ServerSocket(PORT);
+                serverSocket.setReuseAddress(true);
+                logOperation("Socket服务启动成功，端口：" + PORT);
                 while (!serverSocket.isClosed()) {
                     Socket socket = serverSocket.accept();
                     new Thread(() -> {
@@ -377,27 +379,29 @@ public class SettingsActivity extends AppCompatActivity {
                                     sp.edit().putString("custom_live_url", liveUrl).apply();
                                     addHistory("live_history", liveUrl);
                                     hasUpdate = true;
+                                    logOperation("扫码同步直播源：" + liveUrl);
                                 }
                                 String epgUrl = json.optString("epg_url");
                                 if (!epgUrl.isEmpty()) {
                                     sp.edit().putString("custom_epg_url", epgUrl).apply();
                                     addHistory("epg_history", epgUrl);
                                     hasUpdate = true;
+                                    logOperation("扫码同步EPG：" + epgUrl);
                                 }
                                 if (hasUpdate) {
-                                    sendRefreshBroadcast();
-                                    logOperation("扫码同步配置");
-                                    Toast.makeText(SettingsActivity.this, "已同步", Toast.LENGTH_SHORT).show();
+                                    Intent intent = new Intent("com.tv.live.REFRESH_LIVE_AND_EPG");
+                                    sendBroadcast(intent);
+                                    Toast.makeText(SettingsActivity.this, "扫码配置已同步", Toast.LENGTH_SHORT).show();
                                 }
                             });
                             socket.close();
                         } catch (Exception e) {
-                            // 不记录端口占用错误
+                            logCrash(e);
                         }
                     }).start();
                 }
             } catch (Exception e) {
-                // 忽略端口占用错误
+                logCrash(e);
             }
         }).start();
     }
@@ -406,9 +410,8 @@ public class SettingsActivity extends AppCompatActivity {
     protected void onDestroy() {
         super.onDestroy();
         try {
-            if (serverSocket != null && !serverSocket.isClosed()) {
-                serverSocket.close();
-            }
+            if (serverSocket != null) serverSocket.close();
+            logOperation("Socket服务已关闭");
         } catch (Exception ignored) {}
     }
 
@@ -435,7 +438,11 @@ public class SettingsActivity extends AppCompatActivity {
             }
             TextView tv = convertView.findViewById(R.id.tv_setting_item);
             tv.setText(items.get(position));
-            tv.setTextColor(position == selectedPosition ? Color.parseColor("#40A9FF") : Color.WHITE);
+            if (position == selectedPosition) {
+                tv.setTextColor(Color.parseColor("#40A9FF"));
+            } else {
+                tv.setTextColor(Color.WHITE);
+            }
             return convertView;
         }
     }

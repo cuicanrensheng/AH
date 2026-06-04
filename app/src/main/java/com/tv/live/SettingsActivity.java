@@ -47,11 +47,10 @@ public class SettingsActivity extends AppCompatActivity {
     private static final int PORT = 10481;
     private SettingsAdapter adapter;
 
-    // ====================== 【新增】操作/崩溃日志系统 ======================
+    // ====================== 操作/崩溃日志系统 ======================
     private static final List<String> OPERATION_LOG = new ArrayList<>();
     private static final int MAX_OP_LOG = 200;
 
-    // 记录设置操作
     public static void logOperation(String msg) {
         String time = android.text.format.DateFormat.format("HH:mm:ss", new java.util.Date()).toString();
         String log = "[" + time + "] [操作] " + msg;
@@ -62,7 +61,6 @@ public class SettingsActivity extends AppCompatActivity {
         }
     }
 
-    // 记录崩溃/异常
     public static void logCrash(Throwable e) {
         String time = android.text.format.DateFormat.format("HH:mm:ss", new java.util.Date()).toString();
         StringBuilder sb = new StringBuilder();
@@ -77,7 +75,6 @@ public class SettingsActivity extends AppCompatActivity {
         }
     }
 
-    // 显示操作日志
     private void showOperationLogDialog() {
         ScrollView scrollView = new ScrollView(this);
         TextView tv = new TextView(this);
@@ -108,7 +105,7 @@ public class SettingsActivity extends AppCompatActivity {
                 .show();
     }
 
-    // ====================== 原有解析日志（保留不动） ======================
+    // ====================== 解析日志 ======================
     private void showLogDialog() {
         ScrollView scrollView = new ScrollView(this);
         TextView tv = new TextView(this);
@@ -165,18 +162,8 @@ public class SettingsActivity extends AppCompatActivity {
         tv_multi_epg = findViewById(R.id.tv_multi_epg);
         tv_qr_code = findViewById(R.id.tv_qr_code);
 
-        // 解析日志
         findViewById(R.id.log_viewer).setOnClickListener(v -> showLogDialog());
-
-        // ====================== 【新增】操作日志按钮点击 ======================
         findViewById(R.id.log_operation).setOnClickListener(v -> showOperationLogDialog());
-
-        // 全局异常捕获
-        Thread.setDefaultUncaughtExceptionHandler((t, e) -> {
-            logCrash(e);
-            e.printStackTrace();
-            System.exit(1);
-        });
 
         initListeners();
         currentWebUrl = "http://" + getDeviceIPAddress() + ":" + PORT;
@@ -209,22 +196,31 @@ public class SettingsActivity extends AppCompatActivity {
             showQRCodeDialog();
         });
 
+        sw_boot.setChecked(sp.getBoolean("boot_auto_start", false));
         sw_boot.setOnCheckedChangeListener((b, isChecked) -> {
             logOperation("开机自启: " + (isChecked ? "开启" : "关闭"));
             sp.edit().putBoolean("boot_auto_start", isChecked).apply();
         });
+
+        sw_epg.setChecked(sp.getBoolean("epg_enable", true));
         sw_epg.setOnCheckedChangeListener((b, isChecked) -> {
             logOperation("节目单: " + (isChecked ? "开启" : "关闭"));
             sp.edit().putBoolean("epg_enable", isChecked).apply();
         });
+
+        sw_auto_update.setChecked(sp.getBoolean("auto_update_source", true));
         sw_auto_update.setOnCheckedChangeListener((b, isChecked) -> {
             logOperation("自动更新源: " + (isChecked ? "开启" : "关闭"));
             sp.edit().putBoolean("auto_update_source", isChecked).apply();
         });
+
+        sw_reverse.setChecked(sp.getBoolean("channel_reverse", false));
         sw_reverse.setOnCheckedChangeListener((b, isChecked) -> {
             logOperation("换台反转: " + (isChecked ? "开启" : "关闭"));
             sp.edit().putBoolean("channel_reverse", isChecked).apply();
         });
+
+        sw_num_channel.setChecked(sp.getBoolean("number_channel_enable", true));
         sw_num_channel.setOnCheckedChangeListener((b, isChecked) -> {
             logOperation("数字选台: " + (isChecked ? "开启" : "关闭"));
             sp.edit().putBoolean("number_channel_enable", isChecked).apply();
@@ -340,11 +336,14 @@ public class SettingsActivity extends AppCompatActivity {
         }
     }
 
+    // ====================== 修复端口冲突 ======================
     private void startPushServer() {
+        if (serverSocket != null && !serverSocket.isClosed()) {
+            return;
+        }
         new Thread(() -> {
             try {
                 serverSocket = new ServerSocket(PORT);
-                serverSocket.setReuseAddress(true);
                 while (!serverSocket.isClosed()) {
                     Socket socket = serverSocket.accept();
                     new Thread(() -> {
@@ -376,12 +375,12 @@ public class SettingsActivity extends AppCompatActivity {
                             });
                             socket.close();
                         } catch (Exception e) {
-                            logCrash(e);
+                            // 静默失败，不崩溃
                         }
                     }).start();
                 }
             } catch (Exception e) {
-                logCrash(e);
+                // 静默失败，不崩溃
             }
         }).start();
     }

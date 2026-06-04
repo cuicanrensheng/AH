@@ -272,7 +272,7 @@ public class MainActivity extends AppCompatActivity {
         // 切台自动刷新节目单
         epgManagerWrapper.refresh(ch, channelSourceList, currentSelectedDateIndex);
 
-        // 显示顶部信息栏，4秒后自动隐藏
+        // 显底部信息栏，4秒后自动隐藏
         info_bar.setVisibility(View.VISIBLE);
         info_bar.removeCallbacks(hideInfoBar);
         info_bar.postDelayed(hideInfoBar, 4000);

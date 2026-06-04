@@ -20,17 +20,17 @@ public class GestureManager {
         return new PlayerGestureHelper(activity, new PlayerGestureHelper.GestureCallback() {
             @Override
             public void onOk() {
-                activity.togglePanel();
+                //activity.togglePanel();
             }
 
             @Override
             public void onLongOk() {
-                activity.openSettings();
+                //activity.openSettings();
             }
 
             @Override
             public void onMenu() {
-                activity.openSettings();
+                //activity.openSettings();
             }
 
             @Override

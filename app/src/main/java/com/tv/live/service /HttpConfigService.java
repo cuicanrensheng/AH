@@ -8,10 +8,8 @@ public class HttpConfigService {
     private NanoHTTPD nanoHTTPD;
     private final int PORT = 10481;
 
-    // 私有单例
     private HttpConfigService() {}
 
-    // 单例获取
     public static HttpConfigService getInstance() {
         if (instance == null) {
             instance = new HttpConfigService();
@@ -19,38 +17,35 @@ public class HttpConfigService {
         return instance;
     }
 
-    // ====================== 【修复核心】启动服务，防重复、防占用 ======================
+    // 修复：去掉 isAlive()，改用 null 判断，兼容你的 NanoHTTPD
     public void start() {
         try {
-            // 如果服务已经在运行，直接不启动，避免端口冲突
-            if (nanoHTTPD != null && nanoHTTPD.isAlive()) {
+            // 已经启动就不再启动
+            if (nanoHTTPD != null) {
                 return;
             }
-            // 重新创建实例
             nanoHTTPD = new NanoHTTPD(PORT);
             nanoHTTPD.start();
         } catch (Exception e) {
-            // 失败：强制释放，避免卡死
+            e.printStackTrace();
             stop();
         }
     }
 
-    // ====================== 【修复核心】安全关闭，彻底释放端口 ======================
     public void stop() {
         try {
             if (nanoHTTPD != null) {
                 nanoHTTPD.stop();
             }
         } catch (Exception e) {
-            // 安全兜底
+            // 安全兜底，不崩溃
         } finally {
-            // 强制置空，确保端口释放
             nanoHTTPD = null;
         }
     }
 
-    // 判断服务是否运行
+    // 修复：无 isAlive()，所以只用 null 判断
     public boolean isRunning() {
-        return nanoHTTPD != null && nanoHTTPD.isAlive();
+        return nanoHTTPD != null;
     }
 }

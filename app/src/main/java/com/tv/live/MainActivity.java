@@ -21,7 +21,7 @@ import com.tv.live.config.AppConfig;
 import com.tv.live.loader.LiveSourceLoader;
 import com.tv.live.manager.*;
 import com.tv.live.widget.*;
-
+import java.util.ArrayList;
 import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
@@ -189,7 +189,6 @@ public class MainActivity extends AppCompatActivity {
         channel_reverse = sp.getBoolean("channel_reverse", false);
     }
 
-    // ====================== 屏幕比例实时生效 ======================
     private void applyScreenRatio() {
         SharedPreferences sp = getSharedPreferences("app_settings", MODE_PRIVATE);
         String ratio = sp.getString("screen_ratio", "填充");
@@ -216,11 +215,29 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onSuccess(List<Channel> channels) {
                 channelSourceList = channels;
-                currentGroupChannelList = channels;
+
+                // ===================== 【核心修复】列表不会再卡死 =====================
+                if (currentGroupChannelList == null) {
+                    currentGroupChannelList = new ArrayList<>();
+                }
+                currentGroupChannelList.clear();
+                currentGroupChannelList.addAll(channels);
+                // ====================================================================
+
                 switchManager.setChannelList(channelSourceList);
                 groupListManager.setGroups(channelSourceList);
                 channelListManager.setChannels(channelSourceList, currentPlayIndex);
                 playChannel(currentPlayIndex);
+
+                EpgManager.getInstance().loadEpg(() -> runOnUiThread(() -> {
+                    if (channelSourceList != null && !channelSourceList.isEmpty()) {
+                        epgManagerWrapper.refresh(
+                                channelSourceList.get(currentPlayIndex),
+                                channelSourceList,
+                                currentSelectedDateIndex
+                        );
+                    }
+                }));
             }
 
             @Override
@@ -228,13 +245,6 @@ public class MainActivity extends AppCompatActivity {
                 Toast.makeText(MainActivity.this, "加载失败", Toast.LENGTH_SHORT).show();
             }
         });
-
-        EpgManager.getInstance().setEpgUrl(UrlConfig.EPG_URL);
-        EpgManager.getInstance().loadEpg(() -> runOnUiThread(() -> {
-            if (channelSourceList != null && !channelSourceList.isEmpty()) {
-                epgManagerWrapper.refresh(channelSourceList.get(currentPlayIndex), channelSourceList, currentSelectedDateIndex);
-            }
-        }));
     }
 
     public void playChannel(int index) {

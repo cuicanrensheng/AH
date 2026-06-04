@@ -67,21 +67,20 @@ public class NanoHTTPD {
     }
 
     private void sendIndex(OutputStream out) throws Exception {
-        String html = """
-                <!DOCTYPE html>
-                <html>
-                <body style='background:#111;color:#fff;padding:30px;font-size:16px;'>
-                <h2>TV 后台配置</h2>
-                <form action='/apply'>
-                <p>直播源地址：</p>
-                <input type='text' name='live' style='width:100%;padding:8px;font-size:16px;' />
-                <p>EPG节目单：</p>
-                <input type='text' name='epg' style='width:100%;padding:8px;font-size:16px;' />
-                <br/><br/>
-                <button type='submit' style='width:100%;padding:12px;font-size:18px;'>保存并刷新</button>
-                </form>
-                </body>
-                </html>""";
+        String html = "<!DOCTYPE html>\n" +
+                "<html>\n" +
+                "<body style='background:#111;color:#fff;padding:30px;font-size:16px;'>\n" +
+                "<h2>TV 后台配置</h2>\n" +
+                "<form action='/apply'>\n" +
+                "<p>直播源地址：</p>\n" +
+                "<input type='text' name='live' style='width:100%;padding:8px;font-size:16px;' />\n" +
+                "<p>EPG节目单：</p>\n" +
+                "<input type='text' name='epg' style='width:100%;padding:8px;font-size:16px;' />\n" +
+                "<br/><br/>\n" +
+                "<button type='submit' style='width:100%;padding:12px;font-size:18px;'>保存并刷新</button>\n" +
+                "</form>\n" +
+                "</body>\n" +
+                "</html>";
 
         out.write(("HTTP/1.1 200 OK\r\nContent-Type:text/html;charset=UTF-8\r\n\r\n" + html).getBytes("UTF-8"));
     }

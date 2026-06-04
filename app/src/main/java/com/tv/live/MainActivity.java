@@ -132,13 +132,11 @@ public class MainActivity extends AppCompatActivity {
         if (customLive != null) UrlConfig.LIVE_URL = customLive;
         if (customEpg != null) UrlConfig.EPG_URL = customEpg;
 
-        // ====================== 永久禁用 Exo 原生控制器 ======================
         playerView = findViewById(R.id.player_view);
         playerView.setUseController(false);
         playerView.setControllerShowTimeoutMs(0);
         playerView.setControllerVisibilityListener(null);
         playerView.setControllerHideOnTouch(false);
-        // ====================================================================
 
         panel_layout = findViewById(R.id.panel_layout);
         ListView lvGroup = findViewById(R.id.lv_group);
@@ -152,7 +150,7 @@ public class MainActivity extends AppCompatActivity {
 
         btn_show_epg.setOnClickListener(v -> {
             if (!epg_enable) {
-                Toast.makeText(this, "节目单功能已关闭", Toast_SHORT).show();
+                Toast.makeText(this, "节目单功能已关闭", Toast.LENGTH_SHORT).show();
                 return;
             }
             epgPanelOpen = !epgPanelOpen;
@@ -165,7 +163,6 @@ public class MainActivity extends AppCompatActivity {
 
         lvDate.setOnItemClickListener((parent, view, position, id) -> {
             currentSelectedDateIndex = position;
-            dateListManager.setSelectedPosition(position);
             if (!channelSourceList.isEmpty()) {
                 epgManagerWrapper.refresh(channelSourceList.get(currentPlayIndex), channelSourceList, currentSelectedDateIndex);
             }
@@ -193,8 +190,6 @@ public class MainActivity extends AppCompatActivity {
         groupListManager = new GroupListManager(this, lvGroup);
         dateListManager = new DateListManager(this, lvDate);
         epgManagerWrapper = new EpgManagerWrapper(this, lvEpg);
-
-        // ========== 关键修复：绑定日期管理器与EPG ==========
         dateListManager.initDate();
         panelManager = new PanelManager(panel_layout, channelListManager, epgManagerWrapper);
 
@@ -288,7 +283,7 @@ public class MainActivity extends AppCompatActivity {
 
             @Override
             public void onError(String errorMsg) {
-                Toast.makeText(MainActivity.this, "加载失败：" + errorMsg, Toast_SHORT).show();
+                Toast.makeText(MainActivity.this, "加载失败：" + errorMsg, Toast.LENGTH_SHORT).show();
             }
         });
 

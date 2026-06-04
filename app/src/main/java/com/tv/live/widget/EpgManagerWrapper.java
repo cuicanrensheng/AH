@@ -295,7 +295,8 @@ public class EpgManagerWrapper {
             return convertView;
         }
 
-        static ViewHolder {
+        // ✅【唯一修复点】正确的 ViewHolder 类
+        class ViewHolder {
             TextView tv_dayName;
             TextView tv_time;
             TextView tv_title;

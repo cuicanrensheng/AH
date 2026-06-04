@@ -1,4 +1,5 @@
 package com.tv.live.widget;
+
 import android.app.AlarmManager;
 import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
@@ -44,7 +45,9 @@ public class EpgManagerWrapper {
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int pos, long id) {
                 selectedPosition = pos;
-                ((ArrayAdapter<?>) parent.getAdapter()).notifyDataSetChanged();
+                if (parent.getAdapter() != null) {
+                    ((ArrayAdapter<?>) parent.getAdapter()).notifyDataSetChanged();
+                }
             }
             @Override
             public void onNothingSelected(AdapterView<?> parent) {}
@@ -54,35 +57,45 @@ public class EpgManagerWrapper {
 
     public void refresh(Channel currentChannel, List<Channel> channelSourceList, int dateIndex) {
         if (currentChannel == null) return;
+
         new Thread(() -> {
             List<Channel.EpgItem> epgList = EpgManager.getInstance().getEpg(currentChannel.getName());
             List<Channel.EpgItem> data = new ArrayList<>();
+
             if (epgList != null && !epgList.isEmpty()) {
                 Calendar cal = Calendar.getInstance();
                 cal.add(Calendar.DAY_OF_YEAR, dateIndex);
                 int w = cal.get(Calendar.DAY_OF_WEEK);
                 String[] weekMap = {"周日", "周一", "周二", "周三", "周四", "周五", "周六"};
                 String targetDay = dateIndex == 0 ? "今天" : weekMap[w % 7];
+
                 for (Channel.EpgItem item : epgList) {
-                    if (targetDay.equals(item.dayName)) data.add(item);
+                    if (targetDay.equals(item.dayName)) {
+                        data.add(item);
+                    }
                 }
+
                 Collections.sort(data, Comparator.comparing(o -> o.time));
                 String now = getNow();
                 Channel.EpgItem playing = null;
+
                 for (int i = 0; i < data.size(); i++) {
                     Channel.EpgItem curr = data.get(i);
                     Channel.EpgItem next = i + 1 < data.size() ? data.get(i + 1) : null;
                     curr.isPlaying = false;
+
                     if (next != null && curr.time.compareTo(now) <= 0 && now.compareTo(next.time) < 0) {
                         curr.isPlaying = true;
                         playing = curr;
                     }
                 }
+
                 if (playing != null) {
                     data.remove(playing);
                     data.add(0, playing);
                 }
             }
+
             ((MainActivity) context).runOnUiThread(() -> {
                 if (adapter == null) {
                     adapter = new EpgAdapter(context, currentChannel, data);
@@ -115,10 +128,10 @@ public class EpgManagerWrapper {
     }
 
     private class EpgAdapter extends ArrayAdapter<Channel.EpgItem> {
-        private Context ctx;
+        private final Context ctx;
         private Channel currentChannel;
         private List<Channel.EpgItem> list;
-        private LayoutInflater inflater;
+        private final LayoutInflater inflater;
 
         public EpgAdapter(Context ctx, Channel currentChannel, List<Channel.EpgItem> list) {
             super(ctx, R.layout.item_epg, list);
@@ -175,6 +188,7 @@ public class EpgManagerWrapper {
             } else if (isPast) {
                 holder.tv_action.setText("回看");
                 holder.tv_action.setBackgroundColor(0xFF607D8B);
+                holder.tv_action.setEnabled(true);
                 holder.tv_action.setOnClickListener(v -> {
                     ((MainActivity) ctx).mPlayerManager.playUrl(currentChannel.getPlayUrl());
                     Toast.makeText(ctx, "回看：" + item.title, Toast.LENGTH_SHORT).show();
@@ -183,20 +197,22 @@ public class EpgManagerWrapper {
                 if (bookedSet.contains(key)) {
                     holder.tv_action.setText("已预约");
                     holder.tv_action.setBackgroundColor(0xFF607D8B);
-                    holder.tv_action.setOnClickListener(v -> {
-                        bookedSet.remove(key);
-                        Toast.makeText(ctx, "已取消预约", Toast.LENGTH_SHORT).show();
-                        notifyDataSetChanged();
-                    });
                 } else {
                     holder.tv_action.setText("预约");
                     holder.tv_action.setBackgroundColor(0xFF4CAF50);
-                    holder.tv_action.setOnClickListener(v -> {
+                }
+
+                holder.tv_action.setEnabled(true);
+                holder.tv_action.setOnClickListener(v -> {
+                    if (bookedSet.contains(key)) {
+                        bookedSet.remove(key);
+                        Toast.makeText(ctx, "已取消预约", Toast.LENGTH_SHORT).show();
+                    } else {
                         bookedSet.add(key);
                         Toast.makeText(ctx, "已预约：" + item.title, Toast.LENGTH_SHORT).show();
-                        notifyDataSetChanged();
-                    });
-                }
+                    }
+                    notifyDataSetChanged();
+                });
             }
             return convertView;
         }

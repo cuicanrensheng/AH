@@ -64,7 +64,6 @@ public class MainActivity extends AppCompatActivity {
                 runOnUiThread(() -> {
                     loadSettings();
                     applyScreenRatio();
-
                     String customLive = appConfig.getCustomLiveUrl();
                     String customEpg = appConfig.getCustomEpgUrl();
                     if (customLive != null) UrlConfig.LIVE_URL = customLive;
@@ -112,14 +111,21 @@ public class MainActivity extends AppCompatActivity {
         dateListManager.initDate();
         panelManager = new PanelManager(panel_layout, channelListManager, epgManagerWrapper);
 
+        // ==========【核心修复点击：不用indexOf，循环名称匹配找下标】==========
         lvChannelList.setOnItemClickListener((parent, view, position, id) -> {
-            if (currentGroupChannelList != null && position >= 0 && position < currentGroupChannelList.size()) {
-                Channel targetCh = currentGroupChannelList.get(position);
-                int realIndex = channelSourceList.indexOf(targetCh);
-                if (realIndex >= 0) {
-                    playChannel(realIndex);
-                    panel_layout.setVisibility(View.GONE);
+            if (currentGroupChannelList == null || position >= currentGroupChannelList.size()) return;
+            Channel clickCh = currentGroupChannelList.get(position);
+            // 循环全频道列表，靠频道名匹配真实下标，规避对象引用不同indexOf=-1
+            int realIdx = -1;
+            for(int i=0;i<channelSourceList.size();i++){
+                if(channelSourceList.get(i).getName().equals(clickCh.getName())){
+                    realIdx = i;
+                    break;
                 }
+            }
+            if(realIdx != -1){
+                playChannel(realIdx);
+                panel_layout.setVisibility(View.GONE);
             }
         });
 
@@ -154,7 +160,16 @@ public class MainActivity extends AppCompatActivity {
             }
             channelListManager.setChannelsByGroup(channelSourceList, groupName, currentPlayIndex);
             if (!currentGroupChannelList.isEmpty()) {
-                playChannel(channelSourceList.indexOf(currentGroupChannelList.get(0)));
+                // 同样名称匹配下标
+                Channel first = currentGroupChannelList.get(0);
+                int findIdx = 0;
+                for(int i=0;i<channelSourceList.size();i++){
+                    if(channelSourceList.get(i).getName().equals(first.getName())){
+                        findIdx = i;
+                        break;
+                    }
+                }
+                playChannel(findIdx);
             }
         });
 
@@ -179,7 +194,6 @@ public class MainActivity extends AppCompatActivity {
 
         loadLiveAndEpg();
         registerReceiver(refreshReceiver, new IntentFilter("com.tv.live.REFRESH_LIVE_AND_EPG"));
-
         applyScreenRatio();
     }
 
@@ -192,7 +206,6 @@ public class MainActivity extends AppCompatActivity {
     private void applyScreenRatio() {
         SharedPreferences sp = getSharedPreferences("app_settings", MODE_PRIVATE);
         String ratio = sp.getString("screen_ratio", "填充");
-
         switch (ratio) {
             case "全屏":
                 mPlayerManager.setScaleMode(TVPlayerManager.ScaleMode.ZOOM);
@@ -205,9 +218,7 @@ public class MainActivity extends AppCompatActivity {
                 mPlayerManager.setScaleMode(TVPlayerManager.ScaleMode.FILL);
                 break;
         }
-        if (playerView != null) {
-            playerView.requestLayout();
-        }
+        if (playerView != null) playerView.requestLayout();
     }
 
     public void loadLiveAndEpg() {
@@ -215,14 +226,10 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onSuccess(List<Channel> channels) {
                 channelSourceList = channels;
-
-                // ===================== 【核心修复】列表不会再卡死 =====================
-                if (currentGroupChannelList == null) {
-                    currentGroupChannelList = new ArrayList<>();
-                }
+                // 固定列表对象，不再直接赋值引用
+                if(currentGroupChannelList == null) currentGroupChannelList = new ArrayList<>();
                 currentGroupChannelList.clear();
                 currentGroupChannelList.addAll(channels);
-                // ====================================================================
 
                 switchManager.setChannelList(channelSourceList);
                 groupListManager.setGroups(channelSourceList);
@@ -231,15 +238,10 @@ public class MainActivity extends AppCompatActivity {
 
                 EpgManager.getInstance().loadEpg(() -> runOnUiThread(() -> {
                     if (channelSourceList != null && !channelSourceList.isEmpty()) {
-                        epgManagerWrapper.refresh(
-                                channelSourceList.get(currentPlayIndex),
-                                channelSourceList,
-                                currentSelectedDateIndex
-                        );
+                        epgManagerWrapper.refresh(channelSourceList.get(currentPlayIndex), channelSourceList, currentSelectedDateIndex);
                     }
                 }));
             }
-
             @Override
             public void onError(String errorMsg) {
                 Toast.makeText(MainActivity.this, "加载失败", Toast.LENGTH_SHORT).show();
@@ -287,17 +289,12 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public void togglePanel() {
-        if (panel_layout.getVisibility() == View.VISIBLE) {
-            panel_layout.setVisibility(View.GONE);
-        } else {
-            panel_layout.setVisibility(View.VISIBLE);
-        }
+        panel_layout.setVisibility(panel_layout.getVisibility() == View.VISIBLE ? View.GONE : View.VISIBLE);
     }
 
     public void openSettings() {
         try {
-            Intent intent = new Intent(this, SettingsActivity.class);
-            startActivity(intent);
+            startActivity(new Intent(this, SettingsActivity.class));
         } catch (Exception e) {
             Toast.makeText(this, "设置无法打开", Toast.LENGTH_SHORT).show();
         }
@@ -305,19 +302,14 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
-        if (keyEventManager.dispatchKeyEvent(event)) {
-            return true;
-        }
+        if (keyEventManager.dispatchKeyEvent(event)) return true;
         return super.dispatchKeyEvent(event);
     }
 
     @Override
     public void onBackPressed() {
-        if (panel_layout.getVisibility() == View.VISIBLE) {
-            panel_layout.setVisibility(View.GONE);
-        } else {
-            super.onBackPressed();
-        }
+        if (panel_layout.getVisibility() == View.VISIBLE) panel_layout.setVisibility(View.GONE);
+        else super.onBackPressed();
     }
 
     @Override

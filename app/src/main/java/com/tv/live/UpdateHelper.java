@@ -18,7 +18,7 @@ import java.net.URL;
 
 public class UpdateHelper {
 
-    // 你的 GitHub 地址
+    // 已加速 GitHub 地址
     private static final String UPDATE_JSON_URL
             = "https://ghproxy.com/https://raw.githubusercontent.com/cuicanrensheng/AH/main/update.json";
 
@@ -46,13 +46,23 @@ public class UpdateHelper {
                 reader.close();
                 conn.disconnect();
 
+                // ==============================================
+                // ✅ 修复：适配你的下划线 JSON 字段
+                // ==============================================
                 JSONObject json = new JSONObject(sb.toString());
-                int versionCode = json.getInt("versionCode");
-                String versionName = json.getString("versionName");
-                String downloadUrl = json.getString("downloadUrl");
+                int versionCode     = json.getInt("version_code");
+                String versionName  = json.getString("version_name");
+                String downloadUrl  = json.getString("download_url");
 
-                int currentVersion
-                        = context.getPackageManager().getPackageInfo(context.getPackageName(), 0).versionCode;
+                // ==============================================
+                // ✅ 修复：自动给 GitHub 下载地址加速
+                // ==============================================
+                if (downloadUrl.contains("github.com")) {
+                    downloadUrl = "https://ghproxy.com/" + downloadUrl;
+                }
+
+                int currentVersion = context.getPackageManager()
+                        .getPackageInfo(context.getPackageName(), 0).versionCode;
 
                 new Handler(Looper.getMainLooper()).post(() -> {
                     if (versionCode > currentVersion) {
@@ -85,6 +95,7 @@ public class UpdateHelper {
                 while ((len = conn.getInputStream().read(buffer)) != -1) {
                     fos.write(buffer, 0, len);
                 }
+
                 fos.close();
                 conn.disconnect();
 

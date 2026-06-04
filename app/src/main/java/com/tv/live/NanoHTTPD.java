@@ -92,7 +92,7 @@ public class NanoHTTPD {
         String epg = params.get("epg");
 
         if (MainActivity.mInstance != null) {
-            MainActivity.mInstance.onReceiveConfig(live, epg);
+           //MainActivity.mInstance.onReceiveConfig(live, epg);
         }
 
         String ok = "<h2 style='color:#0c0;'>保存成功！电视即将重新加载</h2>";

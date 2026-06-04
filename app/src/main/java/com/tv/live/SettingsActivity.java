@@ -200,30 +200,35 @@ public class SettingsActivity extends AppCompatActivity {
         sw_boot.setOnCheckedChangeListener((b, isChecked) -> {
             logOperation("开机自启: " + (isChecked ? "开启" : "关闭"));
             sp.edit().putBoolean("boot_auto_start", isChecked).apply();
+            sendRefreshBroadcast();
         });
 
         sw_epg.setChecked(sp.getBoolean("epg_enable", true));
         sw_epg.setOnCheckedChangeListener((b, isChecked) -> {
             logOperation("节目单: " + (isChecked ? "开启" : "关闭"));
             sp.edit().putBoolean("epg_enable", isChecked).apply();
+            sendRefreshBroadcast();
         });
 
         sw_auto_update.setChecked(sp.getBoolean("auto_update_source", true));
         sw_auto_update.setOnCheckedChangeListener((b, isChecked) -> {
             logOperation("自动更新源: " + (isChecked ? "开启" : "关闭"));
             sp.edit().putBoolean("auto_update_source", isChecked).apply();
+            sendRefreshBroadcast();
         });
 
         sw_reverse.setChecked(sp.getBoolean("channel_reverse", false));
         sw_reverse.setOnCheckedChangeListener((b, isChecked) -> {
             logOperation("换台反转: " + (isChecked ? "开启" : "关闭"));
             sp.edit().putBoolean("channel_reverse", isChecked).apply();
+            sendRefreshBroadcast();
         });
 
         sw_num_channel.setChecked(sp.getBoolean("number_channel_enable", true));
         sw_num_channel.setOnCheckedChangeListener((b, isChecked) -> {
             logOperation("数字选台: " + (isChecked ? "开启" : "关闭"));
             sp.edit().putBoolean("number_channel_enable", isChecked).apply();
+            sendRefreshBroadcast();
         });
 
         findViewById(R.id.btn_check_update).setOnClickListener(v -> {
@@ -238,6 +243,7 @@ public class SettingsActivity extends AppCompatActivity {
                 .setItems(new String[]{"全屏", "填充", "原始"}, (d, w) -> {
                     String val = new String[]{"全屏", "填充", "原始"}[w];
                     sp.edit().putString("screen_ratio", val).apply();
+                    sendRefreshBroadcast();
                     Toast.makeText(this, "已设置: " + val, Toast.LENGTH_SHORT).show();
                 }).show();
     }
@@ -254,7 +260,7 @@ public class SettingsActivity extends AppCompatActivity {
                     if (!url.isEmpty()) {
                         sp.edit().putString(key, url).apply();
                         addHistory(key.contains("live") ? "live_history" : "epg_history", url);
-                        sendBroadcast(new Intent("com.tv.live.REFRESH_LIVE_AND_EPG"));
+                        sendRefreshBroadcast();
                         logOperation("设置地址: " + url);
                         Toast.makeText(this, "已保存并刷新", Toast.LENGTH_SHORT).show();
                     }
@@ -277,7 +283,7 @@ public class SettingsActivity extends AppCompatActivity {
                     String url = list[w];
                     sp.edit().putString(key.contains("live") ? "custom_live_url" : "custom_epg_url", url).apply();
                     addHistory(key.contains("live") ? "live_history" : "epg_history", url);
-                    sendBroadcast(new Intent("com.tv.live.REFRESH_LIVE_AND_EPG"));
+                    sendRefreshBroadcast();
                     logOperation("切换地址: " + url);
                     Toast.makeText(this, "已切换", Toast.LENGTH_SHORT).show();
                 })
@@ -336,6 +342,12 @@ public class SettingsActivity extends AppCompatActivity {
         }
     }
 
+    // ====================== 统一刷新广播 ======================
+    private void sendRefreshBroadcast() {
+        Intent intent = new Intent("com.tv.live.REFRESH_LIVE_AND_EPG");
+        sendBroadcast(intent);
+    }
+
     // ====================== 修复端口冲突 ======================
     private void startPushServer() {
         if (serverSocket != null && !serverSocket.isClosed()) {
@@ -367,20 +379,19 @@ public class SettingsActivity extends AppCompatActivity {
                                     hasUpdate = true;
                                 }
                                 if (hasUpdate) {
-                                    Intent intent = new Intent("com.tv.live.REFRESH_LIVE_AND_EPG");
-                                    sendBroadcast(intent);
+                                    sendRefreshBroadcast();
                                     logOperation("扫码同步配置");
                                     Toast.makeText(SettingsActivity.this, "已同步", Toast.LENGTH_SHORT).show();
                                 }
                             });
                             socket.close();
                         } catch (Exception e) {
-                            // 静默失败，不崩溃
+                            logCrash(e);
                         }
                     }).start();
                 }
             } catch (Exception e) {
-                // 静默失败，不崩溃
+                logCrash(e);
             }
         }).start();
     }

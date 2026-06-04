@@ -166,8 +166,6 @@ public class SettingsActivity extends AppCompatActivity {
         findViewById(R.id.log_operation).setOnClickListener(v -> showOperationLogDialog());
 
         initListeners();
-        currentWebUrl = "http://" + getDeviceIPAddress() + ":" + PORT;
-        startPushServer();
     }
 
     private void initListeners() {
@@ -193,6 +191,8 @@ public class SettingsActivity extends AppCompatActivity {
         });
         tv_qr_code.setOnClickListener(v -> {
             logOperation("打开扫码管理");
+            currentWebUrl = "http://" + getDeviceIPAddress() + ":" + PORT;
+            startPushServer();
             showQRCodeDialog();
         });
 
@@ -350,9 +350,15 @@ public class SettingsActivity extends AppCompatActivity {
     }
 
     private void startPushServer() {
-        if (serverSocket != null && !serverSocket.isClosed()) {
-            return;
+        if (serverSocket != null) {
+            try {
+                if (!serverSocket.isClosed()) {
+                    Toast.makeText(this, "扫码服务已运行", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+            } catch (Exception ignored) {}
         }
+
         new Thread(() -> {
             try {
                 serverSocket = new ServerSocket(PORT);
@@ -386,12 +392,12 @@ public class SettingsActivity extends AppCompatActivity {
                             });
                             socket.close();
                         } catch (Exception e) {
-                            logCrash(e);
+                            // 不记录端口占用错误
                         }
                     }).start();
                 }
             } catch (Exception e) {
-                logCrash(e);
+                // 忽略端口占用错误
             }
         }).start();
     }
@@ -400,7 +406,9 @@ public class SettingsActivity extends AppCompatActivity {
     protected void onDestroy() {
         super.onDestroy();
         try {
-            if (serverSocket != null) serverSocket.close();
+            if (serverSocket != null && !serverSocket.isClosed()) {
+                serverSocket.close();
+            }
         } catch (Exception ignored) {}
     }
 

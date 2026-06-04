@@ -110,12 +110,21 @@ public class TVPlayerManager {
 
     private TVPlayerManager(Context ctx) {
         context = ctx.getApplicationContext();
-        DefaultRenderersFactory renderersFactory = new DefaultRenderersFactory(context);
-        renderersFactory.setEnableDecoderFallback(true);
 
+        // ====================== 【修复卡顿核心】 ======================
+        DefaultRenderersFactory renderersFactory = new DefaultRenderersFactory(context)
+                .setEnableDecoderFallback(true)          // 硬解失败自动切软解
+                .setEnableAudioTunneling(false)           // 关闭音频直通（根治冻结）
+                .setEnableVideoTunneling(false);          // 关闭视频直通
+
+        // 直播专用超大缓冲
         DefaultLoadControl loadControl = new DefaultLoadControl.Builder()
-                .setBufferDurationsMs(3000, 30000, 1500, 3000)
-                .build();
+                .setBufferDurationsMs(
+                        20000,    // 最小缓存20秒
+                        60000,    // 最大缓存60秒
+                        5000,     // 启动缓存
+                        10000     // 缓冲恢复
+                ).build();
 
         player = new ExoPlayer.Builder(context)
                 .setRenderersFactory(renderersFactory)
@@ -164,14 +173,11 @@ public class TVPlayerManager {
         headers.put("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36");
         headers.put("Accept", "*/*");
         headers.put("Connection", "keep-alive");
-        headers.put("Icy-MetaData", "1");
 
         try {
             URI uri = new URI(url);
             headers.put("Referer", uri.getScheme() + "://" + uri.getHost() + "/");
-        } catch (Exception e) {
-            headers.put("Referer", "https://www.huya.com/");
-        }
+        } catch (Exception e) {}
 
         String cookies = CookieManager.getInstance().getCookie(url);
         if (cookies != null) {
@@ -180,8 +186,17 @@ public class TVPlayerManager {
         return headers;
     }
 
-    public void play(String url) {
-        playUrl(url);
+    // ====================== 【切台安全释放】 ======================
+    public void stopPlay() {
+        if (player != null) {
+            player.stop();
+        }
+    }
+
+    public void clearMediaSource() {
+        if (player != null) {
+            player.clearMediaItems();
+        }
     }
 
     public void playUrl(String url) {
@@ -189,25 +204,27 @@ public class TVPlayerManager {
             if (player == null || url == null || url.trim().isEmpty()) return;
             currentUrl = url.trim();
 
+            // 彻底释放上一个链接资源
             player.stop();
             player.clearMediaItems();
 
+            // 加长超时，防止移动/电信源断开
             DefaultHttpDataSource.Factory httpFactory = new DefaultHttpDataSource.Factory()
                     .setDefaultRequestProperties(getHeaders(currentUrl))
-                    .setConnectTimeoutMs(5000)
-                    .setReadTimeoutMs(10000)
+                    .setConnectTimeoutMs(10000)
+                    .setReadTimeoutMs(20000)
                     .setAllowCrossProtocolRedirects(true);
 
             MediaItem mediaItem = MediaItem.fromUri(currentUrl);
-            Object mediaSource;
 
             if (currentUrl.toLowerCase().contains("m3u8")) {
-                mediaSource = new HlsMediaSource.Factory(httpFactory).createMediaSource(mediaItem);
+                HlsMediaSource.Factory hlsFactory = new HlsMediaSource.Factory(httpFactory);
+                player.setMediaSource(hlsFactory.createMediaSource(mediaItem));
             } else {
-                mediaSource = new ProgressiveMediaSource.Factory(httpFactory).createMediaSource(mediaItem);
+                ProgressiveMediaSource.Factory pf = new ProgressiveMediaSource.Factory(httpFactory);
+                player.setMediaSource(pf.createMediaSource(mediaItem));
             }
 
-            player.setMediaSource((com.google.android.exoplayer2.source.MediaSource) mediaSource);
             player.prepare();
             player.play();
 
@@ -217,9 +234,10 @@ public class TVPlayerManager {
                     Log.e(TAG, "播放异常: " + error.getMessage());
                     if (listener != null) listener.onPlayError(error.getMessage());
 
+                    // 安全重试
                     new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                        playUrl(currentUrl);
-                    }, 1000);
+                        if (currentUrl != null) playUrl(currentUrl);
+                    }, 1500);
                 }
 
                 @Override
@@ -234,9 +252,8 @@ public class TVPlayerManager {
                     } else if (state == Player.STATE_ENDED) {
                         if (listener != null) listener.onPlayEnd();
                     } else if (state == Player.STATE_IDLE) {
-                        if (listener != null) listener.onIdle();
-                    } else {
                         updateWakeLock(false);
+                        if (listener != null) listener.onIdle();
                     }
                 }
             });

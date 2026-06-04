@@ -20,21 +20,19 @@ public class Channel {
 
     public static class EpgItem {
         public String dayName;
-        public String time;      // 开始时间
-        public String endTime;   // ✅ 新增：结束时间
+        public String time;
+        public String endTime;
         public String title;
         public boolean isPlaying;
 
-        // 原有构造方法（兼容老代码）
         public EpgItem(String dayName, String time, String title, boolean isPlaying) {
             this.dayName = dayName;
             this.time = time;
             this.title = title;
             this.isPlaying = isPlaying;
-            this.endTime = null; // 默认可为空
+            this.endTime = null;
         }
 
-        // ✅ 新增：带结束时间的构造（真正使用的）
         public EpgItem(String dayName, String time, String endTime, String title, boolean isPlaying) {
             this.dayName = dayName;
             this.time = time;

@@ -15,31 +15,15 @@ import java.util.Set;
 
 public class GroupListManager {
     private final ListView lvGroup;
-    private List<String> groupList;
+    private List<String> groupList = new ArrayList<>();
     private int selectedPosition = 0;
+    private ArrayAdapter<String> adapter;
 
     public GroupListManager(Context context, ListView lvGroup) {
         this.lvGroup = lvGroup;
         lvGroup.setItemsCanFocus(true);
 
-        lvGroup.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-            @Override
-            public void onItemSelected(AdapterView<?> parent, View view, int pos, long id) {
-                selectedPosition = pos;
-                ((ArrayAdapter<?>) parent.getAdapter()).notifyDataSetChanged();
-            }
-            @Override
-            public void onNothingSelected(AdapterView<?> parent) {}
-        });
-    }
-
-    public void setGroups(List<Channel> channelSourceList) {
-        if (channelSourceList == null || channelSourceList.isEmpty()) return;
-        Set<String> groupSet = new HashSet<>();
-        for (Channel c : channelSourceList) groupSet.add(c.getGroup());
-        groupList = new ArrayList<>(groupSet);
-
-        ArrayAdapter<String> adapter = new ArrayAdapter<String>(lvGroup.getContext(), android.R.layout.simple_list_item_1, groupList) {
+        adapter = new ArrayAdapter<String>(context, android.R.layout.simple_list_item_1, groupList) {
             @Override
             public View getView(int position, View convertView, ViewGroup parent) {
                 View view = super.getView(position, convertView, parent);
@@ -53,11 +37,31 @@ public class GroupListManager {
             }
         };
         lvGroup.setAdapter(adapter);
+
+        lvGroup.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View view, int pos, long id) {
+                selectedPosition = pos;
+                adapter.notifyDataSetChanged();
+            }
+            @Override
+            public void onNothingSelected(AdapterView<?> parent) {}
+        });
+    }
+
+    public void setGroups(List<Channel> channelSourceList) {
+        if (channelSourceList == null || channelSourceList.isEmpty()) return;
+        Set<String> groupSet = new HashSet<>();
+        for (Channel c : channelSourceList) groupSet.add(c.getGroup());
+        groupList.clear();
+        groupList.addAll(groupSet);
+        adapter.notifyDataSetChanged();
     }
 
     public void setSelectedPosition(int position) {
         selectedPosition = position;
         lvGroup.setSelection(position);
+        adapter.notifyDataSetChanged();
     }
 
     public String getCurrentGroup(int position) {

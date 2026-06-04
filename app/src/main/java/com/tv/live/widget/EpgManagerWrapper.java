@@ -63,7 +63,14 @@ public class EpgManagerWrapper {
         selectDayIndex = dateIndex;
 
         new Thread(() -> {
-            List<Channel.EpgItem> epgList = EpgManager.getInstance().getEpg(currentChannel.getName());
+            // 修复：防止并发修改异常，创建新列表
+            List<Channel.EpgItem> epgList = null;
+            try {
+                epgList = new ArrayList<>(EpgManager.getInstance().getEpg(currentChannel.getName()));
+            } catch (Exception e) {
+                epgList = new ArrayList<>();
+            }
+
             List<Channel.EpgItem> data = new ArrayList<>();
 
             if (epgList != null && !epgList.isEmpty()) {
@@ -83,27 +90,34 @@ public class EpgManagerWrapper {
                 String now = getNow();
                 Channel.EpgItem playing = null;
 
-                // 自动填充空endTime：下一档开播作为结束，最后一档+60分钟兜底
                 for (int i = 0; i < data.size(); i++) {
                     Channel.EpgItem curr = data.get(i);
+
+                    // 修复：自动清洗脏数据，只保留合法时间
+                    if (!TextUtils.isEmpty(curr.time) && curr.time.contains("-")) {
+                        curr.time = curr.time.split("-")[0].trim();
+                    }
                     if (TextUtils.isEmpty(curr.endTime)) {
                         if (i + 1 < data.size()) {
-                            curr.endTime = data.get(i + 1).time;
+                            Channel.EpgItem next = data.get(i + 1);
+                            if (next.time.contains("-")) {
+                                curr.endTime = next.time.split("-")[0].trim();
+                            } else {
+                                curr.endTime = next.time;
+                            }
                         } else {
-                            // 当日最后节目没有下一条，默认+60分钟
                             curr.endTime = addOneHour(curr.time);
                         }
                     }
+
                     curr.isPlaying = false;
-                    // 判断是否正在播出：当前时间在节目起止中间
-                    if (now.compareTo(curr.time) >= 0 && now.compareTo(curr.endTime) < 0) {
+                    if (isTimeBetween(now, curr.time, curr.endTime)) {
                         curr.isPlaying = true;
                         playing = curr;
                         playingIndex = i;
                     }
                 }
 
-                // 当前播放条目置顶
                 if (playing != null && playingIndex > 0) {
                     data.remove(playing);
                     data.add(0, playing);
@@ -130,16 +144,39 @@ public class EpgManagerWrapper {
         }).start();
     }
 
-    // 时分字符串+60分钟
+    // 安全时间比较（彻底防崩）
+    private boolean isTimeBetween(String now, String start, String end) {
+        try {
+            if (now == null || start == null || end == null) return false;
+            if (now.contains(":") && start.contains(":") && end.contains(":")) {
+                return now.compareTo(start) >= 0 && now.compareTo(end) < 0;
+            }
+        } catch (Exception e) {}
+        return false;
+    }
+
+    // 彻底修复：防脏数据、防崩
     private String addOneHour(String hm) {
-        String[] arr = hm.split(":");
-        int h = Integer.parseInt(arr[0]);
-        int m = Integer.parseInt(arr[1]);
-        Calendar c = Calendar.getInstance();
-        c.set(Calendar.HOUR_OF_DAY, h);
-        c.set(Calendar.MINUTE, m);
-        c.add(Calendar.MINUTE, 60);
-        return String.format("%02d:%02d", c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE));
+        try {
+            if (hm == null || !hm.contains(":")) return "23:59";
+
+            // 清洗脏数据
+            hm = hm.trim();
+            if (hm.contains("-")) hm = hm.split("-")[0].trim();
+
+            String[] arr = hm.split(":");
+            int h = Integer.parseInt(arr[0].trim());
+            int m = Integer.parseInt(arr[1].trim());
+
+            Calendar c = Calendar.getInstance();
+            c.set(Calendar.HOUR_OF_DAY, h);
+            c.set(Calendar.MINUTE, m);
+            c.add(Calendar.MINUTE, 60);
+
+            return String.format("%02d:%02d", c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE));
+        } catch (Exception e) {
+            return "23:59";
+        }
     }
 
     private String getNow() {
@@ -206,7 +243,6 @@ public class EpgManagerWrapper {
             holder.tv_time.setText(item.time + "-" + item.endTime);
             holder.tv_title.setText(item.title);
 
-            // 选中/正在播放 蓝色高亮
             if (position == selectedPosition || item.isPlaying) {
                 holder.tv_dayName.setTextColor(Color.parseColor("#40A9FF"));
                 holder.tv_time.setTextColor(Color.parseColor("#40A9FF"));
@@ -218,7 +254,10 @@ public class EpgManagerWrapper {
             }
 
             String key = currentChannel.getName() + "_" + position;
-            boolean isPast = item.time.compareTo(getNow()) < 0;
+            boolean isPast = false;
+            try {
+                isPast = item.time.compareTo(getNow()) < 0;
+            } catch (Exception e) {}
 
             if (item.isPlaying) {
                 holder.tv_action.setText("播放中");
@@ -229,50 +268,50 @@ public class EpgManagerWrapper {
                 holder.tv_action.setBackgroundColor(0xFF607D8B);
                 holder.tv_action.setEnabled(true);
                 holder.tv_action.setOnClickListener(v -> {
-                    String liveUrl = currentChannel.getPlayUrl();
-                    if (TextUtils.isEmpty(liveUrl)) {
-                        Toast.makeText(ctx, "无播放地址", Toast.LENGTH_SHORT).show();
-                        return;
+                    try {
+                        String liveUrl = currentChannel.getPlayUrl();
+                        if (TextUtils.isEmpty(liveUrl)) {
+                            Toast.makeText(ctx, "无播放地址", Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+
+                        Calendar playDay = Calendar.getInstance();
+                        playDay.add(Calendar.DAY_OF_YEAR, dayIndex);
+
+                        String[] startHm = item.time.split(":");
+                        Calendar startCal = (Calendar) playDay.clone();
+                        startCal.set(Calendar.HOUR_OF_DAY, Integer.parseInt(startHm[0].trim()));
+                        startCal.set(Calendar.MINUTE, Integer.parseInt(startHm[1].trim()));
+                        startCal.set(Calendar.SECOND, 0);
+
+                        String[] endHm = item.endTime.split(":");
+                        Calendar endCal = (Calendar) playDay.clone();
+                        endCal.set(Calendar.HOUR_OF_DAY, Integer.parseInt(endHm[0].trim()));
+                        endCal.set(Calendar.MINUTE, Integer.parseInt(endHm[1].trim()));
+                        endCal.set(Calendar.SECOND, 0);
+
+                        String startStr = sdfFull.format(startCal.getTime());
+                        String endStr = sdfFull.format(endCal.getTime());
+
+                        String catchUrl;
+                        if (liveUrl.contains("PLTV")) {
+                            catchUrl = liveUrl.replace("PLTV", "TVOD");
+                        } else {
+                            catchUrl = liveUrl;
+                        }
+                        if (catchUrl.contains("?")) {
+                            catchUrl += "&playseek=" + startStr + "-" + endStr;
+                        } else {
+                            catchUrl += "?playseek=" + startStr + "-" + endStr;
+                        }
+
+                        ((MainActivity) ctx).mPlayerManager.playUrl(catchUrl);
+                        Toast.makeText(ctx, "回看：" + item.title, Toast.LENGTH_SHORT).show();
+                    } catch (Exception e) {
+                        Toast.makeText(ctx, "回看失败", Toast.LENGTH_SHORT).show();
                     }
-                    // 构建回看当天日期
-                    Calendar playDay = Calendar.getInstance();
-                    playDay.add(Calendar.DAY_OF_YEAR, dayIndex);
-
-                    // 开始时间
-                    String[] startHm = item.time.split(":");
-                    Calendar startCal = (Calendar) playDay.clone();
-                    startCal.set(Calendar.HOUR_OF_DAY, Integer.parseInt(startHm[0]));
-                    startCal.set(Calendar.MINUTE, Integer.parseInt(startHm[1]));
-                    startCal.set(Calendar.SECOND, 0);
-
-                    // 结束时间【真实EPG结束时间，不再固定+60】
-                    String[] endHm = item.endTime.split(":");
-                    Calendar endCal = (Calendar) playDay.clone();
-                    endCal.set(Calendar.HOUR_OF_DAY, Integer.parseInt(endHm[0]));
-                    endCal.set(Calendar.MINUTE, Integer.parseInt(endHm[1]));
-                    endCal.set(Calendar.SECOND, 0);
-
-                    String startStr = sdfFull.format(startCal.getTime());
-                    String endStr = sdfFull.format(endCal.getTime());
-
-                    // 适配江西移动PLTV规则
-                    String catchUrl;
-                    if (liveUrl.contains("PLTV")) {
-                        catchUrl = liveUrl.replace("PLTV", "TVOD");
-                    } else {
-                        catchUrl = liveUrl;
-                    }
-                    if (catchUrl.contains("?")) {
-                        catchUrl += "&playseek=" + startStr + "-" + endStr;
-                    } else {
-                        catchUrl += "?playseek=" + startStr + "-" + endStr;
-                    }
-
-                    ((MainActivity) ctx).mPlayerManager.playUrl(catchUrl);
-                    Toast.makeText(ctx, "回看：" + item.title, Toast.LENGTH_SHORT).show();
                 });
             } else {
-                // 未开播节目：预约
                 if (bookedSet.contains(key)) {
                     holder.tv_action.setText("已预约");
                     holder.tv_action.setBackgroundColor(0xFF607D8B);
@@ -295,7 +334,6 @@ public class EpgManagerWrapper {
             return convertView;
         }
 
-        // ✅【唯一修复点】正确的 ViewHolder 类
         class ViewHolder {
             TextView tv_dayName;
             TextView tv_time;

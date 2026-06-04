@@ -123,19 +123,15 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * ==================== 修复项 2 + 5 ====================
      * 初始化播放器
-     * 1. 修复 TVPlayerManager 构造方法错误
-     * 2. 删除不存在的 initPlayer() 方法
+     * 已修复：私有构造不能 new，使用单例
      */
     private void initPlayer() {
-        // 正确构造（只传 Context）
-        mPlayerManager = new TVPlayerManager(this);
-        // 错误方法已删除：mPlayerManager.initPlayer();
+        // ✅ 已修复 私有构造错误
+        mPlayerManager = TVPlayerManager.getInstance(this);
     }
 
     /**
-     * ==================== 修复项 1 ====================
      * 切换频道面板的显示与隐藏
      * 被调用：KeyEventManager / GestureManager
      */
@@ -152,7 +148,6 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * ==================== 修复项 1 ====================
      * 打开设置页面
      * 被调用：KeyEventManager / GestureManager
      */
@@ -162,7 +157,6 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * ==================== 修复项 1 ====================
      * 播放上一个频道
      * 被调用：KeyEventManager / GestureManager
      */
@@ -173,7 +167,6 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * ==================== 修复项 1 ====================
      * 播放下一个频道
      * 被调用：KeyEventManager / GestureManager
      */
@@ -227,9 +220,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * ==================== 修复项 3 ====================
-     * 加载直播源（替换报错的 LiveSourceLoader）
-     * 直接使用 PlaylistParser 解析
+     * 加载直播源
      */
     public void loadLiveAndEpg() {
         new Thread(() -> {

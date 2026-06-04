@@ -85,7 +85,6 @@ public class MainActivity extends AppCompatActivity {
     private BroadcastReceiver toggleControllerReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
-            // 已全局禁用控制器，这里不再执行任何操作
         }
     };
 
@@ -111,14 +110,22 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         mInstance = this;
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
-        getWindow().setFlags(WindowManager.FLAG_FULLSCREEN, WindowManager.FLAG_FULLSCREEN);
+
+        // ========== 修复：正确的全屏常量 ==========
+        getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
+                WindowManager.LayoutParams.FLAG_FULLSCREEN);
+        // ========================================
+
         getWindow().getDecorView().setSystemUiVisibility(
                 View.SYSTEM_UI_FLAG_FULLSCREEN |
                 View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
                 View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
         );
         setContentView(R.layout.activity_main);
-        getWindow().addFlags(WindowManager.FLAG_KEEP_SCREEN_ON);
+
+        // ========== 修复：正确的屏幕常亮常量 ==========
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        // ===========================================
 
         tv_channel_num = findViewById(R.id.tv_channel_num);
         initInfoBar();

@@ -1,5 +1,5 @@
 package com.tv.live;
-import java.util.ArrayList;
+
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -36,6 +36,8 @@ public class MainActivity extends AppCompatActivity {
 
     private TextView tv_channel_name, tv_tag_fhd, tv_tag_audio, tv_bitrate;
     private TextView tv_channel_num;
+    //【可选：布局xml添加日志文本框后启用】
+    //private TextView tv_parse_log;
 
     public TVPlayerManager mPlayerManager;
     private AppConfig appConfig;
@@ -99,6 +101,8 @@ public class MainActivity extends AppCompatActivity {
         tv_tag_audio = findViewById(R.id.tv_tag_audio);
         tv_bitrate = findViewById(R.id.tv_bitrate);
         tv_channel_num = findViewById(R.id.tv_channel_num);
+        //布局添加日志控件后初始化
+        //tv_parse_log = findViewById(R.id.tv_parse_log);
 
         appConfig = AppConfig.getInstance(this);
         loadSettings();
@@ -110,12 +114,9 @@ public class MainActivity extends AppCompatActivity {
         dateListManager.initDate();
         panelManager = new PanelManager(panel_layout, channelListManager, epgManagerWrapper);
 
-        // ==================================
-        // ✅ 只加这一段：修复频道列表点击没反应
-        // ==================================
+        //频道列表点击事件（之前修复保留）
         lvChannelList.setOnItemClickListener((parent, view, position, id) -> {
             if (currentGroupChannelList != null && position >= 0 && position < currentGroupChannelList.size()) {
-                // 按分组内频道，找到全列表真实下标
                 Channel targetCh = currentGroupChannelList.get(position);
                 int realIndex = channelSourceList.indexOf(targetCh);
                 if (realIndex >= 0) {
@@ -125,7 +126,7 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        // 日期切换节目单（你原有代码，完全不动）
+        // 日期切换节目单
         dateListManager.setOnDateSelectedListener(position -> {
             currentSelectedDateIndex = position;
             if (channelSourceList != null && !channelSourceList.isEmpty()) {
@@ -182,6 +183,17 @@ public class MainActivity extends AppCompatActivity {
 
         loadLiveAndEpg();
         registerReceiver(refreshReceiver, new IntentFilter("com.tv.live.REFRESH_LIVE_AND_EPG"));
+
+        //============【唯一新增：日志回调绑定】============
+        mPlayerManager.setOnLogUpdateListener(logs -> {
+            StringBuilder logText = new StringBuilder();
+            for(String log : logs){
+                logText.append(log).append("\n");
+            }
+            //替换成你的日志TextView控件
+            //tv_parse_log.setText(logText.toString());
+        });
+        //=================================================
     }
 
     private void loadSettings() {

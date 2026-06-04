@@ -26,7 +26,6 @@ import com.tv.live.config.AppConfig;
 import com.tv.live.listener.PlayerStateListenerImpl;
 import com.tv.live.loader.LiveSourceLoader;
 import com.tv.live.manager.*;
-import com.tv.live.service.HttpConfigService;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -43,7 +42,6 @@ public class MainActivity extends AppCompatActivity {
     private PanelManager panelManager;
     private GestureManager gestureManager;
     private KeyEventManager keyEventManager;
-    private HttpConfigService httpService;
     private ChannelListManager channelListManager;
     private GroupListManager groupListManager;
     private DateListManager dateListManager;
@@ -202,8 +200,6 @@ public class MainActivity extends AppCompatActivity {
         });
 
         keyEventManager = new KeyEventManager(this);
-        httpService = HttpConfigService.getInstance();
-        httpService.start();
         switchManager = ChannelSwitchManager.getInstance();
         currentPlayIndex = appConfig.getLastPlayIndex();
         loadLiveAndEpg();
@@ -377,7 +373,6 @@ public class MainActivity extends AppCompatActivity {
         super.onDestroy();
         try { unregisterReceiver(toggleControllerReceiver); } catch (Exception ignored) {}
         try { unregisterReceiver(refreshReceiver); } catch (Exception ignored) {}
-        httpService.stop();
         mPlayerManager.release();
         mInstance = null;
     }

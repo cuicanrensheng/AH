@@ -249,7 +249,7 @@ public class MainActivity extends AppCompatActivity {
 
         log("【播放】记录上次播放索引：" + currentPlayIndex);
         loadLiveAndEpg();
-        // 移除原自定义列表点击初始化，改用ChannelListManager内置事件处理
+        initListViewClick();
     }
 
     private void initInfoBar() {

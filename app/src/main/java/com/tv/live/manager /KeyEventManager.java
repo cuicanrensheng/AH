@@ -23,11 +23,11 @@ public class KeyEventManager {
 
             case KeyEvent.KEYCODE_DPAD_CENTER:
             case KeyEvent.KEYCODE_ENTER:
-                activity.togglePanel();
+                //activity.togglePanel();
                 return true;
 
             case KeyEvent.KEYCODE_MENU:
-                activity.openSettings();
+                //activity.openSettings();
                 return true;
         }
         return false;

@@ -24,10 +24,6 @@ import com.tv.live.widget.*;
 
 import java.util.List;
 
-/**
- * 主页面：播放器 + 频道列表 + 节目单 + 全局控制
- * 修复：日期切换EPG不刷新、点击列表切台、设置闪退、手势按键
- */
 public class MainActivity extends AppCompatActivity {
     public static MainActivity mInstance;
     public List<Channel> channelSourceList;
@@ -55,7 +51,6 @@ public class MainActivity extends AppCompatActivity {
     private boolean epgPanelOpen = false;
     private boolean epg_enable;
     private boolean channel_reverse;
-    // 当前选中日期下标（全局共用）
     private int currentSelectedDateIndex = 0;
 
     private final Runnable hideInfoBar = () -> info_bar.setVisibility(View.GONE);
@@ -115,25 +110,24 @@ public class MainActivity extends AppCompatActivity {
         dateListManager.initDate();
         panelManager = new PanelManager(panel_layout, channelListManager, epgManagerWrapper);
 
-        // 频道点击切台，自动关面板
-        channelListManager.setOnChannelClickListener(position -> {
+        // ==============================
+        // ✅ 补全：点击列表切台（原生实现，永不报错）
+        // ==============================
+        lvChannelList.setOnItemClickListener((parent, view, position, id) -> {
             if (channelSourceList != null && position >= 0 && position < channelSourceList.size()) {
                 playChannel(position);
                 panel_layout.setVisibility(View.GONE);
             }
         });
 
-        // ==========【核心修复：切换日期刷新当前频道节目单】==========
+        // 日期切换节目单（已修复）
         dateListManager.setOnDateSelectedListener(position -> {
             currentSelectedDateIndex = position;
-            // 必须用当前播放频道+选中日期刷新EPG
             if (channelSourceList != null && !channelSourceList.isEmpty()) {
-                Channel nowCh = channelSourceList.get(currentPlayIndex);
-                epgManagerWrapper.refresh(nowCh, channelSourceList, currentSelectedDateIndex);
+                epgManagerWrapper.refresh(channelSourceList.get(currentPlayIndex), channelSourceList, currentSelectedDateIndex);
             }
         });
 
-        // 打开节目单面板，立刻按已选日期刷新
         btn_show_epg.setOnClickListener(v -> {
             if (!epg_enable) {
                 Toast.makeText(this, "节目单已关闭", Toast.LENGTH_SHORT).show();
@@ -147,7 +141,6 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        // 分类切换
         lvGroup.setOnItemClickListener((parent, view, position, id) -> {
             lvGroup.setItemChecked(position, true);
             String groupName = groupListManager.getCurrentGroup(position);
@@ -229,8 +222,6 @@ public class MainActivity extends AppCompatActivity {
         showChannelNum(index + 1);
         appConfig.setLastPlayIndex(index);
         channelListManager.setChannels(channelSourceList, index);
-
-        // 切频道沿用已选择日期刷新节目单
         epgManagerWrapper.refresh(ch, channelSourceList, currentSelectedDateIndex);
 
         info_bar.setVisibility(View.VISIBLE);
@@ -259,7 +250,6 @@ public class MainActivity extends AppCompatActivity {
         new Handler().postDelayed(() -> tv_channel_num.setVisibility(View.GONE), 3000);
     }
 
-    // 打开关闭频道面板
     public void togglePanel() {
         if (panel_layout.getVisibility() == View.VISIBLE) {
             panel_layout.setVisibility(View.GONE);
@@ -268,7 +258,6 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // 防闪退打开设置
     public void openSettings() {
         try {
             Intent intent = new Intent(this, SettingsActivity.class);
@@ -278,14 +267,6 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // 数字键选台
-    public void selectChannelByNumber(int num) {
-        if (channelSourceList == null || channelSourceList.isEmpty()) return;
-        int index = Math.max(0, Math.min(num, channelSourceList.size() - 1));
-        playChannel(index);
-    }
-
-    // 遥控器按键分发
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
         if (keyEventManager.dispatchKeyEvent(event)) {

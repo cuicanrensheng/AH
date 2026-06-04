@@ -26,27 +26,21 @@ import java.util.List;
 
 /**
  * 主页面：播放器 + 频道列表 + 节目单 + 全局控制
- * 已修复：点击切台 / 手势滑动 / 遥控器按键 / 打开设置不闪退
+ * 修复：日期切换EPG不刷新、点击列表切台、设置闪退、手势按键
  */
 public class MainActivity extends AppCompatActivity {
-    // 全局实例
     public static MainActivity mInstance;
+    public List<Channel> channelSourceList;
+    public List<Channel> currentGroupChannelList;
+    public int currentPlayIndex = 0;
 
-    // 频道数据
-    public List<Channel> channelSourceList;       // 全部频道
-    public List<Channel> currentGroupChannelList;  // 当前分组频道
-    public int currentPlayIndex = 0;               // 当前播放位
+    private View panel_layout;
+    private PlayerView playerView;
+    private View info_bar;
 
-    // 布局
-    private View panel_layout;                     // 频道面板
-    private PlayerView playerView;                 // 播放器
-    private View info_bar;                         // 顶部信息条
-
-    // 控件
     private TextView tv_channel_name, tv_tag_fhd, tv_tag_audio, tv_bitrate;
     private TextView tv_channel_num;
 
-    // 管理器
     public TVPlayerManager mPlayerManager;
     private AppConfig appConfig;
     private PanelManager panelManager;
@@ -58,20 +52,16 @@ public class MainActivity extends AppCompatActivity {
     private EpgManagerWrapper epgManagerWrapper;
     private ChannelSwitchManager switchManager;
 
-    // 设置
     private boolean epgPanelOpen = false;
     private boolean epg_enable;
     private boolean channel_reverse;
+    // 当前选中日期下标（全局共用）
     private int currentSelectedDateIndex = 0;
 
-    // 自动隐藏信息条
     private final Runnable hideInfoBar = () -> info_bar.setVisibility(View.GONE);
-
-    // 切台防抖
     private long lastChannelChangeTime = 0;
     private static final long CHANNEL_COOLDOWN = 300;
 
-    // 刷新广播
     private final BroadcastReceiver refreshReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
@@ -93,14 +83,11 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         mInstance = this;
-
-        // 全屏 + 横屏 + 常亮
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         setContentView(R.layout.activity_main);
 
-        // 初始化控件
         playerView = findViewById(R.id.player_view);
         playerView.setUseController(false);
         panel_layout = findViewById(R.id.panel_layout);
@@ -118,11 +105,9 @@ public class MainActivity extends AppCompatActivity {
         tv_bitrate = findViewById(R.id.tv_bitrate);
         tv_channel_num = findViewById(R.id.tv_channel_num);
 
-        // 配置
         appConfig = AppConfig.getInstance(this);
         loadSettings();
 
-        // 列表初始化
         channelListManager = new ChannelListManager(this, lvChannelList);
         groupListManager = new GroupListManager(this, lvGroup);
         dateListManager = new DateListManager(this, lvDate);
@@ -130,25 +115,25 @@ public class MainActivity extends AppCompatActivity {
         dateListManager.initDate();
         panelManager = new PanelManager(panel_layout, channelListManager, epgManagerWrapper);
 
-        // ==============================
-        // ✅ 修复：点击频道列表切台
-        // ==============================
+        // 频道点击切台，自动关面板
         channelListManager.setOnChannelClickListener(position -> {
             if (channelSourceList != null && position >= 0 && position < channelSourceList.size()) {
                 playChannel(position);
-                panel_layout.setVisibility(View.GONE); // 选台自动关闭面板
+                panel_layout.setVisibility(View.GONE);
             }
         });
 
-        // 日期切换节目单
+        // ==========【核心修复：切换日期刷新当前频道节目单】==========
         dateListManager.setOnDateSelectedListener(position -> {
             currentSelectedDateIndex = position;
-            if (!channelSourceList.isEmpty()) {
-                epgManagerWrapper.refresh(channelSourceList.get(currentPlayIndex), channelSourceList, currentSelectedDateIndex);
+            // 必须用当前播放频道+选中日期刷新EPG
+            if (channelSourceList != null && !channelSourceList.isEmpty()) {
+                Channel nowCh = channelSourceList.get(currentPlayIndex);
+                epgManagerWrapper.refresh(nowCh, channelSourceList, currentSelectedDateIndex);
             }
         });
 
-        // 显示/隐藏节目单
+        // 打开节目单面板，立刻按已选日期刷新
         btn_show_epg.setOnClickListener(v -> {
             if (!epg_enable) {
                 Toast.makeText(this, "节目单已关闭", Toast.LENGTH_SHORT).show();
@@ -162,7 +147,7 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        // 分组切换
+        // 分类切换
         lvGroup.setOnItemClickListener((parent, view, position, id) -> {
             lvGroup.setItemChecked(position, true);
             String groupName = groupListManager.getCurrentGroup(position);
@@ -178,7 +163,6 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        // 播放器初始化
         mPlayerManager = TVPlayerManager.getInstance(this);
         mPlayerManager.attachPlayerView(playerView);
         mPlayerManager.setOnLiveInfoUpdateListener(info -> {
@@ -187,7 +171,6 @@ public class MainActivity extends AppCompatActivity {
             tv_bitrate.setText(info.bitrate);
         });
 
-        // 手势（手机滑动/点击/长按）
         gestureManager = new GestureManager(this);
         PlayerGestureHelper helper = gestureManager.create();
         playerView.setOnTouchListener((v, event) -> {
@@ -195,28 +178,20 @@ public class MainActivity extends AppCompatActivity {
             return true;
         });
 
-        // 遥控器按键
         keyEventManager = new KeyEventManager(this);
         switchManager = ChannelSwitchManager.getInstance();
         currentPlayIndex = appConfig.getLastPlayIndex();
 
-        // 加载直播源
         loadLiveAndEpg();
         registerReceiver(refreshReceiver, new IntentFilter("com.tv.live.REFRESH_LIVE_AND_EPG"));
     }
 
-    /**
-     * 读取设置
-     */
     private void loadSettings() {
         SharedPreferences sp = getSharedPreferences("app_settings", MODE_PRIVATE);
         epg_enable = sp.getBoolean("epg_enable", true);
         channel_reverse = sp.getBoolean("channel_reverse", false);
     }
 
-    /**
-     * 加载直播 + EPG
-     */
     public void loadLiveAndEpg() {
         LiveSourceLoader.getInstance(this).load(new LiveSourceLoader.LoadCallback() {
             @Override
@@ -243,9 +218,6 @@ public class MainActivity extends AppCompatActivity {
         }));
     }
 
-    /**
-     * 播放指定频道
-     */
     public void playChannel(int index) {
         if (channelSourceList == null || channelSourceList.isEmpty()) return;
         index = Math.max(0, Math.min(index, channelSourceList.size() - 1));
@@ -257,6 +229,8 @@ public class MainActivity extends AppCompatActivity {
         showChannelNum(index + 1);
         appConfig.setLastPlayIndex(index);
         channelListManager.setChannels(channelSourceList, index);
+
+        // 切频道沿用已选择日期刷新节目单
         epgManagerWrapper.refresh(ch, channelSourceList, currentSelectedDateIndex);
 
         info_bar.setVisibility(View.VISIBLE);
@@ -265,9 +239,6 @@ public class MainActivity extends AppCompatActivity {
         tv_channel_name.setText(ch.getName());
     }
 
-    /**
-     * 上一频道
-     */
     public void playPrev() {
         if (System.currentTimeMillis() - lastChannelChangeTime < CHANNEL_COOLDOWN) return;
         lastChannelChangeTime = System.currentTimeMillis();
@@ -275,9 +246,6 @@ public class MainActivity extends AppCompatActivity {
         playChannel(idx);
     }
 
-    /**
-     * 下一频道
-     */
     public void playNext() {
         if (System.currentTimeMillis() - lastChannelChangeTime < CHANNEL_COOLDOWN) return;
         lastChannelChangeTime = System.currentTimeMillis();
@@ -285,22 +253,13 @@ public class MainActivity extends AppCompatActivity {
         playChannel(idx);
     }
 
-    /**
-     * 显示频道号
-     */
     private void showChannelNum(int num) {
         tv_channel_num.setText(String.valueOf(num));
         tv_channel_num.setVisibility(View.VISIBLE);
         new Handler().postDelayed(() -> tv_channel_num.setVisibility(View.GONE), 3000);
     }
 
-    // ==============================
-    // 公共方法：手势/按键调用
-    // ==============================
-
-    /**
-     * 显示/隐藏频道面板
-     */
+    // 打开关闭频道面板
     public void togglePanel() {
         if (panel_layout.getVisibility() == View.VISIBLE) {
             panel_layout.setVisibility(View.GONE);
@@ -309,9 +268,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    /**
-     * ✅ 修复：打开设置（不闪退）
-     */
+    // 防闪退打开设置
     public void openSettings() {
         try {
             Intent intent = new Intent(this, SettingsActivity.class);
@@ -321,18 +278,14 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    /**
-     * 数字键选台
-     */
+    // 数字键选台
     public void selectChannelByNumber(int num) {
         if (channelSourceList == null || channelSourceList.isEmpty()) return;
         int index = Math.max(0, Math.min(num, channelSourceList.size() - 1));
         playChannel(index);
     }
 
-    /**
-     * 遥控器按键分发
-     */
+    // 遥控器按键分发
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
         if (keyEventManager.dispatchKeyEvent(event)) {
@@ -341,9 +294,6 @@ public class MainActivity extends AppCompatActivity {
         return super.dispatchKeyEvent(event);
     }
 
-    /**
-     * 返回键关闭面板
-     */
     @Override
     public void onBackPressed() {
         if (panel_layout.getVisibility() == View.VISIBLE) {

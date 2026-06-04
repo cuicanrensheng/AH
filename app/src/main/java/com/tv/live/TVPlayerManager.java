@@ -111,20 +111,12 @@ public class TVPlayerManager {
     private TVPlayerManager(Context ctx) {
         context = ctx.getApplicationContext();
 
-        // ====================== 【修复卡顿核心】 ======================
         DefaultRenderersFactory renderersFactory = new DefaultRenderersFactory(context)
-                .setEnableDecoderFallback(true)          // 硬解失败自动切软解
-                .setEnableAudioTunneling(false)           // 关闭音频直通（根治冻结）
-                .setEnableVideoTunneling(false);          // 关闭视频直通
+                .setEnableDecoderFallback(true);
 
-        // 直播专用超大缓冲
         DefaultLoadControl loadControl = new DefaultLoadControl.Builder()
-                .setBufferDurationsMs(
-                        20000,    // 最小缓存20秒
-                        60000,    // 最大缓存60秒
-                        5000,     // 启动缓存
-                        10000     // 缓冲恢复
-                ).build();
+                .setBufferDurationsMs(20000, 60000, 5000, 10000)
+                .build();
 
         player = new ExoPlayer.Builder(context)
                 .setRenderersFactory(renderersFactory)
@@ -186,7 +178,6 @@ public class TVPlayerManager {
         return headers;
     }
 
-    // ====================== 【切台安全释放】 ======================
     public void stopPlay() {
         if (player != null) {
             player.stop();
@@ -204,11 +195,9 @@ public class TVPlayerManager {
             if (player == null || url == null || url.trim().isEmpty()) return;
             currentUrl = url.trim();
 
-            // 彻底释放上一个链接资源
             player.stop();
             player.clearMediaItems();
 
-            // 加长超时，防止移动/电信源断开
             DefaultHttpDataSource.Factory httpFactory = new DefaultHttpDataSource.Factory()
                     .setDefaultRequestProperties(getHeaders(currentUrl))
                     .setConnectTimeoutMs(10000)
@@ -234,7 +223,6 @@ public class TVPlayerManager {
                     Log.e(TAG, "播放异常: " + error.getMessage());
                     if (listener != null) listener.onPlayError(error.getMessage());
 
-                    // 安全重试
                     new Handler(Looper.getMainLooper()).postDelayed(() -> {
                         if (currentUrl != null) playUrl(currentUrl);
                     }, 1500);

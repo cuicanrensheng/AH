@@ -38,7 +38,7 @@ import java.util.List;
 
 public class SettingsActivity extends AppCompatActivity {
     private Switch sw_boot, sw_epg, sw_auto_update, sw_reverse, sw_num_channel;
-    private TextView tv_screen_ratio, tv_custom_source, tv_custom_epg, tv_multi_source, tv_multi_epg, tv_qr_code, tv_player_engine;
+    private TextView tv_screen_ratio, tv_custom_source, tv_custom_epg, tv_multi_source, tv_multi_epg, tv_qr_code;
     private SharedPreferences sp;
     private String currentWebUrl;
     private ServerSocket serverSocket;
@@ -118,7 +118,6 @@ public class SettingsActivity extends AppCompatActivity {
                 .show();
     }
 
-    // ====================== 原有逻辑（100% 保留，不删不改） ======================
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -137,20 +136,17 @@ public class SettingsActivity extends AppCompatActivity {
         sw_reverse = findViewById(R.id.sw_reverse);
         sw_num_channel = findViewById(R.id.sw_num_channel);
 
-        // ====================== 修复：正确的控件 ID（和你布局完全一致） ======================
+        // 完全匹配你布局里的所有ID
         tv_screen_ratio = findViewById(R.id.tv_screen_ratio);
         tv_custom_source = findViewById(R.id.tv_custom_source);
         tv_custom_epg = findViewById(R.id.tv_custom_epg);
         tv_multi_source = findViewById(R.id.tv_multi_source);
         tv_multi_epg = findViewById(R.id.tv_multi_epg);
         tv_qr_code = findViewById(R.id.tv_qr_code);
-        tv_player_engine = findViewById(R.id.tv_player_engine);
 
         // 日志按钮
         findViewById(R.id.log_viewer).setOnClickListener(v -> showParseLogDialog());
         findViewById(R.id.log_operation).setOnClickListener(v -> showOperationLogDialog());
-
-        updatePlayerDisplay();
 
         sw_boot.setChecked(sp.getBoolean("boot_auto_start", false));
         sw_boot.setOnCheckedChangeListener((buttonView, isChecked) -> {
@@ -187,27 +183,6 @@ public class SettingsActivity extends AppCompatActivity {
             Toast.makeText(this, "数字选台" + (isChecked ? "已开启" : "已关闭"), Toast.LENGTH_SHORT).show();
         });
 
-        tv_player_engine.setOnClickListener(v -> {
-            String[] items = {"ExoPlayer（默认）", "VLC 播放器"};
-            int current = sp.getInt("player_engine", 0);
-            new AlertDialog.Builder(this)
-                    .setTitle("选择播放器")
-                    .setSingleChoiceItems(items, current, (dialog, which) -> {
-                        if (which != current) {
-                            sp.edit().putInt("player_engine", which).apply();
-                            updatePlayerDisplay();
-                            logOperation("切换播放器至: " + items[which]);
-                            Toast.makeText(this, "已切换：" + items[which] + "，即将重启生效", Toast.LENGTH_LONG).show();
-                            dialog.dismiss();
-                            new Handler().postDelayed(this::restartApp, 1000);
-                        } else {
-                            dialog.dismiss();
-                        }
-                    })
-                    .setNegativeButton("取消", null)
-                    .show();
-        });
-
         findViewById(R.id.btn_check_update).setOnClickListener(v -> {
             logOperation("检查更新: 已是最新版本");
             Toast.makeText(this, "已是最新版本", Toast.LENGTH_SHORT).show();
@@ -218,19 +193,6 @@ public class SettingsActivity extends AppCompatActivity {
         currentWebUrl = "http://" + getDeviceIPAddress() + ":" + PORT;
         startPushServer();
         logOperation("设置页面已打开");
-    }
-
-    private void updatePlayerDisplay() {
-        int type = sp.getInt("player_engine", 0);
-        tv_player_engine.setText(type == 0 ? "当前：ExoPlayer" : "当前：VLC 播放器");
-    }
-
-    private void restartApp() {
-        Intent intent = new Intent(this, MainActivity.class);
-        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_NEW_TASK);
-        startActivity(intent);
-        finish();
-        android.os.Process.killProcess(android.os.Process.myPid());
     }
 
     private void initListeners() {

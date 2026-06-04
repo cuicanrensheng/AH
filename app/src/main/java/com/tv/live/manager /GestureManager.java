@@ -1,56 +1,47 @@
-package com.tv.live.manager;
+package com.tv.live;
+import com.tv.live.Channel;
+import android.content.pm.ActivityInfo;
+import android.os.Bundle;
+import android.widget.ArrayAdapter;
+import android.widget.ListView;
+import androidx.appcompat.app.AppCompatActivity;
+import java.util.ArrayList;
+import java.util.List;
 
-import android.os.Handler;
-import android.os.Looper;
-import com.tv.live.MainActivity;
-import com.tv.live.PlayerGestureHelper;
+public class ChannelListActivity extends AppCompatActivity {
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
 
-public class GestureManager {
+        ListView listView = new ListView(this);
+        setContentView(listView);
 
-    private final MainActivity activity;
-    private final Handler mainHandler = new Handler(Looper.getMainLooper());
-    private static final long DEBOUNCE_DELAY_MS = 300;
-    private boolean isGestureLocked = false;
+        // 安全判断
+        if (MainActivity.mInstance == null || MainActivity.mInstance.channelSourceList == null
+            || MainActivity.mInstance.channelSourceList.isEmpty()) {
+            finish();
+            return;
+        }
 
-    public GestureManager(MainActivity activity) {
-        this.activity = activity;
-    }
+        // 用当前真正播放的下标定位
+        final List<Channel> channelList = MainActivity.mInstance.channelSourceList;
+        final int currentRealIndex = MainActivity.mInstance.currentPlayIndex;
 
-    public PlayerGestureHelper create() {
-        return new PlayerGestureHelper(activity, new PlayerGestureHelper.GestureCallback() {
+        List<String> names = new ArrayList<>();
+        for (Channel c : channelList) names.add(c.getName());
 
-            @Override
-            public void onOk() {
-                activity.togglePanel();
+        ArrayAdapter<String> adapter = new ArrayAdapter<>(this,
+            android.R.layout.simple_list_item_1, names);
+        listView.setAdapter(adapter);
+        listView.setSelection(currentRealIndex);
+
+        // 点击就用当前列表真实position，100%准
+        listView.setOnItemClickListener((parent, view, position, id) -> {
+            if (MainActivity.mInstance != null) {
+                MainActivity.mInstance.playChannel(position);
             }
-
-            @Override
-            public void onLongOk() {
-                activity.openSettings();
-            }
-
-            @Override
-            public void onMenu() {
-                activity.openSettings();
-            }
-
-            @Override
-            public void onPrevChannel() {
-                if (!isGestureLocked) {
-                    isGestureLocked = true;
-                    activity.playPrev();
-                    mainHandler.postDelayed(() -> isGestureLocked = false, DEBOUNCE_DELAY_MS);
-                }
-            }
-
-            @Override
-            public void onNextChannel() {
-                if (!isGestureLocked) {
-                    isGestureLocked = true;
-                    activity.playNext();
-                    mainHandler.postDelayed(() -> isGestureLocked = false, DEBOUNCE_DELAY_MS);
-                }
-            }
+            finish();
         });
     }
 }

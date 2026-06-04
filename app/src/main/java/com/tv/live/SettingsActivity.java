@@ -1,31 +1,42 @@
 package com.tv.live;
 
-import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
-import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
+import android.graphics.Bitmap;
+import android.graphics.Color;
+import android.net.wifi.WifiInfo;
+import android.net.wifi.WifiManager;
 import android.os.Bundle;
 import android.os.Handler;
+import android.os.Looper;
 import android.text.TextUtils;
-import android.view.KeyEvent;
+import android.view.LayoutInflater;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.WindowManager;
-import android.widget.ListView;
+import android.widget.ArrayAdapter;
+import android.widget.EditText;
+import android.widget.ImageView;
+import android.widget.ScrollView;
+import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
-import com.google.android.exoplayer2.ui.PlayerView;
-import com.tv.live.config.AppConfig;
-import com.tv.live.loader.LiveSourceLoader;
-import com.tv.live.manager.*;
-import com.tv.live.widget.*;
-import java.io.*;
+import com.google.zxing.BarcodeFormat;
+import com.google.zxing.qrcode.QRCodeWriter;
+import com.google.zxing.common.BitMatrix;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.URLDecoder;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -37,13 +48,10 @@ public class SettingsActivity extends AppCompatActivity {
     private String currentWebUrl;
     private Handler handler = new Handler(Looper.getMainLooper());
     private static final int PORT = 10481;
-    private SettingsAdapter adapter;
 
-    // 网页服务相关
     private NanoInnerServer nanoServer;
-    private boolean needRefreshFromWeb = false; // 网页保存标记
+    private boolean needRefreshFromWeb = false;
 
-    //====================日志系统完整保留====================
     private static final List<String> OPERATION_LOG = new ArrayList<>();
     private static final int MAX_LOG_COUNT = 200;
 
@@ -74,7 +82,10 @@ public class SettingsActivity extends AppCompatActivity {
                 .setTitle("操作日志")
                 .setView(scrollView)
                 .setPositiveButton("关闭",null)
-                .setNeutralButton("清空",(d,w)->{OPERATION_LOG.clear();Toast.makeText(this,"已清空",Toast.LENGTH_SHORT).show();})
+                .setNeutralButton("清空",(d,w)->{
+                    OPERATION_LOG.clear();
+                    Toast.makeText(this,"已清空",Toast.LENGTH_SHORT).show();
+                })
                 .show();
     }
 
@@ -95,7 +106,10 @@ public class SettingsActivity extends AppCompatActivity {
         new AlertDialog.Builder(this)
                 .setTitle("解析日志")
                 .setView(scrollView)
-                .setPositiveButton("清空",(d,w)->{TVPlayerManager.getInstance(this).clearLogs();Toast.makeText(this,"已清空",Toast.LENGTH_SHORT).show();})
+                .setPositiveButton("清空",(d,w)->{
+                    TVPlayerManager.getInstance(this).clearLogs();
+                    Toast.makeText(this,"已清空",Toast.LENGTH_SHORT).show();
+                })
                 .setNegativeButton("关闭",null)
                 .show();
     }
@@ -103,7 +117,7 @@ public class SettingsActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+        getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));
         getWindow().getAttributes().dimAmount = 0.6f;
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND, WindowManager.LayoutParams.FLAG_DIM_BEHIND);
         super.onCreate(savedInstanceState);
@@ -172,10 +186,9 @@ public class SettingsActivity extends AppCompatActivity {
         initListeners();
         currentWebUrl = "http://"+getDeviceIPAddress()+":"+PORT;
 
-        // 启动内置网页服务（只初始化一次，解决端口重复占用EADDRINUSE）
         if(nanoServer == null){
-            nanoServer = new NanoInnerServer(PORT);
             try {
+                nanoServer = new NanoInnerServer(PORT);
                 nanoServer.start();
                 logOperation("设置页面打开 · 网页后台已启动");
             } catch (Exception e) {
@@ -183,18 +196,15 @@ public class SettingsActivity extends AppCompatActivity {
             }
         }
 
-        // 主线程循环监听网页保存标记
         handler.post(checkRefreshRunnable);
     }
 
-    // 轮询任务：网页保存后置标记，自动刷新
     private final Runnable checkRefreshRunnable = new Runnable() {
         @Override
         public void run() {
             if(needRefreshFromWeb){
                 needRefreshFromWeb = false;
                 logOperation("网页提交源，执行全局刷新");
-                // 发送全局刷新广播，Main接收自动重载
                 Intent refreshIntent = new Intent("com.tv.live.REFRESH_LIVE_AND_EPG");
                 sendBroadcast(refreshIntent);
             }
@@ -202,7 +212,6 @@ public class SettingsActivity extends AppCompatActivity {
         }
     };
 
-    // 给内部服务调用：开启刷新标记
     public void setNeedRefresh(){
         needRefreshFromWeb = true;
     }
@@ -268,7 +277,7 @@ public class SettingsActivity extends AppCompatActivity {
             Toast.makeText(this,"暂无历史记录",Toast.LENGTH_SHORT).show();
             return;
         }
-        adapter = new SettingsAdapter(this,Arrays.asList(arr));
+        SettingsAdapter adapter = new SettingsAdapter(this, Arrays.asList(arr));
         new AlertDialog.Builder(this)
                 .setTitle(title)
                 .setAdapter(adapter,(d,w)->{
@@ -277,7 +286,6 @@ public class SettingsActivity extends AppCompatActivity {
                     sp.edit().putString(saveKey,selUrl).apply();
                     addHistory(key,selUrl);
                     sendBroadcast(new Intent("com.tv.live.REFRESH_LIVE_AND_EPG"));
-                    adapter.setSelectedPosition(w);
                     logOperation("从历史切换源："+selUrl);
                     Toast.makeText(this,"已切换，正在刷新…",Toast.LENGTH_SHORT).show();
                 })
@@ -313,11 +321,12 @@ public class SettingsActivity extends AppCompatActivity {
 
     private Bitmap createQR(String text,int size) {
         try{
-            BitMatrix matrix = new QRCodeWriter().encode(text, BarcodeFormat.QR_CODE,size,size);
-            Bitmap bmp = Bitmap.createBitmap(size,size,Bitmap.Config.RGB_565);
+            QRCodeWriter writer = new QRCodeWriter();
+            BitMatrix matrix = writer.encode(text, BarcodeFormat.QR_CODE, size, size);
+            Bitmap bmp = Bitmap.createBitmap(size, size, Bitmap.Config.RGB_565);
             for(int x=0;x<size;x++){
                 for(int y=0;y<size;y++){
-                    bmp.setPixel(x,y,matrix.get(x,y)? Color.BLACK:Color.WHITE);
+                    bmp.setPixel(x,y,matrix.get(x,y) ? Color.BLACK : Color.WHITE);
                 }
             }
             return bmp;
@@ -342,7 +351,6 @@ public class SettingsActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        // 停止网页服务
         if(nanoServer != null){
             nanoServer.stop();
             nanoServer = null;
@@ -351,7 +359,6 @@ public class SettingsActivity extends AppCompatActivity {
         handler.removeCallbacks(checkRefreshRunnable);
     }
 
-    // 内置网页服务类（内部类，可直接调用Settings方法，不用跨包导Intent）
     private class NanoInnerServer {
         private ServerSocket serverSocket;
         private int port;
@@ -359,7 +366,6 @@ public class SettingsActivity extends AppCompatActivity {
 
         public NanoInnerServer(int port) {
             this.port = port;
-            serverSocket = null;
             running = false;
         }
 
@@ -439,10 +445,8 @@ public class SettingsActivity extends AppCompatActivity {
 
             String live = params.get("live");
             String epg = params.get("epg");
-
-            // 保存到SP
             boolean changed = false;
-            SharedPreferences sp = getSharedPreferences("app_settings",MODE_PRIVATE);
+
             if(live != null && !live.trim().isEmpty()){
                 sp.edit().putString("custom_live_url",live.trim()).apply();
                 addHistory("live_history",live.trim());
@@ -456,10 +460,7 @@ public class SettingsActivity extends AppCompatActivity {
                 changed = true;
             }
 
-            // 关键：置刷新标记，主线程自动发广播刷新APP
-            if(changed){
-                setNeedRefresh();
-            }
+            if(changed) setNeedRefresh();
 
             String ok = "<h2 style='color:#0c0;'>保存成功！已刷新</h2>";
             out.write(("HTTP/1.1 200 OK\r\nContent-Type:text/html;charset=UTF-8\r\n\r\n" + ok).getBytes("UTF-8"));
@@ -489,22 +490,27 @@ public class SettingsActivity extends AppCompatActivity {
         private final Context ctx;
         private final List<String> datas;
         private int selectPos = -1;
-        public SettingsAdapter(Context c,List<String> list){
-            super(c,R.layout.item_settings,list);
+
+        public SettingsAdapter(Context c, List<String> list){
+            super(c, R.layout.item_settings, list);
             ctx = c;
             datas = list;
         }
+
         public void setSelectedPosition(int pos){
             selectPos = pos;
             notifyDataSetChanged();
         }
+
         @Override
-        public View getView(int pos,View convert,ViewGroup parent) {
-            if(convert==null) convert = LayoutInflater.from(ctx).inflate(R.layout.item_settings,parent,false);
-            TextView tv = convert.findViewById(R.id.tv_setting_item);
+        public View getView(int pos, View convertView, ViewGroup parent) {
+            if(convertView==null) {
+                convertView = LayoutInflater.from(ctx).inflate(R.layout.item_settings, parent, false);
+            }
+            TextView tv = convertView.findViewById(R.id.tv_setting_item);
             tv.setText(datas.get(pos));
-            tv.setTextColor(selectPos==pos? Color.parseColor("#40A9FF"):Color.WHITE);
-            return convert;
+            tv.setTextColor(selectPos==pos ? Color.parseColor("#40A9FF") : Color.WHITE);
+            return convertView;
         }
     }
 }

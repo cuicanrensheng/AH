@@ -17,7 +17,6 @@ public class DateListManager {
     private final ListView lvDate;
     private final Context context;
     private int selectedPosition = 0;
-    private EpgManagerWrapper epgManagerWrapper;
 
     public DateListManager(Context context, ListView lvDate) {
         this.context = context;
@@ -29,26 +28,10 @@ public class DateListManager {
             public void onItemSelected(AdapterView<?> parent, View view, int pos, long id) {
                 selectedPosition = pos;
                 ((ArrayAdapter<?>) parent.getAdapter()).notifyDataSetChanged();
-
-                // ========== 修复：日期切换 → 自动刷新 EPG ==========
-                if (epgManagerWrapper != null && ((MainActivity) context).channelSourceList != null) {
-                    int currentChannelIndex = ((MainActivity) context).currentPlayIndex;
-                    epgManagerWrapper.refresh(
-                            ((MainActivity) context).channelSourceList.get(currentChannelIndex),
-                            ((MainActivity) context).channelSourceList,
-                            pos
-                    );
-                }
             }
-
             @Override
             public void onNothingSelected(AdapterView<?> parent) {}
         });
-    }
-
-    // 绑定 EPG，让日期可以控制节目单
-    public void setEpgManagerWrapper(EpgManagerWrapper wrapper) {
-        this.epgManagerWrapper = wrapper;
     }
 
     public void initDate() {
@@ -72,11 +55,7 @@ public class DateListManager {
                 View view = super.getView(position, convertView, parent);
                 TextView tv = view.findViewById(android.R.id.text1);
                 tv.setTextSize(14);
-                if (position == selectedPosition) {
-                    tv.setTextColor(Color.parseColor("#40A9FF"));
-                } else {
-                    tv.setTextColor(Color.WHITE);
-                }
+                tv.setTextColor(position == selectedPosition ? Color.parseColor("#40A9FF") : Color.WHITE);
                 return view;
             }
         };

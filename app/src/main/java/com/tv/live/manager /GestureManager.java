@@ -8,9 +8,10 @@ import com.tv.live.PlayerGestureHelper;
 public class GestureManager {
 
     private final MainActivity activity;
-    private final Handler mainHandler = new Handler(Looper.getMainLoop());
-    private static final long DEBOUNCE_MS = 300;
-    private boolean locked = false;
+    // 修复：正确的主线程 Handler
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private static final long DEBOUNCE_DELAY_MS = 300;
+    private boolean isGestureLocked = false;
 
     public GestureManager(MainActivity activity) {
         this.activity = activity;
@@ -40,33 +41,21 @@ public class GestureManager {
             // 上滑 / 上键 → 上一频道
             @Override
             public void onPrevChannel() {
-                if (!locked) {
-                    locked = true;
+                if (!isGestureLocked) {
+                    isGestureLocked = true;
                     activity.playPrev();
-                    mainHandler.postDelayed(() -> locked = false, DEBOUNCE_MS);
+                    mainHandler.postDelayed(() -> isGestureLocked = false, DEBOUNCE_DELAY_MS);
                 }
             }
 
             // 下滑 / 下键 → 下一频道
             @Override
             public void onNextChannel() {
-                if (!locked) {
-                    locked = true;
+                if (!isGestureLocked) {
+                    isGestureLocked = true;
                     activity.playNext();
-                    mainHandler.postDelayed(() -> locked = false, DEBOUNCE_MS);
+                    mainHandler.postDelayed(() -> isGestureLocked = false, DEBOUNCE_DELAY_MS);
                 }
-            }
-
-            // 双击 → 设置
-            @Override
-            public void onDoubleTap() {
-                activity.openSettings();
-            }
-
-            // 长按屏幕 → 设置
-            @Override
-            public void onLongPress() {
-                activity.openSettings();
             }
         });
     }

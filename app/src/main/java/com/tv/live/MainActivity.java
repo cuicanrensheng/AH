@@ -10,12 +10,9 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.text.TextUtils;
 import android.view.KeyEvent;
-import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
-import android.widget.AdapterView;
 import android.widget.ListView;
-import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
@@ -25,13 +22,12 @@ import com.tv.live.listener.PlayerStateListenerImpl;
 import com.tv.live.loader.LiveSourceLoader;
 import com.tv.live.manager.*;
 import com.tv.live.widget.*;
-import java.util.ArrayList;
 import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
     public static MainActivity mInstance;
-    public List<Channel> channelSourceList = new ArrayList<>();
-    public List<Channel> currentGroupChannelList = new ArrayList<>();
+    public List<Channel> channelSourceList;
+    public List<Channel> currentGroupChannelList;
     public int currentPlayIndex = 0;
 
     private View panel_layout;
@@ -46,46 +42,22 @@ public class MainActivity extends AppCompatActivity {
     private GroupListManager groupListManager;
     private DateListManager dateListManager;
     private EpgManagerWrapper epgManagerWrapper;
-    private PlayerStateListenerImpl playerStateListener;
     private ChannelSwitchManager switchManager;
 
     private boolean epgPanelOpen = false;
-    private boolean isControllerVisible = false;
     private boolean epg_enable;
     private boolean channel_reverse;
-    private boolean number_channel_enable;
-    private boolean auto_update_source;
     private int currentSelectedDateIndex = 0;
 
     private View info_bar;
     private TextView tv_channel_name, tv_tag_fhd, tv_tag_audio, tv_bitrate;
     private TextView tv_current_program_name, tv_current_time_range, tv_remaining_time;
     private TextView tv_next_program_name, tv_next_time_range;
-    private ProgressBar progress_program;
     private TextView tv_channel_num;
 
-    private final Runnable hideInfoBar = new Runnable() {
-        @Override
-        public void run() {
-            info_bar.setVisibility(View.GONE);
-        }
-    };
-
+    private final Runnable hideInfoBar = () -> info_bar.setVisibility(View.GONE);
     private long lastChannelChangeTime = 0;
     private static final long CHANNEL_COOLDOWN = 300;
-    public static List<String> logList = new ArrayList<>();
-
-    public static void log(String msg) {
-        logList.add(0, msg);
-        if (logList.size() > 100) logList.remove(logList.size() - 1);
-        SettingsActivity.log(msg);
-    }
-
-    private BroadcastReceiver toggleControllerReceiver = new BroadcastReceiver() {
-        @Override
-        public void onReceive(Context context, Intent intent) {
-        }
-    };
 
     private BroadcastReceiver refreshReceiver = new BroadcastReceiver() {
         @Override
@@ -98,7 +70,7 @@ public class MainActivity extends AppCompatActivity {
                     if (customLive != null) UrlConfig.LIVE_URL = customLive;
                     if (customEpg != null) UrlConfig.EPG_URL = customEpg;
                     loadLiveAndEpg();
-                    Toast.makeText(MainActivity.this, "已刷新直播源/EPG", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(MainActivity.this, "已刷新", Toast.LENGTH_SHORT).show();
                 });
             }
         }
@@ -109,34 +81,12 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         mInstance = this;
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
-
-        getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
-                WindowManager.LayoutParams.FLAG_FULLSCREEN);
-
-        getWindow().getDecorView().setSystemUiVisibility(
-                View.SYSTEM_UI_FLAG_FULLSCREEN |
-                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
-                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-        );
-        setContentView(R.layout.activity_main);
-
+        getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-
-        tv_channel_num = findViewById(R.id.tv_channel_num);
-        initInfoBar();
-        appConfig = AppConfig.getInstance(this);
-        loadSettings();
-
-        String customLive = appConfig.getCustomLiveUrl();
-        String customEpg = appConfig.getCustomEpgUrl();
-        if (customLive != null) UrlConfig.LIVE_URL = customLive;
-        if (customEpg != null) UrlConfig.EPG_URL = customEpg;
+        setContentView(R.layout.activity_main);
 
         playerView = findViewById(R.id.player_view);
         playerView.setUseController(false);
-        playerView.setControllerShowTimeoutMs(0);
-        playerView.setControllerVisibilityListener(null);
-        playerView.setControllerHideOnTouch(false);
 
         panel_layout = findViewById(R.id.panel_layout);
         ListView lvGroup = findViewById(R.id.lv_group);
@@ -144,33 +94,46 @@ public class MainActivity extends AppCompatActivity {
         ListView lvDate = findViewById(R.id.lv_date);
         ListView lvEpg = findViewById(R.id.lv_epg);
         TextView btn_show_epg = findViewById(R.id.btn_show_epg);
+        info_bar = findViewById(R.id.info_bar);
+        tv_channel_name = findViewById(R.id.tv_channel_name);
+        tv_tag_fhd = findViewById(R.id.tv_tag_fhd);
+        tv_tag_audio = findViewById(R.id.tv_tag_audio);
+        tv_bitrate = findViewById(R.id.tv_bitrate);
+        tv_channel_num = findViewById(R.id.tv_channel_num);
 
-        registerReceiver(toggleControllerReceiver, new IntentFilter("com.tv.live.TOGGLE_CONTROL"));
-        registerReceiver(refreshReceiver, new IntentFilter("com.tv.live.REFRESH_LIVE_AND_EPG"));
+        appConfig = AppConfig.getInstance(this);
+        loadSettings();
 
-        btn_show_epg.setOnClickListener(v -> {
-            if (!epg_enable) {
-                Toast.makeText(this, "节目单功能已关闭", Toast.LENGTH_SHORT).show();
-                return;
-            }
-            epgPanelOpen = !epgPanelOpen;
-            lvDate.setVisibility(epgPanelOpen ? View.VISIBLE : View.GONE);
-            lvEpg.setVisibility(epgPanelOpen ? View.VISIBLE : View.GONE);
-            if (epgPanelOpen && !channelSourceList.isEmpty()) {
-                epgManagerWrapper.refresh(channelSourceList.get(currentPlayIndex), channelSourceList, currentSelectedDateIndex);
-            }
-        });
+        channelListManager = new ChannelListManager(this, lvChannelList);
+        groupListManager = new GroupListManager(this, lvGroup);
+        dateListManager = new DateListManager(this, lvDate);
+        epgManagerWrapper = new EpgManagerWrapper(this, lvEpg);
+        dateListManager.initDate();
+        panelManager = new PanelManager(panel_layout, channelListManager, epgManagerWrapper);
 
-        lvDate.setOnItemClickListener((parent, view, position, id) -> {
+        // ✅ 日期联动节目单（真正修复）
+        dateListManager.setOnDateSelectedListener(position -> {
             currentSelectedDateIndex = position;
             if (!channelSourceList.isEmpty()) {
                 epgManagerWrapper.refresh(channelSourceList.get(currentPlayIndex), channelSourceList, currentSelectedDateIndex);
             }
         });
 
+        btn_show_epg.setOnClickListener(v -> {
+            if (!epg_enable) {
+                Toast.makeText(this, "节目单已关闭", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            epgPanelOpen = !epgPanelOpen;
+            lvDate.setVisibility(epgPanelOpen ? View.VISIBLE : View.GONE);
+            lvEpg.setVisibility(epgPanelOpen ? View.VISIBLE : View.GONE);
+            if (epgPanelOpen && channelSourceList != null && !channelSourceList.isEmpty()) {
+                epgManagerWrapper.refresh(channelSourceList.get(currentPlayIndex), channelSourceList, currentSelectedDateIndex);
+            }
+        });
+
         lvGroup.setOnItemClickListener((parent, view, position, id) -> {
             lvGroup.setItemChecked(position, true);
-            lvGroup.setSelection(position);
             String groupName = groupListManager.getCurrentGroup(position);
             currentGroupChannelList.clear();
             for (Channel c : channelSourceList) {
@@ -180,31 +143,17 @@ public class MainActivity extends AppCompatActivity {
             }
             channelListManager.setChannelsByGroup(channelSourceList, groupName, currentPlayIndex);
             if (!currentGroupChannelList.isEmpty()) {
-                Channel first = currentGroupChannelList.get(0);
-                int idx = channelSourceList.indexOf(first);
-                if (idx != -1) playChannel(idx);
+                playChannel(channelSourceList.indexOf(currentGroupChannelList.get(0)));
             }
         });
 
-        channelListManager = new ChannelListManager(this, lvChannelList);
-        groupListManager = new GroupListManager(this, lvGroup);
-        dateListManager = new DateListManager(this, lvDate);
-        epgManagerWrapper = new EpgManagerWrapper(this, lvEpg);
-        dateListManager.initDate();
-        panelManager = new PanelManager(panel_layout, channelListManager, epgManagerWrapper);
-
         mPlayerManager = TVPlayerManager.getInstance(this);
         mPlayerManager.attachPlayerView(playerView);
-        playerStateListener = new PlayerStateListenerImpl(this);
-        mPlayerManager.setOnPlayStateListener(playerStateListener);
         mPlayerManager.setOnLiveInfoUpdateListener(info -> {
             tv_tag_fhd.setText(info.quality);
             tv_tag_audio.setText(info.audio);
             tv_bitrate.setText(info.bitrate);
         });
-
-        screenRatioManager = new ScreenRatioManager(mPlayerManager, appConfig);
-        screenRatioManager.apply();
 
         gestureManager = new GestureManager(this);
         PlayerGestureHelper helper = gestureManager.create();
@@ -217,65 +166,23 @@ public class MainActivity extends AppCompatActivity {
         switchManager = ChannelSwitchManager.getInstance();
         currentPlayIndex = appConfig.getLastPlayIndex();
         loadLiveAndEpg();
-        initListViewClick();
-    }
 
-    private void initInfoBar() {
-        info_bar = findViewById(R.id.info_bar);
-        tv_channel_name = findViewById(R.id.tv_channel_name);
-        tv_tag_fhd = findViewById(R.id.tv_tag_fhd);
-        tv_tag_audio = findViewById(R.id.tv_tag_audio);
-        tv_bitrate = findViewById(R.id.tv_bitrate);
-        tv_current_program_name = findViewById(R.id.tv_current_program_name);
-        tv_current_time_range = findViewById(R.id.tv_current_time_range);
-        tv_remaining_time = findViewById(R.id.tv_remaining_time);
-        progress_program = findViewById(R.id.progress_program);
-        tv_next_program_name = findViewById(R.id.tv_next_program_name);
-        tv_next_time_range = findViewById(R.id.tv_next_time_range);
+        registerReceiver(refreshReceiver, new IntentFilter("com.tv.live.REFRESH_LIVE_AND_EPG"));
     }
 
     private void loadSettings() {
         SharedPreferences sp = getSharedPreferences("app_settings", MODE_PRIVATE);
         epg_enable = sp.getBoolean("epg_enable", true);
         channel_reverse = sp.getBoolean("channel_reverse", false);
-        number_channel_enable = sp.getBoolean("number_channel_enable", true);
-        auto_update_source = sp.getBoolean("auto_update_source", true);
-    }
-
-    @Override
-    public void onBackPressed() {
-        if (panel_layout.getVisibility() == View.VISIBLE) {
-            panel_layout.setVisibility(View.GONE);
-            playerView.requestFocus();
-        } else {
-            super.onBackPressed();
-        }
-    }
-
-    public void togglePanel() {
-        panelManager.toggle(channelSourceList, currentPlayIndex);
-    }
-
-    public void openSettings() {
-        startActivity(new Intent(this, SettingsActivity.class));
-    }
-
-    public void onReceiveConfig(String liveUrl, String epgUrl) {
-        AppConfig config = AppConfig.getInstance(this);
-        config.setCustomUrls(liveUrl, epgUrl);
-        if (liveUrl != null) UrlConfig.LIVE_URL = liveUrl;
-        if (epgUrl != null) UrlConfig.EPG_URL = epgUrl;
-        runOnUiThread(this::loadLiveAndEpg);
     }
 
     public void loadLiveAndEpg() {
         LiveSourceLoader.getInstance(this).load(new LiveSourceLoader.LoadCallback() {
             @Override
             public void onSuccess(List<Channel> channels) {
-                channelSourceList.clear();
-                channelSourceList.addAll(channels);
+                channelSourceList = channels;
+                currentGroupChannelList = channels;
                 switchManager.setChannelList(channelSourceList);
-                switchManager.setCurrentIndex(currentPlayIndex);
                 groupListManager.setGroups(channelSourceList);
                 channelListManager.setChannels(channelSourceList, currentPlayIndex);
                 playChannel(currentPlayIndex);
@@ -283,16 +190,37 @@ public class MainActivity extends AppCompatActivity {
 
             @Override
             public void onError(String errorMsg) {
-                Toast.makeText(MainActivity.this, "加载失败：" + errorMsg, Toast.LENGTH_SHORT).show();
+                Toast.makeText(MainActivity.this, "加载失败", Toast.LENGTH_SHORT).show();
             }
         });
 
         EpgManager.getInstance().setEpgUrl(UrlConfig.EPG_URL);
         EpgManager.getInstance().loadEpg(() -> runOnUiThread(() -> {
-            if (!channelSourceList.isEmpty()) {
+            if (channelSourceList != null && !channelSourceList.isEmpty()) {
                 epgManagerWrapper.refresh(channelSourceList.get(currentPlayIndex), channelSourceList, currentSelectedDateIndex);
             }
         }));
+    }
+
+    public void playChannel(int index) {
+        if (channelSourceList == null || channelSourceList.isEmpty()) return;
+        index = Math.max(0, Math.min(index, channelSourceList.size() - 1));
+        currentPlayIndex = index;
+        Channel ch = channelSourceList.get(index);
+        if (TextUtils.isEmpty(ch.getPlayUrl())) return;
+
+        mPlayerManager.playUrl(ch.getPlayUrl());
+        showChannelNum(index + 1);
+        appConfig.setLastPlayIndex(index);
+        channelListManager.setChannels(channelSourceList, index);
+
+        // ✅ 切台自动刷新节目单
+        epgManagerWrapper.refresh(ch, channelSourceList, currentSelectedDateIndex);
+
+        info_bar.setVisibility(View.VISIBLE);
+        info_bar.removeCallbacks(hideInfoBar);
+        info_bar.postDelayed(hideInfoBar, 2000);
+        tv_channel_name.setText(ch.getName());
     }
 
     public void playPrev() {
@@ -309,77 +237,38 @@ public class MainActivity extends AppCompatActivity {
         playChannel(idx);
     }
 
-    public void playChannel(int index) {
-        if (channelSourceList.isEmpty()) return;
-        index = Math.max(0, Math.min(index, channelSourceList.size() - 1));
-        currentPlayIndex = index;
-        Channel ch = channelSourceList.get(index);
-        if (ch == null || TextUtils.isEmpty(ch.getPlayUrl())) return;
-
-        mPlayerManager.playUrl(ch.getPlayUrl());
-        showChannelNum(index + 1);
-        appConfig.setLastPlayIndex(index);
-        channelListManager.setChannels(channelSourceList, index);
-        epgManagerWrapper.refresh(ch, channelSourceList, currentSelectedDateIndex);
-
-        if (info_bar != null) {
-            info_bar.setVisibility(View.VISIBLE);
-            info_bar.removeCallbacks(hideInfoBar);
-            info_bar.postDelayed(hideInfoBar, 2000);
-            tv_channel_name.setText(ch.getName());
-            TVPlayerManager.LiveInfo info = mPlayerManager.getLiveInfo();
-            tv_tag_fhd.setText(info.quality);
-            tv_tag_audio.setText(info.audio);
-            tv_bitrate.setText(info.bitrate);
-        }
-    }
-
-    public void showChannelNum(int num) {
+    private void showChannelNum(int num) {
         tv_channel_num.setText(String.valueOf(num));
         tv_channel_num.setVisibility(View.VISIBLE);
         new Handler().postDelayed(() -> tv_channel_num.setVisibility(View.GONE), 3000);
     }
 
-    private void initListViewClick() {
-        ListView lv = findViewById(R.id.lv_channel_list);
-        lv.setOnItemClickListener((p, v, pos, id) -> {
-            if (!currentGroupChannelList.isEmpty() && pos < currentGroupChannelList.size()) {
-                Channel c = currentGroupChannelList.get(pos);
-                int idx = channelSourceList.indexOf(c);
-                if (idx != -1) playChannel(idx);
-            } else {
-                playChannel(pos);
-            }
-            togglePanel();
-        });
-    }
-
     @Override
-    public boolean onKeyDown(int keyCode, KeyEvent event) {
-        if (keyEventManager.dispatchKey(keyCode)) return true;
-        return super.onKeyDown(keyCode, event);
+    public void onBackPressed() {
+        if (panel_layout.getVisibility() == View.VISIBLE) {
+            panel_layout.setVisibility(View.GONE);
+        } else {
+            super.onBackPressed();
+        }
     }
 
     @Override
     protected void onPause() {
         super.onPause();
-        if (mPlayerManager != null) mPlayerManager.onBackground();
+        mPlayerManager.onBackground();
     }
 
     @Override
     protected void onResume() {
         super.onResume();
         loadSettings();
-        screenRatioManager.apply();
-        if (mPlayerManager != null) mPlayerManager.onForeground();
+        mPlayerManager.onForeground();
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        try { unregisterReceiver(toggleControllerReceiver); } catch (Exception ignored) {}
-        try { unregisterReceiver(refreshReceiver); } catch (Exception ignored) {}
-        if (mPlayerManager != null) mPlayerManager.release();
-        mInstance = null;
+        unregisterReceiver(refreshReceiver);
+        mPlayerManager.release();
     }
 }

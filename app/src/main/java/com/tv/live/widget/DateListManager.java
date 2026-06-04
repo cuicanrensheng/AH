@@ -1,5 +1,4 @@
 package com.tv.live.widget;
-
 import android.content.Context;
 import android.graphics.Color;
 import android.view.View;
@@ -7,7 +6,6 @@ import android.view.ViewGroup;
 import android.widget.ArrayAdapter;
 import android.widget.ListView;
 import android.widget.TextView;
-import com.tv.live.MainActivity;
 import com.tv.live.R;
 import java.util.ArrayList;
 import java.util.Calendar;
@@ -18,6 +16,8 @@ public class DateListManager {
     private final Context context;
     private int selectedPosition = 0;
     private OnDateSelectedListener listener;
+    private ArrayAdapter<String> adapter;
+    private List<String> dates = new ArrayList<>();
 
     public interface OnDateSelectedListener {
         void onDateSelected(int position);
@@ -33,7 +33,7 @@ public class DateListManager {
     }
 
     public void initDate() {
-        List<String> dates = new ArrayList<>();
+        dates.clear();
         Calendar cal = Calendar.getInstance();
         String[] week = {"周日", "周一", "周二", "周三", "周四", "周五", "周六"};
 
@@ -44,26 +44,31 @@ public class DateListManager {
             cal.add(Calendar.DAY_OF_YEAR, 1);
         }
 
-        ArrayAdapter<String> adapter = new ArrayAdapter<String>(context, R.layout.item_date, dates) {
-            @Override
-            public View getView(int position, View convertView, ViewGroup parent) {
-                TextView tv = (TextView) super.getView(position, convertView, parent);
-                tv.setTextColor(position == selectedPosition ? Color.parseColor("#40A9FF") : Color.WHITE);
-                return tv;
-            }
-        };
+        if (adapter == null) {
+            adapter = new ArrayAdapter<String>(context, R.layout.item_date, dates) {
+                @Override
+                public View getView(int position, View convertView, ViewGroup parent) {
+                    TextView tv = (TextView) super.getView(position, convertView, parent);
+                    tv.setTextColor(position == selectedPosition ? Color.parseColor("#40A9FF") : Color.WHITE);
+                    return tv;
+                }
+            };
+            lvDate.setAdapter(adapter);
 
-        lvDate.setAdapter(adapter);
-        lvDate.setOnItemClickListener((parent, view, position, id) -> {
-            selectedPosition = position;
+            lvDate.setOnItemClickListener((parent, view, position, id) -> {
+                selectedPosition = position;
+                adapter.notifyDataSetChanged();
+                if (listener != null) {
+                    listener.onDateSelected(position);
+                }
+            });
+        } else {
             adapter.notifyDataSetChanged();
-            if (listener != null) {
-                listener.onDateSelected(position);
-            }
-        });
+        }
     }
 
     public void setSelectedPosition(int position) {
         selectedPosition = position;
+        if (adapter != null) adapter.notifyDataSetChanged();
     }
 }

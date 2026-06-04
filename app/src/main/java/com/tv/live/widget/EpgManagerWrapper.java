@@ -35,6 +35,8 @@ public class EpgManagerWrapper {
     private final Set<String> bookedSet = new HashSet<>();
     private static final String ACTION_REMINDER = "com.tv.live.EPG_REMINDER";
     private int selectedPosition = 0;
+    // 记录正在播放下标
+    private int playingIndex = -1;
 
     public EpgManagerWrapper(Context context, ListView lvEpg) {
         this.context = context;
@@ -57,6 +59,7 @@ public class EpgManagerWrapper {
 
     public void refresh(Channel currentChannel, List<Channel> channelSourceList, int dateIndex) {
         if (currentChannel == null) return;
+        playingIndex = -1;
 
         new Thread(() -> {
             List<Channel.EpgItem> epgList = EpgManager.getInstance().getEpg(currentChannel.getName());
@@ -83,16 +86,18 @@ public class EpgManagerWrapper {
                     Channel.EpgItem curr = data.get(i);
                     Channel.EpgItem next = i + 1 < data.size() ? data.get(i + 1) : null;
                     curr.isPlaying = false;
-
                     if (next != null && curr.time.compareTo(now) <= 0 && now.compareTo(next.time) < 0) {
                         curr.isPlaying = true;
                         playing = curr;
+                        playingIndex = i;
                     }
                 }
 
-                if (playing != null) {
+                // 当前播放置顶
+                if (playing != null && playingIndex > 0) {
                     data.remove(playing);
                     data.add(0, playing);
+                    playingIndex = 0;
                 }
             }
 
@@ -103,7 +108,15 @@ public class EpgManagerWrapper {
                 } else {
                     adapter.setData(currentChannel, data);
                 }
-                lvEpg.setSelection(0);
+                // 自动滚动到正在播放条目
+                if(playingIndex >=0){
+                    lvEpg.setSelection(playingIndex);
+                    selectedPosition = playingIndex;
+                }else{
+                    lvEpg.setSelection(0);
+                    selectedPosition =0;
+                }
+                adapter.notifyDataSetChanged();
             });
         }).start();
     }
@@ -168,6 +181,7 @@ public class EpgManagerWrapper {
             holder.tv_time.setText(item.time);
             holder.tv_title.setText(item.title);
 
+            // 当前选中 or 正在播放 统一蓝色高亮
             if (position == selectedPosition || item.isPlaying) {
                 holder.tv_dayName.setTextColor(Color.parseColor("#40A9FF"));
                 holder.tv_time.setTextColor(Color.parseColor("#40A9FF"));
@@ -201,7 +215,6 @@ public class EpgManagerWrapper {
                     holder.tv_action.setText("预约");
                     holder.tv_action.setBackgroundColor(0xFF4CAF50);
                 }
-
                 holder.tv_action.setEnabled(true);
                 holder.tv_action.setOnClickListener(v -> {
                     if (bookedSet.contains(key)) {

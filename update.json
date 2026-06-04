@@ -1,7 +1,5 @@
-JSONObject json = new JSONObject(sb.toString());
-int versionCode = json.getInt("version_code");
-String versionName = json.getString("version_name");
-String downloadUrl = json.getString("download_url");
-
-int currentVersion
-        = context.getPackageManager().getPackageInfo(context.getPackageName(), 0).versionCode;
+{
+  "version_code": 2,
+  "version_name": "1.1.0",
+  "download_url": "https://github.com/cuicanrensheng/AH/releases/latest/download/app.apk"
+}

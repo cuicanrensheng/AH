@@ -23,7 +23,7 @@ import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
 
-    // 实例供给外部类调用（ChannelListActivity）
+    // 实例供给外部类调用
     public static MainActivity mInstance;
 
     // 全局数据源
@@ -69,7 +69,12 @@ public class MainActivity extends AppCompatActivity {
 
     private void initView() {
         lvGroup = findViewById(R.id.lv_group);
-        lvChannelList = findViewById(R.id.lv_channel);
+        
+        // ======================
+        // 【修复崩溃】正确控件ID：lv_channel_list
+        // ======================
+        lvChannelList = findViewById(R.id.lv_channel_list);
+
         lvDate = findViewById(R.id.lv_date);
         lvEpg = findViewById(R.id.lv_epg);
         panelLayout = findViewById(R.id.panel_layout);
@@ -112,7 +117,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // ==============================
-    // 播放器初始化（已修复私有构造）
+    // 播放器初始化（已修复）
     // ==============================
     private void initPlayer() {
         mPlayerManager = TVPlayerManager.getInstance(this);
@@ -122,12 +127,10 @@ public class MainActivity extends AppCompatActivity {
 
     // ==============================
     // 【遥控器 + 手势 必备4个方法】
-    // 加上后所有报错彻底消失
     // ==============================
 
     /**
      * 开关频道面板
-     * 调用：GestureManager、KeyEventManager
      */
     public void togglePanel() {
         if (panelLayout != null) {
@@ -139,7 +142,6 @@ public class MainActivity extends AppCompatActivity {
 
     /**
      * 打开设置页面
-     * 调用：GestureManager、KeyEventManager
      */
     public void openSettings() {
         Intent intent = new Intent(this, SettingsActivity.class);
@@ -148,7 +150,6 @@ public class MainActivity extends AppCompatActivity {
 
     /**
      * 上一频道
-     * 调用：GestureManager、KeyEventManager
      */
     public void playPrev() {
         if (currentPlayIndex > 0) {
@@ -158,7 +159,6 @@ public class MainActivity extends AppCompatActivity {
 
     /**
      * 下一频道
-     * 调用：GestureManager、KeyEventManager
      */
     public void playNext() {
         if (channelSourceList != null && currentPlayIndex < channelSourceList.size() - 1) {

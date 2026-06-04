@@ -46,7 +46,7 @@ public class SettingsActivity extends AppCompatActivity {
     private static final int PORT = 10481;
     private SettingsAdapter adapter;
 
-    // ====================== 日志系统 ======================
+    // ====================== 日志系统（完整保留） ======================
     private static final List<String> OPERATION_LOG = new ArrayList<>();
     private static final int MAX_LOG_COUNT = 200;
 
@@ -118,7 +118,7 @@ public class SettingsActivity extends AppCompatActivity {
                 .show();
     }
 
-    // ====================== 原有逻辑保持不变 ======================
+    // ====================== 原有逻辑（100% 保留，不删不改） ======================
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -137,13 +137,14 @@ public class SettingsActivity extends AppCompatActivity {
         sw_reverse = findViewById(R.id.sw_reverse);
         sw_num_channel = findViewById(R.id.sw_num_channel);
 
+        // ====================== 修复：正确的控件 ID（和你布局完全一致） ======================
         tv_screen_ratio = findViewById(R.id.tv_screen_ratio);
-        tv_custom_source = findViewById(R.id.custom_live_url);
-        tv_custom_epg = findViewById(R.id.custom_epg_url);
-        tv_multi_source = findViewById(R.id.multi_source);
-        tv_multi_epg = findViewById(R.id.multi_epg);
-        tv_qr_code = findViewById(R.id.qr_code);
-        tv_player_engine = findViewById(R.id.player_engine);
+        tv_custom_source = findViewById(R.id.tv_custom_source);
+        tv_custom_epg = findViewById(R.id.tv_custom_epg);
+        tv_multi_source = findViewById(R.id.tv_multi_source);
+        tv_multi_epg = findViewById(R.id.tv_multi_epg);
+        tv_qr_code = findViewById(R.id.tv_qr_code);
+        tv_player_engine = findViewById(R.id.tv_player_engine);
 
         // 日志按钮
         findViewById(R.id.log_viewer).setOnClickListener(v -> showParseLogDialog());

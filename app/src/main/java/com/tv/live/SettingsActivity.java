@@ -1,4 +1,5 @@
-  package com.tv.live;
+package com.tv.live;
+
 import android.app.AlertDialog;
 import android.content.Context;
 import android.content.Intent;
@@ -28,10 +29,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import com.google.zxing.BarcodeFormat;
 import com.google.zxing.common.BitMatrix;
 import com.google.zxing.qrcode.QRCodeWriter;
-import org.json.JSONObject;
-import java.io.InputStreamReader;
-import java.net.ServerSocket;
-import java.net.Socket;
+import com.tv.live.service.HttpConfigService;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -41,7 +39,6 @@ public class SettingsActivity extends AppCompatActivity {
     private TextView tv_screen_ratio, tv_custom_source, tv_custom_epg, tv_multi_source, tv_multi_epg, tv_qr_code;
     private SharedPreferences sp;
     private String currentWebUrl;
-    private ServerSocket serverSocket;
     private Handler handler = new Handler(Looper.getMainLooper());
     private static final int PORT = 10481;
     private SettingsAdapter adapter;
@@ -131,7 +128,6 @@ public class SettingsActivity extends AppCompatActivity {
         findViewById(R.id.log_viewer).setOnClickListener(v->showParseLogDialog());
         findViewById(R.id.log_operation).setOnClickListener(v->showOperationLogDialog());
 
-        //开关监听完整保留+日志记录
         sw_boot.setChecked(sp.getBoolean("boot_auto_start",false));
         sw_boot.setOnCheckedChangeListener((b,isChecked)->{
             sp.edit().putBoolean("boot_auto_start",isChecked).apply();
@@ -157,7 +153,7 @@ public class SettingsActivity extends AppCompatActivity {
         sw_reverse.setOnCheckedChangeListener((b,isChecked)->{
             sp.edit().putBoolean("channel_reverse",isChecked).apply();
             logOperation("换台反转:"+(isChecked?"开启":"关闭"));
-            Toast.makeText(this,"换台反转"+(isChecked?"已开启":"已关闭"),Toast.LENGTH_SHORT).show();
+            Toast.makeText(this,"换台反转"+(isChecked?"已关闭":"已开启"),Toast.LENGTH_SHORT).show();
         });
 
         sw_num_channel.setChecked(sp.getBoolean("number_channel_enable",true));
@@ -175,8 +171,10 @@ public class SettingsActivity extends AppCompatActivity {
         loadConfig();
         initListeners();
         currentWebUrl = "http://"+getDeviceIPAddress()+":"+PORT;
-        startPushServer();
-        logOperation("设置页面打开");
+
+        // ↓↓↓↓ 这里启动网页服务（NanoHTTPD）
+        HttpConfigService.getInstance().start();
+        logOperation("设置页面打开 · 网页后台已启动");
     }
 
     private void initListeners() {
@@ -207,7 +205,6 @@ public class SettingsActivity extends AppCompatActivity {
                 }).show();
     }
 
-    //【修复1：保存源正确写入对应历史，解决历史空白】
     private void showInputDialog(String title,String hint,String key) {
         EditText ed = new EditText(this);
         ed.setHint(hint);
@@ -219,10 +216,8 @@ public class SettingsActivity extends AppCompatActivity {
                     String url = ed.getText().toString().trim();
                     if(!TextUtils.isEmpty(url)){
                         sp.edit().putString(key,url).apply();
-                        //区分live/epg历史KEY
                         String histKey = key.equals("custom_live_url") ? "live_history" : "epg_history";
                         addHistory(histKey,url);
-                        //发送刷新广播，修复切换源手势失效
                         sendBroadcast(new Intent("com.tv.live.REFRESH_LIVE_AND_EPG"));
                         logOperation("保存"+hint+"："+url);
                         Toast.makeText(this,"已保存，正在刷新…",Toast.LENGTH_SHORT).show();
@@ -232,7 +227,6 @@ public class SettingsActivity extends AppCompatActivity {
                 .show();
     }
 
-    //【修复2：历史读取空判断，拆分异常兜底】
     private void showHistoryDialog(String title,String key) {
         String history = sp.getString(key,"");
         if(TextUtils.isEmpty(history)){
@@ -261,7 +255,6 @@ public class SettingsActivity extends AppCompatActivity {
                 .show();
     }
 
-    //【修复3：addHistory加非空校验，杜绝空串污染历史】
     private void addHistory(String key,String url) {
         if(TextUtils.isEmpty(url)) return;
         String rawHis = sp.getString(key,"");
@@ -316,76 +309,12 @@ public class SettingsActivity extends AppCompatActivity {
         }
     }
 
-    //【修复4：端口占用EADDRINUSE终极修复：启动前判断Socket存活，复用端口】
-    private void startPushServer() {
-        //已有运行服务直接return，防止重复创建端口占用
-        if(serverSocket!=null){
-            try{
-                if(!serverSocket.isClosed()){
-                    logOperation("扫码Socket服务已在运行，跳过启动");
-                    return;
-                }
-            }catch (Exception e){
-                logCrash(e);
-            }
-        }
-        new Thread(()->{
-            try{
-                serverSocket = new ServerSocket(PORT);
-                serverSocket.setReuseAddress(true); //端口快速复用，释放残留占用
-                logOperation("Socket服务启动成功，端口"+PORT);
-                while(!serverSocket.isClosed()){
-                    Socket client = serverSocket.accept();
-                    new Thread(()->{
-                        try{
-                            InputStreamReader isr = new InputStreamReader(client.getInputStream());
-                            char[] buf = new char[2048];
-                            int len = isr.read(buf);
-                            JSONObject json = new JSONObject(new String(buf,0,len));
-                            handler.post(()->{
-                                boolean updateFlag = false;
-                                String live = json.optString("live_url");
-                                if(!TextUtils.isEmpty(live)){
-                                    sp.edit().putString("custom_live_url",live).apply();
-                                    addHistory("live_history",live);
-                                    updateFlag=true;
-                                    logOperation("扫码同步直播源："+live);
-                                }
-                                String epg = json.optString("epg_url");
-                                if(!TextUtils.isEmpty(epg)){
-                                    sp.edit().putString("custom_epg_url",epg).apply();
-                                    addHistory("epg_history",epg);
-                                    updateFlag=true;
-                                    logOperation("扫码同步EPG："+epg);
-                                }
-                                if(updateFlag){
-                                    sendBroadcast(new Intent("com.tv.live.REFRESH_LIVE_AND_EPG"));
-                                    Toast.makeText(SettingsActivity.this,"扫码配置同步完成",Toast.LENGTH_SHORT).show();
-                                }
-                            });
-                            client.close();
-                        }catch (Exception e){
-                            logCrash(e);
-                        }
-                    }).start();
-                }
-            }catch (Exception e){
-                logCrash(e);
-            }
-        }).start();
-    }
-
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        try{
-            if(serverSocket!=null && !serverSocket.isClosed()){
-                serverSocket.close();
-                logOperation("Socket服务正常关闭");
-            }
-        }catch (Exception e){
-            logCrash(e);
-        }
+        // ↓↓↓↓ 关闭网页后台
+        HttpConfigService.getInstance().stop();
+        logOperation("设置页面关闭 · 网页后台已停止");
     }
 
     private static class SettingsAdapter extends ArrayAdapter<String> {

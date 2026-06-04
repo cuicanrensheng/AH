@@ -47,6 +47,7 @@ public class MainActivity extends AppCompatActivity {
     private DateListManager dateListManager;
     private EpgManagerWrapper epgManagerWrapper;
     private ChannelSwitchManager switchManager;
+    private ScreenRatioManager screenRatioManager;
 
     private boolean epgPanelOpen = false;
     private boolean epg_enable;
@@ -63,6 +64,7 @@ public class MainActivity extends AppCompatActivity {
             if ("com.tv.live.REFRESH_LIVE_AND_EPG".equals(intent.getAction())) {
                 runOnUiThread(() -> {
                     loadSettings();
+                    screenRatioManager.apply();
                     String customLive = appConfig.getCustomLiveUrl();
                     String customEpg = appConfig.getCustomEpgUrl();
                     if (customLive != null) UrlConfig.LIVE_URL = customLive;
@@ -101,7 +103,12 @@ public class MainActivity extends AppCompatActivity {
         tv_channel_num = findViewById(R.id.tv_channel_num);
 
         appConfig = AppConfig.getInstance(this);
+        mPlayerManager = TVPlayerManager.getInstance(this);
+        mPlayerManager.attachPlayerView(playerView);
+        screenRatioManager = new ScreenRatioManager(mPlayerManager, appConfig);
+
         loadSettings();
+        screenRatioManager.apply();
 
         channelListManager = new ChannelListManager(this, lvChannelList);
         groupListManager = new GroupListManager(this, lvGroup);
@@ -110,17 +117,16 @@ public class MainActivity extends AppCompatActivity {
         dateListManager.initDate();
         panelManager = new PanelManager(panel_layout, channelListManager, epgManagerWrapper);
 
-        // ==============================
-        // ✅ 补全：点击列表切台（原生实现，永不报错）
-        // ==============================
-        lvChannelList.setOnItemClickListener((parent, view, position, id) -> {
-            if (channelSourceList != null && position >= 0 && position < channelSourceList.size()) {
-                playChannel(position);
-                panel_layout.setVisibility(View.GONE);
+        channelListManager.setOnChannelClickListener(position -> {
+            if (currentGroupChannelList != null && position < currentGroupChannelList.size()) {
+                int realIndex = channelSourceList.indexOf(currentGroupChannelList.get(position));
+                if (realIndex != -1) {
+                    playChannel(realIndex);
+                    panel_layout.setVisibility(View.GONE);
+                }
             }
         });
 
-        // 日期切换节目单（已修复）
         dateListManager.setOnDateSelectedListener(position -> {
             currentSelectedDateIndex = position;
             if (channelSourceList != null && !channelSourceList.isEmpty()) {
@@ -142,7 +148,6 @@ public class MainActivity extends AppCompatActivity {
         });
 
         lvGroup.setOnItemClickListener((parent, view, position, id) -> {
-            lvGroup.setItemChecked(position, true);
             String groupName = groupListManager.getCurrentGroup(position);
             currentGroupChannelList.clear();
             for (Channel c : channelSourceList) {
@@ -152,12 +157,11 @@ public class MainActivity extends AppCompatActivity {
             }
             channelListManager.setChannelsByGroup(channelSourceList, groupName, currentPlayIndex);
             if (!currentGroupChannelList.isEmpty()) {
-                playChannel(channelSourceList.indexOf(currentGroupChannelList.get(0)));
+                int firstIndex = channelSourceList.indexOf(currentGroupChannelList.get(0));
+                if (firstIndex != -1) playChannel(firstIndex);
             }
         });
 
-        mPlayerManager = TVPlayerManager.getInstance(this);
-        mPlayerManager.attachPlayerView(playerView);
         mPlayerManager.setOnLiveInfoUpdateListener(info -> {
             tv_tag_fhd.setText(info.quality);
             tv_tag_audio.setText(info.audio);
@@ -175,6 +179,7 @@ public class MainActivity extends AppCompatActivity {
         switchManager = ChannelSwitchManager.getInstance();
         currentPlayIndex = appConfig.getLastPlayIndex();
 
+        currentGroupChannelList = new ArrayList<>();
         loadLiveAndEpg();
         registerReceiver(refreshReceiver, new IntentFilter("com.tv.live.REFRESH_LIVE_AND_EPG"));
     }
@@ -190,7 +195,8 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onSuccess(List<Channel> channels) {
                 channelSourceList = channels;
-                currentGroupChannelList = channels;
+                currentGroupChannelList.clear();
+                currentGroupChannelList.addAll(channels);
                 switchManager.setChannelList(channelSourceList);
                 groupListManager.setGroups(channelSourceList);
                 channelListManager.setChannels(channelSourceList, currentPlayIndex);
@@ -212,8 +218,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public void playChannel(int index) {
-        if (channelSourceList == null || channelSourceList.isEmpty()) return;
-        index = Math.max(0, Math.min(index, channelSourceList.size() - 1));
+        if (channelSourceList == null || index < 0 || index >= channelSourceList.size()) return;
         currentPlayIndex = index;
         Channel ch = channelSourceList.get(index);
         if (TextUtils.isEmpty(ch.getPlayUrl())) return;
@@ -221,7 +226,7 @@ public class MainActivity extends AppCompatActivity {
         mPlayerManager.playUrl(ch.getPlayUrl());
         showChannelNum(index + 1);
         appConfig.setLastPlayIndex(index);
-        channelListManager.setChannels(channelSourceList, index);
+        channelListManager.setSelectedPosition(currentGroupChannelList.indexOf(ch));
         epgManagerWrapper.refresh(ch, channelSourceList, currentSelectedDateIndex);
 
         info_bar.setVisibility(View.VISIBLE);
@@ -294,6 +299,7 @@ public class MainActivity extends AppCompatActivity {
     protected void onResume() {
         super.onResume();
         loadSettings();
+        screenRatioManager.apply();
         mPlayerManager.onForeground();
     }
 

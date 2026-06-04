@@ -295,7 +295,7 @@ public class EpgManagerWrapper {
             return convertView;
         }
 
-        static class ViewHolder {
+        static ViewHolder {
             TextView tv_dayName;
             TextView tv_time;
             TextView tv_title;

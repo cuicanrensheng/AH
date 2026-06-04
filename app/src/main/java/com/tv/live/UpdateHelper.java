@@ -20,7 +20,7 @@ public class UpdateHelper {
 
     // 你的 GitHub 地址
     private static final String UPDATE_JSON_URL
-            = "https://raw.githubusercontent.com/cuicanrensheng/AH/main/update.json";
+            = "https://ghproxy.com/https://raw.githubusercontent.com/cuicanrensheng/AH/main/update.json";
 
     public interface UpdateCallback {
         void onNewVersionFound(String versionName, String downloadUrl);

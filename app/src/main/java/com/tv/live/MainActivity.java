@@ -110,7 +110,22 @@ public class MainActivity extends AppCompatActivity {
         dateListManager.initDate();
         panelManager = new PanelManager(panel_layout, channelListManager, epgManagerWrapper);
 
-        // 日期切换节目单
+        // ==================================
+        // ✅ 只加这一段：修复频道列表点击没反应
+        // ==================================
+        lvChannelList.setOnItemClickListener((parent, view, position, id) -> {
+            if (currentGroupChannelList != null && position >= 0 && position < currentGroupChannelList.size()) {
+                // 按分组内频道，找到全列表真实下标
+                Channel targetCh = currentGroupChannelList.get(position);
+                int realIndex = channelSourceList.indexOf(targetCh);
+                if (realIndex >= 0) {
+                    playChannel(realIndex);
+                    panel_layout.setVisibility(View.GONE);
+                }
+            }
+        });
+
+        // 日期切换节目单（你原有代码，完全不动）
         dateListManager.setOnDateSelectedListener(position -> {
             currentSelectedDateIndex = position;
             if (channelSourceList != null && !channelSourceList.isEmpty()) {

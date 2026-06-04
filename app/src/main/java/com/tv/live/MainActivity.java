@@ -20,7 +20,6 @@ import android.widget.TextView;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import com.google.android.exoplayer2.ui.PlayerView;
-import com.tv.live.SettingsActivity;
 import com.tv.live.config.AppConfig;
 import com.tv.live.listener.PlayerStateListenerImpl;
 import com.tv.live.loader.LiveSourceLoader;
@@ -111,10 +110,8 @@ public class MainActivity extends AppCompatActivity {
         mInstance = this;
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
 
-        // ========== 修复：正确的全屏常量 ==========
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
                 WindowManager.LayoutParams.FLAG_FULLSCREEN);
-        // ========================================
 
         getWindow().getDecorView().setSystemUiVisibility(
                 View.SYSTEM_UI_FLAG_FULLSCREEN |
@@ -123,9 +120,7 @@ public class MainActivity extends AppCompatActivity {
         );
         setContentView(R.layout.activity_main);
 
-        // ========== 修复：正确的屏幕常亮常量 ==========
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        // ===========================================
 
         tv_channel_num = findViewById(R.id.tv_channel_num);
         initInfoBar();
@@ -157,7 +152,7 @@ public class MainActivity extends AppCompatActivity {
 
         btn_show_epg.setOnClickListener(v -> {
             if (!epg_enable) {
-                Toast.makeText(this, "节目单功能已关闭", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "节目单功能已关闭", Toast_SHORT).show();
                 return;
             }
             epgPanelOpen = !epgPanelOpen;
@@ -170,6 +165,7 @@ public class MainActivity extends AppCompatActivity {
 
         lvDate.setOnItemClickListener((parent, view, position, id) -> {
             currentSelectedDateIndex = position;
+            dateListManager.setSelectedPosition(position);
             if (!channelSourceList.isEmpty()) {
                 epgManagerWrapper.refresh(channelSourceList.get(currentPlayIndex), channelSourceList, currentSelectedDateIndex);
             }
@@ -197,6 +193,8 @@ public class MainActivity extends AppCompatActivity {
         groupListManager = new GroupListManager(this, lvGroup);
         dateListManager = new DateListManager(this, lvDate);
         epgManagerWrapper = new EpgManagerWrapper(this, lvEpg);
+
+        // ========== 关键修复：绑定日期管理器与EPG ==========
         dateListManager.initDate();
         panelManager = new PanelManager(panel_layout, channelListManager, epgManagerWrapper);
 
@@ -290,7 +288,7 @@ public class MainActivity extends AppCompatActivity {
 
             @Override
             public void onError(String errorMsg) {
-                Toast.makeText(MainActivity.this, "加载失败：" + errorMsg, Toast.LENGTH_SHORT).show();
+                Toast.makeText(MainActivity.this, "加载失败：" + errorMsg, Toast_SHORT).show();
             }
         });
 

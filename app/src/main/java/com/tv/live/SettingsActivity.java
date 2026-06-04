@@ -231,10 +231,40 @@ public class SettingsActivity extends AppCompatActivity {
             sendRefreshBroadcast();
         });
 
+        //=====【已集成UpdateHelper自动更新】=====
         findViewById(R.id.btn_check_update).setOnClickListener(v -> {
             logOperation("点击检查更新");
-            Toast.makeText(this, "已是最新版本", Toast.LENGTH_SHORT).show();
+            UpdateHelper.checkUpdate(this, new UpdateHelper.UpdateCallback() {
+                @Override
+                public void onNewVersionFound(String versionName, String downloadUrl) {
+                    new AlertDialog.Builder(SettingsActivity.this)
+                            .setTitle("发现新版本")
+                            .setMessage("最新版本：" + versionName + "\n是否立即下载更新？")
+                            .setPositiveButton("立即更新", (dialog, which) -> {
+                                Toast.makeText(SettingsActivity.this, "后台开始下载安装包", Toast.LENGTH_SHORT).show();
+                                UpdateHelper.downloadAndInstallApk(SettingsActivity.this, downloadUrl);
+                                logOperation("确认下载新版本:" + versionName);
+                            })
+                            .setNegativeButton("稍后", null)
+                            .show();
+                }
+
+                @Override
+                public void onNoUpdate() {
+                    Toast.makeText(SettingsActivity.this, "当前已是最新版本", Toast.LENGTH_SHORT).show();
+                }
+
+                @Override
+                public void onError(String msg) {
+                    Toast.makeText(SettingsActivity.this, msg, Toast.LENGTH_LONG).show();
+                }
+            });
         });
+    }
+
+    private void sendRefreshBroadcast() {
+        Intent intent = new Intent("com.tv.live.REFRESH_LIVE_AND_EPG");
+        sendBroadcast(intent);
     }
 
     private void showRatioDialog() {
@@ -342,13 +372,6 @@ public class SettingsActivity extends AppCompatActivity {
         }
     }
 
-    // ====================== 统一刷新广播 ======================
-    private void sendRefreshBroadcast() {
-        Intent intent = new Intent("com.tv.live.REFRESH_LIVE_AND_EPG");
-        sendBroadcast(intent);
-    }
-
-    // ====================== 修复端口冲突 ======================
     private void startPushServer() {
         if (serverSocket != null && !serverSocket.isClosed()) {
             return;

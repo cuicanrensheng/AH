@@ -17,6 +17,7 @@ public class NanoHTTPD {
 
     public void start() throws IOException {
         serverSocket = new ServerSocket(port);
+        serverSocket.setReuseAddress(true);
         running = true;
         new Thread(this::doListen).start();
     }
@@ -66,22 +67,23 @@ public class NanoHTTPD {
     }
 
     private void sendIndex(OutputStream out) throws Exception {
-        String html = "<!DOCTYPE html>\n" +
-                "<html>\n" +
-                "<body style='background:#111;color:#fff;padding:30px;font-size:16px;'>\n" +
-                "<h2>TV 后台配置</h2>\n" +
-                "<form action='/apply'>\n" +
-                "<p>直播源地址：</p>\n" +
-                "<input type='text' name='live' style='width:100%;padding:8px;font-size:16px;' />\n" +
-                "<p>EPG节目单：</p>\n" +
-                "<input type='text' name='epg' style='width:100%;padding:8px;font-size:16px;' />\n" +
-                "<br/><br/>\n" +
-                "<button type='submit' style='width:100%;padding:12px;font-size:18px;'>保存并重启</button>\n" +
-                "</form>\n" +
-                "</body>\n" +
-                "</html>";
+        String html = """
+                <!DOCTYPE html>
+                <html>
+                <body style='background:#111;color:#fff;padding:30px;font-size:16px;'>
+                <h2>TV 后台配置</h2>
+                <form action='/apply'>
+                <p>直播源地址：</p>
+                <input type='text' name='live' style='width:100%;padding:8px;font-size:16px;' />
+                <p>EPG节目单：</p>
+                <input type='text' name='epg' style='width:100%;padding:8px;font-size:16px;' />
+                <br/><br/>
+                <button type='submit' style='width:100%;padding:12px;font-size:18px;'>保存并刷新</button>
+                </form>
+                </body>
+                </html>""";
 
-        out.write(("HTTP/1.1 200 OK\r\nContent-Type:text/html\r\n\r\n" + html).getBytes("UTF-8"));
+        out.write(("HTTP/1.1 200 OK\r\nContent-Type:text/html;charset=UTF-8\r\n\r\n" + html).getBytes("UTF-8"));
     }
 
     private void handleApply(OutputStream out, String path) throws Exception {
@@ -91,12 +93,28 @@ public class NanoHTTPD {
         String live = params.get("live");
         String epg = params.get("epg");
 
-        if (MainActivity.mInstance != null) {
-           //MainActivity.mInstance.onReceiveConfig(live, epg);
+        if (MainActivity.mInstance != null && MainActivity.sp != null) {
+            boolean changed = false;
+
+            if (live != null && !live.isEmpty()) {
+                MainActivity.sp.edit().putString("custom_live_url", live).apply();
+                MainActivity.addHistory("live_history", live);
+                changed = true;
+            }
+            if (epg != null && !epg.isEmpty()) {
+                MainActivity.sp.edit().putString("custom_epg_url", epg).apply();
+                MainActivity.addHistory("epg_history", epg);
+                changed = true;
+            }
+
+            if (changed) {
+                Intent intent = new Intent("com.tv.live.REFRESH_LIVE_AND_EPG");
+                MainActivity.mInstance.sendBroadcast(intent);
+            }
         }
 
-        String ok = "<h2 style='color:#0c0;'>保存成功！电视即将重新加载</h2>";
-        out.write(("HTTP/1.1 200 OK\r\nContent-Type:text/html\r\n\r\n" + ok).getBytes("UTF-8"));
+        String ok = "<h2 style='color:#0c0;'>保存成功！已刷新</h2>";
+        out.write(("HTTP/1.1 200 OK\r\nContent-Type:text/html;charset=UTF-8\r\n\r\n" + ok).getBytes("UTF-8"));
     }
 
     private Map<String, String> parseQuery(String query) {

@@ -272,10 +272,10 @@ public class MainActivity extends AppCompatActivity {
         // 切台自动刷新节目单
         epgManagerWrapper.refresh(ch, channelSourceList, currentSelectedDateIndex);
 
-        // 显示顶部信息栏，2秒后自动隐藏
+        // 显示顶部信息栏，4秒后自动隐藏
         info_bar.setVisibility(View.VISIBLE);
         info_bar.removeCallbacks(hideInfoBar);
-        info_bar.postDelayed(hideInfoBar, 2000);
+        info_bar.postDelayed(hideInfoBar, 4000);
         tv_channel_name.setText(ch.getName());
     }
 
@@ -300,12 +300,12 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * 显示频道号，3秒后消失
+     * 显示频道号，4秒后消失
      */
     private void showChannelNum(int num) {
         tv_channel_num.setText(String.valueOf(num));
         tv_channel_num.setVisibility(View.VISIBLE);
-        new Handler().postDelayed(() -> tv_channel_num.setVisibility(View.GONE), 3000);
+        new Handler().postDelayed(() -> tv_channel_num.setVisibility(View.GONE), 4000);
     }
 
     // ======================

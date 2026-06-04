@@ -29,7 +29,6 @@ import androidx.appcompat.app.AppCompatActivity;
 import com.google.zxing.BarcodeFormat;
 import com.google.zxing.common.BitMatrix;
 import com.google.zxing.qrcode.QRCodeWriter;
-import com.tv.live.service.HttpConfigService;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -42,6 +41,9 @@ public class SettingsActivity extends AppCompatActivity {
     private Handler handler = new Handler(Looper.getMainLooper());
     private static final int PORT = 10481;
     private SettingsAdapter adapter;
+
+    // 直接在这里声明 NanoHTTPD
+    private NanoHTTPD nanoHTTPD;
 
     //====================日志系统完整保留====================
     private static final List<String> OPERATION_LOG = new ArrayList<>();
@@ -146,14 +148,14 @@ public class SettingsActivity extends AppCompatActivity {
         sw_auto_update.setOnCheckedChangeListener((b,isChecked)->{
             sp.edit().putBoolean("auto_update_source",isChecked).apply();
             logOperation("自动更新源:"+(isChecked?"开启":"关闭"));
-            Toast.makeText(this,"自动更新源"+(isChecked?"已开启":"已关闭"),Toast.LENGTH_SHORT).show();
+            Toast.makeText(this,"自动更新源"+(isChecked?"已关闭":"已开启"),Toast.LENGTH_SHORT).show();
         });
 
         sw_reverse.setChecked(sp.getBoolean("channel_reverse",false));
         sw_reverse.setOnCheckedChangeListener((b,isChecked)->{
             sp.edit().putBoolean("channel_reverse",isChecked).apply();
             logOperation("换台反转:"+(isChecked?"开启":"关闭"));
-            Toast.makeText(this,"换台反转"+(isChecked?"已关闭":"已开启"),Toast.LENGTH_SHORT).show();
+            Toast.makeText(this,"换台反转"+(isChecked?"已开启":"已关闭"),Toast.LENGTH_SHORT).show();
         });
 
         sw_num_channel.setChecked(sp.getBoolean("number_channel_enable",true));
@@ -172,9 +174,14 @@ public class SettingsActivity extends AppCompatActivity {
         initListeners();
         currentWebUrl = "http://"+getDeviceIPAddress()+":"+PORT;
 
-        // ↓↓↓↓ 这里启动网页服务（NanoHTTPD）
-        HttpConfigService.getInstance().start();
-        logOperation("设置页面打开 · 网页后台已启动");
+        // ========== 直接在这里启动网页后台 ==========
+        try {
+            nanoHTTPD = new NanoHTTPD(PORT);
+            nanoHTTPD.start();
+            logOperation("网页后台启动成功：" + currentWebUrl);
+        } catch (Exception e) {
+            logCrash(e);
+        }
     }
 
     private void initListeners() {
@@ -312,8 +319,10 @@ public class SettingsActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        // ↓↓↓↓ 关闭网页后台
-        HttpConfigService.getInstance().stop();
+        // 关闭网页后台
+        if (nanoHTTPD != null) {
+            nanoHTTPD.stop();
+        }
         logOperation("设置页面关闭 · 网页后台已停止");
     }
 

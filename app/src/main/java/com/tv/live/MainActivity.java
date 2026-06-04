@@ -170,7 +170,7 @@ public class MainActivity extends AppCompatActivity {
         PlayerGestureHelper helper = gestureManager.create();
         playerView.setOnTouchListener((v, event) -> {
             helper.handleTouch(event);
-            return true;
+            return helper.handleTouch(event);
         });
 
         keyEventManager = new KeyEventManager(this);

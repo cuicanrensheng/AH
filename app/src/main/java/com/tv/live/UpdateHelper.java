@@ -46,15 +46,18 @@ public class UpdateHelper {
                 conn.disconnect();
 
                 JSONObject json = new JSONObject(sb.toString());
-                int versionCode = json.getInt("version_code");
-                String versionName = json.getString("version_name");
-                String downloadUrl = json.getString("download_url");
+                final int versionCode = json.getInt("version_code");
+                final String versionName = json.getString("version_name");
+                final String downloadUrl;
 
-                if (downloadUrl.contains("github.com")) {
-                    downloadUrl = "https://ghproxy.com/" + downloadUrl;
+                String rawUrl = json.getString("download_url");
+                if (rawUrl.contains("github.com")) {
+                    downloadUrl = "https://ghproxy.com/" + rawUrl;
+                } else {
+                    downloadUrl = rawUrl;
                 }
 
-                int currentVersion = context.getPackageManager()
+                final int currentVersion = context.getPackageManager()
                         .getPackageInfo(context.getPackageName(), 0).versionCode;
 
                 new Handler(Looper.getMainLooper()).post(() -> {

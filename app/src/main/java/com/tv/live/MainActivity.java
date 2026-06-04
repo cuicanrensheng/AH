@@ -36,8 +36,6 @@ public class MainActivity extends AppCompatActivity {
 
     private TextView tv_channel_name, tv_tag_fhd, tv_tag_audio, tv_bitrate;
     private TextView tv_channel_num;
-    //【可选：布局xml添加日志文本框后启用】
-    //private TextView tv_parse_log;
 
     public TVPlayerManager mPlayerManager;
     private AppConfig appConfig;
@@ -65,6 +63,8 @@ public class MainActivity extends AppCompatActivity {
             if ("com.tv.live.REFRESH_LIVE_AND_EPG".equals(intent.getAction())) {
                 runOnUiThread(() -> {
                     loadSettings();
+                    applyScreenRatio();
+
                     String customLive = appConfig.getCustomLiveUrl();
                     String customEpg = appConfig.getCustomEpgUrl();
                     if (customLive != null) UrlConfig.LIVE_URL = customLive;
@@ -101,8 +101,6 @@ public class MainActivity extends AppCompatActivity {
         tv_tag_audio = findViewById(R.id.tv_tag_audio);
         tv_bitrate = findViewById(R.id.tv_bitrate);
         tv_channel_num = findViewById(R.id.tv_channel_num);
-        //布局添加日志控件后初始化
-        //tv_parse_log = findViewById(R.id.tv_parse_log);
 
         appConfig = AppConfig.getInstance(this);
         loadSettings();
@@ -114,7 +112,6 @@ public class MainActivity extends AppCompatActivity {
         dateListManager.initDate();
         panelManager = new PanelManager(panel_layout, channelListManager, epgManagerWrapper);
 
-        //频道列表点击事件（之前修复保留）
         lvChannelList.setOnItemClickListener((parent, view, position, id) -> {
             if (currentGroupChannelList != null && position >= 0 && position < currentGroupChannelList.size()) {
                 Channel targetCh = currentGroupChannelList.get(position);
@@ -126,7 +123,6 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        // 日期切换节目单
         dateListManager.setOnDateSelectedListener(position -> {
             currentSelectedDateIndex = position;
             if (channelSourceList != null && !channelSourceList.isEmpty()) {
@@ -184,22 +180,35 @@ public class MainActivity extends AppCompatActivity {
         loadLiveAndEpg();
         registerReceiver(refreshReceiver, new IntentFilter("com.tv.live.REFRESH_LIVE_AND_EPG"));
 
-        //============【唯一新增：日志回调绑定】============
-        mPlayerManager.setOnLogUpdateListener(logs -> {
-            StringBuilder logText = new StringBuilder();
-            for(String log : logs){
-                logText.append(log).append("\n");
-            }
-            //替换成你的日志TextView控件
-            //tv_parse_log.setText(logText.toString());
-        });
-        //=================================================
+        applyScreenRatio();
     }
 
     private void loadSettings() {
         SharedPreferences sp = getSharedPreferences("app_settings", MODE_PRIVATE);
         epg_enable = sp.getBoolean("epg_enable", true);
         channel_reverse = sp.getBoolean("channel_reverse", false);
+    }
+
+    // ====================== 屏幕比例实时生效 ======================
+    private void applyScreenRatio() {
+        SharedPreferences sp = getSharedPreferences("app_settings", MODE_PRIVATE);
+        String ratio = sp.getString("screen_ratio", "填充");
+
+        switch (ratio) {
+            case "全屏":
+                mPlayerManager.setScaleMode(TVPlayerManager.ScaleMode.ZOOM);
+                break;
+            case "原始":
+                mPlayerManager.setScaleMode(TVPlayerManager.ScaleMode.FIT);
+                break;
+            case "填充":
+            default:
+                mPlayerManager.setScaleMode(TVPlayerManager.ScaleMode.FILL);
+                break;
+        }
+        if (playerView != null) {
+            playerView.requestLayout();
+        }
     }
 
     public void loadLiveAndEpg() {
@@ -312,6 +321,7 @@ public class MainActivity extends AppCompatActivity {
         super.onResume();
         loadSettings();
         mPlayerManager.onForeground();
+        applyScreenRatio();
     }
 
     @Override

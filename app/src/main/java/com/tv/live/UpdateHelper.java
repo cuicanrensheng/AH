@@ -18,7 +18,6 @@ import java.net.URL;
 
 public class UpdateHelper {
 
-    // 已加速 GitHub 地址
     private static final String UPDATE_JSON_URL
             = "https://ghproxy.com/https://raw.githubusercontent.com/cuicanrensheng/AH/main/update.json";
 
@@ -46,17 +45,11 @@ public class UpdateHelper {
                 reader.close();
                 conn.disconnect();
 
-                // ==============================================
-                // ✅ 修复：适配你的下划线 JSON 字段
-                // ==============================================
                 JSONObject json = new JSONObject(sb.toString());
-                int versionCode     = json.getInt("version_code");
-                String versionName  = json.getString("version_name");
-                String downloadUrl  = json.getString("download_url");
+                int versionCode = json.getInt("version_code");
+                String versionName = json.getString("version_name");
+                String downloadUrl = json.getString("download_url");
 
-                // ==============================================
-                // ✅ 修复：自动给 GitHub 下载地址加速
-                // ==============================================
                 if (downloadUrl.contains("github.com")) {
                     downloadUrl = "https://ghproxy.com/" + downloadUrl;
                 }

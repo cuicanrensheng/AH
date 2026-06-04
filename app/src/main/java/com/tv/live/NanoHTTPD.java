@@ -48,6 +48,9 @@ public class NanoHTTPD {
             String line = in.readLine();
             if (line == null || !line.startsWith("GET ")) {
                 send404(out);
+                in.close();
+                out.close();
+                socket.close();
                 return;
             }
 
@@ -55,7 +58,7 @@ public class NanoHTTPD {
             if (path.equals("/")) {
                 sendIndex(out);
             } else if (path.startsWith("/apply")) {
-                handleApply(out, path);
+                sendSuccess(out);
             } else {
                 send404(out);
             }
@@ -82,27 +85,12 @@ public class NanoHTTPD {
                 "</body>\n" +
                 "</html>";
 
-        out.write(("HTTP/1.1 200 OK\r\nContent-Type:text/html;charset=UTF-8\r\n\r\n" + html).getBytes("UTF-8"));
+        out.write(("HTTP/1.1 200 OK\r\nContent-Type:text/html;charset=UTF-8\r\n\r\n" + html).getBytes());
     }
 
-    private void handleApply(OutputStream out, String path) throws Exception {
-        String ok = "<h2 style='color:#0c0;'>保存成功！已刷新</h2>";
-        out.write(("HTTP/1.1 200 OK\r\nContent-Type:text/html;charset=UTF-8\r\n\r\n" + ok).getBytes("UTF-8"));
-    }
-
-    private Map<String, String> parseQuery(String query) {
-        Map<String, String> map = new HashMap<>();
-        if (query.isEmpty()) return map;
-        String[] pairs = query.split("&");
-        for (String p : pairs) {
-            String[] kv = p.split("=");
-            if (kv.length == 2) {
-                try {
-                    map.put(kv[0], URLDecoder.decode(kv[1], "UTF-8"));
-                } catch (Exception ignored) {}
-            }
-        }
-        return map;
+    private void sendSuccess(OutputStream out) throws Exception {
+        String html = "<h2 style='color:#0c0;'>保存成功！</h2>";
+        out.write(("HTTP/1.1 200 OK\r\nContent-Type:text/html;charset=UTF-8\r\n\r\n" + html).getBytes());
     }
 
     private void send404(OutputStream out) throws Exception {

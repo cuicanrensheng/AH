@@ -23,9 +23,11 @@ import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 public class EpgManagerWrapper {
@@ -33,6 +35,8 @@ public class EpgManagerWrapper {
     private final Context context;
     private EpgAdapter adapter;
     private final Set<String> bookedSet = new HashSet<>();
+    // 新增：缓存每个EpgItem对应的endTime，替代实体字段，原有代码不动
+    private final Map<Channel.EpgItem, String> epgEndTimeMap = new HashMap<>();
     private static final String ACTION_REMINDER = "com.tv.live.EPG_REMINDER";
     private int selectedPosition = 0;
     private int playingIndex = -1;
@@ -61,9 +65,9 @@ public class EpgManagerWrapper {
         if (currentChannel == null) return;
         playingIndex = -1;
         selectDayIndex = dateIndex;
+        epgEndTimeMap.clear();
 
         new Thread(() -> {
-            // 修复：防止并发修改异常，创建新列表
             List<Channel.EpgItem> epgList = null;
             try {
                 epgList = new ArrayList<>(EpgManager.getInstance().getEpg(currentChannel.getName()));
@@ -97,21 +101,23 @@ public class EpgManagerWrapper {
                     if (!TextUtils.isEmpty(curr.time) && curr.time.contains("-")) {
                         curr.time = curr.time.split("-")[0].trim();
                     }
-                    if (TextUtils.isEmpty(curr.endTime)) {
+                    // 原有endTime赋值逻辑完全保留，存入Map
+                    if (TextUtils.isEmpty(epgEndTimeMap.get(curr))) {
                         if (i + 1 < data.size()) {
                             Channel.EpgItem next = data.get(i + 1);
                             if (next.time.contains("-")) {
-                                curr.endTime = next.time.split("-")[0].trim();
+                                epgEndTimeMap.put(curr, next.time.split("-")[0].trim());
                             } else {
-                                curr.endTime = next.time;
+                                epgEndTimeMap.put(curr, next.time);
                             }
                         } else {
-                            curr.endTime = addOneHour(curr.time);
+                            epgEndTimeMap.put(curr, addOneHour(curr.time));
                         }
                     }
 
                     curr.isPlaying = false;
-                    if (isTimeBetween(now, curr.time, curr.endTime)) {
+                    String currEnd = epgEndTimeMap.get(curr);
+                    if (isTimeBetween(now, curr.time, currEnd)) {
                         curr.isPlaying = true;
                         playing = curr;
                         playingIndex = i;
@@ -239,8 +245,10 @@ public class EpgManagerWrapper {
             }
 
             Channel.EpgItem item = list.get(position);
+            String endTime = epgEndTimeMap.get(item);
             holder.tv_dayName.setText(item.dayName);
-            holder.tv_time.setText(item.time + "-" + item.endTime);
+            // 原有拼接格式保留不变
+            holder.tv_time.setText(item.time + "-" + endTime);
             holder.tv_title.setText(item.title);
 
             if (position == selectedPosition || item.isPlaying) {
@@ -284,7 +292,7 @@ public class EpgManagerWrapper {
                         startCal.set(Calendar.MINUTE, Integer.parseInt(startHm[1].trim()));
                         startCal.set(Calendar.SECOND, 0);
 
-                        String[] endHm = item.endTime.split(":");
+                        String[] endHm = endTime.split(":");
                         Calendar endCal = (Calendar) playDay.clone();
                         endCal.set(Calendar.HOUR_OF_DAY, Integer.parseInt(endHm[0].trim()));
                         endCal.set(Calendar.MINUTE, Integer.parseInt(endHm[1].trim()));

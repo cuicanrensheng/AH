@@ -8,6 +8,7 @@ import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
 import org.json.JSONObject;
+import org.json.JSONException;
 
 import java.io.IOException;
 import java.util.regex.Matcher;
@@ -59,12 +60,18 @@ public class HuyaParser {
                             return;
                         }
                         String resStr = response.body().string();
-                        JSONObject json = new JSONObject(resStr);
-                        String flvUrl = json.optString("dataUrl", "");
-                        if (flvUrl.isEmpty()) {
-                            runUiThread(() -> listener.onError("未获取到直播地址"));
-                        } else {
-                            runUiThread(() -> listener.onSuccess(flvUrl, 1));
+
+                        // 修复：JSON 异常捕获
+                        try {
+                            JSONObject json = new JSONObject(resStr);
+                            String flvUrl = json.optString("dataUrl", "");
+                            if (flvUrl.isEmpty()) {
+                                runUiThread(() -> listener.onError("未获取到直播地址"));
+                            } else {
+                                runUiThread(() -> listener.onSuccess(flvUrl, 1));
+                            }
+                        } catch (JSONException e) {
+                            runUiThread(() -> listener.onError("JSON解析失败"));
                         }
                     }
                 });

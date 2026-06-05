@@ -1,0 +1,3 @@
+-keep class com.tv.live.HuyaParser{*;}
+-dontwarn okhttp3.**
+-keep class okhttp3.**{*;}

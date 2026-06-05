@@ -159,8 +159,9 @@ public class MainActivity extends AppCompatActivity {
                 return;
             }
             epgPanelOpen = !epgPanelOpen;
-            lvDate.setVisibility(epgPanelOpen ? View.VISIBLE : GONE);
-            lvEpg.setVisibility(epgPanelOpen ? View.VISIBLE : GONE);
+            // 只修复这里：GONE → View.GONE
+            lvDate.setVisibility(epgPanelOpen ? View.VISIBLE : View.GONE);
+            lvEpg.setVisibility(epgPanelOpen ? View.VISIBLE : View.GONE);
             if (epgPanelOpen && !channelSourceList.isEmpty()) {
                 currentSelectedDateIndex = dateListManager.getSelectedPosition();
                 epgManagerWrapper.refresh(channelSourceList.get(currentPlayIndex), channelSourceList, currentSelectedDateIndex);

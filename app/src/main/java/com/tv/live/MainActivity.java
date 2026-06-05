@@ -4,7 +4,6 @@ import com.tv.live.widget.ChannelListManager;
 import com.tv.live.widget.GroupListManager;
 import com.tv.live.widget.DateListManager;
 import com.tv.live.widget.EpgManagerWrapper;
-import com.tv.live.SettingsActivity;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -135,7 +134,6 @@ public class MainActivity extends AppCompatActivity {
         while (logList.size() > 100) {
             logList.remove(logList.size() - 1);
         }
-        SettingsActivity.log(msg);
     }
 
     /**
@@ -176,8 +174,6 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        log("【主页】onCreate -> 页面创建");
-        mInstance = this;
         // 固定横屏
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
         // 全屏、隐藏系统状态栏导航栏
@@ -200,9 +196,6 @@ public class MainActivity extends AppCompatActivity {
         String customEpg = appConfig.getCustomEpgUrl();
         if (customLive != null) UrlConfig.LIVE_URL = customLive;
         if (customEpg != null) UrlConfig.EPG_URL = customEpg;
-
-        log("【配置】直播源地址：" + UrlConfig.LIVE_URL);
-        log("【配置】EPG地址：" + UrlConfig.EPG_URL);
 
         // 播放器初始化
         playerView = findViewById(R.id.player_view);
@@ -325,7 +318,6 @@ public class MainActivity extends AppCompatActivity {
         keyEventManager = new KeyEventManager(this);
         switchManager = ChannelSwitchManager.getInstance();
         currentPlayIndex = appConfig.getLastPlayIndex();
-        log("【播放】记录上次播放索引：" + currentPlayIndex);
         loadLiveAndEpg();
     }
 
@@ -354,8 +346,6 @@ public class MainActivity extends AppCompatActivity {
         channel_reverse = sp.getBoolean("channel_reverse", false);
         number_channel_enable = sp.getBoolean("number_channel_enable", true);
         auto_update_source = sp.getBoolean("auto_update_source", true);
-        log("【设置】EPG开关：" + epg_enable);
-        log("【设置】切台反转：" + channel_reverse);
     }
 
     /**
@@ -375,11 +365,9 @@ public class MainActivity extends AppCompatActivity {
      * 加载直播源+EPG
      */
     public void loadLiveAndEpg() {
-        log("【直播源】开始加载直播源...");
         LiveSourceLoader.getInstance(this).load(new LiveSourceLoader.LoadCallback() {
             @Override
             public void onSuccess(List<Channel> channels) {
-                log("【直播源】加载成功，频道总数：" + channels.size());
                 channelSourceList.clear();
                 channelSourceList.addAll(channels);
                 switchManager.setChannelList(channelSourceList);
@@ -414,12 +402,10 @@ public class MainActivity extends AppCompatActivity {
 
             @Override
             public void onError(String errorMsg) {
-                log("【直播源】加载失败：" + errorMsg);
                 Toast.makeText(MainActivity.this, "加载失败：" + errorMsg, Toast.LENGTH_SHORT).show();
             }
         });
 
-        log("【EPG】加载节目单：" + UrlConfig.EPG_URL);
         EpgManager.getInstance().setEpgUrl(UrlConfig.EPG_URL);
         EpgManager.getInstance().loadEpg(new Runnable() {
             @Override
@@ -443,7 +429,6 @@ public class MainActivity extends AppCompatActivity {
         long now = System.currentTimeMillis();
         if (now - lastChannelChangeTime < CHANNEL_COOLDOWN) return;
         lastChannelChangeTime = now;
-        log("【切台】上一台");
         int idx = channel_reverse ? switchManager.next() : switchManager.prev();
         playChannel(idx);
     }
@@ -455,7 +440,6 @@ public class MainActivity extends AppCompatActivity {
         long now = System.currentTimeMillis();
         if (now - lastChannelChangeTime < CHANNEL_COOLDOWN) return;
         lastChannelChangeTime = now;
-        log("【切台】下一台");
         int idx = channel_reverse ? switchManager.prev() : switchManager.next();
         playChannel(idx);
     }
@@ -465,21 +449,15 @@ public class MainActivity extends AppCompatActivity {
      */
     public void playChannel(int index) {
         if (channelSourceList == null || channelSourceList.isEmpty()) {
-            log("【播放】频道列表为空，无法播放");
             return;
         }
         index = Math.max(0, Math.min(index, channelSourceList.size() - 1));
         currentPlayIndex = index;
         Channel ch = channelSourceList.get(index);
         if (ch == null || TextUtils.isEmpty(ch.getPlayUrl())) {
-            log("【播放】频道地址为空");
             return;
         }
         final String originalUrl = ch.getPlayUrl();
-        log("========================================");
-        log("【播放】频道：" + ch.getName());
-        log("【原始地址】：" + originalUrl);
-        log("========================================");
         playerStateListener.setCurrentChannelName(ch.getName());
 
         // 子线程处理重定向
@@ -504,7 +482,6 @@ public class MainActivity extends AppCompatActivity {
                     if (code == 301 || code == 302) {
                         String loc = conn.getHeaderField("Location");
                         if (loc != null) finalUrl = loc;
-                        log("【重定向" + (step + 1) + "次】→ " + finalUrl);
                         conn.disconnect();
                         conn = null;
                     } else {
@@ -513,12 +490,10 @@ public class MainActivity extends AppCompatActivity {
                 }
             } catch (Exception e) {
                 e.printStackTrace();
-                log("【解析失败】使用原始地址播放");
             } finally {
                 if (conn != null) conn.disconnect();
             }
             String playUrl = TextUtils.isEmpty(finalUrl) ? originalUrl : finalUrl;
-            log("【最终播放地址】→ " + playUrl);
             new Handler(Looper.getMainLooper()).post(() -> {
                 mPlayerManager.playUrl(playUrl);
             });
@@ -571,7 +546,7 @@ public class MainActivity extends AppCompatActivity {
      * 打开设置页面
      */
     public void openSettings() {
-        Intent intent = new Intent(this, SettingsActivity);
+        Intent intent = new Intent(this, SettingsActivity.class);
         intent.addFlags(Intent.FLAG_ACTIVITY_NO_HISTORY);
         startActivity(intent);
     }
@@ -581,8 +556,6 @@ public class MainActivity extends AppCompatActivity {
         config.setCustomUrls(liveUrl, epgUrl);
         if (liveUrl != null) UrlConfig.LIVE_URL = liveUrl;
         if (epgUrl != null) UrlConfig.EPG_URL = epgUrl;
-        log("【远程配置】更新直播源：" + liveUrl);
-        log("【远程配置】EPG：" + epgUrl);
         runOnUiThread(new Runnable() {
             @Override
             public void run() {
@@ -596,7 +569,7 @@ public class MainActivity extends AppCompatActivity {
      */
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
-        if (keyEventManager.dispatchKey(key)) return true;
+        if (keyEventManager.dispatchKey(keyCode)) return true;
         return super.onKeyDown(keyCode, event);
     }
 
@@ -606,7 +579,6 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onPause() {
         super.onPause();
-        log("【主页】onPause -> 切到后台");
         if (mPlayerManager != null)
             mPlayerManager.onBackground();
     }
@@ -617,7 +589,6 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        log("【主页】onResume -> 回到前台");
         loadSettings();
         screenRatioManager.apply();
         if (mPlayerManager != null)
@@ -630,7 +601,6 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        log("【主页】onDestroy -> 页面销毁");
         try { unregisterReceiver(toggleControllerReceiver); } catch (Exception ignored) {}
         try { unregisterReceiver(refreshReceiver); } catch (Exception ignored) {}
         mPlayerManager.release();

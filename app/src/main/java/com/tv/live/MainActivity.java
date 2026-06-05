@@ -187,7 +187,6 @@ public class MainActivity extends AppCompatActivity {
                 if (nowSelectGroup.equals(c.getGroup()))
                     currentGroupChannelList.add(c);
             }
-            // 🔥 恢复老版本：重建 Adapter，必刷新
             channelListManager = new ChannelListManager(MainActivity.this, lvChannelList);
             channelListManager.setChannelsByGroup(channelSourceList, nowSelectGroup, currentPlayIndex);
         });
@@ -411,7 +410,7 @@ public class MainActivity extends AppCompatActivity {
 
     public void onReceiveConfig(final String liveUrl, final String epgUrl){
         appConfig.setCustomUrls(liveUrl, epgUrl);
-        if(liveLive != null) UrlConfig.LIVE_URL = liveUrl;
+        if(liveUrl != null) UrlConfig.LIVE_URL = liveUrl;
         if(epgUrl != null) UrlConfig.EPG_URL = epgUrl;
         runOnUiThread(this::loadLiveAndEpg);
     }

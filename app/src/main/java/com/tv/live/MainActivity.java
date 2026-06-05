@@ -181,7 +181,7 @@ public class MainActivity extends AppCompatActivity {
         keyEventManager = new KeyEventManager(this);
         switchManager = ChannelSwitchManager.getInstance();
 
-        GestureManager.PlayerGestureHelper helper = gestureManager.create();
+       GestureManager.GestureHelper helper = gestureManager.create();
         playerView.setOnTouchListener(new View.OnTouchListener() {
             @Override
             public boolean onTouch(View v, MotionEvent event) {

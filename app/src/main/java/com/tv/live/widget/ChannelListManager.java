@@ -10,25 +10,20 @@ import android.widget.TextView;
 import com.tv.live.Channel;
 import java.util.ArrayList;
 import java.util.List;
-
 public class ChannelListManager {
     private final ListView lvChannelList;
     private int selectedPosition = 0;
-
     // 点击回调
     public interface OnChannelClickListener {
         void onChannelClick(int position);
     }
     private OnChannelClickListener onChannelClickListener;
-
     public void setOnChannelClickListener(OnChannelClickListener listener) {
         this.onChannelClickListener = listener;
     }
-
     public ChannelListManager(Context context, ListView lvChannelList) {
         this.lvChannelList = lvChannelList;
         lvChannelList.setItemsCanFocus(true);
-
         // 点击事件
         lvChannelList.setOnItemClickListener((parent, view, position, id) -> {
             selectedPosition = position;          // 【修复】点击后更新选中位置
@@ -37,7 +32,6 @@ public class ChannelListManager {
                 onChannelClickListener.onChannelClick(position);
             }
         });
-
         // 焦点选中
         lvChannelList.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
@@ -49,14 +43,12 @@ public class ChannelListManager {
             public void onNothingSelected(AdapterView<?> parent) {}
         });
     }
-
     // 显示全部频道
     public void setChannels(List<Channel> channelSourceList, int currentPlayIndex) {
         if (channelSourceList == null || channelSourceList.isEmpty()) return;
         List<String> names = new ArrayList<>();
         for (Channel c : channelSourceList) names.add(c.getName());
         selectedPosition = currentPlayIndex;      // 【修复】初始选中当前播放台
-
         ArrayAdapter<String> adapter = new ArrayAdapter<String>(lvChannelList.getContext(), android.R.layout.simple_list_item_1, names) {
             @Override
             public View getView(int position, View convertView, ViewGroup parent) {
@@ -72,13 +64,11 @@ public class ChannelListManager {
         lvChannelList.setAdapter(adapter);
         lvChannelList.setSelection(selectedPosition);
     }
-
     // 按分组显示频道
     public void setChannelsByGroup(List<Channel> channelSourceList, String group, int currentPlayIndex) {
         if (channelSourceList == null || channelSourceList.isEmpty()) return;
         List<String> names = new ArrayList<>();
         int realIndex = 0;
-
         for (int i = 0; i < channelSourceList.size(); i++) {
             Channel c = channelSourceList.get(i);
             if (group == null || group.isEmpty() || group.equals(c.getGroup())) {
@@ -88,9 +78,7 @@ public class ChannelListManager {
                 }
             }
         }
-
         selectedPosition = realIndex;              // 【修复】分组切换后正确高亮
-
         ArrayAdapter<String> adapter = new ArrayAdapter<String>(lvChannelList.getContext(), android.R.layout.simple_list_item_1, names) {
             @Override
             public View getView(int position, View convertView, ViewGroup parent) {
@@ -105,8 +93,9 @@ public class ChannelListManager {
         };
         lvChannelList.setAdapter(adapter);
         lvChannelList.setSelection(selectedPosition);
+        //【新增修复】刷新选中高亮
+        adapter.notifyDataSetChanged();
     }
-
     public void setSelectedPosition(int position) {
         selectedPosition = position;
         lvChannelList.setSelection(position);
@@ -114,6 +103,5 @@ public class ChannelListManager {
             ((ArrayAdapter<?>) lvChannelList.getAdapter()).notifyDataSetChanged();
         }
     }
-
     public void onBackPressed() {}
 }

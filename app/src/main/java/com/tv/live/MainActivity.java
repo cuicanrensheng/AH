@@ -13,6 +13,7 @@ import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
 import android.os.Bundle;
 import android.os.Handler;
+import android.os.Looper;
 import android.text.TextUtils;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
@@ -28,6 +29,8 @@ import com.tv.live.config.AppConfig;
 import com.tv.live.listener.PlayerStateListenerImpl;
 import com.tv.live.loader.LiveSourceLoader;
 import com.tv.live.manager.*;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -76,7 +79,6 @@ public class MainActivity extends AppCompatActivity {
     private float touchStartY = 0;
     private static final float SLIDE_THRESHOLD = 80;
 
-    // 本地日志：最新在前，最多100条
     public static List<String> logList = new ArrayList<>();
     public static void log(String msg) {
         logList.add(0, msg);
@@ -349,7 +351,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // ==========================
-    // 🔥 集成虎牙解析核心方法
+    // 内置虎牙解析（无外部类）
     // ==========================
     public void playChannel(int index) {
         if (channelSourceList == null || channelSourceList.isEmpty()) {
@@ -375,20 +377,42 @@ public class MainActivity extends AppCompatActivity {
 
         playerStateListener.setCurrentChannelName(ch.getName());
 
-        // ======================
-        // 虎牙自动解析（已集成）
-        // ======================
+        // 虎牙自动解析
         if (url != null && (url.contains("huya") || url.contains("jdshipin") || url.contains("zxyndc"))) {
-            new HuyaParser().parse(String.valueOf(extractRoomId(url)), new HuyaParser.OnParseResultListener() {
-                @Override
-                public void onSuccess(String playUrl, int type) {
-                    mPlayerManager.playUrl(playUrl);
+            String roomId = String.valueOf(extractRoomId(url));
+            new Thread(() -> {
+                HttpURLConnection conn = null;
+                String nextUrl = "http://cdn.jdshipin.com:8880/huya.php?id=" + roomId;
+                try {
+                    for (int step = 0; step < 4; step++) {
+                        URL urlObj = new URL(nextUrl);
+                        conn = (HttpURLConnection) urlObj.openConnection();
+                        conn.setConnectTimeout(8000);
+                        conn.setReadTimeout(8000);
+                        conn.setRequestMethod("GET");
+                        conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36");
+                        conn.setRequestProperty("Referer", "http://cdn.jdshipin.com/");
+                        conn.setRequestProperty("Icy-MetaData", "1");
+                        conn.setRequestProperty("Accept", "*/*");
+                        conn.setRequestProperty("Accept-Encoding", "identity");
+                        conn.setInstanceFollowRedirects(false);
+
+                        int code = conn.getResponseCode();
+                        if (code == 301 || code == 302) {
+                            nextUrl = conn.getHeaderField("Location");
+                            conn.disconnect();
+                        } else {
+                            break;
+                        }
+                    }
+                    String finalUrl = nextUrl;
+                    new Handler(Looper.getMainLooper()).post(() -> mPlayerManager.playUrl(finalUrl));
+                } catch (Exception e) {
+                    new Handler(Looper.getMainLooper()).post(() -> mPlayerManager.playUrl(url));
+                } finally {
+                    if (conn != null) conn.disconnect();
                 }
-                @Override
-                public void onError(String msg) {
-                    mPlayerManager.playUrl(url);
-                }
-            });
+            }).start();
         } else {
             mPlayerManager.playUrl(url);
         }
@@ -410,9 +434,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // ==========================
-    // 提取虎牙房间号
-    // ==========================
+    // 提取房间号
     private int extractRoomId(String url) {
         try {
             if (url.contains("id=")) {

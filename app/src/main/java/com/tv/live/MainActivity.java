@@ -163,7 +163,6 @@ public class MainActivity extends AppCompatActivity {
             lvEpg.setVisibility(epgPanelOpen ? View.VISIBLE : View.GONE);
             if (epgPanelOpen && !channelSourceList.isEmpty()) {
                 currentSelectedDateIndex = dateListManager.getSelectedPosition();
-                epgManagerWrapper = new EpgManagerWrapper(MainActivity.this, lvEpg);
                 epgManagerWrapper.refresh(channelSourceList.get(currentPlayIndex), channelSourceList, currentSelectedDateIndex);
             }
         });
@@ -173,11 +172,11 @@ public class MainActivity extends AppCompatActivity {
         dateListManager.setOnDateSelectedListener(pos -> {
             currentSelectedDateIndex = pos;
             if (!channelSourceList.isEmpty()) {
-                epgManagerWrapper = new EpgManagerWrapper(MainActivity.this, lvEpg);
                 epgManagerWrapper.refresh(channelSourceList.get(currentPlayIndex), channelSourceList, pos);
             }
         });
 
+        // ===================== 【从新版本移植：分组点击只刷新不播放】 =====================
         lvGroup.setOnItemClickListener((parent, view, position, id) -> {
             lvGroup.setItemChecked(position, true);
             lvGroup.setSelection(position);
@@ -187,9 +186,9 @@ public class MainActivity extends AppCompatActivity {
                 if (nowSelectGroup.equals(c.getGroup()))
                     currentGroupChannelList.add(c);
             }
-            channelListManager = new ChannelListManager(MainActivity.this, lvChannelList);
             channelListManager.setChannelsByGroup(channelSourceList, nowSelectGroup, currentPlayIndex);
         });
+        // ==================================================================================
 
         channelListManager = new ChannelListManager(this, lvChannelList);
         channelListManager.setOnChannelClickListener(filterPos -> {
@@ -223,7 +222,7 @@ public class MainActivity extends AppCompatActivity {
         final PlayerGestureHelper gestureHelper = gestureManager.create();
         playerView.setOnTouchListener((v, event) -> {
             gestureHelper.handleTouch(event);
-            return false;
+            return true;
         });
 
         keyEventManager = new KeyEventManager(this);
@@ -279,7 +278,6 @@ public class MainActivity extends AppCompatActivity {
                         if(ch.getGroup().equals(nowSelectGroup))
                             currentGroupChannelList.add(ch);
                     }
-                    channelListManager = new ChannelListManager(MainActivity.this, findViewById(R.id.lv_channel_list));
                     channelListManager.setChannelsByGroup(channelSourceList, nowSelectGroup, currentPlayIndex);
                 }else{
                     List<String> groups = groupListManager.getGroupList();
@@ -289,10 +287,8 @@ public class MainActivity extends AppCompatActivity {
                         for(Channel ch : channelSourceList)
                             if(ch.getGroup().equals(nowSelectGroup))
                                 currentGroupChannelList.add(ch);
-                        channelListManager = new ChannelListManager(MainActivity.this, findViewById(R.id.lv_channel_list));
                         channelListManager.setChannelsByGroup(channelSourceList, nowSelectGroup, currentPlayIndex);
                     }else {
-                        channelListManager = new ChannelListManager(MainActivity.this, findViewById(R.id.lv_channel_list));
                         channelListManager.setChannels(channelSourceList, currentPlayIndex);
                     }
                 }
@@ -308,7 +304,6 @@ public class MainActivity extends AppCompatActivity {
         EpgManager.getInstance().setEpgUrl(UrlConfig.EPG_URL);
         EpgManager.getInstance().loadEpg(() -> runOnUiThread(() -> {
             if (!channelSourceList.isEmpty()) {
-                epgManagerWrapper = new EpgManagerWrapper(MainActivity.this, findViewById(R.id.lv_epg));
                 epgManagerWrapper.refresh(channelSourceList.get(currentPlayIndex), channelSourceList, currentSelectedDateIndex);
             }
         }));
@@ -330,6 +325,7 @@ public class MainActivity extends AppCompatActivity {
         playChannel(idx);
     }
 
+    // ===================== 【从新版本移植：完整播放逻辑（含重定向+信息栏）】 =====================
     public void playChannel(int index) {
         if(channelSourceList.isEmpty()) return;
         index = Math.max(0, Math.min(index, channelSourceList.size() - 1));
@@ -370,14 +366,11 @@ public class MainActivity extends AppCompatActivity {
         appConfig.setLastPlayIndex(index);
 
         if(!TextUtils.isEmpty(nowSelectGroup)) {
-            channelListManager = new ChannelListManager(MainActivity.this, findViewById(R.id.lv_channel_list));
             channelListManager.setChannelsByGroup(channelSourceList, nowSelectGroup, index);
         } else {
-            channelListManager = new ChannelListManager(MainActivity.this, findViewById(R.id.lv_channel_list));
             channelListManager.setChannels(channelSourceList, index);
         }
 
-        epgManagerWrapper = new EpgManagerWrapper(MainActivity.this, findViewById(R.id.lv_epg));
         epgManagerWrapper.refresh(ch, channelSourceList, currentSelectedDateIndex);
 
         if(info_bar != null){
@@ -391,6 +384,7 @@ public class MainActivity extends AppCompatActivity {
             tv_bitrate.setText(info.bitrate);
         }
     }
+    // ============================================================================================
 
     public void showChannelNum(int num) {
         tv_channel_num.setText(String.valueOf(num));

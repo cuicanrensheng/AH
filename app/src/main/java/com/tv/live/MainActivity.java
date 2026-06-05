@@ -76,7 +76,7 @@ public class MainActivity extends AppCompatActivity {
     // 播放器状态监听实现
     private PlayerStateListenerImpl playerStateListener;
     // 上下切台管理
-    private SwitchManager switchManager;
+    private ChannelSwitchManager switchManager;
     // EPG面板开关标记
     private boolean epgPanelOpen = false;
     // 原生控制器显隐标记
@@ -323,7 +323,7 @@ public class MainActivity extends AppCompatActivity {
         });
 
         keyEventManager = new KeyEventManager(this);
-        switchManager = SwitchManager.getInstance();
+        switchManager = ChannelSwitchManager.getInstance();
         currentPlayIndex = appConfig.getLastPlayIndex();
         log("【播放】记录上次播放索引：" + currentPlayIndex);
         loadLiveAndEpg();
@@ -596,7 +596,7 @@ public class MainActivity extends AppCompatActivity {
      */
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
-        if (keyEventManager.dispatchKey(keyCode)) return true;
+        if (keyEventManager.dispatchKey(key)) return true;
         return super.onKeyDown(keyCode, event);
     }
 

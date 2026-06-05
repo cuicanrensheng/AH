@@ -159,19 +159,21 @@ public class TVPlayerManager {
         return "[" + logSdf.format(new Date()) + "]";
     }
 
+    // ==========================
+    // ✅ 关键修改：UA = ExoPlayer
+    // ==========================
     private Map<String, String> getHeaders(String url) {
         Map<String, String> headers = new HashMap<>();
-        headers.put("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36");
+        
+        // 👇👇👇 这里改成 ExoPlayer
+        headers.put("User-Agent", "ExoPlayer");
+        
         headers.put("Accept", "*/*");
         headers.put("Connection", "keep-alive");
         headers.put("Icy-MetaData", "1");
 
-        try {
-            URI uri = new URI(url);
-            headers.put("Referer", uri.getScheme() + "://" + uri.getHost() + "/");
-        } catch (Exception e) {
-            headers.put("Referer", "https://www.huya.com/");
-        }
+        // 虎牙防盗链 Refer
+        headers.put("Referer", "https://www.huya.com/");
 
         String cookies = CookieManager.getInstance().getCookie(url);
         if (cookies != null) {
@@ -199,7 +201,7 @@ public class TVPlayerManager {
                     .setAllowCrossProtocolRedirects(true);
 
             MediaItem mediaItem = MediaItem.fromUri(currentUrl);
-            Object mediaSource;
+            com.google.android.exoplayer2.source.MediaSource mediaSource;
 
             if (currentUrl.toLowerCase().contains("m3u8")) {
                 mediaSource = new HlsMediaSource.Factory(httpFactory).createMediaSource(mediaItem);
@@ -207,7 +209,7 @@ public class TVPlayerManager {
                 mediaSource = new ProgressiveMediaSource.Factory(httpFactory).createMediaSource(mediaItem);
             }
 
-            player.setMediaSource((com.google.android.exoplayer2.source.MediaSource) mediaSource);
+            player.setMediaSource(mediaSource);
             player.prepare();
             player.play();
 

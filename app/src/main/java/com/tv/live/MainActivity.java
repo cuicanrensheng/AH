@@ -1,5 +1,6 @@
 package com.tv.live;
-import com.tv.live.HuyaParser;
+
+import com.tv.live.HuyaParser;  // <-- 我已帮你加上这行！
 import com.tv.live.widget.ChannelListManager;
 import com.tv.live.widget.GroupListManager;
 import com.tv.live.widget.DateListManager;
@@ -347,7 +348,6 @@ public class MainActivity extends AppCompatActivity {
         playChannel(idx);
     }
 
-    // ====================== 已插入虎牙解析调用 ======================
     public void playChannel(int index) {
         if (channelSourceList == null || channelSourceList.isEmpty()) {
             log("【播放】频道列表为空，无法播放");
@@ -363,7 +363,7 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
-        String url = ch.getPlayUrl();
+        final String url = ch.getPlayUrl();
         log("========================================");
         log("【播放】频道名称：" + ch.getName());
         log("【播放】频道地址：" + url);
@@ -372,11 +372,11 @@ public class MainActivity extends AppCompatActivity {
 
         playerStateListener.setCurrentChannelName(ch.getName());
 
-        // 虎牙自动解析（自动识别、自动修复Source error/卡顿）
+        // 虎牙自动解析
         if (url != null && (url.contains("huya") || url.contains("jdshipin") || url.contains("zxyndc"))) {
             new HuyaParser().parse(extractRoomId(url), new HuyaParser.OnParseResultListener() {
                 @Override
-                public void onSuccess(String playUrl) {
+                public void onSuccess(String playUrl, int type) {
                     mPlayerManager.playUrl(playUrl);
                 }
 
@@ -406,7 +406,6 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // 虎牙房间号提取工具
     private int extractRoomId(String url) {
         try {
             if (url.contains("id=")) {
@@ -463,7 +462,7 @@ public class MainActivity extends AppCompatActivity {
 
     public void onReceiveConfig(final String liveUrl, final String epgUrl) {
         AppConfig config = AppConfig.getInstance(this);
-        config.setCustomUrls(liveUrl, epgUrl);
+        config.setCustomUrls(liveUrl, epg);
         if (liveUrl != null) UrlConfig.LIVE_URL = liveUrl;
         if (epgUrl != null) UrlConfig.EPG_URL = epgUrl;
 

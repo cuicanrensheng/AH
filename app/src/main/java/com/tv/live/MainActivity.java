@@ -227,14 +227,16 @@ public class MainActivity extends AppCompatActivity {
             }
         });
         //【修复1：日期绑定回调，删除原有点击，改用manager回调实现日期刷新EPG+高亮】
-        dateListManager = new DateListManager(this, lvDate);
-        dateListManager.initDate();
-        dateListManager.setOnDateSelectedListener(pos->{
-            currentSelectedDateIndex = pos;
-            if(!channelSource.isEmpty()){
-                epgManager.refresh(channelSourceList.get(currentPlayIndex),channelSourceList,pos);
-            }
-        });
+dateListManager = new DateListManager(this, lvDate);
+dateListManager.initDate();
+dateListManager.setOnDateSelectedListener(pos->{
+    currentSelectedDateIndex = pos;
+    // ===================== 【编译修复】修复 channelSource 笔误 → channelSourceList =====================
+    if(!channelSourceList.isEmpty()){
+        // ===================== 【编译修复】修复 epgManager → epgManagerWrapper =====================
+        epgManagerWrapper.refresh(channelSourceList.get(currentPlayIndex),channelSourceList,pos);
+    }
+});
 
         //【修复2：分组点击 移除自动切台，只更新右侧频道列表】
         lvGroup.setOnItemClickListener(new AdapterView.OnItemClickListener() {

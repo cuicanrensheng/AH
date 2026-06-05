@@ -177,8 +177,8 @@ public class MainActivity extends AppCompatActivity {
                     return;
                 }
                 epgPanelOpen = !epgPanelOpen;
-                lvDate.setVisibility(epgPanelOpen ? View.VISIBLE : GONE);
-                lvEpg.setVisibility(epgPanelOpen ? View.VISIBLE : GONE);
+                lvDate.setVisibility(epgPanelOpen ? View.VISIBLE : View.GONE);
+                lvEpg.setVisibility(epgPanelOpen ? View.VISIBLE : View.GONE);
                 if (epgPanelOpen && !channelSourceList.isEmpty()) {
                     Channel curr = channelSourceList.get(currentPlayIndex);
                     epgManagerWrapper.refresh(curr, channelSourceList, currentSelectedDateIndex);
@@ -519,7 +519,7 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
-        if (keyEventManager.dispatchKey(code)) return true;
+        if (keyEventManager.dispatchKey(keyCode)) return true;
         return super.onKeyDown(keyCode, event);
     }
 

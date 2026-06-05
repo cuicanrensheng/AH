@@ -159,7 +159,6 @@ public class MainActivity extends AppCompatActivity {
                 return;
             }
             epgPanelOpen = !epgPanelOpen;
-            // 只修复这里：GONE → View.GONE
             lvDate.setVisibility(epgPanelOpen ? View.VISIBLE : View.GONE);
             lvEpg.setVisibility(epgPanelOpen ? View.VISIBLE : View.GONE);
             if (epgPanelOpen && !channelSourceList.isEmpty()) {
@@ -177,16 +176,20 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+        // ===================== 【修复：分组点击只刷新，不自动播放】 =====================
         lvGroup.setOnItemClickListener((parent, view, position, id) -> {
             lvGroup.setItemChecked(position, true);
             lvGroup.setSelection(position);
             nowSelectGroup = groupListManager.getCurrentGroup(position);
             currentGroupChannelList.clear();
             for (Channel c : channelSourceList) {
-                if (nowSelectGroup.equals(c.getGroup())) currentGroupChannelList.add(c);
+                if (nowSelectGroup.equals(c.getGroup()))
+                    currentGroupChannelList.add(c);
             }
+            // 只刷新列表，不跳台
             channelListManager.setChannelsByGroup(channelSourceList, nowSelectGroup, currentPlayIndex);
         });
+        // ==============================================================================
 
         channelListManager = new ChannelListManager(this, lvChannelList);
         channelListManager.setOnChannelClickListener(filterPos -> {
@@ -273,7 +276,8 @@ public class MainActivity extends AppCompatActivity {
                 if(!TextUtils.isEmpty(nowSelectGroup)){
                     currentGroupChannelList.clear();
                     for(Channel ch : channelSourceList){
-                        if(ch.getGroup().equals(nowSelectGroup)) currentGroupChannelList.add(ch);
+                        if(ch.getGroup().equals(nowSelectGroup))
+                            currentGroupChannelList.add(ch);
                     }
                     channelListManager.setChannelsByGroup(channelSourceList, nowSelectGroup, currentPlayIndex);
                 }else{
@@ -281,7 +285,9 @@ public class MainActivity extends AppCompatActivity {
                     if(groups != null && groups.size() > 0){
                         nowSelectGroup = groups.get(0);
                         currentGroupChannelList.clear();
-                        for(Channel ch : channelSourceList) if(ch.getGroup().equals(nowSelectGroup)) currentGroupChannelList.add(ch);
+                        for(Channel ch : channelSourceList)
+                            if(ch.getGroup().equals(nowSelectGroup))
+                                currentGroupChannelList.add(ch);
                         channelListManager.setChannelsByGroup(channelSourceList, nowSelectGroup, currentPlayIndex);
                     }else {
                         channelListManager.setChannels(channelSourceList, currentPlayIndex);

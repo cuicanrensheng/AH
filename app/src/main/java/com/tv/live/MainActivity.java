@@ -76,7 +76,7 @@ public class MainActivity extends AppCompatActivity {
     // 播放器状态监听实现
     private PlayerStateListenerImpl playerStateListener;
     // 上下切台管理
-    private ChannelSwitchManager switchManager;
+    private SwitchManager switchManager;
     // EPG面板开关标记
     private boolean epgPanelOpen = false;
     // 原生控制器显隐标记
@@ -97,7 +97,7 @@ public class MainActivity extends AppCompatActivity {
     private View info_bar;
     private TextView tv_channel_name, tv_tag_fhd, tv_tag_audio, tv_bitrate;
     private TextView tv_current_program_name, tv_current_time_range, tv_remaining_time;
-    private TextView tv_next_program_name, tv_next_program_time_range;
+    private TextView tv_next_program_name;
     private android.widget.ProgressBar progress_program;
     // 右上角频道数字弹窗
     private TextView tv_channel_num;
@@ -145,11 +145,6 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public void onReceive(Context context, Intent intent) {
             isControllerVisible = !isControllerVisible;
-
-            // ===================== 【原有代码 保留】 =====================
-            // playerView.setUseController(isControllerVisible);
-
-            // ===================== 【新增修复】强制永久关闭 Exo 原生控制器，禁止弹出 =====================
             playerView.setUseController(false);
             playerView.hideController();
         }
@@ -188,9 +183,7 @@ public class MainActivity extends AppCompatActivity {
         // 全屏、隐藏系统状态栏导航栏
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
         getWindow().getDecorView().setSystemUiVisibility(
-                View.SYSTEM_UI_FLAG_FULLSCREEN
-                        | View.SYSTEM_UI_FLAG_NAVIGATION_HIDDEN
-                        | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
         );
         setContentView(R.layout.activity_main);
         // 屏幕常亮
@@ -211,29 +204,19 @@ public class MainActivity extends AppCompatActivity {
         log("【配置】直播源地址：" + UrlConfig.LIVE_URL);
         log("【配置】EPG地址：" + UrlConfig.EPG_URL);
 
-        // ===================== 播放器初始化（原有代码完全保留） =====================
+        // 播放器初始化
         playerView = findViewById(R.id.player_view);
-        // 全局关闭Exo原生控制面板
         playerView.setUseController(false);
         playerView.setControllerVisibilityListener(null);
 
-        // ===================== 【新增修复】彻底屏蔽 Exo 原生控制器，永不弹出 =====================
-        // 作用：禁止滑动/播放/缓冲时弹出“正在播放”、控制条、进度条
-        // 1. 禁止播放器自动显示控制器
+        // 彻底屏蔽 Exo 控制器（只保留兼容代码）
         playerView.setControllerAutoShow(false);
-        // 2. 禁止触摸屏幕触发控制器显示/隐藏
-        playerView.setHideOnTouch(false);
-        // 3. 清空控制器触摸监听，从根源拦截
-        playerView.setControllerOnTouchListener(null);
-        // 4. 强制立即隐藏控制器
         playerView.hideController();
-        // 5. 终极兜底：只要控制器显示，立刻隐藏
         playerView.setControllerVisibilityListener(visibility -> {
             if (visibility == View.VISIBLE) {
                 playerView.hideController();
             }
         });
-        // ==================================================================================
 
         panel_layout = findViewById(R.id.panel_layout);
         ListView lvGroup = findViewById(R.id.lv_group);
@@ -243,7 +226,7 @@ public class MainActivity extends AppCompatActivity {
         TextView btn_show_epg = findViewById(R.id.btn_show_epg);
 
         // 注册广播
-        registerReceiver(toggleControllerReceiver, new IntentFilter("com.tv.live.TOGGLE_CONTROLLER"));
+        registerReceiver(toggleControllerReceiver, new IntentFilter("com.tv.live.TOGGLE_CONTROL"));
         registerReceiver(refreshReceiver, new IntentFilter("com.tv.live.REFRESH_LIVE_AND_EPG"));
 
         // EPG展开收起按钮
@@ -265,7 +248,7 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        //【修复1：日期绑定回调，删除原有点击，改用manager回调实现日期刷新EPG+高亮】
+        // 日期切换刷新节目单
         dateListManager = new DateListManager(this, lvDate);
         dateListManager.initDate();
         dateListManager.setOnDateSelectedListener(pos->{
@@ -275,30 +258,26 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        //【修复2：分组点击 移除自动切台，只更新右侧频道列表】
+        // 分组点击 刷新右侧频道列表
         lvGroup.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
                 lvGroup.setItemChecked(position, true);
                 lvGroup.setSelection(position);
-                //保存当前选中分组
                 nowSelectGroup = groupListManager.getCurrentGroup(position);
-                //筛选分组频道
                 currentGroupChannelList.clear();
                 for (Channel c : channelSourceList) {
                     if (nowSelectGroup.equals(c.getGroup())) {
                         currentGroupChannelList.add(c);
                     }
                 }
-                //仅刷新列表，【取消自动播放第一个频道】
                 channelListManager.setChannelsByGroup(channelSourceList, nowSelectGroup, currentPlayIndex);
             }
         });
 
-        //初始化频道点击回调，分组列表点击转全局索引
+        // 频道点击回调
         channelListManager = new ChannelListManager(this, lvChannelList);
         channelListManager.setOnChannelClickListener(filterPos->{
-            //分组内下标转全局真实下标，杜绝串台
             if(filterPos >=0 && filterPos < currentGroupChannelList.size()){
                 Channel target = currentGroupChannelList.get(filterPos);
                 int global = channelSourceList.indexOf(target);
@@ -344,7 +323,7 @@ public class MainActivity extends AppCompatActivity {
         });
 
         keyEventManager = new KeyEventManager(this);
-        switchManager = ChannelSwitchManager.getInstance();
+        switchManager = SwitchManager.getInstance();
         currentPlayIndex = appConfig.getLastPlayIndex();
         log("【播放】记录上次播放索引：" + currentPlayIndex);
         loadLiveAndEpg();
@@ -364,7 +343,6 @@ public class MainActivity extends AppCompatActivity {
         progress_program = findViewById(R.id.progress_program);
         tv_remaining_time = findViewById(R.id.tv_remaining_time);
         tv_next_program_name = findViewById(R.id.tv_next_program_name);
-        tv_next_program_time_range = findViewById(R.id.tv_next_program_time_range);
     }
 
     /**
@@ -408,7 +386,7 @@ public class MainActivity extends AppCompatActivity {
                 switchManager.setCurrentIndex(currentPlayIndex);
                 groupListManager.setGroups(channelSourceList);
 
-                //【修复：加载源保留上次分组，不会自动切全部分组】
+                // 加载源保留上次分组
                 if(!TextUtils.isEmpty(nowSelectGroup)){
                     currentGroupChannelList.clear();
                     for(Channel ch:channelSourceList){
@@ -549,7 +527,7 @@ public class MainActivity extends AppCompatActivity {
         showChannelNum(index + 1);
         appConfig.setLastPlayIndex(index);
 
-        //【关键修复：切台不重置全频道列表，沿用当前分组】
+        // 切台不重置全频道列表，沿用当前分组
         if(!TextUtils.isEmpty(nowSelectGroup)){
             channelListManager.setChannelsByGroup(channelSourceList,nowSelectGroup,index);
         }else{
@@ -569,20 +547,6 @@ public class MainActivity extends AppCompatActivity {
             tv_tag_audio.setText(live.audio);
             tv_bitrate.setText(live.bitrate);
         }
-    }
-
-    private int extractRoomId(String url) {
-        try {
-            if (url.contains("id=")) {
-                return Integer.parseInt(url.split("id=")[1].replaceAll("[^0-9]", ""));
-            }
-            if (url.contains("huya.com/")) {
-                return Integer.parseInt(url.split("huya.com/")[1].replaceAll("[^0-9]", ""));
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        return 0;
     }
 
     /**
@@ -607,7 +571,7 @@ public class MainActivity extends AppCompatActivity {
      * 打开设置页面
      */
     public void openSettings() {
-        Intent intent = new Intent(this, SettingsActivity.class);
+        Intent intent = new Intent(this, SettingsActivity);
         intent.addFlags(Intent.FLAG_ACTIVITY_NO_HISTORY);
         startActivity(intent);
     }
@@ -618,7 +582,7 @@ public class MainActivity extends AppCompatActivity {
         if (liveUrl != null) UrlConfig.LIVE_URL = liveUrl;
         if (epgUrl != null) UrlConfig.EPG_URL = epgUrl;
         log("【远程配置】更新直播源：" + liveUrl);
-        log("【远程配置】更新EPG：" + epgUrl);
+        log("【远程配置】EPG：" + epgUrl);
         runOnUiThread(new Runnable() {
             @Override
             public void run() {

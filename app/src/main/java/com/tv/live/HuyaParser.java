@@ -1,165 +1,91 @@
+package com.tv.live;
+
 import android.os.Handler;
 import android.os.Looper;
-
-import org.json.JSONArray;
-import org.json.JSONObject;
-
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.security.MessageDigest;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-
+import okhttp3.Call;
+import okhttp3.Callback;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
+import org.json.JSONObject;
 
+import java.io.IOException;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+/**
+ * 虎牙直播源解析类，适配huya/jdshipin/zxyndc链接解析真实播放地址
+ */
 public class HuyaParser {
+    private final OkHttpClient mHttpClient;
 
-    private final OkHttpClient client = new OkHttpClient();
-    private final ExecutorService executor = Executors.newSingleThreadExecutor();
-    private final Handler handler = new Handler(Looper.getMainLooper());
-
-    private OnParseResultListener listener;
-
+    //解析结果回调接口
     public interface OnParseResultListener {
-        void onSuccess(String url, int type);
-        void onError(String msg);
+        void onSuccess(String realPlayUrl, int sourceType);
+        void onError(String errorMsg);
     }
 
-    public void parse(int roomId, OnParseResultListener listener) {
-        this.listener = listener;
-        if (roomId <= 0) {
-            sendError("房间号错误");
-            return;
-        }
-        executor.execute(() -> {
+    public HuyaParser() {
+        mHttpClient = new OkHttpClient.Builder()
+                .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+                .readTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
+                .build();
+    }
+
+    /**
+     * 开始异步解析直播间地址
+     * @param roomId 直播间ID/原始链接
+     * @param listener 解析回调
+     */
+    public void parse(String roomId, final OnParseResultListener listener) {
+        new Thread(() -> {
             try {
-                String[] result = getPlayUrl(roomId);
-                if (result != null && result.length >= 2) {
-                    String realUrl = getFinalRedirectUrl(result[0]);
-                    sendSuccess(realUrl, Integer.parseInt(result[1]));
-                } else {
-                    sendError("解析失败，未开播或房间不存在");
-                }
+                String realRoomId = extractRoomId(roomId);
+                String apiUrl = "https://api.huya.com/m_pay/play/getPlayInfo?roomId=" + realRoomId;
+                Request request = new Request.Builder()
+                        .url(apiUrl)
+                        .addHeader("User-Agent", "Mozilla/5.0 Android TV")
+                        .build();
+                mHttpClient.newCall(request).enqueue(new Callback() {
+                    @Override
+                    public void onFailure(Call call, IOException e) {
+                        runUiThread(() -> listener.onError("网络请求失败：" + e.getMessage()));
+                    }
+
+                    @Override
+                    public void onResponse(Call call, Response response) throws IOException {
+                        if (!response.isSuccessful()) {
+                            runUiThread(() -> listener.onError("接口返回异常"));
+                            return;
+                        }
+                        String resStr = response.body().string();
+                        JSONObject json = new JSONObject(resStr);
+                        String flvUrl = json.optString("dataUrl", "");
+                        if (flvUrl.isEmpty()) {
+                            runUiThread(() -> listener.onError("未获取到直播地址"));
+                        } else {
+                            runUiThread(() -> listener.onSuccess(flvUrl, 1));
+                        }
+                    }
+                });
             } catch (Exception e) {
-                sendError("解析异常：" + e.getMessage());
+                runUiThread(() -> listener.onError("解析异常：" + e.getMessage()));
             }
-        });
+        }).start();
     }
 
-    private String getFinalRedirectUrl(String url) {
-        try {
-            URL obj = new URL(url);
-            HttpURLConnection conn = (HttpURLConnection) obj.openConnection();
-            conn.setRequestMethod("GET");
-            conn.setInstanceFollowRedirects(false);
-            conn.setConnectTimeout(10000);
-            conn.setReadTimeout(10000);
-            conn.setRequestProperty("User-Agent", "ExoPlayer");
-
-            int code = conn.getResponseCode();
-            if (code == 301 || code == 302) {
-                String location = conn.getHeaderField("Location");
-                if (location != null && !location.trim().isEmpty()) {
-                    conn.disconnect();
-                    return getFinalRedirectUrl(location);
-                }
-            }
-            conn.disconnect();
-        } catch (Exception e) {
-            e.printStackTrace();
+    //正则从链接提取房间号
+    private String extractRoomId(String url) {
+        Pattern pattern = Pattern.compile("(\\d{5,12})");
+        Matcher matcher = pattern.matcher(url);
+        if (matcher.find()) {
+            return matcher.group(1);
         }
         return url;
     }
 
-    private String[] getPlayUrl(int roomId) throws Exception {
-        String roomInfo = getRoomInfo(roomId);
-        if (roomInfo == null || roomInfo.isEmpty()) return null;
-
-        JSONObject roomObj = new JSONObject(roomInfo);
-        JSONObject data = roomObj.optJSONObject("data");
-        if (data == null) return null;
-
-        int videoRoom = data.optInt("isVideoRoom", 0);
-        String streamName = data.optString("streamName");
-        long uid = data.optLong("uid", 111111L);
-
-        String wsTime = Long.toHexString(System.currentTimeMillis() / 1000);
-        String wsSecret = md5(uid + streamName + wsTime + "97b64242aa187a74");
-
-        String url;
-        if (videoRoom == 1) {
-            url = "https://m.huya.com/" + roomId;
-        } else {
-            url = "https://api.huya.com/m_push/" + roomId +
-                    "?wsSecret=" + wsSecret +
-                    "&wsTime=" + wsTime +
-                    "&u=" + uid;
-        }
-
-        String playBody = requestGet(url);
-        JSONObject playJson = new JSONObject(playBody);
-        JSONArray array = playJson.optJSONArray("data");
-        if (array == null || array.length() == 0) return null;
-
-        JSONObject item = array.optJSONObject(0);
-        String flv = item.optString("flv");
-        if (flv.isEmpty()) flv = item.optString("m3u8");
-        return new String[]{flv, videoRoom + ""};
-    }
-
-    private String getRoomInfo(int roomId) throws Exception {
-        String url = "https://cdn.huya.com/cache/mini-global-" + roomId + ".json";
-        return requestGet(url);
-    }
-
-    private String requestGet(String url) throws Exception {
-        Request.Builder builder = new Request.Builder()
-                .url(url)
-                .get();
-
-        // 修复：正确添加请求头，适配所有OkHttp版本
-        builder.addHeader("User-Agent", "ExoPlayer");
-        builder.addHeader("Referer", "https://m.huya.com/");
-        builder.addHeader("Accept", "application/json, text/plain");
-
-        Request request = builder.build();
-        try (Response response = client.newCall(request).execute()) {
-            if (!response.isSuccessful()) throw new Exception("请求失败");
-            return response.body().string();
-        }
-    }
-
-    private String md5(String str) {
-        try {
-            MessageDigest md = MessageDigest.getInstance("MD5");
-            byte[] bytes = md.digest(str.getBytes("UTF-8"));
-            StringBuilder sb = new StringBuilder();
-            for (byte b : bytes) {
-                String hex = Integer.toHexString(b & 0xFF);
-                if (hex.length() == 1) sb.append("0");
-                sb.append(hex);
-            }
-            return sb.toString();
-        } catch (Exception e) {
-            return "";
-        }
-    }
-
-    private void sendSuccess(final String url, final int type) {
-        handler.post(() -> {
-            if (listener != null) listener.onSuccess(url, type);
-        });
-    }
-
-    private void sendError(final String msg) {
-        handler.post(() -> {
-            if (listener != null) listener.onError(msg);
-        });
-    }
-
-    public void release() {
-        executor.shutdown();
+    //切主线程回调
+    private void runUiThread(Runnable runnable) {
+        new Handler(Looper.getMainLooper()).post(runnable);
     }
 }

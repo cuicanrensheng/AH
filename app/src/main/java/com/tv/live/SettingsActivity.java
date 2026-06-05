@@ -4,36 +4,53 @@ import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.Switch;
+import android.widget.TextView;
 import androidx.appcompat.app.AppCompatActivity;
+import java.util.List;
 
 public class SettingsActivity extends AppCompatActivity {
-    private SharedPreferences sp;
+    public static List<String> logList;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_settings);
 
-        sp = getSharedPreferences("app_settings", MODE_PRIVATE);
-        Switch swBoot = findViewById(R.id.sw_boot);
-        Switch swEpg = findViewById(R.id.sw_epg);
-        Switch swAuto = findViewById(R.id.sw_auto_update);
-        Switch swReverse = findViewById(R.id.sw_reverse);
-        Switch swNum = findViewById(R.id.sw_num_channel);
+        SharedPreferences sp = getSharedPreferences("app_settings", MODE_PRIVATE);
+        Switch sw_boot = findViewById(R.id.sw_boot);
+        Switch sw_epg = findViewById(R.id.sw_epg);
+        Switch sw_auto_update = findViewById(R.id.sw_auto_update);
+        Switch sw_reverse = findViewById(R.id.sw_reverse);
+        Switch sw_num_channel = findViewById(R.id.sw_num_channel);
 
-        swBoot.setChecked(sp.getBoolean("boot", false));
-        swEpg.setChecked(sp.getBoolean("epg_enable", true));
-        swAuto.setChecked(sp.getBoolean("auto_update", true));
-        swReverse.setChecked(sp.getBoolean("channel_reverse", false));
-        swNum.setChecked(sp.getBoolean("num_channel", true));
+        sw_boot.setChecked(sp.getBoolean("boot", false));
+        sw_epg.setChecked(sp.getBoolean("epg_enable", true));
+        sw_auto_update.setChecked(sp.getBoolean("auto_update", true));
+        sw_reverse.setChecked(sp.getBoolean("channel_reverse", false));
+        sw_num_channel.setChecked(sp.getBoolean("num_channel", true));
 
-        swBoot.setOnCheckedChangeListener((b, c) -> sp.edit().putBoolean("boot", c).apply());
-        swEpg.setOnCheckedChangeListener((b, c) -> sp.edit().putBoolean("epg_enable", c).apply());
-        swAuto.setOnCheckedChangeListener((b, c) -> sp.edit().putBoolean("auto_update", c).apply());
-        swReverse.setOnCheckedChangeListener((b, c) -> sp.edit().putBoolean("channel_reverse", c).apply());
-        swNum.setOnCheckedChangeListener((b, c) -> sp.edit().putBoolean("num_channel", c).apply());
+        sw_boot.setOnCheckedChangeListener((buttonView, isChecked) ->
+                sp.edit().putBoolean("boot", isChecked).apply()
+        );
+        sw_epg.setOnCheckedChangeListener((buttonView, isChecked) ->
+                sp.edit().putBoolean("epg_enable", isChecked).apply()
+        );
+        sw_auto_update.setOnCheckedChangeListener((buttonView, isChecked) ->
+                sp.edit().putBoolean("auto_update", isChecked).apply()
+        );
+        sw_reverse.setOnCheckedChangeListener((buttonView, isChecked) ->
+                sp.edit().putBoolean("channel_reverse", isChecked).apply()
+        );
+        sw_num_channel.setOnCheckedChangeListener((buttonView, isChecked) ->
+                sp.edit().putBoolean("num_channel", isChecked).apply()
+        );
 
-        // 关闭页面
         findViewById(R.id.log_viewer).setOnClickListener(v -> finish());
+    }
+
+    public static void log(String msg) {
+        if (logList != null) {
+            logList.add(0, msg);
+        }
     }
 }

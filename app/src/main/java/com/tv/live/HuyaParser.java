@@ -7,8 +7,6 @@ import org.json.JSONObject;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.security.MessageDigest;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -117,24 +115,20 @@ public class HuyaParser {
     }
 
     private String requestGet(String url) throws Exception {
-        Request request = new Request.Builder()
+        Request.Builder builder = new Request.Builder()
                 .url(url)
-                .headers(getHeaders())
-                .get()
-                .build();
+                .get();
+
+        // 修复：正确添加请求头，适配所有OkHttp版本
+        builder.addHeader("User-Agent", "ExoPlayer");
+        builder.addHeader("Referer", "https://m.huya.com/");
+        builder.addHeader("Accept", "application/json, text/plain");
+
+        Request request = builder.build();
         try (Response response = client.newCall(request).execute()) {
             if (!response.isSuccessful()) throw new Exception("请求失败");
             return response.body().string();
         }
-    }
-
-    // 已改为：ExoPlayer
-    private Map<String, String> getHeaders() {
-        Map<String, String> headers = new HashMap<>();
-        headers.put("User-Agent", "ExoPlayer");
-        headers.put("Referer", "https://m.huya.com/");
-        headers.put("Accept", "application/json, text/plain");
-        return headers;
     }
 
     private String md5(String str) {

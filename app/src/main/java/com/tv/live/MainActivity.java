@@ -18,7 +18,6 @@ import android.text.TextUtils;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
-import android.view.WindowManager;
 import android.widget.AdapterView;
 import android.widget.ListView;
 import android.widget.TextView;
@@ -26,6 +25,7 @@ import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import com.google.android.exoplayer2.ui.PlayerView;
 import com.tv.live.config.AppConfig;
+import com.tv.live.config.UrlConfig;
 import com.tv.live.listener.PlayerStateListenerImpl;
 import com.tv.live.loader.LiveSourceLoader;
 import com.tv.live.manager.*;
@@ -34,7 +34,7 @@ import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 
-public class MainActivity extends AppCompatActivity {
+public class MainActivity {
     public static MainActivity mInstance;
     public List<Channel> channelSourceList = new ArrayList<>();
     public List<Channel> currentGroupChannelList = new ArrayList<>();
@@ -163,7 +163,6 @@ public class MainActivity extends AppCompatActivity {
             lvEpg.setVisibility(epgPanelOpen ? View.VISIBLE : View.GONE);
             if (epgPanelOpen && !channelSourceList.isEmpty()) {
                 currentSelectedDateIndex = dateListManager.getSelectedPosition();
-                // 修复1：每次打开节目单都重建，保证刷新
                 epgManagerWrapper = new EpgManagerWrapper(MainActivity.this, lvEpg);
                 epgManagerWrapper.refresh(channelSourceList.get(currentPlayIndex), channelSourceList, currentSelectedDateIndex);
             }
@@ -174,12 +173,11 @@ public class MainActivity extends AppCompatActivity {
         dateListManager.setOnDateSelectedListener(pos -> {
             currentSelectedDateIndex = pos;
             if (!channelSourceList.isEmpty()) {
-                // 修复2：切换日期重建，保证刷新
                 epgManagerWrapper = new EpgManagerWrapper(MainActivity.this, lvEpg);
                 epgManagerWrapper.refresh(channelSourceList.get(currentPlayIndex), channelSourceList, pos);
-            }
-        });
+        }});
 
+        //分组只刷新列表、不自播
         lvGroup.setOnItemClickListener((parent, view, position, id) -> {
             lvGroup.setItemChecked(position, true);
             lvGroup.setSelection(position);
@@ -189,7 +187,6 @@ public class MainActivity extends AppCompatActivity {
                 if (nowSelectGroup.equals(c.getGroup()))
                     currentGroupChannelList.add(c);
             }
-            // 修复3：切换分组重建，保证刷新
             channelListManager = new ChannelListManager(MainActivity.this, lvChannelList);
             channelListManager.setChannelsByGroup(channelSourceList, nowSelectGroup, currentPlayIndex);
         });
@@ -313,8 +310,7 @@ public class MainActivity extends AppCompatActivity {
             if (!channelSourceList.isEmpty()) {
                 epgManagerWrapper = new EpgManagerWrapper(MainActivity.this, findViewById(R.id.lv_epg));
                 epgManagerWrapper.refresh(channelSourceList.get(currentPlayIndex), channelSourceList, currentSelectedDateIndex);
-            }
-        }));
+        }}));
     }
 
     public void playPrev() {
@@ -352,7 +348,7 @@ public class MainActivity extends AppCompatActivity {
                     conn.setReadTimeout(READ_TIMEOUT);
                     conn.setRequestMethod("GET");
                     conn.setRequestProperty("User-Agent", DEF_UA);
-                    conn.setRequestProperty("Referer", DEF_REFER);
+                    conn.setRequestProperty("Refer", DEF_REFER);
                     conn.setInstanceFollowRedirects(false);
                     int code = conn.getResponseCode();
                     if(code == 301 || code == 302){
@@ -374,7 +370,7 @@ public class MainActivity extends AppCompatActivity {
 
         if(!TextUtils.isEmpty(nowSelectGroup)) {
             channelListManager = new ChannelListManager(MainActivity.this, findViewById(R.id.lv_channel_list));
-            channelListManager.setChannelsByGroup(channelSourceList, nowSelectGroup, index);
+            channelListManager.setChannelsByGroup(channelSourceList, index);
         } else {
             channelListManager = new ChannelListManager(MainActivity.this, findViewById(R.id.lv_channel_list));
             channelListManager.setChannels(channelSourceList, index);

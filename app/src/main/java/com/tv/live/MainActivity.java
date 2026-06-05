@@ -27,7 +27,11 @@ import com.google.android.exoplayer2.ui.PlayerView;
 import com.tv.live.config.AppConfig;
 import com.tv.live.listener.PlayerStateListenerImpl;
 import com.tv.live.loader.LiveSourceLoader;
-import com.tv.live.manager.*;
+import com.tv.live.manager.ChannelSwitchManager;
+import com.tv.live.manager.GestureManager;
+import com.tv.live.manager.KeyEventManager;
+import com.tv.live.manager.PanelManager;
+import com.tv.live.manager.ScreenRatioManager;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.ArrayList;
@@ -74,39 +78,48 @@ public class MainActivity extends AppCompatActivity {
     private static final String DEF_UA = "ExoPlayer";
     private static final String DEF_REFER = "https://www.huya.com/";
 
-    private final Runnable hideInfoBar = () -> info_bar.setVisibility(View.GONE);
+    private final Runnable hideInfoBar = new Runnable() {
+        @Override
+        public void run() {
+            info_bar.setVisibility(View.GONE);
+        }
+    };
+
     private long lastChannelChangeTime = 0;
     private static final long CHANNEL_COOLDOWN = 300;
 
     public static List<String> logList = new ArrayList<>();
+
     public static void log(String msg) {
         logList.add(0, msg);
-        while (logList.size() > 100) logList.remove(logList.size()-1);
-        if (getInstance() != null && getInstance().findViewById(R.id.log_viewer) != null) {
-            SettingsActivity.log(msg);
+        while (logList.size() > 100) {
+            logList.remove(logList.size() - 1);
         }
     }
 
-    private final BroadcastReceiver refreshReceiver = new BroadcastReceiver() {
+    private BroadcastReceiver refreshReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
             if ("com.tv.live.REFRESH_LIVE_AND_EPG".equals(intent.getAction())) {
-                runOnUiThread(() -> {
-                    loadSettings();
-                    String customLive = appConfig.getCustomLiveUrl();
-                    String customEpg = appConfig.getCustomEpgUrl();
-                    if (customLive != null) UrlConfig.LIVE_URL = customLive;
-                    if (customEpg != null) UrlConfig.EPG_URL = customEpg;
-                    loadLiveAndEpg();
-                    Toast.makeText(MainActivity.this, "刷新成功", Toast.LENGTH_SHORT).show();
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        loadSettings();
+                        String customLive = appConfig.getCustomLiveUrl();
+                        String customEpg = appConfig.getCustomEpgUrl();
+                        if (customLive != null) {
+                            UrlConfig.LIVE_URL = customLive;
+                        }
+                        if (customEpg != null) {
+                            UrlConfig.EPG_URL = customEpg;
+                        }
+                        loadLiveAndEpg();
+                        Toast.makeText(MainActivity.this, "已刷新", Toast.LENGTH_SHORT).show();
+                    }
                 });
             }
         }
     };
-
-    public static MainActivity getInstance() {
-        return mInstance;
-    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -114,20 +127,24 @@ public class MainActivity extends AppCompatActivity {
         mInstance = this;
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
-        getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
+        getWindow().getDecorView().setSystemUiVisibility(
+                View.SYSTEM_UI_FLAG_FULLSCREEN
+                        | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                        | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+        );
         setContentView(R.layout.activity_main);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
         playerView = findViewById(R.id.player_view);
         playerView.setUseController(false);
         playerView.setControllerVisibilityListener(null);
-        playerView.setTouchListener(null);
 
         initViews();
         initManagers();
-        registerReceiver(refreshReceiver, new IntentFilter("com.tv.live.REFRESH_LIVE_AND_EPG"));
         loadSettings();
         loadLiveAndEpg();
+
+        registerReceiver(refreshReceiver, new IntentFilter("com.tv.live.REFRESH_LIVE_AND_EPG"));
     }
 
     private void initViews() {
@@ -164,10 +181,13 @@ public class MainActivity extends AppCompatActivity {
         keyEventManager = new KeyEventManager(this);
         switchManager = ChannelSwitchManager.getInstance();
 
-        PlayerGestureHelper gestureHelper = gestureManager.create();
-        playerView.setOnTouchListener((v, e) -> {
-            gestureHelper.handleTouch(e);
-            return true;
+        GestureManager.PlayerGestureHelper helper = gestureManager.create();
+        playerView.setOnTouchListener(new View.OnTouchListener() {
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                helper.handleTouch(event);
+                return true;
+            }
         });
     }
 
@@ -185,56 +205,88 @@ public class MainActivity extends AppCompatActivity {
         startActivity(intent);
     }
 
+    public void onReceiveConfig(String live, String epg) {
+        if (live != null) UrlConfig.LIVE_URL = live;
+        if (epg != null) UrlConfig.EPG_URL = epg;
+        loadLiveAndEpg();
+    }
+
     public void loadLiveAndEpg() {
         LiveSourceLoader.getInstance(this).load(new LiveSourceLoader.LoadCallback() {
             @Override
             public void onSuccess(List<Channel> channels) {
-                runOnUiThread(() -> {
-                    channelSourceList.clear();
-                    channelSourceList.addAll(channels);
-                    switchManager.setChannelList(channelSourceList);
-                    groupListManager.setGroups(channelSourceList);
-                    channelListManager.setChannels(channelSourceList, currentPlayIndex);
-                    playChannel(currentPlayIndex);
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        channelSourceList.clear();
+                        channelSourceList.addAll(channels);
+                        switchManager.setChannelList(channelSourceList);
+                        groupListManager.setGroups(channelSourceList);
+                        channelListManager.setChannels(channelSourceList, currentPlayIndex);
+                        playChannel(currentPlayIndex);
+                    }
                 });
             }
 
             @Override
             public void onError(String msg) {
-                runOnUiThread(() -> Toast.makeText(MainActivity.this, msg, Toast.LENGTH_SHORT).show());
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        Toast.makeText(MainActivity.this, msg, Toast.LENGTH_SHORT).show();
+                    }
+                });
             }
         });
     }
 
     public void playChannel(int index) {
         if (channelSourceList == null || channelSourceList.isEmpty()) return;
-        index = Math.max(0, Math.min(channelSourceList.size()-1, index));
+        index = Math.max(0, Math.min(channelSourceList.size() - 1, index));
         currentPlayIndex = index;
         Channel ch = channelSourceList.get(index);
         if (ch == null || TextUtils.isEmpty(ch.getPlayUrl())) return;
 
-        new Thread(() -> {
-            HttpURLConnection conn = null;
-            String url = ch.getPlayUrl();
-            try {
-                for (int i=0; i<MAX_REDIRECT_COUNT; i++) {
-                    URL u = new URL(url);
-                    conn = (HttpURLConnection) u.openConnection();
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                HttpURLConnection conn = null;
+                String finalUrl = ch.getPlayUrl();
+                try {
+                    URL url = new URL(finalUrl);
+                    conn = (HttpURLConnection) url.openConnection();
                     conn.setRequestMethod("GET");
                     conn.setRequestProperty("User-Agent", DEF_UA);
                     conn.setRequestProperty("Referer", DEF_REFER);
-                    int code = conn.getResponseCode();
-                    if (code == 301 || code == 302) {
-                        String loc = conn.getHeaderField("Location");
-                        if (loc != null) url = loc;
-                    } else break;
+                    conn.getResponseCode();
+                } catch (Exception e) {
+                    e.printStackTrace();
+                } finally {
+                    if (conn != null) conn.disconnect();
                 }
-            } catch (Exception e) { e.printStackTrace(); }
-            finally { if (conn != null) conn.disconnect(); }
 
-            String finalUrl = url;
-            runOnUiThread(() -> mPlayerManager.playUrl(finalUrl));
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        mPlayerManager.playUrl(finalUrl);
+                    }
+                });
+            }
         }).start();
+    }
+
+    public void playPrev() {
+        int idx = channel_reverse ? switchManager.next() : switchManager.prev();
+        playChannel(idx);
+    }
+
+    public void playNext() {
+        int idx = channel_reverse ? switchManager.prev() : switchManager.next();
+        playChannel(idx);
+    }
+
+    public void togglePanel() {
+        panelManager.toggle(channelSourceList, currentPlayIndex);
     }
 
     @Override
@@ -247,7 +299,6 @@ public class MainActivity extends AppCompatActivity {
     protected void onResume() {
         super.onResume();
         mPlayerManager.onForeground();
-        loadSettings();
         screenRatioManager.apply();
     }
 

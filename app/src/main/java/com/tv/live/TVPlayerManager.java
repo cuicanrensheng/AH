@@ -31,7 +31,8 @@ public class TVPlayerManager {
     private ExoPlayer player;
     private Context context;
     private PlayerView playerView;
-    private String currentPlayUrl = ""; //保存当前播放链接，返回前台用
+    private String currentPlayUrl = "";
+
     public enum ScaleMode { FIT, FILL, ZOOM }
 
     private OnPlayStateListener listener;
@@ -121,25 +122,22 @@ public class TVPlayerManager {
                 .setRenderersFactory(renderersFactory)
                 .setLoadControl(loadControl)
                 .build();
-        player.setKeepContentOnPlayerReset(true); //保留最后一帧画面，防黑屏关键
 
         CookieSyncManager.createInstance(context);
         CookieManager.getInstance().setAcceptCookie(true);
     }
 
-    //后台：暂停播放 + 解绑View（实现切后台停止播放）
     public void onBackground() {
         try {
             if(player != null){
-                player.pause(); //后台自动暂停
+                player.pause();
             }
             if (playerView != null) {
-                playerView.setPlayer(null); //解绑surface，避免资源销毁异常
+                playerView.setPlayer(null);
             }
         } catch (Exception e) {}
     }
 
-    //前台：重新绑定view，恢复播放；画面异常则重放当前链接根治黑屏
     public void onForeground() {
         try {
             if (player != null && playerView != null) {
@@ -147,7 +145,6 @@ public class TVPlayerManager {
                 player.play();
             }
         } catch (Exception e) {
-            //绑定异常黑屏，重新播放当前源
             if(!currentPlayUrl.isEmpty()){
                 playUrl(currentPlayUrl);
             }
@@ -172,7 +169,7 @@ public class TVPlayerManager {
 
     private Map<String, String> getHeaders(String url) {
         Map<String, String> headers = new HashMap<>();
-        headers.put("User-Agent", "ExoPlayer"); //固定UA为ExoPlayer
+        headers.put("User-Agent", "ExoPlayer");
         headers.put("Accept", "*/*");
         headers.put("Connection", "keep-alive");
         headers.put("Icy-MetaData", "1");
@@ -193,7 +190,7 @@ public class TVPlayerManager {
         try {
             if (player == null || url == null || url.trim().isEmpty()) return;
             currentUrl = url.trim();
-            currentPlayUrl = currentUrl; //缓存播放地址
+            currentPlayUrl = currentUrl;
 
             player.stop();
             player.clearMediaItems();

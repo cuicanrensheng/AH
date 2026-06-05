@@ -68,13 +68,9 @@ public class MainActivity extends AppCompatActivity {
     private android.widget.ProgressBar progress_program;
     private TextView tv_channel_num;
 
-    // ==========================
-    // 10次重定向（完美支持虎牙）+超时配置
-    // ==========================
     private static final int MAX_REDIRECT_COUNT = 10;
     private static final int CONNECT_TIMEOUT = 8000;
     private static final int READ_TIMEOUT = 8000;
-    // 统一UA和播放器保持一致 ExoPlayer
     private static final String DEF_UA = "ExoPlayer";
     private static final String DEF_REFER = "https://www.huya.com/";
 
@@ -88,7 +84,7 @@ public class MainActivity extends AppCompatActivity {
     private long lastChannelChangeTime = 0;
     private static final long CHANNEL_COOLDOWN = 300;
     private float touchStartY = 0;
-    private static final float SLIDE_THRESHOLD = 80;
+    private static final long SLIDE_THRESHOLD = 80;
 
     public static List<String> logList = new ArrayList<>();
     public static void log(String msg) {
@@ -361,9 +357,6 @@ public class MainActivity extends AppCompatActivity {
         playChannel(idx);
     }
 
-    // ==========================
-    // 【优化】全链路UA统一ExoPlayer、10重定向、防拦截、失败兜底
-    // ==========================
     public void playChannel(int index) {
         if (channelSourceList == null || channelSourceList.isEmpty()) {
             log("【播放】频道列表为空，无法播放");
@@ -387,7 +380,6 @@ public class MainActivity extends AppCompatActivity {
 
         playerStateListener.setCurrentChannelName(ch.getName());
 
-        // 自动解析真实地址（支持所有源 + 虎牙）
         new Thread(() -> {
             HttpURLConnection conn = null;
             String finalUrl = originalUrl;
@@ -400,7 +392,6 @@ public class MainActivity extends AppCompatActivity {
                     conn.setReadTimeout(READ_TIMEOUT);
                     conn.setRequestMethod("GET");
 
-                    // ✅ UA同步ExoPlayer，和播放器完全一致
                     conn.setRequestProperty("User-Agent", DEF_UA);
                     conn.setRequestProperty("Referer", DEF_REFER);
                     conn.setRequestProperty("Origin", "https://www.huya.com");
@@ -427,7 +418,6 @@ public class MainActivity extends AppCompatActivity {
                 if (conn != null) conn.disconnect();
             }
 
-            // ✅ 解析失败自动用原地址，绝不黑屏
             String playUrl = TextUtils.isEmpty(finalUrl) ? originalUrl : finalUrl;
             log("【最终播放地址】→ " + playUrl);
 
@@ -526,6 +516,7 @@ public class MainActivity extends AppCompatActivity {
         return super.onKeyDown(keyCode, event);
     }
 
+    // ✅【唯一】正确的 onPause()，无重复！
     @Override
     protected void onPause() {
         super.onPause();
@@ -533,21 +524,25 @@ public class MainActivity extends AppCompatActivity {
         if (mPlayerManager != null)
             mPlayerManager.onBackground();
     }
-  @Override
-protected void onPause() {
-    super.onPause();
-    log("【主页】onPause -> 切到后台");
-    if (mPlayerManager != null)
-        mPlayerManager.onBackground();
-}
 
-@Override
-protected void onResume() {
-    super.onResume();
-    log("【主页】onResume -> 回到前台");
-    loadSettings();
-    screenRatioManager.apply();
-    if (mPlayerManager != null)
-        mPlayerManager.onForeground();
-}
+    // ✅ 正确的 onResume()
+    @Override
+    protected void onResume() {
+        super.onResume();
+        log("【主页】onResume -> 回到前台");
+        loadSettings();
+        screenRatioManager.apply();
+        if (mPlayerManager != null)
+            mPlayerManager.onForeground();
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        log("【主页】onDestroy -> 页面销毁");
+        try { unregisterReceiver(toggleControllerReceiver); } catch (Exception ignored) {}
+        try { unregisterReceiver(refreshReceiver); } catch (Exception ignored) {}
+        mPlayerManager.release();
+        mInstance = null;
+    }
 }

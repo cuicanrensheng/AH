@@ -533,11 +533,10 @@ public class MainActivity extends AppCompatActivity {
         if (mPlayerManager != null)
             mPlayerManager.onBackground();
     }
-    @Override
+  @Override
 protected void onPause() {
     super.onPause();
     log("【主页】onPause -> 切到后台");
-    //后台暂停播放+解绑画面，实现退后台停止播放
     if (mPlayerManager != null)
         mPlayerManager.onBackground();
 }
@@ -548,9 +547,7 @@ protected void onResume() {
     log("【主页】onResume -> 回到前台");
     loadSettings();
     screenRatioManager.apply();
-    //前台重新绑定画面、恢复播放，解决黑屏
     if (mPlayerManager != null)
         mPlayerManager.onForeground();
- }
-    
+}
 }

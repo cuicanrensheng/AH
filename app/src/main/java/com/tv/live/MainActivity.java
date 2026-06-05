@@ -176,7 +176,7 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        // ===================== 【修复：分组点击只刷新，不自动播放】 =====================
+        // ===================== 【从新版本移植：分组点击只刷新不播放】 =====================
         lvGroup.setOnItemClickListener((parent, view, position, id) -> {
             lvGroup.setItemChecked(position, true);
             lvGroup.setSelection(position);
@@ -186,10 +186,9 @@ public class MainActivity extends AppCompatActivity {
                 if (nowSelectGroup.equals(c.getGroup()))
                     currentGroupChannelList.add(c);
             }
-            // 只刷新列表，不跳台
             channelListManager.setChannelsByGroup(channelSourceList, nowSelectGroup, currentPlayIndex);
         });
-        // ==============================================================================
+        // ==================================================================================
 
         channelListManager = new ChannelListManager(this, lvChannelList);
         channelListManager.setOnChannelClickListener(filterPos -> {
@@ -326,6 +325,7 @@ public class MainActivity extends AppCompatActivity {
         playChannel(idx);
     }
 
+    // ===================== 【从新版本移植：完整播放逻辑（含重定向+信息栏）】 =====================
     public void playChannel(int index) {
         if(channelSourceList.isEmpty()) return;
         index = Math.max(0, Math.min(index, channelSourceList.size() - 1));
@@ -384,6 +384,7 @@ public class MainActivity extends AppCompatActivity {
             tv_bitrate.setText(info.bitrate);
         }
     }
+    // ============================================================================================
 
     public void showChannelNum(int num) {
         tv_channel_num.setText(String.valueOf(num));

@@ -1,86 +1,50 @@
-package com.tv.live;
-
-import android.os.Handler;
-import android.os.Looper;
-import okhttp3.Call;
-import okhttp3.Callback;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.Response;
-import org.json.JSONObject;
-import org.json.JSONException;
-
-import java.io.IOException;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-
-public class HuyaParser {
-    private final OkHttpClient mHttpClient;
-
-    public interface OnParseResultListener {
-        void onSuccess(String realPlayUrl, int sourceType);
-        void onError(String errorMsg);
+public void playChannel(int index) {
+    if (channelSourceList == null || channelSourceList.isEmpty()) {
+        log("【播放】频道列表为空，无法播放");
+        return;
     }
-
-    public HuyaParser() {
-        mHttpClient = new OkHttpClient.Builder()
-                .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
-                .readTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
-                .build();
+    index = Math.max(0, Math.min(index, channelSourceList.size() - 1));
+    currentPlayIndex = index;
+    Channel ch = channelSourceList.get(index);
+    if (ch == null || TextUtils.isEmpty(ch.getPlayUrl())) {
+        log("【播放】频道地址为空");
+        return;
     }
-
-    public void parse(String roomId, final OnParseResultListener listener) {
-        new Thread(() -> {
-            try {
-                String realRoomId = extractRoomId(roomId);
-                String apiUrl = "https://api.huya.com/m_pay/play/getPlayInfo?roomId=" + realRoomId;
-                Request request = new Request.Builder()
-                        .url(apiUrl)
-                        .addHeader("User-Agent", "Mozilla/5.0 Android TV")
-                        .build();
-                mHttpClient.newCall(request).enqueue(new Callback() {
-                    @Override
-                    public void onFailure(Call call, IOException e) {
-                        runUiThread(() -> listener.onError("网络请求失败：" + e.getMessage()));
-                    }
-
-                    @Override
-                    public void onResponse(Call call, Response response) throws IOException {
-                        if (!response.isSuccessful()) {
-                            runUiThread(() -> listener.onError("接口返回异常"));
-                            return;
-                        }
-                        String resStr = response.body().string();
-
-                        try {
-                            JSONObject json = new JSONObject(resStr);
-                            String flvUrl = json.optString("dataUrl", "");
-                            if (flvUrl.isEmpty()) {
-                                runUiThread(() -> listener.onError("未获取到直播地址"));
-                            } else {
-                                runUiThread(() -> listener.onSuccess(flvUrl, 1));
-                            }
-                        } catch (JSONException e) {
-                            runUiThread(() -> listener.onError("JSON解析失败"));
-                        }
-                    }
-                });
-            } catch (Exception e) {
-                runUiThread(() -> listener.onError("解析异常：" + e.getMessage()));
+    String url = ch.getPlayUrl();
+    log("========================================");
+    log("【播放】频道名称：" + ch.getName());
+    log("【播放】频道地址：" + url);
+    log("【播放】当前索引：" + index);
+    log("========================================");
+    playerStateListener.setCurrentChannelName(ch.getName());
+    //=====虎牙新增代码开始=====
+    if (url != null && (url.contains("huya") || url.contains("jdshipin") || url.contains("zxyndc"))) {
+        new HuyaParser().parse(String.valueOf(extractRoomId(url)), new HuyaParser.OnParseResultListener() {
+            @Override
+            public void onSuccess(String playUrl, int type) {
+                mPlayerManager.playUrl(playUrl);
             }
-        }).start();
+            @Override
+            public void onError(String msg) {
+                mPlayerManager.playUrl(url);
+            }
+        });
+    } else {
+        mPlayerManager.playUrl(url);
     }
-
-    private String extractRoomId(String url) {
-        Pattern pattern = Pattern.compile("(\\d{5,12})");
-        Matcher matcher = pattern.matcher(url);
-        if (matcher.find()) {
-            return matcher.group(1);
-        }
-        return url;
-    }
-
-    private void runUiThread(Runnable runnable) {
-        new Handler(Looper.getMainLooper()).post(runnable);
+    //=====虎牙新增代码结束=====
+    showChannelNum(index + 1);
+    appConfig.setLastPlayIndex(index);
+    channelListManager.setChannels(channelSourceList, index);
+    epgManagerWrapper.refresh(ch, channelSourceList, currentSelectedDateIndex);
+    if (info_bar != null) {
+        info_bar.setVisibility(View.VISIBLE);
+        info_bar.removeCallbacks(hideInfoBar);
+        info_bar.postDelayed(hideInfoBar, 2000);
+        tv_channel_name.setText(ch.getName());
+        TVPlayerManager.LiveInfo live = mPlayerManager.getLiveInfo();
+        tv_tag_fhd.setText(live.quality);
+        tv_tag_audio.setText(live.audio);
+        tv_bitrate.setText(live.bitrate);
     }
 }

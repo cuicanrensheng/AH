@@ -226,38 +226,36 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         });
-        //【修复1：日期绑定回调，删除原有点击，改用manager回调实现日期刷新EPG+高亮】
+        // 找到这段代码，直接完整替换！
 dateListManager = new DateListManager(this, lvDate);
 dateListManager.initDate();
 dateListManager.setOnDateSelectedListener(pos->{
     currentSelectedDateIndex = pos;
-    // ===================== 【编译修复】修复 channelSource 笔误 → channelSourceList =====================
     if(!channelSourceList.isEmpty()){
-        // ===================== 【编译修复】修复 epgManager → epgManagerWrapper =====================
-        epgManagerWrapper.refresh(channelSourceList.get(currentPlayIndex),channelSourceList,pos);
+        epgManagerWrapper.refresh(channelSourceList.get(currentPlayIndex), channelSourceList, pos);
     }
 });
 
-        //【修复2：分组点击 移除自动切台，只更新右侧频道列表】
-        lvGroup.setOnItemClickListener(new AdapterView.OnItemClickListener() {
-            @Override
-            public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
-                lvGroup.setItemChecked(position, true);
-                lvGroup.setSelection(position);
-                //保存当前选中分组
-                nowSelectGroup = groupListManager.getCurrentGroup(position);
-                //筛选分组频道
-                currentGroupChannelList.clear();
-                for (Channel c : channelSourceList) {
-                    if (nowSelectGroup.equals(c.getGroup())) {
-                        currentGroupChannelList.add(c);
-                    }
-                }
-                //仅刷新列表，【取消自动播放第一个频道】
-                channelListManager.setChannelsByGroup(channelSourceList, nowSelectGroup, currentPlayIndex);
-            }
-        });
+// 【修复】点击分组 → 右侧频道列表强制刷新
+lvGroup.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+    @Override
+    public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
+        lvGroup.setItemChecked(position, true);
+        lvGroup.setSelection(position);
+        nowSelectGroup = groupListManager.getCurrentGroup(position);
 
+        // 【强制刷新】右侧频道列表
+        currentGroupChannelList.clear();
+        for (Channel c : channelSourceList) {
+            if (nowSelectGroup.equals(c.getGroup())) {
+                currentGroupChannelList.add(c);
+            }
+        }
+
+        // 刷新列表
+        channelListManager.setChannelsByGroup(channelSourceList, nowSelectGroup, currentPlayIndex);
+    }
+});
         //初始化频道点击回调，分组列表点击转全局索引
         channelListManager = new ChannelListManager(this, lvChannelList);
         channelListManager.setOnChannelClickListener(filterPos->{

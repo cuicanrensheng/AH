@@ -25,16 +25,28 @@ import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import com.google.android.exoplayer2.ui.PlayerView;
 import com.tv.live.config.AppConfig;
+import com.tv.live.config.UrlConfig;
 import com.tv.live.listener.PlayerStateListenerImpl;
 import com.tv.live.loader.LiveSourceLoader;
 import com.tv.live.manager.*;
+import com.tv.live.model.Channel;
+import com.tv.live.epg.EpgManager;
+import com.tv.live.player.PlayerGestureHelper;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
+
 /**
  * 直播主页主Activity
  * 核心逻辑：后台切出自动暂停、打开设置不暂停、屏蔽exo原生控制面板
+ * 功能修复点：
+ * 1. 日期选择回调修复：修正channelSource笔误、epgManager命名错误，实现日期切换刷新EPG+高亮
+ * 2. 分组点击逻辑修复：移除自动切台，仅更新右侧频道列表，保留当前播放频道
+ * 3. 分组常驻修复：加载直播源后保留上次选中分组，不重置为全部分组
+ * 4. 切台逻辑修复：切台时沿用当前分组，不重置全频道列表
+ * 5. 重定向处理：增加HTTP重定向解析，最多10次重定向，超时控制
+ * 6. 广播注册：新增刷新直播源/EPG、切换控制器显隐广播
  */
 public class MainActivity extends AppCompatActivity {
     // 全局单例
@@ -123,8 +135,11 @@ public class MainActivity extends AppCompatActivity {
     private static final long SLIDE_THRESHOLD = 80;
     // 全局日志缓存集合
     public static List<String> logList = new ArrayList<>();
+
     /**
      * 全局日志打印
+     * 功能：将日志添加到缓存列表（最多100条），并同步到设置页面
+     * @param msg 日志内容
      */
     public static void log(String msg) {
         logList.add(0, msg);
@@ -134,8 +149,11 @@ public class MainActivity extends AppCompatActivity {
         }
         SettingsActivity.log(msg);
     }
+
     /**
      * 广播：切换控制器显示（原生控制器已全局禁用）
+     * 动作：com.tv.live.TOGGLE_CONTROL
+     * 功能：反转控制器显隐状态，更新PlayerView的控制器使用状态
      */
     private BroadcastReceiver toggleControllerReceiver = new BroadcastReceiver() {
         @Override
@@ -144,8 +162,11 @@ public class MainActivity extends AppCompatActivity {
             playerView.setUseController(isControllerVisible);
         }
     };
+
     /**
      * 广播：刷新直播源+EPG数据源
+     * 动作：com.tv.live.REFRESH_LIVE_AND_EPG
+     * 功能：读取自定义配置地址，重新加载直播源和EPG数据，提示刷新成功
      */
     private BroadcastReceiver refreshReceiver = new BroadcastReceiver() {
         @Override
@@ -166,6 +187,7 @@ public class MainActivity extends AppCompatActivity {
             }
         }
     };
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -208,6 +230,7 @@ public class MainActivity extends AppCompatActivity {
         // 注册广播
         registerReceiver(toggleControllerReceiver, new IntentFilter("com.tv.live.TOGGLE_CONTROL"));
         registerReceiver(refreshReceiver, new IntentFilter("com.tv.live.REFRESH_LIVE_AND_EPG"));
+
         // EPG展开收起按钮
         btn_show_epg.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -226,17 +249,18 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         });
+
         //【修复1：日期绑定回调，删除原有点击，改用manager回调实现日期刷新EPG+高亮】
-dateListManager = new DateListManager(this, lvDate);
-dateListManager.initDate();
-dateListManager.setOnDateSelectedListener(pos->{
-    currentSelectedDateIndex = pos;
-    // ===================== 【编译修复】修复 channelSource 笔误 → channelSourceList =====================
-    if(!channelSourceList.isEmpty()){
-        // ===================== 【编译修复】修复 epgManager → epgManagerWrapper =====================
-        epgManagerWrapper.refresh(channelSourceList.get(currentPlayIndex),channelSourceList,pos);
-    }
-});
+        dateListManager = new DateListManager(this, lvDate);
+        dateListManager.initDate();
+        dateListManager.setOnDateSelectedListener(pos->{
+            currentSelectedDateIndex = pos;
+            // 修复 channelSource 笔误 → channelSourceList
+            if(!channelSourceList.isEmpty()){
+                // 修复 epgManager → epgManagerWrapper 命名错误
+                epgManagerWrapper.refresh(channelSourceList.get(currentPlayIndex),channelSourceList,pos);
+            }
+        });
 
         //【修复2：分组点击 移除自动切台，只更新右侧频道列表】
         lvGroup.setOnItemClickListener(new AdapterView.OnItemClickListener() {
@@ -258,7 +282,7 @@ dateListManager.setOnDateSelectedListener(pos->{
             }
         });
 
-        //初始化频道点击回调，分组列表点击转全局索引
+        //初始化频道点击回调，分组内下标转全局索引
         channelListManager = new ChannelListManager(this, lvChannelList);
         channelListManager.setOnChannelClickListener(filterPos->{
             //分组内下标转全局真实下标，杜绝串台
@@ -308,8 +332,10 @@ dateListManager.setOnDateSelectedListener(pos->{
         loadLiveAndEpg();
         //【移除原有initListViewClick冗余点击】
     }
+
     /**
      * 初始化信息栏控件
+     * 功能：绑定频道信息栏的所有TextView和ProgressBar控件
      */
     private void initInfoBar() {
         info_bar = findViewById(R.id.info_bar);
@@ -324,8 +350,10 @@ dateListManager.setOnDateSelectedListener(pos->{
         tv_next_program_name = findViewById(R.id.tv_next_program_name);
         tv_next_time_range = findViewById(R.id.tv_next_time_range);
     }
+
     /**
      * 读取本地配置项
+     * 功能：从SharedPreferences读取EPG开关、切台反转、数字选台、自动更新源配置
      */
     private void loadSettings() {
         SharedPreferences sp = getSharedPreferences("app_settings", Context.MODE_PRIVATE);
@@ -336,8 +364,10 @@ dateListManager.setOnDateSelectedListener(pos->{
         log("【设置】EPG开关：" + epg_enable);
         log("【设置】切台反转：" + channel_reverse);
     }
+
     /**
      * 返回键逻辑：先关闭侧边栏，再退出APP
+     * 优先级：侧边栏显示时关闭侧边栏 → 无侧边栏时执行默认返回逻辑
      */
     @Override
     public void onBackPressed() {
@@ -348,8 +378,13 @@ dateListManager.setOnDateSelectedListener(pos->{
             super.onBackPressed();
         }
     }
+
     /**
      * 加载直播源+EPG
+     * 流程：
+     * 1. 加载直播源，成功后更新频道列表、分组列表、当前分组频道
+     * 2. 加载EPG数据，成功后刷新当前频道的EPG节目单
+     * 3. 修复点：加载源后保留上次选中分组，不重置为全部分组
      */
     public void loadLiveAndEpg() {
         log("【直播源】开始加载直播源...");
@@ -388,6 +423,7 @@ dateListManager.setOnDateSelectedListener(pos->{
                 }
                 playChannel(currentPlayIndex);
             }
+
             @Override
             public void onError(String errorMsg) {
                 log("【直播源】加载失败：" + errorMsg);
@@ -410,8 +446,10 @@ dateListManager.setOnDateSelectedListener(pos->{
             }
         });
     }
+
     /**
      * 切上一个频道
+     * 功能：防重复点击（冷却时间300ms），根据反转开关切换上/下频道，调用playChannel播放
      */
     public void playPrev() {
         long now = System.currentTimeMillis();
@@ -421,8 +459,10 @@ dateListManager.setOnDateSelectedListener(pos->{
         int idx = channel_reverse ? switchManager.next() : switchManager.prev();
         playChannel(idx);
     }
+
     /**
      * 切下一个频道
+     * 功能：防重复点击（冷却时间300ms），根据反转开关切换下/上频道，调用playChannel播放
      */
     public void playNext() {
         long now = System.currentTimeMillis();
@@ -432,8 +472,16 @@ dateListManager.setOnDateSelectedListener(pos->{
         int idx = channel_reverse ? switchManager.prev() : switchManager.next();
         playChannel(idx);
     }
+
     /**
      * 根据下标播放指定频道
+     * 流程：
+     * 1. 校验频道列表非空、下标合法
+     * 2. 解析频道播放地址（处理HTTP重定向，最多10次）
+     * 3. 主线程调用播放器播放最终地址
+     * 4. 更新频道数字弹窗、保存播放下标、刷新EPG、显示频道信息栏
+     * 5. 修复点：切台时沿用当前分组，不重置全频道列表
+     * @param index 频道全局下标
      */
     public void playChannel(int index) {
         if (channelSourceList == null || channelSourceList.isEmpty()) {
@@ -517,6 +565,12 @@ dateListManager.setOnDateSelectedListener(pos->{
             tv_bitrate.setText(live.bitrate);
         }
     }
+
+    /**
+     * 解析虎牙房间ID（备用功能）
+     * @param url 虎牙直播地址
+     * @return 房间ID，解析失败返回0
+     */
     private int extractRoomId(String url) {
         try {
             if (url.contains("id=")) {
@@ -530,8 +584,10 @@ dateListManager.setOnDateSelectedListener(pos->{
         }
         return 0;
     }
+
     /**
      * 右上角显示频道数字，3秒消失
+     * @param num 频道编号（下标+1）
      */
     public void showChannelNum(int num) {
         tv_channel_num.setText(String.valueOf(num));
@@ -540,20 +596,31 @@ dateListManager.setOnDateSelectedListener(pos->{
             tv_channel_num.setVisibility(View.GONE);
         }, 3000);
     }
+
     /**
      * 侧边栏显隐切换
+     * 功能：调用PanelManager切换侧边栏显示状态，传入当前频道列表和播放下标
      */
     public void togglePanel() {
         panelManager.toggle(channelSourceList, currentPlayIndex);
     }
+
     /**
      * 打开设置页面
+     * 特性：不保留历史栈（FLAG_ACTIVITY_NO_HISTORY）
      */
     public void openSettings() {
         Intent intent = new Intent(this, SettingsActivity.class);
         intent.addFlags(Intent.FLAG_ACTIVITY_NO_HISTORY);
         startActivity(intent);
     }
+
+    /**
+     * 接收远程配置更新
+     * 功能：更新自定义直播源/EPG地址，重新加载数据
+     * @param liveUrl 新的直播源地址
+     * @param epgUrl 新的EPG地址
+     */
     public void onReceiveConfig(final String liveUrl, final String epgUrl) {
         AppConfig config = AppConfig.getInstance(this);
         config.setCustomUrls(liveUrl, epgUrl);
@@ -568,16 +635,23 @@ dateListManager.setOnDateSelectedListener(pos->{
             }
         });
     }
+
     /**
      * 遥控器按键分发
+     * 功能：优先交给KeyEventManager处理，处理成功则拦截事件
+     * @param keyCode 按键码
+     * @param event 按键事件
+     * @return 事件是否被处理
      */
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         if (keyEventManager.dispatchKey(keyCode)) return true;
         return super.onKeyDown(keyCode, event);
     }
+
     /**
      * APP切后台
+     * 功能：调用播放器管理器的后台暂停逻辑
      */
     @Override
     protected void onPause() {
@@ -586,8 +660,10 @@ dateListManager.setOnDateSelectedListener(pos->{
         if (mPlayerManager != null)
             mPlayerManager.onBackground();
     }
+
     /**
      * 从后台切回前台
+     * 功能：重新加载设置、应用屏幕比例、调用播放器前台恢复逻辑
      */
     @Override
     protected void onResume() {
@@ -598,8 +674,10 @@ dateListManager.setOnDateSelectedListener(pos->{
         if (mPlayerManager != null)
             mPlayerManager.onForeground();
     }
+
     /**
      * Activity销毁释放资源
+     * 流程：注销广播、释放播放器、清空单例
      */
     @Override
     protected void onDestroy() {

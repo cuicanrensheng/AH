@@ -127,9 +127,10 @@ public class TVPlayerManager {
         CookieManager.getInstance().setAcceptCookie(true);
     }
 
+    // 切后台：暂停播放 + 解绑View（满足你的需求）
     public void onBackground() {
         try {
-            if(player != null){
+            if (player != null) {
                 player.pause();
             }
             if (playerView != null) {
@@ -138,6 +139,7 @@ public class TVPlayerManager {
         } catch (Exception e) {}
     }
 
+    // 切前台：重新绑定 + 恢复播放（修复黑屏）
     public void onForeground() {
         try {
             if (player != null && playerView != null) {
@@ -145,15 +147,17 @@ public class TVPlayerManager {
                 player.play();
             }
         } catch (Exception e) {
-            if(!currentPlayUrl.isEmpty()){
+            if (!currentPlayUrl.isEmpty()) {
                 playUrl(currentPlayUrl);
             }
         }
     }
 
+    // 绑定View时 强制关闭控制器
     public void attachPlayerView(PlayerView view) {
         playerView = view;
         playerView.setPlayer(player);
+        playerView.setUseController(false); // 彻底隐藏系统控制器
     }
 
     private void updateWakeLock(boolean enable) {
@@ -167,6 +171,7 @@ public class TVPlayerManager {
         return "[" + logSdf.format(new Date()) + "]";
     }
 
+    // 请求头保持 ExoPlayer
     private Map<String, String> getHeaders(String url) {
         Map<String, String> headers = new HashMap<>();
         headers.put("User-Agent", "ExoPlayer");

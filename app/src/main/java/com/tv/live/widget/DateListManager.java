@@ -42,7 +42,6 @@ public class DateListManager {
             cal.add(Calendar.DAY_OF_YEAR, 1);
         }
 
-        // ===================== 【编译修复】替换为系统自带布局，解决 R 不存在错误 =====================
         dateAdapter = new ArrayAdapter<String>(context, android.R.layout.simple_list_item_1, dates) {
             @Override
             public View getView(int position, View convertView, ViewGroup parent) {

@@ -34,16 +34,11 @@ import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * 直播主页主Activity
- * 已实现：1.分组点击仅刷新频道、不自播；2.分组状态永久保留；3.日期切换实时刷新EPG；4.Exo控制器永久屏蔽；5.Epg列表可滑动
- */
-public class MainActivity {
+public class MainActivity extends AppCompatActivity {
     public static MainActivity mInstance;
     public List<Channel> channelSourceList = new ArrayList<>();
     public List<Channel> currentGroupChannelList = new ArrayList<>();
     public int currentPlayIndex = 0;
-    //保存当前选中分组，实现常驻不重置
     private String nowSelectGroup = "";
     private View panel_layout;
     public TVPlayerManager mPlayerManager;
@@ -91,7 +86,6 @@ public class MainActivity {
     public static void log(String msg) {
         logList.add(0, msg);
         while (logList.size() > 100) logList.remove(logList.size() - 1);
-        SettingsActivity.log(msg);
     }
 
     private BroadcastReceiver toggleControllerReceiver = new BroadcastReceiver() {
@@ -106,7 +100,7 @@ public class MainActivity {
     private BroadcastReceiver refreshReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
-            if ("com.tv.live.REFRESH_LIVE_AND_EPG".equals(intent)) {
+            if ("com.tv.live.REFRESH_LIVE_AND_EPG".equals(intent.getAction())) {
                 runOnUiThread(() -> {
                     loadSettings();
                     String customLive = appConfig.getCustomLiveUrl();
@@ -123,8 +117,6 @@ public class MainActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        log("【主页】onCreate -> 页面创建");
-        mInstance = this;
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
@@ -141,10 +133,7 @@ public class MainActivity {
         String customEpg = appConfig.getCustomEpgUrl();
         if (customLive != null) UrlConfig.LIVE_URL = customLive;
         if (customEpg != null) UrlConfig.EPG_URL = customEpg;
-        log("【配置】直播源：" + UrlConfig.LIVE_URL);
-        log("【配置】EPG：" + UrlConfig.EPG_URL);
 
-        //Exo控制器屏蔽代码（保留，滑动不会弹出播放栏）
         playerView = findViewById(R.id.player_view);
         playerView.setUseController(false);
         playerView.setControllerVisibilityListener(null);
@@ -170,15 +159,14 @@ public class MainActivity {
                 return;
             }
             epgPanelOpen = !epgPanelOpen;
-            lvDate.setVisibility(epgPanelOpen ? View.VISIBLE : View.GONE);
-            lvEpg.setVisibility(epgPanelOpen ? View.VISIBLE : View.GONE);
+            lvDate.setVisibility(epgPanelOpen ? View.VISIBLE : GONE);
+            lvEpg.setVisibility(epgPanelOpen ? View.VISIBLE : GONE);
             if (epgPanelOpen && !channelSourceList.isEmpty()) {
                 currentSelectedDateIndex = dateListManager.getSelectedPosition();
                 epgManagerWrapper.refresh(channelSourceList.get(currentPlayIndex), channelSourceList, currentSelectedDateIndex);
             }
         });
 
-        //日期选中回调：点击日期自动刷新EPG（核心修复）
         dateListManager = new DateListManager(this, lvDate);
         dateListManager.initDate();
         dateListManager.setOnDateSelectedListener(pos -> {
@@ -188,20 +176,17 @@ public class MainActivity {
             }
         });
 
-        //分组点击：只更新频道、禁止自动播放首频道（核心隔离修复）
         lvGroup.setOnItemClickListener((parent, view, position, id) -> {
             lvGroup.setItemChecked(position, true);
             lvGroup.setSelection(position);
-            nowSelectGroup = groupList.getCurrentGroup(position);
+            nowSelectGroup = groupListManager.getCurrentGroup(position);
             currentGroupChannelList.clear();
             for (Channel c : channelSourceList) {
                 if (nowSelectGroup.equals(c.getGroup())) currentGroupChannelList.add(c);
             }
-            //仅刷新列表，不自播
             channelListManager.setChannelsByGroup(channelSourceList, nowSelectGroup, currentPlayIndex);
         });
 
-        //频道点击：分组内下标转全局下标，杜绝串台
         channelListManager = new ChannelListManager(this, lvChannelList);
         channelListManager.setOnChannelClickListener(filterPos -> {
             if (filterPos >= 0 && filterPos < currentGroupChannelList.size()) {
@@ -222,7 +207,7 @@ public class MainActivity {
         mPlayerManager.attachPlayerView(playerView);
         playerStateListener = new PlayerStateListenerImpl(this);
         mPlayerManager.setOnPlayStateListener(playerStateListener);
-        mPlayerManager.setOnLiveInfoUpdate(info -> {
+        mPlayerManager.setOnLiveInfoUpdateListener(info -> {
             tv_tag_fhd.setText(info.quality);
             tv_tag_audio.setText(info.audio);
             tv_bitrate.setText(info.bitrate);
@@ -240,7 +225,6 @@ public class MainActivity {
         keyEventManager = new KeyEventManager(this);
         switchManager = ChannelSwitchManager.getInstance();
         currentPlayIndex = appConfig.getLastPlayIndex();
-        log("【播放】上次下标：" + currentPlayIndex);
         loadLiveAndEpg();
     }
 
@@ -263,115 +247,131 @@ public class MainActivity {
         channel_reverse = sp.getBoolean("channel_reverse", false);
         number_channel_enable = sp.getBoolean("number_channel_enable", true);
         auto_update_source = sp.getBoolean("auto_update_source", true);
-        log("【设置】EPG:" + epg_enable + " 切台反转:" + channel_reverse);
     }
 
     @Override
     public void onBackPressed() {
-        if (panel_layout.getVisibility() == View.VISIBLE) panel_layout.setVisibility(View.GONE);
-        else super.onBackPressed();
+        if (panel_layout.getVisibility() == View.VISIBLE) {
+            panel_layout.setVisibility(View.GONE);
+            playerView.requestFocus();
+        } else {
+            super.onBackPressed();
+        }
     }
 
     public void loadLiveAndEpg() {
-        log("【直播源开始加载】");
         LiveSourceLoader.getInstance(this).load(new LiveSourceLoader.LoadCallback() {
             @Override
             public void onSuccess(List<Channel> channels) {
-                log("加载成功:"+channels.size());
                 channelSourceList.clear();
                 channelSourceList.addAll(channels);
                 switchManager.setChannelList(channelSourceList);
                 switchManager.setCurrentIndex(currentPlayIndex);
                 groupListManager.setGroups(channelSourceList);
-                //加载保留上次分组，不会切全频道
+
                 if(!TextUtils.isEmpty(nowSelectGroup)){
                     currentGroupChannelList.clear();
-                    for(Channel ch:channelSourceList){
+                    for(Channel ch : channelSourceList){
                         if(ch.getGroup().equals(nowSelectGroup)) currentGroupChannelList.add(ch);
                     }
-                    channelListManager.setChannelsByGroup(channelSourceList,nowSelectGroup,currentPlayIndex);
+                    channelListManager.setChannelsByGroup(channelSourceList, nowSelectGroup, currentPlayIndex);
                 }else{
                     List<String> groups = groupListManager.getGroupList();
-                    if(groups!=null&&groups.size()>0){
-                        nowSelectGroup=groups.get(0);
+                    if(groups != null && groups.size() > 0){
+                        nowSelectGroup = groups.get(0);
                         currentGroupChannelList.clear();
-                        for(Channel ch:channelSourceList) if(ch.getGroup().equals(nowSelectGroup)) currentGroupChannelList.add(ch);
-                        channelListManager.setChannelsByGroup(channelSourceList,nowSelectGroup,currentPlayIndex);
-                    }else channelListManager.setChannels(channelSourceList,currentPlayIndex);
+                        for(Channel ch : channelSourceList) if(ch.getGroup().equals(nowSelectGroup)) currentGroupChannelList.add(ch);
+                        channelListManager.setChannelsByGroup(channelSourceList, nowSelectGroup, currentPlayIndex);
+                    }else {
+                        channelListManager.setChannels(channelSourceList, currentPlayIndex);
+                    }
                 }
                 playChannel(currentPlayIndex);
             }
+
             @Override
             public void onError(String err) {
-                log("加载失败:"+err);
-                Toast.makeText(MainActivity.this,err,Toast.LENGTH_SHORT).show();
+                Toast.makeText(MainActivity.this, err, Toast.LENGTH_SHORT).show();
             }
         });
-        log("EPG加载");
+
         EpgManager.getInstance().setEpgUrl(UrlConfig.EPG_URL);
         EpgManager.getInstance().loadEpg(() -> runOnUiThread(() -> {
-            if (!channelSource.isEmpty()) epgManagerWrapper.refresh(channelSourceList.get(currentPlayIndex),channelSourceList,currentSelectedDateIndex);
+            if (!channelSourceList.isEmpty()) {
+                epgManagerWrapper.refresh(channelSourceList.get(currentPlayIndex), channelSourceList, currentSelectedDateIndex);
+            }
         }));
     }
 
     public void playPrev() {
         long now = System.currentTimeMillis();
-        if(now-lastChannelChangeTime<CHANNEL_COOLDOWN) return;
-        lastChannelChangeTime=now;
-        int idx=channel_reverse?switchManager.next():switchManager.prev();
+        if(now - lastChannelChangeTime < CHANNEL_COOLDOWN) return;
+        lastChannelChangeTime = now;
+        int idx = channel_reverse ? switchManager.next() : switchManager.prev();
         playChannel(idx);
     }
+
     public void playNext() {
         long now = System.currentTimeMillis();
-        if(now-lastChannelChangeTime<CHANNEL_COOLDOWN) return;
-        lastChannelChangeTime=now;
-        int idx=channel_reverse?switchManager.prev():switchManager.next();
+        if(now - lastChannelChangeTime < CHANNEL_COOLDOWN) return;
+        lastChannelChangeTime = now;
+        int idx = channel_reverse ? switchManager.prev() : switchManager.next();
         playChannel(idx);
     }
 
     public void playChannel(int index) {
         if(channelSourceList.isEmpty()) return;
-        index=Math.max(0,Math.min(index,channelSourceList.size()-1));
-        currentPlayIndex=index;
-        Channel ch=channelSourceList.get(index);
+        index = Math.max(0, Math.min(index, channelSourceList.size() - 1));
+        currentPlayIndex = index;
+        Channel ch = channelSourceList.get(index);
         if(TextUtils.isEmpty(ch.getPlayUrl())) return;
-        final String original=ch.getPlayUrl();
+        final String original = ch.getPlayUrl();
+
         new Thread(()->{
-            String realUrl=original;
-            HttpURLConnection conn=null;
+            String realUrl = original;
+            HttpURLConnection conn = null;
             try{
                 for(int i=0;i<MAX_REDIRECT_COUNT;i++){
-                    URL u=new URL(realUrl);
-                    conn=(HttpURLConnection)u.openConnection();
+                    URL u = new URL(realUrl);
+                    conn = (HttpURLConnection) u.openConnection();
                     conn.setConnectTimeout(CONNECT_TIMEOUT);
                     conn.setReadTimeout(READ_TIMEOUT);
                     conn.setRequestMethod("GET");
-                    conn.setRequestProperty("User-Agent",DEF_UA);
-                    conn.setRequestProperty("Refer",DEF_REFER);
+                    conn.setRequestProperty("User-Agent", DEF_UA);
+                    conn.setRequestProperty("Referer", DEF_REFER);
                     conn.setInstanceFollowRedirects(false);
-                    int code=conn.getResponseCode();
-                    if(code==301||code==302){
-                        String loc=conn.getHeaderField("Location");
-                        if(loc!=null) realUrl=loc;
-                        conn.disconnect();conn=null;
+                    int code = conn.getResponseCode();
+                    if(code == 301 || code == 302){
+                        String loc = conn.getHeaderField("Location");
+                        if(loc != null) realUrl = loc;
+                        conn.disconnect(); conn = null;
                     }else break;
                 }
-            }catch(Exception e){}finally{if(conn!=null)conn.disconnect();}
-            String finalPlay=TextUtils.isEmpty(real)?original:real;
-            new Handler(Looper.getMainLooper()).post(()->mPlayerManager.playUrl(finalPlay));
+            }catch(Exception e){
+            }finally{
+                if(conn != null) conn.disconnect();
+            }
+            String finalPlay = TextUtils.isEmpty(realUrl) ? original : realUrl;
+            new Handler(Looper.getMainLooper()).post(()-> mPlayerManager.playUrl(finalPlay));
         }).start();
-        showChannelNum(index+1);
+
+        showChannelNum(index + 1);
         appConfig.setLastPlayIndex(index);
-        //切台不重置全频道，沿用当前分组
-        if(!TextUtils.isEmpty(nowSelectGroup)) channelListManager.setChannelsByGroup(channelSourceList,nowSelectGroup,index);
-        else channelListManager.setChannels(channelSourceList,index);
-        epgManagerWrapper.refresh(ch,channelSourceList,currentSelectedDateIndex);
-        if(info_bar!=null){
+
+        if(!TextUtils.isEmpty(nowSelectGroup)) {
+            channelListManager.setChannelsByGroup(channelSourceList, nowSelectGroup, index);
+        } else {
+            channelListManager.setChannels(channelSourceList, index);
+        }
+
+        epgManagerWrapper.refresh(ch, channelSourceList, currentSelectedDateIndex);
+
+        if(info_bar != null){
             info_bar.setVisibility(View.VISIBLE);
-            info.removeCallbacks(hideInfoBar);
-            info.postDelayed(hideInfoBar,2000);
+            info_bar.removeCallbacks(hideInfoBar);
+            info_bar.postDelayed(hideInfoBar, 2000);
             tv_channel_name.setText(ch.getName());
-            TVPlayerManager.Live info=mPlayerManager.getLiveInfo();
+            TVPlayerManager.LiveInfo info = mPlayerManager.getLiveInfo();
             tv_tag_fhd.setText(info.quality);
             tv_tag_audio.setText(info.audio);
             tv_bitrate.setText(info.bitrate);
@@ -381,23 +381,54 @@ public class MainActivity {
     public void showChannelNum(int num) {
         tv_channel_num.setText(String.valueOf(num));
         tv_channel_num.setVisibility(View.VISIBLE);
-        new Handler(Looper.getMainLooper()).postDelayed(()->tv_channel_num.setVisibility(View.GONE),3000);
+        new Handler(Looper.getMainLooper()).postDelayed(()-> tv_channel_num.setVisibility(View.GONE), 3000);
     }
-    public void togglePanel(){panelManager.toggle(channelSourceList,currentPlayIndex);}
-    public void openSettings(){startActivity(new Intent(this,SettingsActivity).addFlags(Intent.FLAG_ACTIVITY_NO_HISTORY));}
-    public void onReceiveConfig(String live,String epg){
-        appConfig.setCustomUrls(live,epg);
-        if(live!=null)UrlConfig.LIVE_URL=live;
-        if(epg!=null)UrlConfig.EPG_URL=epg;
-        runOnUiThread(()->loadLiveAndEpg());
+
+    public void togglePanel(){
+        panelManager.toggle(channelSourceList, currentPlayIndex);
     }
+
+    public void openSettings(){
+        Intent intent = new Intent(this, SettingsActivity.class);
+        intent.addFlags(Intent.FLAG_ACTIVITY_NO_HISTORY);
+        startActivity(intent);
+    }
+
+    public void onReceiveConfig(final String liveUrl, final String epgUrl){
+        appConfig.setCustomUrls(liveUrl, epgUrl);
+        if(liveUrl != null) UrlConfig.LIVE_URL = liveUrl;
+        if(epgUrl != null) UrlConfig.EPG_URL = epgUrl;
+        runOnUiThread(this::loadLiveAndEpg);
+    }
+
     @Override
-    public boolean onKeyDown(int kc,KeyEvent e){if(keyEventManager.dispatchKey(kc))return true;return super.onKeyDown(kc,e);}
-    @Override protected void onPause(){super.onPause();if(mPlayerManager!=null)mPlayerManager.onBackground();}
-    @Override protected void onResume(){super.onResume();loadSettings();screenRatioManager.apply();if(mPlayerManager!=null)mPlayerManager.onForeground();}
-    @Override protected void onDestroy(){
+    public boolean onKeyDown(int keyCode, KeyEvent event) {
+        if (keyEventManager.dispatchKey(keyCode)) return true;
+        return super.onKeyDown(keyCode, event);
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        if(mPlayerManager != null) mPlayerManager.onBackground();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        loadSettings();
+        screenRatioManager.apply();
+        if(mPlayerManager != null) mPlayerManager.onForeground();
+    }
+
+    @Override
+    protected void onDestroy() {
         super.onDestroy();
-        try{unregisterReceiver(toggleControllerReceiver);unregisterReceiver(refreshReceiver);}catch(Exception e){}
-        if(mPlayerManager!=null)mPlayerManager.release();mInstance=null;
+        try {
+            unregisterReceiver(toggleControllerReceiver);
+            unregisterReceiver(refreshReceiver);
+        } catch (Exception e) {}
+        if(mPlayerManager != null) mPlayerManager.release();
+        mInstance = null;
     }
 }

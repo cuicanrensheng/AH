@@ -69,11 +69,14 @@ public class MainActivity extends AppCompatActivity {
     private TextView tv_channel_num;
 
     // ==========================
-    // 10次重定向（完美支持虎牙）
+    // 10次重定向（完美支持虎牙）+超时配置
     // ==========================
     private static final int MAX_REDIRECT_COUNT = 10;
     private static final int CONNECT_TIMEOUT = 8000;
     private static final int READ_TIMEOUT = 8000;
+    // 统一UA和播放器保持一致 ExoPlayer
+    private static final String DEF_UA = "ExoPlayer";
+    private static final String DEF_REFER = "https://www.huya.com/";
 
     private final Runnable hideInfoBar = new Runnable() {
         @Override
@@ -359,7 +362,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // ==========================
-    // 【完美优化版】虎牙自动解析 + 10重定向 + 防拦截 + 不崩溃
+    // 【优化】全链路UA统一ExoPlayer、10重定向、防拦截、失败兜底
     // ==========================
     public void playChannel(int index) {
         if (channelSourceList == null || channelSourceList.isEmpty()) {
@@ -397,9 +400,9 @@ public class MainActivity extends AppCompatActivity {
                     conn.setReadTimeout(READ_TIMEOUT);
                     conn.setRequestMethod("GET");
 
-                    // ✅ 防虎牙防盗链
-                    conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36");
-                    conn.setRequestProperty("Referer", "https://www.huya.com/");
+                    // ✅ UA同步ExoPlayer，和播放器完全一致
+                    conn.setRequestProperty("User-Agent", DEF_UA);
+                    conn.setRequestProperty("Referer", DEF_REFER);
                     conn.setRequestProperty("Origin", "https://www.huya.com");
                     conn.setRequestProperty("Icy-MetaData", "1");
                     conn.setRequestProperty("Accept", "*/*");
@@ -530,24 +533,24 @@ public class MainActivity extends AppCompatActivity {
         if (mPlayerManager != null)
             mPlayerManager.onBackground();
     }
-
     @Override
-    protected void onResume() {
-        super.onResume();
-        log("【主页】onResume -> 回到前台");
-        loadSettings();
-        screenRatioManager.apply();
-        if (mPlayerManager != null)
-            mPlayerManager.onForeground();
-    }
+protected void onPause() {
+    super.onPause();
+    log("【主页】onPause -> 切到后台");
+    //后台暂停播放+解绑画面，实现退后台停止播放
+    if (mPlayerManager != null)
+        mPlayerManager.onBackground();
+}
 
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        log("【主页】onDestroy -> 页面销毁");
-        try { unregisterReceiver(toggleControllerReceiver); } catch (Exception ignored) {}
-        try { unregisterReceiver(refreshReceiver); } catch (Exception ignored) {}
-        mPlayerManager.release();
-        mInstance = null;
-    }
+@Override
+protected void onResume() {
+    super.onResume();
+    log("【主页】onResume -> 回到前台");
+    loadSettings();
+    screenRatioManager.apply();
+    //前台重新绑定画面、恢复播放，解决黑屏
+    if (mPlayerManager != null)
+        mPlayerManager.onForeground();
+ }
+    
 }

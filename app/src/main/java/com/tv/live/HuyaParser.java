@@ -1,191 +1,171 @@
-package com.tv.live.util;
-
-import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
-import android.text.TextUtils;
 
 import org.json.JSONArray;
-import org.json.JSONException;
 import org.json.JSONObject;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-import okhttp3.Call;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
 
-/**
- * 虎牙直播间 + 一起看影视 源解析工具
- * 自动签名 wsSecret / wsTime / seqid，自动区分普通直播 & 一起看房间
- */
 public class HuyaParser {
-    private static final ExecutorService mExecutor = Executors.newSingleThreadExecutor();
-    private static final OkHttpClient mClient = new OkHttpClient();
-    private static final Handler mMainHandler = new Handler(Looper.getMainLooper());
 
-    private static final String API_ROOM_INFO = "https://www.huya.com/cache.mini-global-%d.json";
-    private static final String API_PLAY_URL = "https://api.huya.com/m_push/%d";
+    private final OkHttpClient client = new OkHttpClient();
+    private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private final Handler handler = new Handler(Looper.getMainLooper());
+
+    private OnParseResultListener listener;
 
     public interface OnParseResultListener {
-        void onSuccess(String hlsUrl, String flvUrl, boolean isTogetherWatch);
-        void onFailed(String errorMsg);
+        void onSuccess(String url, int type);
+        void onError(String msg);
     }
 
-    /**
-     * 入口：根据房间号解析播放源
-     */
-    public static void parse(int roomId, OnParseResultListener listener) {
+    public void parse(int roomId, OnParseResultListener listener) {
+        this.listener = listener;
         if (roomId <= 0) {
-            listener.onFailed("房间号不合法");
+            sendError("房间号错误");
             return;
         }
-        mExecutor.execute(() -> getRoomInfo(roomId, listener));
+        executor.execute(() -> {
+            try {
+                String[] result = getPlayUrl(roomId);
+                if (result != null && result.length >= 2) {
+                    String realUrl = getFinalRedirectUrl(result[0]);
+                    sendSuccess(realUrl, Integer.parseInt(result[1]));
+                } else {
+                    sendError("解析失败，未开播或房间不存在");
+                }
+            } catch (Exception e) {
+                sendError("解析异常：" + e.getMessage());
+            }
+        });
     }
 
-    private static void getRoomInfo(int roomId, OnParseResultListener listener) {
-        String url = String.format(API_ROOM_INFO, roomId);
-        Map<String, String> headers = getBaseHeaders();
+    private String getFinalRedirectUrl(String url) {
+        try {
+            URL obj = new URL(url);
+            HttpURLConnection conn = (HttpURLConnection) obj.openConnection();
+            conn.setRequestMethod("GET");
+            conn.setInstanceFollowRedirects(false);
+            conn.setConnectTimeout(10000);
+            conn.setReadTimeout(10000);
+            conn.setRequestProperty("User-Agent", "ExoPlayer");
 
-        Request request = new Request.Builder()
-                .url(url)
-                .headers(okhttp3.Headers.of(headers))
-                .get()
-                .build();
-
-        try (Response response = mClient.newCall(request).execute()) {
-            if (!response.isSuccessful() || response.body() == null) {
-                postFailed(listener, "请求房间信息失败");
-                return;
-            }
-            String resStr = response.body().string();
-            JSONObject json = new JSONObject(resStr);
-
-            boolean isTogetherWatch = json.optInt("isVideoRoom", 0) == 1;
-            String streamName = json.optString("stream", "");
-            String uid = json.optString("uid", "");
-
-            if (TextUtils.isEmpty(streamName) || TextUtils.isEmpty(uid)) {
-                postFailed(listener, "房间未开播或无流信息");
-                return;
-            }
-
-            long wsTime = System.currentTimeMillis() / 1000;
-            String wsSecret = calcSecret(uid, streamName, wsTime);
-            getPlaySource(roomId, streamName, wsTime, wsSecret, isTogetherWatch, listener);
-
-        } catch (IOException | JSONException e) {
-            e.printStackTrace();
-            postFailed(listener, "解析数据异常：" + e.getMessage());
-        }
-    }
-
-    private static void getPlaySource(int roomId, String streamName, long wsTime, String wsSecret,
-                                      boolean isTogetherWatch, OnParseResultListener listener) {
-        StringBuilder apiUrl = new StringBuilder(String.format(API_PLAY_URL, roomId));
-        apiUrl.append("?m=8&do=hd&uid=").append(streamName)
-                .append("&wsSecret=").append(wsSecret)
-                .append("&wsTime=").append(wsTime)
-                .append("&fm=57&ver=2108191723&tx=").append(System.currentTimeMillis());
-
-        if (isTogetherWatch) {
-            apiUrl.append("&seqid=").append(System.currentTimeMillis());
-        }
-
-        Map<String, String> headers = getBaseHeaders();
-        Request request = new Request.Builder()
-                .url(apiUrl.toString())
-                .headers(okhttp3.Headers.of(headers))
-                .get()
-                .build();
-
-        try (Response response = mClient.newCall(request).execute()) {
-            if (!response.isSuccessful() || response.body() == null) {
-                postFailed(listener, "获取播放源失败");
-                return;
-            }
-            String resStr = response.body().string();
-            JSONObject json = new JSONObject(resStr);
-            JSONArray streamArray = json.optJSONArray("data");
-            if (streamArray == null || streamArray.length() == 0) {
-                postFailed(listener, "暂无可用播放流");
-                return;
-            }
-
-            String hlsUrl = "";
-            String flvUrl = "";
-            for (int i = 0; i < streamArray.length(); i++) {
-                JSONObject item = streamArray.getJSONObject(i);
-                String url = item.optString("url", "");
-                if (TextUtils.isEmpty(url)) continue;
-
-                if (url.contains(".m3u8")) {
-                    hlsUrl = url;
-                } else if (url.contains(".flv")) {
-                    flvUrl = url;
+            int code = conn.getResponseCode();
+            if (code == 301 || code == 302) {
+                String location = conn.getHeaderField("Location");
+                if (location != null && !location.trim().isEmpty()) {
+                    conn.disconnect();
+                    return getFinalRedirectUrl(location);
                 }
             }
-
-            postSuccess(listener, hlsUrl, flvUrl, isTogetherWatch);
-
-        } catch (IOException | JSONException e) {
+            conn.disconnect();
+        } catch (Exception e) {
             e.printStackTrace();
-            postFailed(listener, "播放源解析异常：" + e.getMessage());
+        }
+        return url;
+    }
+
+    private String[] getPlayUrl(int roomId) throws Exception {
+        String roomInfo = getRoomInfo(roomId);
+        if (roomInfo == null || roomInfo.isEmpty()) return null;
+
+        JSONObject roomObj = new JSONObject(roomInfo);
+        JSONObject data = roomObj.optJSONObject("data");
+        if (data == null) return null;
+
+        int videoRoom = data.optInt("isVideoRoom", 0);
+        String streamName = data.optString("streamName");
+        long uid = data.optLong("uid", 111111L);
+
+        String wsTime = Long.toHexString(System.currentTimeMillis() / 1000);
+        String wsSecret = md5(uid + streamName + wsTime + "97b64242aa187a74");
+
+        String url;
+        if (videoRoom == 1) {
+            url = "https://m.huya.com/" + roomId;
+        } else {
+            url = "https://api.huya.com/m_push/" + roomId +
+                    "?wsSecret=" + wsSecret +
+                    "&wsTime=" + wsTime +
+                    "&u=" + uid;
+        }
+
+        String playBody = requestGet(url);
+        JSONObject playJson = new JSONObject(playBody);
+        JSONArray array = playJson.optJSONArray("data");
+        if (array == null || array.length() == 0) return null;
+
+        JSONObject item = array.optJSONObject(0);
+        String flv = item.optString("flv");
+        if (flv.isEmpty()) flv = item.optString("m3u8");
+        return new String[]{flv, videoRoom + ""};
+    }
+
+    private String getRoomInfo(int roomId) throws Exception {
+        String url = "https://cdn.huya.com/cache/mini-global-" + roomId + ".json";
+        return requestGet(url);
+    }
+
+    private String requestGet(String url) throws Exception {
+        Request request = new Request.Builder()
+                .url(url)
+                .headers(getHeaders())
+                .get()
+                .build();
+        try (Response response = client.newCall(request).execute()) {
+            if (!response.isSuccessful()) throw new Exception("请求失败");
+            return response.body().string();
         }
     }
 
-    /**
-     * 计算 wsSecret MD5 签名
-     */
-    private static String calcSecret(String uid, String stream, long time) {
-        String raw = uid + stream + time + "97b64242aa187a74";
-        return md5(raw).toLowerCase();
+    // 已改为：ExoPlayer
+    private Map<String, String> getHeaders() {
+        Map<String, String> headers = new HashMap<>();
+        headers.put("User-Agent", "ExoPlayer");
+        headers.put("Referer", "https://m.huya.com/");
+        headers.put("Accept", "application/json, text/plain");
+        return headers;
     }
 
-    private static String md5(String str) {
+    private String md5(String str) {
         try {
             MessageDigest md = MessageDigest.getInstance("MD5");
-            byte[] bytes = md.digest(str.getBytes(StandardCharsets.UTF_8));
+            byte[] bytes = md.digest(str.getBytes("UTF-8"));
             StringBuilder sb = new StringBuilder();
             for (byte b : bytes) {
-                int val = b & 0xff;
-                if (val < 16) sb.append("0");
-                sb.append(Integer.toHexString(val));
+                String hex = Integer.toHexString(b & 0xFF);
+                if (hex.length() == 1) sb.append("0");
+                sb.append(hex);
             }
             return sb.toString();
-        } catch (NoSuchAlgorithmException e) {
+        } catch (Exception e) {
             return "";
         }
     }
 
-    private static Map<String, String> getBaseHeaders() {
-        Map<String, String> headers = new HashMap<>();
-        headers.put("User-Agent", "Mozilla/5.0 (Linux; Android 10; TV) AppleWebKit/537.36 Chrome/114.0.0.0 Safari/537.36");
-        headers.put("Referer", "https://www.huya.com/");
-        headers.put("Origin", "https://www.huya.com");
-        return headers;
+    private void sendSuccess(final String url, final int type) {
+        handler.post(() -> {
+            if (listener != null) listener.onSuccess(url, type);
+        });
     }
 
-    private static void postSuccess(OnParseResultListener listener, String hls, String flv, boolean isTogether) {
-        mMainHandler.post(() -> listener.onSuccess(hls, flv, isTogether));
+    private void sendError(final String msg) {
+        handler.post(() -> {
+            if (listener != null) listener.onError(msg);
+        });
     }
 
-    private static void postFailed(OnParseResultListener listener, String msg) {
-        mMainHandler.post(() -> listener.onFailed(msg));
-    }
-
-    /**
-     * 释放线程池（Activity onDestroy 调用）
-     */
-    public static void release() {
-        mExecutor.shutdownNow();
+    public void release() {
+        executor.shutdown();
     }
 }

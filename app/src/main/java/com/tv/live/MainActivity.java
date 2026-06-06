@@ -11,6 +11,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.text.TextUtils;
 import android.view.KeyEvent;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.ListView;
@@ -45,6 +46,7 @@ public class MainActivity extends AppCompatActivity {
     private ScreenRatioManager screenRatioManager;
     private LivePanelManager.PanelManager panelManager;
     private GestureManager gestureManager;
+    private PlayerGestureHelper gestureHelper;
     private KeyEventManager keyEventManager;
     private LivePanelManager.ChannelListManager channelListManager;
     private LivePanelManager.GroupListManager groupListManager;
@@ -134,8 +136,8 @@ public class MainActivity extends AppCompatActivity {
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         getWindow().getDecorView().setSystemUiVisibility(
                 View.SYSTEM_UI_FLAG_FULLSCREEN |
-                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
-                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                        View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
+                        View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
         );
 
         setContentView(R.layout.activity_main);
@@ -231,11 +233,10 @@ public class MainActivity extends AppCompatActivity {
         screenRatioManager = new ScreenRatioManager(mPlayerManager, appConfig);
         screenRatioManager.apply();
 
-        // 手势管理（完全适配你现有的类）
+        // ========== 手势初始化（修复版）==========
         gestureManager = new GestureManager(this);
-        PlayerGestureHelper gestureHelper = gestureManager.create();
+        gestureHelper = gestureManager.create();
 
-        // 屏蔽控制器 + 手势正常工作
         playerView.setOnTouchListener((v, event) -> {
             gestureHelper.handleTouch(event);
             return false;
@@ -403,7 +404,6 @@ public class MainActivity extends AppCompatActivity {
                 if (conn != null) conn.disconnect();
             }
 
-            // 修复 lambda 变量必须 final
             final String realPlayUrl = TextUtils.isEmpty(finalUrl) ? originalUrl : finalUrl;
             new Handler(Looper.getMainLooper()).post(() -> {
                 mPlayerManager.playUrl(realPlayUrl);
@@ -437,9 +437,32 @@ public class MainActivity extends AppCompatActivity {
         runOnUiThread(this::loadLiveAndEpg);
     }
 
+    // ========== 遥控器按键支持（修复版）==========
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
-        if (keyEventManager.dispatchKey(keyCode)) return true;
+        if (keyEventManager.dispatchKey(keyCode)) {
+            return true;
+        }
+
+        switch (keyCode) {
+            case KeyEvent.KEYCODE_DPAD_UP:
+            case KeyEvent.KEYCODE_CHANNEL_UP:
+                playPrev();
+                return true;
+            case KeyEvent.KEYCODE_DPAD_DOWN:
+            case KeyEvent.KEYCODE_CHANNEL_DOWN:
+                playNext();
+                return true;
+            case KeyEvent.KEYCODE_DPAD_CENTER:
+            case KeyEvent.KEYCODE_ENTER:
+                togglePanel();
+                return true;
+            case KeyEvent.KEYCODE_MENU:
+            case KeyEvent.KEYCODE_HELP:
+                openSettings();
+                return true;
+        }
+
         return super.onKeyDown(keyCode, event);
     }
 
@@ -466,6 +489,5 @@ public class MainActivity extends AppCompatActivity {
         mInstance = null;
     }
 
-    public void playUrl(String url) {
-    }
+    public void playUrl(String url) {}
 }

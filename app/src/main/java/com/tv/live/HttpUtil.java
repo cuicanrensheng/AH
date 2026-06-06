@@ -1,4 +1,4 @@
-package com.tv.live.util;
+package com.tv.live;
 
 import java.io.BufferedReader;
 import java.io.InputStream;

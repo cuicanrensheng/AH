@@ -2,6 +2,7 @@ package com.tv.live.manager;
 
 import android.os.Handler;
 import android.os.Looper;
+import android.view.View;
 import android.widget.TextView;
 import android.text.TextUtils;
 import com.tv.live.Channel;
@@ -44,7 +45,7 @@ public class PlayControlManager {
 
     public void showChannelNum(int num, long delay) {
         tv_channel_num.setText(String.valueOf(num));
-        tv_channel_num.setVisibility(android.view.View.VISIBLE);
+        tv_channel_num.setVisibility(View.VISIBLE);
         new Handler(Looper.getMainLooper()).postDelayed(() -> {
             tv_channel_num.setVisibility(View.GONE);
         }, delay);

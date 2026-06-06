@@ -66,7 +66,7 @@ public class MainActivity extends AppCompatActivity {
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
         setContentView(R.layout.activity_main);
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        getWindow().addFlags(WindowManager.FLAG_KEEP_SCREEN_ON);
 
         tv_channel_num = findViewById(R.id.tv_channel_num);
         panel_layout = findViewById(R.id.panel_layout);
@@ -80,7 +80,8 @@ public class MainActivity extends AppCompatActivity {
         TextView btn_show_epg = findViewById(R.id.btn_show_epg);
 
         appConfig = AppConfig.getInstance(this);
-        settingsManager = new SettingsManager(this);
+        settingsManager = SettingsManager.getInstance(this);
+
         applyCustomUrls();
 
         broadcastManager = new BroadcastManager(this);
@@ -104,7 +105,6 @@ public class MainActivity extends AppCompatActivity {
         switchManager = ChannelSwitchManager.getInstance();
         currentPlayIndex = appConfig.getLastPlayIndex();
 
-        // ✅ 修复：删除 switchManager 参数
         playControlManager = new PlayControlManager(this, mPlayerManager, appConfig,
                 tv_channel_num, infoBarManager, epgManagerWrapper, settingsManager, currentSelectedDateIndex);
 
@@ -265,4 +265,9 @@ public class MainActivity extends AppCompatActivity {
     public void setNowSelectGroup(String group) { this.nowSelectGroup = group; }
     public void setPlayerManager(TVPlayerManager manager) { this.mPlayerManager = manager; }
     public void setScreenRatioManager(ScreenRatioManager manager) { this.screenRatioManager = manager; }
+
+    // 给外部调用的播放方法
+    public void playChannel(int position) {
+        playControlManager.playChannel(position, channelSourceList);
+    }
 }

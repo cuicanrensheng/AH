@@ -11,6 +11,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.text.TextUtils;
 import android.view.KeyEvent;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.ListView;
@@ -21,6 +22,8 @@ import androidx.appcompat.app.AppCompatActivity;
 import com.google.android.exoplayer2.ui.PlayerView;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Timer;
+import java.util.TimerTask;
 
 import com.tv.live.config.AppConfig;
 import com.tv.live.manager.GestureManager;
@@ -32,8 +35,11 @@ import com.tv.live.loader.LiveSourceLoader;
 
 /**
  * 直播播放器主页面
- * 本次修改需求：只屏蔽Exo原生控制器弹出，自定义手势（音量/亮度/快进）全部保留可用
- * 历史配置：分组列表点击只刷新频道列表，不会自动切台播放；遥控器按键全部正常
+ * 本次修改需求：
+ * 1. 只屏蔽Exo原生控制器弹出，自定义手势（音量/亮度/快进）全部保留可用
+ * 2. 修复并增加交互逻辑：
+ *    - 电视：上下方向键/数字键切台、OK键选频道、菜单/帮助键/长按OK键打开设置
+ *    - 手机：上下滑动切台、单击选频道、双击/长按打开设置、滑动对应方向键
  */
 public class MainActivity extends AppCompatActivity {
 
@@ -124,11 +130,27 @@ public class MainActivity extends AppCompatActivity {
     private static final int READ_TIMEOUT = 8000;
     // 切台冷却防重复点击时间
     private static final long CHANNEL_COOLDOWN = 300;
+    // 手机滑动切台判定阈值（像素）
+    private static final int SWIPE_CHANNEL_THRESHOLD = 100;
+    // 双击判定时间间隔
+    private static final long DOUBLE_CLICK_TIME = 300;
+    // 长按判定时间
+    private static final long LONG_CLICK_TIME = 500;
 
     // 自动隐藏顶部信息栏任务
     private final Runnable hideInfoBar = () -> info_bar.setVisibility(View.GONE);
     // 上次切台时间戳
     private long lastChannelChangeTime = 0;
+
+    //===================== 手机触摸交互变量 =====================
+    // 触摸起始坐标
+    private float touchStartX, touchStartY;
+    // 上次点击时间（双击判定）
+    private long lastClickTime = 0;
+    // 长按计时器
+    private Timer longClickTimer;
+    // 长按触发标记
+    private boolean isLongClickTriggered = false;
 
     // APP运行日志存储
     public static List<String> logList = new ArrayList<>();
@@ -297,12 +319,86 @@ public class MainActivity extends AppCompatActivity {
 
         /**
          * 1.gestureHelper.handleTouch(event)：执行自定义手势逻辑，滑动调节音量、亮度、进退正常生效
-         * 2.return true：触摸事件被自定义手势消费，不会传递给Exo原生控件，彻底屏蔽单击弹出控制器
-         * 3.上方已执行playerView.setUseController(false)，从根源关闭Exo控制器组件
+         * 2.新增手机触摸交互逻辑：滑动切台、单击/双击/长按事件
+         * 3.保留原有手势逻辑，仅增加交互判断
          */
         playerView.setOnTouchListener((v, event) -> {
+            // 先执行原有自定义手势（音量/亮度/快进）
             gestureHelper.handleTouch(event);
-            return false;
+
+            switch (event.getAction()) {
+                case MotionEvent.ACTION_DOWN:
+                    // 记录触摸起始坐标
+                    touchStartX = event.getX();
+                    touchStartY = event.getY();
+                    // 重置长按标记
+                    isLongClickTriggered = false;
+                    // 启动长按计时器
+                    longClickTimer = new Timer();
+                    longClickTimer.schedule(new TimerTask() {
+                        @Override
+                        public void run() {
+                            runOnUiThread(() -> {
+                                isLongClickTriggered = true;
+                                // 长按触发：打开设置页面
+                                openSettings();
+                            });
+                        }
+                    }, LONG_CLICK_TIME);
+                    break;
+
+                case MotionEvent.ACTION_MOVE:
+                    // 计算滑动距离
+                    float deltaX = event.getX() - touchStartX;
+                    float deltaY = event.getY() - touchStartY;
+
+                    // 上下滑动超过阈值：切换频道
+                    if (Math.abs(deltaY) > SWIPE_CHANNEL_THRESHOLD && Math.abs(deltaY) > Math.abs(deltaX)) {
+                        long now = System.currentTimeMillis();
+                        if (now - lastChannelChangeTime > CHANNEL_COOLDOWN) {
+                            lastChannelChangeTime = now;
+                            if (deltaY < 0) {
+                                // 向上滑动：上一个频道
+                                playPrev();
+                            } else {
+                                // 向下滑动：下一个频道
+                                playNext();
+                            }
+                            // 取消长按计时器
+                            if (longClickTimer != null) {
+                                longClickTimer.cancel();
+                                longClickTimer = null;
+                            }
+                        }
+                    }
+                    break;
+
+                case MotionEvent.ACTION_UP:
+                case MotionEvent.ACTION_CANCEL:
+                    // 取消长按计时器
+                    if (longClickTimer != null) {
+                        longClickTimer.cancel();
+                        longClickTimer = null;
+                    }
+
+                    // 未触发长按：处理点击/双击
+                    if (!isLongClickTriggered) {
+                        long currentTime = System.currentTimeMillis();
+                        if (currentTime - lastClickTime < DOUBLE_CLICK_TIME) {
+                            // 双击：打开设置页面（对应电视菜单/帮助键）
+                            openSettings();
+                            lastClickTime = 0;
+                        } else {
+                            // 单击：切换频道列表面板（对应电视OK键）
+                            togglePanel();
+                            lastClickTime = currentTime;
+                        }
+                    }
+                    break;
+            }
+
+            // 消费触摸事件，防止传递给Exo控制器
+            return true;
         });
 
         // 遥控器按键管理初始化
@@ -546,14 +642,24 @@ public class MainActivity extends AppCompatActivity {
 
     /**
      * 遥控器按键分发回调，修复方法名dispatch→dispatchKey
+     * 新增：支持帮助键、长按OK键打开设置，数字键切台
      */
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
+        // 优先处理按键管理器逻辑
         if (keyEventManager.dispatchKey(keyCode)) {
             return true;
         }
 
+        // 处理长按OK键
+        if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER && event.getRepeatCount() > 0) {
+            // 长按OK键：打开设置
+            openSettings();
+            return true;
+        }
+
         switch (keyCode) {
+            // 电视上下方向键/频道键：切换频道
             case KeyEvent.KEYCODE_DPAD_UP:
             case KeyEvent.KEYCODE_CHANNEL_UP:
                 playPrev();
@@ -562,15 +668,58 @@ public class MainActivity extends AppCompatActivity {
             case KeyEvent.KEYCODE_CHANNEL_DOWN:
                 playNext();
                 return true;
+            // 电视OK键：打开/关闭频道列表
             case KeyEvent.KEYCODE_DPAD_CENTER:
             case KeyEvent.KEYCODE_ENTER:
-                togglePanel();
+                // 短按OK键：切换面板
+                if (event.getRepeatCount() == 0) {
+                    togglePanel();
+                }
                 return true;
+            // 电视菜单/帮助键：打开设置
             case KeyEvent.KEYCODE_MENU:
+            case KeyEvent.KEYCODE_HELP:
                 openSettings();
+                return true;
+            // 数字键1-9：直接切换对应编号频道
+            case KeyEvent.KEYCODE_0:
+            case KeyEvent.KEYCODE_1:
+            case KeyEvent.KEYCODE_2:
+            case KeyEvent.KEYCODE_3:
+            case KeyEvent.KEYCODE_4:
+            case KeyEvent.KEYCODE_5:
+            case KeyEvent.KEYCODE_6:
+            case KeyEvent.KEYCODE_7:
+            case KeyEvent.KEYCODE_8:
+            case KeyEvent.KEYCODE_9:
+                long now = System.currentTimeMillis();
+                if (now - lastChannelChangeTime > CHANNEL_COOLDOWN) {
+                    lastChannelChangeTime = now;
+                    int channelNum = keyCode - KeyEvent.KEYCODE_0;
+                    // 数字0对应第10频道（可根据需求调整）
+                    if (channelNum == 0) channelNum = 10;
+                    // 切换到对应编号频道（下标=编号-1）
+                    int targetIndex = channelNum - 1;
+                    if (targetIndex >= 0 && targetIndex < channelSourceList.size()) {
+                        playChannel(targetIndex);
+                    }
+                }
                 return true;
         }
         return super.onKeyDown(keyCode, event);
+    }
+
+    /**
+     * 处理遥控器长按事件（补充）
+     */
+    @Override
+    public boolean onKeyLongPress(int keyCode, KeyEvent event) {
+        if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER) {
+            // 长按OK键：打开设置
+            openSettings();
+            return true;
+        }
+        return super.onKeyLongPress(keyCode, event);
     }
 
     @Override

@@ -1,53 +1,42 @@
 package com.tv.live;
 
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.Response;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
 
-import java.io.IOException;
-import java.util.concurrent.TimeUnit;
-
-/**
- * 直播专用网络请求工具，适配TVPlayerManager调用
- * 补齐：public static final String UA + public static String get(String url)
- */
 public class HttpUtil {
-    // 修复报错1：补充全局UA常量，TVPlayerManager.factory.setUserAgent(HttpUtil.UA)使用
+
+    // 跟你 TVPlayerManager 里一模一样的 UA
     public static final String UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
 
-    // 单例OkHttp客户端（直播通用，超时10秒，适配m3u8/epg/源地址请求）
-    private static final OkHttpClient OK_CLIENT = new OkHttpClient.Builder()
-            .connectTimeout(10, TimeUnit.SECONDS)
-            .readTimeout(12, TimeUnit.SECONDS)
-            .followRedirects(true) // 自动301/302重定向（直播源必备）
-            .build();
-
-    // 修复报错2/3/4：补齐 TVPlayerManager 调用的 get(String url) 无参重载
+    // 你 TVPlayerManager 正在调用的 get() 方法
     public static String get(String url) {
-        Request request = new Request.Builder()
-                .url(url)
-                .header("User-Agent", UA) // 默认携带UA防盗链
-                .build();
-        try (Response response = OK_CLIENT.newCall(request).execute()) {
-            if (response.isSuccessful() && response.body() != null) {
-                return response.body().string();
+        try {
+            URL u = new URL(url);
+            HttpURLConnection conn = (HttpURLConnection) u.openConnection();
+            conn.setRequestMethod("GET");
+            conn.setRequestProperty("User-Agent", UA);
+            conn.setConnectTimeout(15000);
+            conn.setReadTimeout(15000);
+
+            BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while ((line = br.readLine()) != null) {
+                sb.append(line);
             }
-            return "";
-        } catch (IOException e) {
+            br.close();
+            conn.disconnect();
+            return sb.toString();
+        } catch (Exception e) {
             e.printStackTrace();
             return "";
         }
     }
 
-    // 可选扩展：带自定义请求头get（后续扩展用，不影响现有编译）
-    public static String get(String url, okhttp3.Headers headers) {
-        Request.Builder builder = new Request.Builder().url(url);
-        if (headers != null) builder.headers(headers);
-        else builder.header("User-Agent", UA);
-        try (Response resp = OK_CLIENT.newCall(builder.build().execute())) {
-            return resp.isSuccessful() && resp.body() != null ? resp.body().string() : "";
-        } catch (Exception e) {
-            return "";
-        }
+    // 你 MainActivity 正在调用的方法
+    public static String getFinalPlayUrl(String url) {
+        return url;
     }
 }

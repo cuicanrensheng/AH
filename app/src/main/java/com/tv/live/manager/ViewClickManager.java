@@ -1,7 +1,5 @@
 package com.tv.live.manager;
 
-import android.view.View;
-import android.widget.AdapterView;
 import android.widget.ListView;
 import com.tv.live.Channel;
 import com.tv.live.MainActivity;
@@ -11,38 +9,34 @@ import com.tv.live.widget.EpgManagerWrapper;
 import com.tv.live.widget.GroupListManager;
 import java.util.List;
 
-/**
- * 页面所有列表点击事件统一托管
- */
 public class ViewClickManager {
+
     private final MainActivity activity;
     private final List<Channel> channelSourceList;
     private final List<Channel> currentGroupChannelList;
     private final PlayControlManager playControlManager;
-    private final PanelManager panelManager;
     private final EpgManagerWrapper epgManagerWrapper;
     private final GroupListManager groupListManager;
     private final DateListManager dateListManager;
     private final ChannelListManager channelListManager;
 
+    // 构造方法已删除 PanelManager
     public ViewClickManager(MainActivity activity,
-                            List<Channel> sourceList,
-                            List<Channel> groupList,
-                            PlayControlManager playControl,
-                            PanelManager panelManager,
-                            EpgManagerWrapper epgManager,
-                            GroupListManager groupManager,
-                            DateListManager dateManager,
-                            ChannelListManager channelManager) {
+                            List<Channel> channelSourceList,
+                            List<Channel> currentGroupChannelList,
+                            PlayControlManager playControlManager,
+                            EpgManagerWrapper epgManagerWrapper,
+                            GroupListManager groupListManager,
+                            DateListManager dateListManager,
+                            ChannelListManager channelListManager) {
         this.activity = activity;
-        this.channelSourceList = sourceList;
-        this.currentGroupChannelList = groupList;
-        this.playControlManager = playControl;
-        this.panelManager = panelManager;
-        this.epgManagerWrapper = epgManager;
-        this.groupListManager = groupManager;
-        this.dateListManager = dateManager;
-        this.channelListManager = channelManager;
+        this.channelSourceList = channelSourceList;
+        this.currentGroupChannelList = currentGroupChannelList;
+        this.playControlManager = playControlManager;
+        this.epgManagerWrapper = epgManagerWrapper;
+        this.groupListManager = groupListManager;
+        this.dateListManager = dateListManager;
+        this.channelListManager = channelListManager;
     }
 
     public void bindDateClick(ListView lvDate) {
@@ -58,9 +52,7 @@ public class ViewClickManager {
 
     public void bindGroupClick(ListView lvGroup) {
         lvGroup.setOnItemClickListener((parent, view, position, id) -> {
-            lvGroup.setItemChecked(position, true);
-            lvGroup.setSelection(position);
-            String group = groupListManager.getCurrentGroup(position);
+            String group = groupListManager.getGroupList().get(position);
             activity.setNowSelectGroup(group);
 
             currentGroupChannelList.clear();
@@ -69,20 +61,14 @@ public class ViewClickManager {
                     currentGroupChannelList.add(c);
                 }
             }
-            channelListManager.setChannelsByGroup(channelSourceList, group, activity.getCurrentPlayIndex());
+            channelListManager.setChannels(currentGroupChannelList, activity.getCurrentPlayIndex());
         });
     }
 
     public void bindChannelClick() {
-        channelListManager.setOnChannelClickListener(filterPos -> {
-            if (filterPos >= 0 && filterPos < currentGroupChannelList.size()) {
-                Channel target = currentGroupChannelList.get(filterPos);
-                int global = channelSourceList.indexOf(target);
-                if (global != -1) {
-                    playControlManager.playChannel(global, channelSourceList);
-                    panelManager.toggle(channelSourceList, activity.getCurrentPlayIndex());
-                }
-            }
+        channelListManager.setOnItemClickListener((position, channel) -> {
+            activity.currentPlayIndex = position;
+            playControlManager.playChannel(position, channelSourceList);
         });
     }
 }

@@ -7,6 +7,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
+import java.net.ProtocolException;
 import java.net.URL;
 import java.net.URI;
 import java.security.SecureRandom;
@@ -55,7 +56,7 @@ public class HttpUtil {
         }
     }
 
-    // ✅ 兼容旧项目：保留原来的 get() 方法
+    // 兼容旧项目：保留原来的 get() 方法
     public static String get(String url) {
         return getStr(url);
     }
@@ -166,7 +167,11 @@ public class HttpUtil {
     private static void setBaseHeader(HttpURLConnection conn, URL urlObj) {
         conn.setConnectTimeout(CONNECT_TIMEOUT);
         conn.setReadTimeout(READ_TIMEOUT);
-        conn.setRequestMethod("GET");
+        try {
+            conn.setRequestMethod("GET");
+        } catch (ProtocolException e) {
+            e.printStackTrace();
+        }
         conn.setInstanceFollowRedirects(false);
         conn.setUseCaches(false);
 

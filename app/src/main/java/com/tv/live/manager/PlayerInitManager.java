@@ -6,7 +6,9 @@ import com.tv.live.config.AppConfig;
 import com.tv.live.listener.PlayerStateListenerImpl;
 import com.tv.live.TVPlayerManager;
 import com.google.android.exoplayer2.ui.PlayerView;
-
+/**
+ * 播放器、手势、画面比例初始化统一管理
+ */
 public class PlayerInitManager {
     private final MainActivity activity;
     private final PlayerView playerView;

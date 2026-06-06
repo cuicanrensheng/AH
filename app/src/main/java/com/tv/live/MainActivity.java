@@ -302,7 +302,7 @@ public class MainActivity extends AppCompatActivity {
          */
         playerView.setOnTouchListener((v, event) -> {
             gestureHelper.handleTouch(event);
-            return true;
+            return false;
         });
 
         // 遥控器按键管理初始化

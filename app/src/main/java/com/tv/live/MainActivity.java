@@ -314,7 +314,8 @@ public class MainActivity extends AppCompatActivity {
         Channel ch = channelSourceList.get(index);
         if (ch == null || TextUtils.isEmpty(ch.getPlayUrl())) return;
         playerStateListener.setCurrentChannelName(ch.getName());
-        mPlayerManager.play(ch.getPlayUrl());
+        String realUrl = HttpUtil.getFinalPlayUrl(ch.getPlayUrl());
+        mPlayerManager.play(realUrl);
         appConfig.setLastPlayIndex(index);
         channelListManager.setChannels(channelSourceList, index);
         epgManagerWrapper.refresh(ch, channelSourceList, currentSelectedDateIndex);

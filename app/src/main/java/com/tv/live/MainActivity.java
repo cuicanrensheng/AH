@@ -293,14 +293,16 @@ dateListManager.setOnDateSelectedListener(pos->{
         screenRatioManager.apply();
         gestureManager = new GestureManager(this);
         final PlayerGestureHelper gestureHelper = gestureManager.create();
-        // 画面触摸手势监听
+
+        // ====================== 已修改：return true → return false ======================
         playerView.setOnTouchListener(new View.OnTouchListener() {
             @Override
             public boolean onTouch(View v, MotionEvent event) {
                 gestureHelper.handleTouch(event);
-                return true;
+                return false;
             }
         });
+
         keyEventManager = new KeyEventManager(this);
         switchManager = ChannelSwitchManager.getInstance();
         currentPlayIndex = appConfig.getLastPlayIndex();

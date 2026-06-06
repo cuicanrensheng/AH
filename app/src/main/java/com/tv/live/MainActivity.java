@@ -5,6 +5,7 @@ import android.content.pm.ActivityInfo;
 import android.os.Bundle;
 import android.text.TextUtils;
 import android.view.KeyEvent;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.ListView;
@@ -36,6 +37,7 @@ public class MainActivity extends AppCompatActivity {
     private AppConfig appConfig;
     private ScreenRatioManager screenRatioManager;
     private KeyEventManager keyEventManager;
+    private GestureManager gestureManager;
     public ChannelSwitchManager switchManager;
 
     private ChannelListManager channelListManager;
@@ -102,9 +104,17 @@ public class MainActivity extends AppCompatActivity {
         screenRatioManager = new ScreenRatioManager(mPlayerManager, appConfig);
         screenRatioManager.apply();
 
+        // 初始化按键、手势、切换管理器
         keyEventManager = new KeyEventManager(this);
+        gestureManager = new GestureManager(this);
         switchManager = ChannelSwitchManager.getInstance();
         currentPlayIndex = appConfig.getLastPlayIndex();
+
+        // 绑定手势
+        playerView.setOnTouchListener((v, event) -> {
+            gestureManager.onTouchEvent(event);
+            return true;
+        });
 
         playControlManager = new PlayControlManager(this, mPlayerManager, appConfig,
                 tv_channel_num, infoBarManager, epgManagerWrapper, settingsManager, currentSelectedDateIndex);
@@ -113,7 +123,7 @@ public class MainActivity extends AppCompatActivity {
                 playControlManager, epgManagerWrapper, groupListManager, dateListManager, channelListManager);
         viewClickManager.bindDateClick(lvDate);
         viewClickManager.bindGroupClick(lvGroup);
-        viewClickManager.bindChannelClick(lvChannelList); // ✅ 修复 1
+        viewClickManager.bindChannelClick(lvChannelList);
 
         btn_show_epg.setOnClickListener(v -> {
             if (!settingsManager.epg_enable) {
@@ -226,18 +236,18 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // ✅ 修复 2：添加 togglePanel
+    // ========== 手势/按键 开关面板（核心修复）==========
     public void togglePanel() {
         if (panel_layout.getVisibility() == View.VISIBLE) {
             panel_layout.setVisibility(View.GONE);
         } else {
             panel_layout.setVisibility(View.VISIBLE);
         }
+        playerView.requestFocus();
     }
 
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
-        // ✅ 修复 3：方法名 onKeyDown
         if (keyEventManager.dispatchKey(keyCode)) return true;
         return super.onKeyDown(keyCode, event);
     }

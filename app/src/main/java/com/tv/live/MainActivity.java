@@ -73,6 +73,7 @@ public class MainActivity extends AppCompatActivity {
     private TextView tv_tag_audio;
     private TextView tv_bitrate;
     private TextView tv_channel_num;
+    TextView tv_next_time_range;
 
     private static final long CHANNEL_COOLDOWN = 300;
     private static final int SWIPE_CHANNEL_THRESHOLD = 120;
@@ -129,31 +130,28 @@ public class MainActivity extends AppCompatActivity {
 
         registerReceiver(refreshReceiver, new IntentFilter("com.tv.live.REFRESH"));
 
-        // ========== 节目单开关 ==========
         btn_show_epg.setOnClickListener(v -> {
             try {
                 epgPanelOpen = !epgPanelOpen;
                 lvDate.setVisibility(epgPanelOpen ? View.VISIBLE : View.GONE);
                 lvEpg.setVisibility(epgPanelOpen ? View.VISIBLE : View.GONE);
                 if (epgPanelOpen && !channelSourceList.isEmpty()) {
-                    epgManagerWrapper.refresh(channelSourceList.get(currentPlayIndex), currentSelectedDateIndex);
+                    epgManagerWrapper.refresh(channelSourceList.get(currentPlayIndex), channelSourceList, currentSelectedDateIndex);
                 }
             } catch (Exception ignored) {}
         });
 
-        // ========== 日期切换（不刷新播放） ==========
         dateListManager = new LivePanelManager.DateListManager(this, lvDate);
         dateListManager.initDate();
         dateListManager.setOnDateSelectedListener(pos -> {
             try {
                 currentSelectedDateIndex = pos;
                 if (epgPanelOpen && !channelSourceList.isEmpty()) {
-                    epgManagerWrapper.refresh(channelSourceList.get(currentPlayIndex), pos);
+                    epgManagerWrapper.refresh(channelSourceList.get(currentPlayIndex), channelSourceList, pos);
                 }
             } catch (Exception ignored) {}
         });
 
-        // ========== 分组点击（只切换列表，不播放） ==========
         lvGroup.setOnItemClickListener((parent, view, position, id) -> {
             try {
                 lvGroup.setItemChecked(position, true);
@@ -168,12 +166,11 @@ public class MainActivity extends AppCompatActivity {
                 channelListManager.setChannelsByGroup(channelSourceList, nowSelectGroup, currentPlayIndex);
 
                 if (epgPanelOpen) {
-                    epgManagerWrapper.refresh(channelSourceList.get(currentPlayIndex), currentSelectedDateIndex);
+                    epgManagerWrapper.refresh(channelSourceList.get(currentPlayIndex), channelSourceList, currentSelectedDateIndex);
                 }
             } catch (Exception ignored) {}
         });
 
-        // ========== 频道点击（只播放，不刷新） ==========
         channelListManager = new LivePanelManager.ChannelListManager(this, lvChannelList);
         channelListManager.setOnChannelClickListener(filterPos -> {
             try {
@@ -198,79 +195,67 @@ public class MainActivity extends AppCompatActivity {
         screenRatioManager.apply();
 
         playerView.setOnTouchListener((v, event) -> {
-    gestureHelper.handleTouch(event);
+            gestureHelper.handleTouch(event);
 
-    switch (event.getAction()) {
-        case MotionEvent.ACTION_DOWN:
-            touchStartX = event.getX();
-            touchStartY = event.getY();
-            hasSwiped = false;       // 重置：手指按下 = 未滑动
-            isLongClickTriggered = false;
-            
-            // 长按计时
-            longClickTimer = new Timer();
-            longClickTimer.schedule(new TimerTask() {
-                @Override
-                public void run() {
-                    runOnUiThread(() -> {
-                        isLongClickTriggered = true;
-                        try { openSettings(); } catch (Exception ignored) {}
-                    });
-                }
-            }, LONG_CLICK_TIME);
-            break;
+            switch (event.getAction()) {
+                case MotionEvent.ACTION_DOWN:
+                    touchStartX = event.getX();
+                    touchStartY = event.getY();
+                    hasSwiped = false;
+                    isLongClickTriggered = false;
+                    longClickTimer = new Timer();
+                    longClickTimer.schedule(new TimerTask() {
+                        @Override
+                        public void run() {
+                            runOnUiThread(() -> {
+                                isLongClickTriggered = true;
+                                try { openSettings(); } catch (Exception ignored) {}
+                            });
+                        }
+                    }, LONG_CLICK_TIME);
+                    break;
 
-        case MotionEvent.ACTION_MOVE:
-            float deltaX = event.getX() - touchStartX;
-            float deltaY = event.getY() - touchStartY;
+                case MotionEvent.ACTION_MOVE:
+                    float dx = event.getX() - touchStartX;
+                    float dy = event.getY() - touchStartY;
+                    if (Math.abs(dy) > SWIPE_CHANNEL_THRESHOLD && Math.abs(dy) > Math.abs(dx)) {
+                        hasSwiped = true;
+                        long now = System.currentTimeMillis();
+                        if (now - lastChannelChangeTime > CHANNEL_COOLDOWN) {
+                            lastChannelChangeTime = now;
+                            try {
+                                if (dy < 0) playPrev();
+                                else playNext();
+                            } catch (Exception ignored) {}
+                        }
+                        if (longClickTimer != null) {
+                            longClickTimer.cancel();
+                            longClickTimer = null;
+                        }
+                    }
+                    break;
 
-            // 判断：上下滑动 → 切换频道
-            if (Math.abs(deltaY) > SWIPE_CHANNEL_THRESHOLD && Math.abs(deltaY) > Math.abs(deltaX)) {
-                hasSwiped = true;    // 标记：已经滑动了
-                
-                // 执行切台
-                long now = System.currentTimeMillis();
-                if (now - lastChannelChangeTime > CHANNEL_COOLDOWN) {
-                    lastChannelChangeTime = now;
-                    try {
-                        if (deltaY < 0) playPrev();
-                        else playNext();
-                    } catch (Exception ignored) {}
-                }
-                
-                // 取消长按
-                if (longClickTimer != null) {
-                    longClickTimer.cancel();
-                    longClickTimer = null;
-                }
+                case MotionEvent.ACTION_UP:
+                case MotionEvent.ACTION_CANCEL:
+                    if (longClickTimer != null) {
+                        longClickTimer.cancel();
+                        longClickTimer = null;
+                    }
+                    if (!isLongClickTriggered && !hasSwiped) {
+                        long now = System.currentTimeMillis();
+                        if (now - lastClickTime < DOUBLE_CLICK_TIME) {
+                            try { openSettings(); } catch (Exception ignored) {}
+                            lastClickTime = 0;
+                        } else {
+                            try { togglePanel(); } catch (Exception ignored) {}
+                            lastClickTime = now;
+                        }
+                    }
+                    break;
             }
-            break;
+            return true;
+        });
 
-        case MotionEvent.ACTION_UP:
-        case MotionEvent.ACTION_CANCEL:
-            // 清理计时器
-            if (longClickTimer != null) {
-                longClickTimer.cancel();
-                longClickTimer = null;
-            }
-
-            // ==============================================
-            // 🔥 关键修复：只要滑动过，就不打开频道列表
-            // ==============================================
-            if (!isLongClickTriggered && !hasSwiped) {
-                long currentTime = System.currentTimeMillis();
-                if (currentTime - lastClickTime < DOUBLE_CLICK_TIME) {
-                    try { openSettings(); } catch (Exception ignored) {}
-                    lastClickTime = 0;
-                } else {
-                    try { togglePanel(); } catch (Exception ignored) {}
-                    lastClickTime = currentTime;
-                }
-            }
-            break;
-    }
-    return true;
-});
         keyEventManager = new KeyEventManager(this);
         switchManager = ChannelSwitchManager.getInstance();
         currentPlayIndex = appConfig.getLastPlayIndex();
@@ -284,6 +269,7 @@ public class MainActivity extends AppCompatActivity {
         tv_tag_audio = findViewById(R.id.tv_tag_audio);
         tv_bitrate = findViewById(R.id.tv_bitrate);
         tv_channel_num = findViewById(R.id.tv_channel_num);
+        tv_next_time_range = findViewById(R.id.tv_next_time_range);
     }
 
     private void loadSettings() {
@@ -353,7 +339,7 @@ public class MainActivity extends AppCompatActivity {
             EpgManager.getInstance().loadEpg(() -> runOnUiThread(() -> {
                 try {
                     if (!channelSourceList.isEmpty()) {
-                        epgManagerWrapper.refresh(channelSourceList.get(currentPlayIndex), currentSelectedDateIndex);
+                        epgManagerWrapper.refresh(channelSourceList.get(currentPlayIndex), channelSourceList, currentSelectedDateIndex);
                     }
                 } catch (Exception ignored) {}
             }));
@@ -388,7 +374,7 @@ public class MainActivity extends AppCompatActivity {
             appConfig.setLastPlayIndex(index);
 
             channelListManager.setChannelsByGroup(channelSourceList, nowSelectGroup, index);
-            epgManagerWrapper.refresh(ch, currentSelectedDateIndex);
+            epgManagerWrapper.refresh(ch, channelSourceList, currentSelectedDateIndex);
 
             if (info_bar != null) {
                 info_bar.setVisibility(View.VISIBLE);
@@ -422,6 +408,17 @@ public class MainActivity extends AppCompatActivity {
     public void openSettings() {
         try {
             startActivity(new Intent(this, SettingsActivity.class).addFlags(Intent.FLAG_ACTIVITY_NO_HISTORY));
+        } catch (Exception ignored) {}
+    }
+
+    public void onReceiveConfig(String live, String epg) {
+        try {
+            if (appConfig != null) {
+                appConfig.setCustomUrls(live, epg);
+            }
+            if (live != null) UrlConfig.LIVE_URL = live;
+            if (epg != null) UrlConfig.EPG_URL = epg;
+            runOnUiThread(this::loadLiveAndEpg);
         } catch (Exception ignored) {}
     }
 

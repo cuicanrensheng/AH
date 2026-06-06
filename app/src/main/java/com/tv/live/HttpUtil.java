@@ -37,9 +37,7 @@ public class HttpUtil {
             TrustManager[] trustAll = new TrustManager[]{
                     new X509TrustManager() {
                         @Override
-                        public X509Certificate[] getAcceptedIssuers() {
-                            return new X509Certificate[0];
-                        }
+                        public X509Certificate[] getAcceptedIssuers() { return new X509Certificate[0]; }
                         @Override
                         public void checkClientTrusted(X509Certificate[] certs, String authType) {}
                         @Override
@@ -56,7 +54,46 @@ public class HttpUtil {
         }
     }
 
-    // 兼容旧项目：保留原来的 get() 方法
+    // ==============================
+    ///【核心新增】自动解析最终播放地址（自动10次重定向）
+    // ==============================
+    public static String getFinalPlayUrl(String url) {
+        if (url == null || url.isEmpty()) return url;
+
+        String currentUrl = url;
+        int redirectCount = 0;
+
+        while (redirectCount < MAX_REDIRECT) {
+            HttpURLConnection conn = null;
+            try {
+                URL u = new URL(currentUrl);
+                conn = (HttpURLConnection) u.openConnection();
+                setBaseHeader(conn, u);
+                conn.setInstanceFollowRedirects(false);
+
+                int code = conn.getResponseCode();
+                if (code >= 300 && code < 400) {
+                    String location = conn.getHeaderField("Location");
+                    if (location == null || location.isEmpty()) break;
+
+                    URI baseUri = u.toURI();
+                    URI newUri = baseUri.resolve(location);
+                    currentUrl = newUri.toString();
+                    redirectCount++;
+                    continue;
+                }
+                break;
+
+            } catch (Exception e) {
+                break;
+            } finally {
+                try { if (conn != null) conn.disconnect(); } catch (Exception ignored) {}
+            }
+        }
+        return currentUrl;
+    }
+
+    // 兼容旧项目
     public static String get(String url) {
         return getStr(url);
     }
@@ -163,56 +200,52 @@ public class HttpUtil {
         }
         return null;
     }
+
     private static void setBaseHeader(HttpURLConnection conn, URL urlObj) {
-    conn.setConnectTimeout(CONNECT_TIMEOUT);
-    conn.setReadTimeout(READ_TIMEOUT);
-    try {
-        conn.setRequestMethod("GET");
-    } catch (ProtocolException e) {
-        e.printStackTrace();
-    }
-    conn.setInstanceFollowRedirects(false);
-    conn.setUseCaches(false);
+        conn.setConnectTimeout(CONNECT_TIMEOUT);
+        conn.setReadTimeout(READ_TIMEOUT);
+        try {
+            conn.setRequestMethod("GET");
+        } catch (ProtocolException e) {
+            e.printStackTrace();
+        }
+        conn.setInstanceFollowRedirects(false);
+        conn.setUseCaches(false);
 
-    String host = urlObj.getHost();
-    // 【核心适配这套3层中转虎牙接口】只要是中转域名，固定Referer/Origin
-    if(host.contains("jdshipin.com") || host.contains("zxyxndc.top")){
-        // 和抓包请求头完全一致
-        conn.setRequestProperty("Referer","http://cdn.jdshipin.com:8880/");
-        conn.setRequestProperty("Origin","http://cdn.jdshipin.com");
-        conn.setRequestProperty("User-Agent","Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36");
-    }else if(host.contains("huya.com")){
-        // 最终虎牙FLV域名
-        conn.setRequestProperty("Referer","https://www.huya.com/");
-        conn.setRequestProperty("Origin","https://www.huya.com");
-        conn.setRequestProperty("User-Agent","ExoPlayerLib/2.19.1 (Linux; Android 11; Android TV)");
-    }else{
-        // 普通源沿用原有自动域名
-        String domain = urlObj.getProtocol() + "://" + urlObj.getHost();
-        conn.setRequestProperty("Referer", domain);
-        conn.setRequestProperty("Origin", domain);
-        conn.setRequestProperty("User-Agent", UA);
+        String host = urlObj.getHost();
+        if (host.contains("jdshipin.com") || host.contains("zxyxndc.top")) {
+            conn.setRequestProperty("Referer", "http://cdn.jdshipin.com:8880/");
+            conn.setRequestProperty("Origin", "http://cdn.jdshipin.com");
+            conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36");
+        } else if (host.contains("huya.com")) {
+            conn.setRequestProperty("Referer", "https://www.huya.com/");
+            conn.setRequestProperty("Origin", "https://www.huya.com");
+            conn.setRequestProperty("User-Agent", "ExoPlayerLib/2.19.1 (Linux; Android 11; Android TV)");
+        } else {
+            String domain = urlObj.getProtocol() + "://" + urlObj.getHost();
+            conn.setRequestProperty("Referer", domain);
+            conn.setRequestProperty("Origin", domain);
+            conn.setRequestProperty("User-Agent", UA);
+        }
+
+        conn.setRequestProperty("Accept-Language", "zh-CN,zh;q=0.9");
+        conn.setRequestProperty("Connection", "keep-alive");
+        conn.setRequestProperty("Accept", "*/*");
+        conn.setRequestProperty("sec-fetch-site", "cross-site");
+        conn.setRequestProperty("sec-fetch-mode", "cors");
+
+        String domainCk = cookieStore.get(urlObj.getHost());
+        if (domainCk != null && !domainCk.isEmpty()) {
+            conn.setRequestProperty("Cookie", domainCk);
+        }
     }
 
-    conn.setRequestProperty("Accept-Language", "zh-CN,zh;q=0.9");
-    conn.setRequestProperty("Connection", "keep-alive");
-    conn.setRequestProperty("Accept","*/*");
-    conn.setRequestProperty("sec-fetch-site","cross-site");
-    conn.setRequestProperty("sec-fetch-mode","cors");
-
-    String domainCk = cookieStore.get(urlObj.getHost());
-    if (domainCk != null && !domainCk.isEmpty()) {
-        conn.setRequestProperty("Cookie", domainCk);
-    }
-}
     private static void saveDomainCookie(Map<String, List<String>> headerMap, String host) {
         if (headerMap == null || host == null) return;
         List<String> setCookieList = headerMap.get("Set-Cookie");
         if (setCookieList == null || setCookieList.isEmpty()) return;
         for (String ckItem : setCookieList) {
-            if (ckItem.contains(";")) {
-                ckItem = ckItem.split(";")[0];
-            }
+            if (ckItem.contains(";")) ckItem = ckItem.split(";")[0];
             cookieStore.put(host, ckItem);
         }
     }
@@ -223,28 +256,23 @@ public class HttpUtil {
         try { if (conn != null) conn.disconnect(); } catch (Exception ignored) {}
     }
 
-    public interface HttpStrCallback {
-        void onResult(String result);
-    }
-
-    public interface HttpByteCallback {
-        void onResult(byte[] data);
-    }
+    public interface HttpStrCallback { void onResult(String result); }
+    public interface HttpByteCallback { void onResult(byte[] data); }
 
     public static void getStrAsync(String url, HttpStrCallback callback) {
-        new Thread(() -> {
+        new Thread(()->{
             String res = getStr(url);
-            if (callback != null && MainActivity.mInstance != null) {
-                MainActivity.mInstance.runOnUiThread(() -> callback.onResult(res));
+            if(callback != null && MainActivity.mInstance != null){
+                MainActivity.mInstance.runOnUiThread(()->callback.onResult(res));
             }
         }).start();
     }
 
     public static void getByteAsync(String url, HttpByteCallback callback) {
-        new Thread(() -> {
+        new Thread(()->{
             byte[] data = getByte(url);
-            if (callback != null && MainActivity.mInstance != null) {
-                MainActivity.mInstance.runOnUiThread(() -> callback.onResult(data));
+            if(callback != null && MainActivity.mInstance != null){
+                MainActivity.mInstance.runOnUiThread(()->callback.onResult(data));
             }
         }).start();
     }

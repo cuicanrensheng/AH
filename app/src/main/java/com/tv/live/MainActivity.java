@@ -37,6 +37,7 @@ import com.tv.live.loader.LiveSourceLoader;
  * 2. 完全屏蔽所有触摸手势（音量/亮度/快进/控制器）
  * 3. 修复 KeyEventManager.dispatchKey 调用错误
  * 4. 修复 lambda 变量 final 编译错误
+ * 5. 修复 customEpg 找不到符号错误
  */
 public class MainActivity extends AppCompatActivity {
 
@@ -450,10 +451,11 @@ public class MainActivity extends AppCompatActivity {
         startActivity(intent);
     }
 
+    // ===================== ✅ 修复：customEpg → epgUrl =====================
     public void onReceiveConfig(String liveUrl, String epgUrl) {
         appConfig.setCustomUrls(liveUrl, epgUrl);
         if (liveUrl != null) UrlConfig.LIVE_URL = liveUrl;
-        if (epgUrl != null) UrlConfig.EPG_URL = customEpg;
+        if (epgUrl != null) UrlConfig.EPG_URL = epgUrl;
         runOnUiThread(this::loadLiveAndEpg);
     }
 

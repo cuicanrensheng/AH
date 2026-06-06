@@ -238,7 +238,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         // ✅ 修复 3：方法名 onKeyDown
-        if (keyEventManager.onKeyDown(keyCode)) return true;
+        if (keyEventManager.dispatchKey(keyCode)) return true;
         return super.onKeyDown(keyCode, event);
     }
 

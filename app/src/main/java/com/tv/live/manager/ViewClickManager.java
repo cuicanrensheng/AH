@@ -1,5 +1,6 @@
 package com.tv.live.manager;
 
+import android.widget.AdapterView;
 import android.widget.ListView;
 import com.tv.live.Channel;
 import com.tv.live.MainActivity;
@@ -20,7 +21,6 @@ public class ViewClickManager {
     private final DateListManager dateListManager;
     private final ChannelListManager channelListManager;
 
-    // 构造方法已删除 PanelManager
     public ViewClickManager(MainActivity activity,
                             List<Channel> channelSourceList,
                             List<Channel> currentGroupChannelList,
@@ -65,8 +65,9 @@ public class ViewClickManager {
         });
     }
 
-    public void bindChannelClick() {
-        channelListManager.setOnItemClickListener((position, channel) -> {
+    // 修复：使用系统标准点击
+    public void bindChannelClick(ListView lv) {
+        lv.setOnItemClickListener((parent, view, position, id) -> {
             activity.currentPlayIndex = position;
             playControlManager.playChannel(position, channelSourceList);
         });

@@ -76,9 +76,9 @@ public class MainActivity extends AppCompatActivity {
     // 上下切台管理
     private ChannelSwitchManager switchManager;
     // EPG面板开关标记
-    private boolean epgPanelOpen = false;
+    private boolean epgPanelOpen =true;
     // 原生控制器显隐标记
-    private boolean isControllerVisible = false;
+    private boolean isControllerVisible = true;
     // EPG功能总开关
     private boolean epg_enable;
     // 上下切台反转开关

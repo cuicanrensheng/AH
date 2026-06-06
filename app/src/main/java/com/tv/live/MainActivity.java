@@ -50,7 +50,6 @@ public class MainActivity extends AppCompatActivity {
     private BroadcastManager broadcastManager;
     private ViewClickManager viewClickManager;
     private WidgetInitManager widgetInitManager;
-    private PlayerInitManager playerInitManager;
 
     private TextView tv_channel_num;
     private boolean epgPanelOpen = false;
@@ -96,8 +95,12 @@ public class MainActivity extends AppCompatActivity {
 
         playerStateListener = new PlayerStateListenerImpl(this);
 
-        playerInitManager = new PlayerInitManager(this, playerView, appConfig);
-        playerInitManager.init(playerStateListener);
+        // 初始化播放器
+        mPlayerManager = TVPlayerManager.getInstance(this);
+        mPlayerManager.attachPlayerView(playerView);
+        mPlayerManager.setOnPlayStateListener(playerStateListener);
+        screenRatioManager = new ScreenRatioManager(mPlayerManager, appConfig);
+        screenRatioManager.apply();
 
         keyEventManager = new KeyEventManager(this);
         switchManager = ChannelSwitchManager.getInstance();
@@ -225,7 +228,7 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
-        if (keyEventManager.dispatchKey(keyCode)) return true;
+        if (keyEventManager.dispatch(keyCode)) return true;
         return super.onKeyDown(keyCode, event);
     }
 
@@ -257,10 +260,5 @@ public class MainActivity extends AppCompatActivity {
     public void setCurrentSelectedDateIndex(int index) { this.currentSelectedDateIndex = index; }
     public int getCurrentPlayIndex() { return currentPlayIndex; }
     public void setNowSelectGroup(String group) { this.nowSelectGroup = group; }
-    public void setPlayerManager(TVPlayerManager manager) { this.mPlayerManager = manager; }
-    public void setScreenRatioManager(ScreenRatioManager manager) { this.screenRatioManager = manager; }
-
-    public void playChannel(int position) {
-        playControlManager.playChannel(position, channelSourceList);
-    }
+    public void playChannel(int position) { playControlManager.playChannel(position, channelSourceList); }
 }

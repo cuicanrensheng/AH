@@ -307,19 +307,19 @@ public class MainActivity extends AppCompatActivity {
     /**
      * 播放指定索引频道
      */
-    public void playChannel(int index) {
-        if (channelSourceList == null || channelSourceList.isEmpty()) return;
-        index = Math.max(0, Math.min(index, channelSourceList.size() - 1));
-        currentPlayIndex = index;
-        Channel ch = channelSourceList.get(index);
-        if (ch == null || TextUtils.isEmpty(ch.getPlayUrl())) return;
-        playerStateListener.setCurrentChannelName(ch.getName());
-        String realUrl = HttpUtil.getFinalPlayUrl(ch.getPlayUrl());
-        mPlayerManager.play(realUrl);
-        appConfig.setLastPlayIndex(index);
-        channelListManager.setChannels(channelSourceList, index);
-        epgManagerWrapper.refresh(ch, channelSourceList, currentSelectedDateIndex);
-    }
+     public void playChannel(int index) {
+    if (channelSourceList == null || channelSourceList.isEmpty()) return;
+    index = Math.max(0, Math.min(index, channelSourceList.size() - 1));
+    currentPlayIndex = index;
+    Channel ch = channelSourceList.get(index);
+    if (ch == null || TextUtils.isEmpty(ch.getPlayUrl())) return;
+    playerStateListener.setCurrentChannelName(ch.getName());
+    String realUrl = HttpUtil.getFinalPlayUrl(ch.getPlayUrl());
+    mPlayerManager.play(realUrl);
+    appConfig.setLastPlayIndex(index);
+    channelListManager.setChannels(channelSourceList, index);
+    epgManagerWrapper.refresh(ch, channelSourceList, currentSelectedDateIndex);
+}
 
     /**
      * 频道列表点击事件

@@ -1,4 +1,4 @@
-package com.tv.live.util;
+package com.tv.live;
 
 import java.io.IOException;
 import java.net.HttpURLConnection;

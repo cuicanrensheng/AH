@@ -36,6 +36,7 @@ import com.tv.live.loader.LiveSourceLoader;
  * 1. 点击分组 → 强制刷新列表，不自动播放
  * 2. 完全屏蔽所有触摸手势（音量/亮度/快进/控制器）
  * 3. 修复 KeyEventManager.dispatchKey 调用错误
+ * 4. 修复 lambda 变量 final 编译错误
  */
 public class MainActivity extends AppCompatActivity {
 
@@ -253,7 +254,6 @@ public class MainActivity extends AppCompatActivity {
         gestureHelper = gestureManager.create();
 
         playerView.setOnTouchListener((v, event) -> {
-            // 屏蔽所有手势
             return false;
         });
 
@@ -397,12 +397,13 @@ public class MainActivity extends AppCompatActivity {
         }
 
         final String url = ch.getPlayUrl();
+        final String[] finalUrl = {url};
+
         new Thread(() -> {
             java.net.HttpURLConnection conn = null;
-            String finalUrl = url;
             try {
                 for (int i = 0; i < MAX_REDIRECT_COUNT; i++) {
-                    java.net.URL u = new java.net.URL(finalUrl);
+                    java.net.URL u = new java.net.URL(finalUrl[0]);
                     conn = (java.net.HttpURLConnection) u.openConnection();
                     conn.setConnectTimeout(CONNECT_TIMEOUT);
                     conn.setReadTimeout(READ_TIMEOUT);
@@ -411,7 +412,7 @@ public class MainActivity extends AppCompatActivity {
                     int code = conn.getResponseCode();
                     if (code == 301 || code == 302) {
                         String loc = conn.getHeaderField("Location");
-                        if (loc != null) finalUrl = loc;
+                        if (loc != null) finalUrl[0] = loc;
                         conn.disconnect();
                         conn = null;
                     } else {
@@ -425,7 +426,7 @@ public class MainActivity extends AppCompatActivity {
             }
 
             new Handler(Looper.getMainLooper()).post(() -> {
-                mPlayerManager.playUrl(finalUrl);
+                mPlayerManager.playUrl(finalUrl[0]);
             });
         }).start();
     }
@@ -452,7 +453,7 @@ public class MainActivity extends AppCompatActivity {
     public void onReceiveConfig(String liveUrl, String epgUrl) {
         appConfig.setCustomUrls(liveUrl, epgUrl);
         if (liveUrl != null) UrlConfig.LIVE_URL = liveUrl;
-        if (epgUrl != null) UrlConfig.EPG_URL = epgUrl;
+        if (epgUrl != null) UrlConfig.EPG_URL = customEpg;
         runOnUiThread(this::loadLiveAndEpg);
     }
 

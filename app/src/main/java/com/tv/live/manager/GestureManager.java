@@ -5,11 +5,11 @@ import android.os.Looper;
 import com.tv.live.MainActivity;
 import com.tv.live.PlayerGestureHelper;
 
+/** 手势创建绑定，切台防抖300ms */
 public class GestureManager {
-
     private final MainActivity activity;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
-    private static final long DEBOUNCE_DELAY_MS = 300; // 300ms防抖
+    private static final long DEBOUNCE_DELAY_MS = 300;
     private boolean isGestureLocked = false;
 
     public GestureManager(MainActivity activity) {
@@ -22,33 +22,27 @@ public class GestureManager {
             public void onOk() {
                 activity.togglePanel();
             }
-
             @Override
             public void onLongOk() {
                 activity.openSettings();
             }
-
             @Override
             public void onMenu() {
                 activity.openSettings();
             }
-
             @Override
             public void onPrevChannel() {
                 if (!isGestureLocked) {
                     isGestureLocked = true;
                     activity.playPrev();
-                    // 解锁
                     mainHandler.postDelayed(() -> isGestureLocked = false, DEBOUNCE_DELAY_MS);
                 }
             }
-
             @Override
             public void onNextChannel() {
                 if (!isGestureLocked) {
                     isGestureLocked = true;
                     activity.playNext();
-                    // 解锁
                     mainHandler.postDelayed(() -> isGestureLocked = false, DEBOUNCE_DELAY_MS);
                 }
             }

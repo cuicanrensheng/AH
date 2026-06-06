@@ -41,6 +41,7 @@ import com.tv.live.loader.LiveSourceLoader;
  * 3. 修复所有闪退：点击面板/节目单/分组全try-catch防护
  * 4. 修复播放器黑屏、屏蔽Exo控制器
  * 5. 保留全部原有手势：音量/亮度/左右快进
+ * 6. 修复滑动切台自动弹出频道列表问题
  */
 public class MainActivity extends AppCompatActivity {
 
@@ -103,11 +104,8 @@ public class MainActivity extends AppCompatActivity {
     private static final int CONNECT_TIMEOUT = 8000;
     private static final int READ_TIMEOUT = 8000;
     private static final long CHANNEL_COOLDOWN = 300;
-    // 手机滑动切台阈值
     private static final int SWIPE_CHANNEL_THRESHOLD = 100;
-    // 双击判定时间
     private static final long DOUBLE_CLICK_TIME = 300;
-    // 长按判定时间
     private static final long LONG_CLICK_TIME = 500;
 
     private final Runnable hideInfoBar = () -> info_bar.setVisibility(View.GONE);
@@ -118,6 +116,7 @@ public class MainActivity extends AppCompatActivity {
     private long lastClickTime = 0;
     private Timer longClickTimer;
     private boolean isLongClickTriggered = false;
+    private boolean hasSwiped = false; // 标记是否发生滑动（修复关键）
 
     //===================== 日志 =====================
     public static List<String> logList = new ArrayList<>();
@@ -130,7 +129,6 @@ public class MainActivity extends AppCompatActivity {
     private final BroadcastReceiver toggleControllerReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
-            // 永久禁用控制器，不修改状态
             isControllerVisible = false;
         }
     };
@@ -158,7 +156,6 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         mInstance = this;
 
-        // 横屏+全屏+常亮
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -182,7 +179,6 @@ public class MainActivity extends AppCompatActivity {
         if (customLive != null) UrlConfig.LIVE_URL = customLive;
         if (customEpg != null) UrlConfig.EPG_URL = customEpg;
 
-        // 播放器初始化，永久禁用控制器+修复黑屏
         playerView = findViewById(R.id.player_view);
         playerView.setUseController(false);
         playerView.setControllerVisibilityListener(null);
@@ -198,7 +194,6 @@ public class MainActivity extends AppCompatActivity {
         registerReceiver(toggleControllerReceiver, new IntentFilter("com.tv.live.TOGGLE_CONTROL"));
         registerReceiver(refreshReceiver, new IntentFilter("com.tv.live.REFRESH_LIVE_AND_EPG"));
 
-        // EPG开关
         btn_show_epg.setOnClickListener(v -> {
             try {
                 if (!epg_enable) {
@@ -215,7 +210,6 @@ public class MainActivity extends AppCompatActivity {
             } catch (Exception ignored) {}
         });
 
-        // 日期列表
         dateListManager = new LivePanelManager.DateListManager(this, lvDate);
         dateListManager.initDate();
         dateListManager.setOnDateSelectedListener(pos -> {
@@ -227,7 +221,6 @@ public class MainActivity extends AppCompatActivity {
             } catch (Exception ignored) {}
         });
 
-        // 分组点击：只刷新不播放，加异常防护
         lvGroup.setOnItemClickListener((parent, view, position, id) -> {
             try {
                 lvGroup.setItemChecked(position, true);
@@ -247,7 +240,6 @@ public class MainActivity extends AppCompatActivity {
             } catch (Exception ignored) {}
         });
 
-        // 频道点击：选中播放
         channelListManager = new LivePanelManager.ChannelListManager(this, lvChannelList);
         channelListManager.setOnChannelClickListener(filterPos -> {
             try {
@@ -266,7 +258,6 @@ public class MainActivity extends AppCompatActivity {
         epgManagerWrapper = new LivePanelManager.EpgManagerWrapper(this, lvEpg);
         panelManager = new LivePanelManager.PanelManager(panel_layout, channelListManager, epgManagerWrapper);
 
-        // 播放器绑定
         mPlayerManager = TVPlayerManager.getInstance(this);
         mPlayerManager.attachPlayerView(playerView);
         playerStateListener = new PlayerStateListenerImpl(this);
@@ -282,21 +273,19 @@ public class MainActivity extends AppCompatActivity {
         screenRatioManager = new ScreenRatioManager(mPlayerManager, appConfig);
         screenRatioManager.apply();
 
-        //===================== 核心触摸监听：保留手势+手机交互+屏蔽控制器 =====================
+        // ===================== 核心修复：滑动不触发面板 =====================
         gestureManager = new GestureManager(this);
         gestureHelper = gestureManager.create();
 
         playerView.setOnTouchListener((v, event) -> {
-            // 1. 优先执行原有手势：音量/亮度/左右快进
             gestureHelper.handleTouch(event);
 
-            // 2. 处理手机端交互：滑动切台、单击/双击/长按
             switch (event.getAction()) {
                 case MotionEvent.ACTION_DOWN:
                     touchStartX = event.getX();
                     touchStartY = event.getY();
                     isLongClickTriggered = false;
-                    // 启动长按计时器
+                    hasSwiped = false; // 重置滑动标记
                     longClickTimer = new Timer();
                     longClickTimer.schedule(new TimerTask() {
                         @Override
@@ -314,8 +303,9 @@ public class MainActivity extends AppCompatActivity {
                 case MotionEvent.ACTION_MOVE:
                     float deltaX = event.getX() - touchStartX;
                     float deltaY = event.getY() - touchStartY;
-                    // 上下滑动超过阈值：切换频道
+
                     if (Math.abs(deltaY) > SWIPE_CHANNEL_THRESHOLD && Math.abs(deltaY) > Math.abs(deltaX)) {
+                        hasSwiped = true; // 标记已滑动
                         long now = System.currentTimeMillis();
                         if (now - lastChannelChangeTime > CHANNEL_COOLDOWN) {
                             lastChannelChangeTime = now;
@@ -324,7 +314,6 @@ public class MainActivity extends AppCompatActivity {
                                 else playNext();
                             } catch (Exception ignored) {}
                         }
-                        // 滑动取消长按
                         if (longClickTimer != null) {
                             longClickTimer.cancel();
                             longClickTimer = null;
@@ -334,22 +323,20 @@ public class MainActivity extends AppCompatActivity {
 
                 case MotionEvent.ACTION_UP:
                 case MotionEvent.ACTION_CANCEL:
-                    // 取消长按计时器
                     if (longClickTimer != null) {
                         longClickTimer.cancel();
                         longClickTimer = null;
                     }
-                    // 处理点击
-                    if (!isLongClickTriggered) {
+
+                    // ===================== 修复关键：如果滑动过，就不执行单击 =====================
+                    if (!isLongClickTriggered && !hasSwiped) {
                         long currentTime = System.currentTimeMillis();
                         if (currentTime - lastClickTime < DOUBLE_CLICK_TIME) {
-                            // 双击：打开设置
                             try {
                                 openSettings();
                             } catch (Exception ignored) {}
                             lastClickTime = 0;
                         } else {
-                            // 单击：打开频道列表
                             try {
                                 togglePanel();
                             } catch (Exception ignored) {}
@@ -358,11 +345,9 @@ public class MainActivity extends AppCompatActivity {
                     }
                     break;
             }
-            // 消费触摸事件，杜绝Exo控制器弹出
             return true;
         });
 
-        // 按键管理
         keyEventManager = new KeyEventManager(this);
         switchManager = ChannelSwitchManager.getInstance();
         currentPlayIndex = appConfig.getLastPlayIndex();
@@ -585,14 +570,12 @@ public class MainActivity extends AppCompatActivity {
                 return true;
             }
 
-            // 长按OK键
             if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER && event.getRepeatCount() > 0) {
                 openSettings();
                 return true;
             }
 
             switch (keyCode) {
-                // 上下键/频道键切台
                 case KeyEvent.KEYCODE_DPAD_UP:
                 case KeyEvent.KEYCODE_CHANNEL_UP:
                     playPrev();
@@ -601,19 +584,16 @@ public class MainActivity extends AppCompatActivity {
                 case KeyEvent.KEYCODE_CHANNEL_DOWN:
                     playNext();
                     return true;
-                // OK键选频道
                 case KeyEvent.KEYCODE_DPAD_CENTER:
                 case KeyEvent.KEYCODE_ENTER:
                     if (event.getRepeatCount() == 0) {
                         togglePanel();
                     }
                     return true;
-                // 菜单/帮助键开设置
                 case KeyEvent.KEYCODE_MENU:
                 case KeyEvent.KEYCODE_HELP:
                     openSettings();
                     return true;
-                // 数字键直接切台
                 case KeyEvent.KEYCODE_0:
                 case KeyEvent.KEYCODE_1:
                 case KeyEvent.KEYCODE_2:

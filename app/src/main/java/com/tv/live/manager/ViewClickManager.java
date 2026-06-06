@@ -11,6 +11,9 @@ import com.tv.live.widget.EpgManagerWrapper;
 import com.tv.live.widget.GroupListManager;
 import java.util.List;
 
+/**
+ * 页面所有列表点击事件统一托管
+ */
 public class ViewClickManager {
     private final MainActivity activity;
     private final List<Channel> channelSourceList;

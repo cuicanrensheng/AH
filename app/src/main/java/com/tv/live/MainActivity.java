@@ -277,8 +277,8 @@ public class MainActivity extends AppCompatActivity {
                     return;
                 }
                 epgPanelOpen = !epgPanelOpen;
-                lvDate.setVisibility(epgPanelOpen ? View.VISIBLE : GONE);
-                lvEpg.setVisibility(epgPanelOpen ? View.VISIBLE : GONE);
+                lvDate.setVisibility(epgPanelOpen ? View.VISIBLE : View.GONE);
+                lvEpg.setVisibility(epgPanelOpen ? View.VISIBLE : View.GONE);
                 if (epgPanelOpen && !channelSourceList.isEmpty()) {
                     currentSelectedDateIndex = dateListManager.getSelectedPosition();
                     Channel curr = channelSourceList.get(currentPlayIndex);
@@ -329,13 +329,14 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        // 初始化各管理器
-        channelListManager = new ChannelListManager(this, lvChannelList);
+        // 初始化各管理器（修复初始化顺序）
         groupListManager = new GroupListManager(this, lvGroup);
         epgManagerWrapper = new EpgManagerWrapper(this, lvEpg);
-        dateListManager.initDate(); // 初始化日期列表
         dateListManager = new DateListManager(this, lvDate);
+        dateListManager.initDate();
         
+        panelManager = new PanelManager(panel_layout, channelListManager, epgManagerWrapper);
+
         // 播放器初始化
         mPlayerManager = TVPlayerManager.getInstance(this);
         mPlayerManager.attachPlayerView(playerView);
@@ -375,7 +376,6 @@ public class MainActivity extends AppCompatActivity {
 
         // 加载直播源和节目单
         loadLiveAndEpg();
-        initListViewClick(); // 频道列表点击事件
     }
 
     /**
@@ -602,11 +602,11 @@ public class MainActivity extends AppCompatActivity {
         // 刷新节目单
         epgManagerWrapper.refresh(ch, channelSourceList, currentSelectedDateIndex);
 
-        // 显示频道信息条，2秒后自动隐藏
+        // 显示频道信息条，4秒后自动隐藏
         if (info_bar != null) {
             info_bar.setVisibility(View.VISIBLE);
             info_bar.removeCallbacks(hideInfoBar);
-            info_bar.postDelayed(hideInfoBar, 2000);
+            info_bar.postDelayed(hideInfoBar, 4000);
             tv_channel_name.setText(ch.getName());
 
             TVPlayerManager.LiveInfo live = mPlayerManager.getLiveInfo();
@@ -634,14 +634,14 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * 显示右上角频道号，3秒后消失
+     * 显示右上角频道号，4秒后消失
      */
     public void showChannelNum(int num) {
         tv_channel_num.setText(String.valueOf(num));
         tv_channel_num.setVisibility(View.VISIBLE);
         new Handler(Looper.getMainLooper()).postDelayed(() -> {
             tv_channel_num.setVisibility(View.GONE);
-        }, 3000);
+        }, 4000);
     }
 
     /**

@@ -496,7 +496,6 @@ public class LivePanelManager {
 
             lvChannelList.setOnItemClickListener((parent, view, position, id) -> {
                 selectedPosition = position;
-                ((ArrayAdapter<?>) parent.getAdapter()).notifyDataSetChanged();
                 if (onChannelClickListener != null && position < currentGroupChannels.size()) {
                     onChannelClickListener.onChannelClick(position);
                 }
@@ -506,7 +505,6 @@ public class LivePanelManager {
                 @Override
                 public void onItemSelected(AdapterView<?> parent, View view, int pos, long id) {
                     selectedPosition = pos;
-                    ((ArrayAdapter<?>) parent.getAdapter()).notifyDataSetChanged();
                 }
                 @Override
                 public void onNothingSelected(AdapterView<?> parent) {}
@@ -515,9 +513,18 @@ public class LivePanelManager {
 
         public void setChannels(List<Channel> channelSourceList, int currentPlayIndex) {
             if (channelSourceList == null || channelSourceList.isEmpty()) return;
+            currentGroupChannels.clear();
+            currentGroupChannels.addAll(channelSourceList);
+
             List<String> names = new ArrayList<>();
             for (Channel c : channelSourceList) names.add(c.getName());
-            selectedPosition = currentPlayIndex;
+            for(int i=0;i<currentGroupChannels.size();i++){
+                if(currentGroupChannels.get(i) == channelSourceList.get(currentPlayIndex)){
+                    selectedPosition = i;
+                    break;
+                }
+            }
+
             ArrayAdapter<String> adapter = new ArrayAdapter<String>(lvChannelList.getContext(), android.R.layout.simple_list_item_1, names) {
                 @Override
                 public View getView(int position, View convertView, ViewGroup parent) {
@@ -553,8 +560,8 @@ public class LivePanelManager {
                     realIndex = i;
                 }
             }
-
             selectedPosition = realIndex;
+
             ArrayAdapter<String> adapter = new ArrayAdapter<String>(lvChannelList.getContext(), android.R.layout.simple_list_item_1, names) {
                 @Override
                 public View getView(int position, View convertView, ViewGroup parent) {
@@ -569,7 +576,6 @@ public class LivePanelManager {
             };
             lvChannelList.setAdapter(adapter);
             lvChannelList.setSelection(selectedPosition);
-            adapter.notifyDataSetChanged();
         }
 
         public Channel getCurrentGroupChannel(int position) {
@@ -580,9 +586,6 @@ public class LivePanelManager {
         public void setSelectedPosition(int position) {
             selectedPosition = position;
             lvChannelList.setSelection(position);
-            if (lvChannelList.getAdapter() != null) {
-                ((ArrayAdapter<?>) lvChannelList.getAdapter()).notifyDataSetChanged();
-            }
         }
 
         public void onBackPressed() {}
@@ -594,13 +597,11 @@ public class LivePanelManager {
         private List<String> groupList;
         private int selectedPosition = 0;
 
-        // 分组切换监听
         public interface OnGroupChangeListener {
             void onGroupChanged(String groupName);
         }
         private OnGroupChangeListener onGroupChangeListener;
 
-        // 分组长按监听
         public interface OnGroupLongClickListener {
             void onGroupLongClick(String groupName, int position);
         }
@@ -610,12 +611,10 @@ public class LivePanelManager {
             this.lvGroup = lvGroup;
             lvGroup.setItemsCanFocus(true);
 
-            // 选中监听
             lvGroup.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
                 @Override
                 public void onItemSelected(AdapterView<?> parent, View view, int pos, long id) {
                     selectedPosition = pos;
-                    ((ArrayAdapter<?>) parent.getAdapter()).notifyDataSetChanged();
                     if (onGroupChangeListener != null) {
                         onGroupChangeListener.onGroupChanged(getCurrentGroup(pos));
                     }
@@ -624,19 +623,14 @@ public class LivePanelManager {
                 public void onNothingSelected(AdapterView<?> parent) {}
             });
 
-            // 点击监听
             lvGroup.setOnItemClickListener((parent, view, position, id) -> {
                 selectedPosition = position;
-                if (parent.getAdapter() != null) {
-                    ((ArrayAdapter<?>) parent.getAdapter()).notifyDataSetChanged();
-                }
                 lvGroup.setSelection(position);
                 if (onGroupChangeListener != null) {
                     onGroupChangeListener.onGroupChanged(getCurrentGroup(position));
                 }
             });
 
-            // 长按监听
             lvGroup.setOnItemLongClickListener((parent, view, position, id) -> {
                 String groupName = getCurrentGroup(position);
                 if (onGroupLongClickListener != null) {
@@ -671,9 +665,6 @@ public class LivePanelManager {
         public void setSelectedPosition(int position) {
             selectedPosition = position;
             lvGroup.setSelection(position);
-            if (lvGroup.getAdapter() != null) {
-                ((ArrayAdapter<?>) lvGroup.getAdapter()).notifyDataSetChanged();
-            }
         }
 
         public String getCurrentGroup(int position) {

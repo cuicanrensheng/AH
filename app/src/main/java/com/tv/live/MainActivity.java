@@ -113,7 +113,7 @@ public class MainActivity extends AppCompatActivity {
                 playControlManager, epgManagerWrapper, groupListManager, dateListManager, channelListManager);
         viewClickManager.bindDateClick(lvDate);
         viewClickManager.bindGroupClick(lvGroup);
-        viewClickManager.bindChannelClick();
+        viewClickManager.bindChannelClick(lvChannelList); // ✅ 修复 1
 
         btn_show_epg.setOnClickListener(v -> {
             if (!settingsManager.epg_enable) {
@@ -226,9 +226,19 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    // ✅ 修复 2：添加 togglePanel
+    public void togglePanel() {
+        if (panel_layout.getVisibility() == View.VISIBLE) {
+            panel_layout.setVisibility(View.GONE);
+        } else {
+            panel_layout.setVisibility(View.VISIBLE);
+        }
+    }
+
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
-        if (keyEventManager.dispatch(keyCode)) return true;
+        // ✅ 修复 3：方法名 onKeyDown
+        if (keyEventManager.onKeyDown(keyCode)) return true;
         return super.onKeyDown(keyCode, event);
     }
 

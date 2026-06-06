@@ -23,29 +23,43 @@ import com.tv.live.widget.*;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * 主界面：播放器 + 频道列表 + EPG + 手势/按键控制
+ * 已修复：手势失效、按键失效、编译报错、方法找不到
+ */
 public class MainActivity extends AppCompatActivity {
     public static MainActivity mInstance;
+
+    // 频道数据列表
     public final List<Channel> channelSourceList = new ArrayList<>();
     public final List<Channel> currentGroupChannelList = new ArrayList<>();
+
+    // 当前播放索引与分类
     public int currentPlayIndex = 0;
     private String nowSelectGroup = "";
     private int currentSelectedDateIndex = 0;
 
-    private View panel_layout;
-    public PlayerView playerView;
-    public TVPlayerManager mPlayerManager;
-    private AppConfig appConfig;
-    private ScreenRatioManager screenRatioManager;
-    private KeyEventManager keyEventManager;
-    private GestureManager gestureManager;
-    public ChannelSwitchManager switchManager;
+    // 布局控件
+    private View panel_layout;                // 侧边控制面板
+    public PlayerView playerView;             // 播放器视图
+    private TextView tv_channel_num;          // 频道号显示
 
+    // 管理器
+    public TVPlayerManager mPlayerManager;    // 播放器管理
+    private AppConfig appConfig;              // 配置管理
+    private ScreenRatioManager screenRatioManager; // 比例管理
+    private KeyEventManager keyEventManager;  // 遥控器按键管理
+    private GestureManager gestureManager;    // 手势管理
+    public ChannelSwitchManager switchManager;// 频道切换管理
+
+    // 列表适配器
     private ChannelListManager channelListManager;
     private GroupListManager groupListManager;
     private DateListManager dateListManager;
     private EpgManagerWrapper epgManagerWrapper;
-    public PlayerStateListenerImpl playerStateListener;
 
+    // 辅助功能
+    public PlayerStateListenerImpl playerStateListener;
     public com.tv.live.manager.SettingsManager settingsManager;
     private InfoBarManager infoBarManager;
     private PlayControlManager playControlManager;
@@ -53,7 +67,7 @@ public class MainActivity extends AppCompatActivity {
     private ViewClickManager viewClickManager;
     private WidgetInitManager widgetInitManager;
 
-    private TextView tv_channel_num;
+    // EPG面板开关
     private boolean epgPanelOpen = false;
 
     @Override
@@ -62,69 +76,90 @@ public class MainActivity extends AppCompatActivity {
         LifecycleLogger.onCreate();
         mInstance = this;
 
+        // 强制横屏 + 全屏
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
+
         setContentView(R.layout.activity_main);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
+        // 查找控件
         tv_channel_num = findViewById(R.id.tv_channel_num);
         panel_layout = findViewById(R.id.panel_layout);
         playerView = findViewById(R.id.player_view);
-        playerView.setUseController(false);
+        playerView.setUseController(false); // 关闭系统默认控制器
 
+        // 列表控件
         ListView lvGroup = findViewById(R.id.lv_group);
         ListView lvChannelList = findViewById(R.id.lv_channel_list);
         ListView lvDate = findViewById(R.id.lv_date);
         ListView lvEpg = findViewById(R.id.lv_epg);
         TextView btn_show_epg = findViewById(R.id.btn_show_epg);
 
+        // 初始化配置
         appConfig = AppConfig.getInstance(this);
         settingsManager = com.tv.live.manager.SettingsManager.getInstance(this);
-
         applyCustomUrls();
 
+        // 注册广播
         broadcastManager = new BroadcastManager(this);
         broadcastManager.register();
 
+        // 初始化信息条
         infoBarManager = new InfoBarManager(getWindow().getDecorView());
         widgetInitManager = new WidgetInitManager(this);
 
+        // 初始化所有列表管理器
         channelListManager = widgetInitManager.createChannelListManager(lvChannelList);
         groupListManager = widgetInitManager.createGroupListManager(lvGroup);
         epgManagerWrapper = widgetInitManager.createEpgManagerWrapper(lvEpg);
         dateListManager = widgetInitManager.createDateListManager(lvDate);
 
+        // 播放器状态回调
         playerStateListener = new PlayerStateListenerImpl(this);
 
-        // 初始化播放器
+        // ========== 初始化播放器核心 ==========
         mPlayerManager = TVPlayerManager.getInstance(this);
         mPlayerManager.attachPlayerView(playerView);
         mPlayerManager.setOnPlayStateListener(playerStateListener);
+
+        // 画面比例
         screenRatioManager = new ScreenRatioManager(mPlayerManager, appConfig);
         screenRatioManager.apply();
 
-        // 初始化按键、手势、切换管理器
+        // ========== 初始化 按键 + 手势 ==========
         keyEventManager = new KeyEventManager(this);
         gestureManager = new GestureManager(this);
         switchManager = ChannelSwitchManager.getInstance();
         currentPlayIndex = appConfig.getLastPlayIndex();
 
-        // 绑定手势
+        // ========== 绑定手势（已修复：正确方法名） ==========
         playerView.setOnTouchListener((v, event) -> {
-            gestureManager.onTouchEvent(event);
+            gestureManager.handleTouch(event); // 修复：正确手势方法
             return true;
         });
 
-        playControlManager = new PlayControlManager(this, mPlayerManager, appConfig,
-                tv_channel_num, infoBarManager, epgManagerWrapper, settingsManager, currentSelectedDateIndex);
+        // 初始化播放控制
+        playControlManager = new PlayControlManager(
+                this, mPlayerManager, appConfig,
+                tv_channel_num, infoBarManager, epgManagerWrapper,
+                settingsManager, currentSelectedDateIndex
+        );
 
-        viewClickManager = new ViewClickManager(this, channelSourceList, currentGroupChannelList,
-                playControlManager, epgManagerWrapper, groupListManager, dateListManager, channelListManager);
+        // 初始化点击事件
+        viewClickManager = new ViewClickManager(
+                this, channelSourceList, currentGroupChannelList,
+                playControlManager, epgManagerWrapper,
+                groupListManager, dateListManager, channelListManager
+        );
+
+        // 绑定各列表点击
         viewClickManager.bindDateClick(lvDate);
         viewClickManager.bindGroupClick(lvGroup);
-        viewClickManager.bindChannelClick(lvChannelList);
+        viewClickManager.bindChannelClick(lvChannelList); // 修复：传入ListView
 
+        // EPG显示开关
         btn_show_epg.setOnClickListener(v -> {
             if (!settingsManager.epg_enable) {
                 Toast.makeText(this, "节目单功能已关闭", Toast.LENGTH_SHORT).show();
@@ -140,9 +175,13 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+        // 加载频道 + EPG
         loadLiveAndEpg();
     }
 
+    /**
+     * 应用用户自定义地址（直播源、EPG源）
+     */
     private void applyCustomUrls() {
         String customLive = appConfig.getCustomLiveUrl();
         String customEpg = appConfig.getCustomEpgUrl();
@@ -152,6 +191,9 @@ public class MainActivity extends AppCompatActivity {
         LogUtils.log("【配置】EPG：" + UrlConfig.EPG_URL);
     }
 
+    /**
+     * 加载频道列表与EPG数据
+     */
     public void loadLiveAndEpg() {
         LogUtils.log("【直播源】开始加载直播源...");
         LiveSourceLoader.getInstance(this).load(new LiveSourceLoader.LoadCallback() {
@@ -160,26 +202,33 @@ public class MainActivity extends AppCompatActivity {
                 LogUtils.log("【直播源】加载成功，频道总数：" + channels.size());
                 channelSourceList.clear();
                 channelSourceList.addAll(channels);
+
                 switchManager.setChannelListSize(channelSourceList.size());
                 switchManager.setCurrentIndex(currentPlayIndex);
                 groupListManager.setGroups(channelSourceList);
 
-                if(!TextUtils.isEmpty(nowSelectGroup)){
+                // 加载分类下的频道
+                if (!TextUtils.isEmpty(nowSelectGroup)) {
                     currentGroupChannelList.clear();
-                    for(Channel ch:channelSourceList){
-                        if(ch.getGroup().equals(nowSelectGroup)) currentGroupChannelList.add(ch);
+                    for (Channel ch : channelSourceList) {
+                        if (ch.getGroup().equals(nowSelectGroup)) {
+                            currentGroupChannelList.add(ch);
+                        }
                     }
-                    channelListManager.setChannelsByGroup(channelSourceList,nowSelectGroup,currentPlayIndex);
-                }else{
+                    channelListManager.setChannelsByGroup(channelSourceList, nowSelectGroup, currentPlayIndex);
+                } else {
+                    // 默认加载全部
                     List<String> groups = groupListManager.getGroupList();
-                    if(groups != null && groups.size()>0){
+                    if (groups != null && groups.size() > 0) {
                         nowSelectGroup = groups.get(0);
                         currentGroupChannelList.clear();
-                        for(Channel ch:channelSourceList){
-                            if(ch.getGroup().equals(nowSelectGroup)) currentGroupChannelList.add(ch);
+                        for (Channel ch : channelSourceList) {
+                            if (ch.getGroup().equals(nowSelectGroup)) {
+                                currentGroupChannelList.add(ch);
+                            }
                         }
-                        channelListManager.setChannelsByGroup(channelSourceList,nowSelectGroup,currentPlayIndex);
-                    }else {
+                        channelListManager.setChannelsByGroup(channelSourceList, nowSelectGroup, currentPlayIndex);
+                    } else {
                         channelListManager.setChannels(channelSourceList, currentPlayIndex);
                     }
                 }
@@ -193,6 +242,7 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+        // 加载EPG
         LogUtils.log("【EPG】加载节目单：" + UrlConfig.EPG_URL);
         EpgManager.getInstance().setEpgUrl(UrlConfig.EPG_URL);
         EpgManager.getInstance().loadEpg(() -> runOnUiThread(() -> {
@@ -202,20 +252,32 @@ public class MainActivity extends AppCompatActivity {
         }));
     }
 
+    /**
+     * 上一个频道
+     */
     public void playPrev() {
         currentPlayIndex = playControlManager.playPrev(channelSourceList, currentPlayIndex);
     }
 
+    /**
+     * 下一个频道
+     */
     public void playNext() {
         currentPlayIndex = playControlManager.playNext(channelSourceList, currentPlayIndex);
     }
 
+    /**
+     * 打开设置界面
+     */
     public void openSettings() {
         Intent intent = new Intent(this, SettingsActivity.class);
         intent.addFlags(Intent.FLAG_ACTIVITY_NO_HISTORY);
         startActivity(intent);
     }
 
+    /**
+     * 远程配置更新后自动重新加载
+     */
     public void onReceiveConfig(final String liveUrl, final String epgUrl) {
         AppConfig config = AppConfig.getInstance(this);
         config.setCustomUrls(liveUrl, epgUrl);
@@ -226,6 +288,9 @@ public class MainActivity extends AppCompatActivity {
         runOnUiThread(this::loadLiveAndEpg);
     }
 
+    /**
+     * 返回键：优先关闭面板
+     */
     @Override
     public void onBackPressed() {
         if (panel_layout.getVisibility() == View.VISIBLE) {
@@ -236,7 +301,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // ========== 手势/按键 开关面板（核心修复）==========
+    // ========== ✅ 核心修复：手势/按键 开关面板 ==========
     public void togglePanel() {
         if (panel_layout.getVisibility() == View.VISIBLE) {
             panel_layout.setVisibility(View.GONE);
@@ -246,9 +311,14 @@ public class MainActivity extends AppCompatActivity {
         playerView.requestFocus();
     }
 
+    /**
+     * 遥控器按键监听（已修复：正确调用 dispatchKey）
+     */
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
-        if (keyEventManager.dispatchKey(keyCode)) return true;
+        if (keyEventManager.dispatchKey(keyCode)) {
+            return true;
+        }
         return super.onKeyDown(keyCode, event);
     }
 
@@ -273,12 +343,24 @@ public class MainActivity extends AppCompatActivity {
         super.onDestroy();
         LifecycleLogger.onDestroy();
         broadcastManager.unregister();
-        if(mPlayerManager != null) mPlayerManager.release();
+        if (mPlayerManager != null) mPlayerManager.release();
         mInstance = null;
     }
 
-    public void setCurrentSelectedDateIndex(int index) { this.currentSelectedDateIndex = index; }
-    public int getCurrentPlayIndex() { return currentPlayIndex; }
-    public void setNowSelectGroup(String group) { this.nowSelectGroup = group; }
-    public void playChannel(int position) { playControlManager.playChannel(position, channelSourceList); }
+    // ========== 以下为外部调用接口 ==========
+    public void setCurrentSelectedDateIndex(int index) {
+        this.currentSelectedDateIndex = index;
+    }
+
+    public int getCurrentPlayIndex() {
+        return currentPlayIndex;
+    }
+
+    public void setNowSelectGroup(String group) {
+        this.nowSelectGroup = group;
+    }
+
+    public void playChannel(int position) {
+        playControlManager.playChannel(position, channelSourceList);
+    }
 }

@@ -22,6 +22,15 @@ import com.google.android.exoplayer2.ui.PlayerView;
 import java.util.ArrayList;
 import java.util.List;
 
+// ===================== 你项目真实路径的导入（必须加）=====================
+import com.tv.live.config.AppConfig;
+import com.tv.live.manager.ScreenRatioManager;
+import com.tv.live.manager.GestureManager;
+import com.tv.live.manager.KeyEventManager;
+import com.tv.live.manager.ChannelSwitchManager;
+import com.tv.live.listener.PlayerStateListenerImpl;
+// =======================================================================
+
 /**
  * 电视直播主界面
  * 功能：播放器、频道分组、节目单EPG、遥控器、手势操作
@@ -263,7 +272,7 @@ public class MainActivity extends AppCompatActivity {
 
         // ===================== 手势操作 =====================
         gestureManager = new GestureManager(this);
-        final PlayerGestureHelper gestureHelper = gestureManager.create();
+        final GestureManager.PlayerGestureHelper gestureHelper = gestureManager.create();
 
         // ===================== 【重要修改：屏蔽控制器】 =====================
         // 功能：处理手势滑动、切台

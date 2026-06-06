@@ -1,283 +1,132 @@
-package com.tv.live;
+package com.tv.live.util;
 
-import android.util.Log;
-import java.io.BufferedInputStream;
-import java.io.BufferedReader;
-import java.io.ByteArrayOutputStream;
-import java.io.InputStream;
-import java.io.InputStreamReader;
+import java.io.IOException;
 import java.net.HttpURLConnection;
-import java.net.ProtocolException;
-import java.net.URL;
 import java.net.URI;
-import java.security.SecureRandom;
-import java.security.cert.X509Certificate;
+import java.net.URL;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import javax.net.ssl.HostnameVerifier;
-import javax.net.ssl.HttpsURLConnection;
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.TrustManager;
-import javax.net.ssl.X509TrustManager;
 
+/**
+ * HTTP工具类：直播地址重定向解析、携带防盗链请求头、Cookie缓存、自动多级跳转
+ * 对外调用：HttpUtil.getFinalPlayUrl(原始播放地址) 返回最终真实直链
+ */
 public class HttpUtil {
-    private static final int CONNECT_TIMEOUT = 10000;
-    private static final int READ_TIMEOUT = 20000;
+    // 最大重定向次数，防止死循环
     private static final int MAX_REDIRECT = 10;
-    private static final String UA = "ExoPlayerLib/2.19.1 (Linux; Android 11; Android TV)";
-    private static final HashMap<String, String> cookieStore = new HashMap<>();
+    // 域名Cookie缓存：key=域名 host, value=Cookie字符串
+    private static final Map<String, String> DOMAIN_COOKIE_MAP = new HashMap<>();
 
-    static {
-        initAllTrustSSL();
-    }
-
-    private static void initAllTrustSSL() {
-        try {
-            TrustManager[] trustAll = new TrustManager[]{
-                    new X509TrustManager() {
-                        @Override
-                        public X509Certificate[] getAcceptedIssuers() { return new X509Certificate[0]; }
-                        @Override
-                        public void checkClientTrusted(X509Certificate[] certs, String authType) {}
-                        @Override
-                        public void checkServerTrusted(X509Certificate[] certs, String authType) {}
-                    }
-            };
-            SSLContext sslCtx = SSLContext.getInstance("TLS");
-            sslCtx.init(null, trustAll, new SecureRandom());
-            HttpsURLConnection.setDefaultSSLSocketFactory(sslCtx.getSocketFactory());
-            HostnameVerifier ignoreHost = (hostname, session) -> true;
-            HttpsURLConnection.setDefaultHostnameVerifier(ignoreHost);
-        } catch (Exception e) {
-            Log.e("HttpSSL", "SSL初始化异常：" + e.getMessage());
+    /**
+     * 【核心方法】输入原始链接，自动递归解析301/302重定向，返回最终真实播放地址
+     * @param srcUrl 原始中转/虎牙链接
+     * @return 解析后最终有效播放地址
+     */
+    public static String getFinalPlayUrl(String srcUrl) {
+        if (srcUrl == null || srcUrl.trim().isEmpty()) {
+            return srcUrl;
         }
-    }
+        String nowUrl = srcUrl.trim();
+        int redirectTimes = 0;
 
-    // ==============================
-    ///【核心新增】自动解析最终播放地址（自动10次重定向）
-    // ==============================
-    public static String getFinalPlayUrl(String url) {
-        if (url == null || url.isEmpty()) return url;
-
-        String currentUrl = url;
-        int redirectCount = 0;
-
-        while (redirectCount < MAX_REDIRECT) {
+        while (redirectTimes < MAX_REDIRECT) {
             HttpURLConnection conn = null;
             try {
-                URL u = new URL(currentUrl);
-                conn = (HttpURLConnection) u.openConnection();
-                setBaseHeader(conn, u);
+                URL urlObj = new URL(nowUrl);
+                conn = (HttpURLConnection) urlObj.openConnection();
+                // 关闭系统自动重定向，手动处理跳转
                 conn.setInstanceFollowRedirects(false);
+                // 设置请求头（UA、Referer、Cookie，解决403）
+                setBaseHeader(conn, urlObj);
+                // 连接超时
+                conn.setConnectTimeout(8000);
+                conn.setReadTimeout(8000);
 
                 int code = conn.getResponseCode();
+                // 保存本次域名返回的Set-Cookie，同域名后续请求复用
+                saveDomainCookie(conn.getHeaderFields(), urlObj.getHost());
+
+                // 3xx为重定向状态：301/302/307
                 if (code >= 300 && code < 400) {
                     String location = conn.getHeaderField("Location");
-                    if (location == null || location.isEmpty()) break;
-
-                    URI baseUri = u.toURI();
-                    URI newUri = baseUri.resolve(location);
-                    currentUrl = newUri.toString();
-                    redirectCount++;
+                    if (location == null || location.isEmpty()) {
+                        break;
+                    }
+                    // 相对路径转绝对URL
+                    URI baseUri = urlObj.toURI();
+                    URI targetUri = baseUri.resolve(location);
+                    nowUrl = targetUri.toString();
+                    redirectTimes++;
                     continue;
                 }
+                // 非重定向，终止循环返回当前url
                 break;
 
             } catch (Exception e) {
+                // 异常直接返回当前已解析地址
                 break;
             } finally {
-                try { if (conn != null) conn.disconnect(); } catch (Exception ignored) {}
+                if (conn != null) {
+                    conn.disconnect();
+                }
             }
         }
-        return currentUrl;
+        return nowUrl;
     }
 
-    // 兼容旧项目
-    public static String get(String url) {
-        return getStr(url);
-    }
-
-    public static String getStr(String url) {
-        String nowUrl = url;
-        int redirectNum = 0;
-        while (redirectNum <= MAX_REDIRECT) {
-            HttpURLConnection conn = null;
-            BufferedReader br = null;
-            InputStream is = null;
-            try {
-                URL parseUrl = new URL(nowUrl);
-                conn = (HttpURLConnection) parseUrl.openConnection();
-                setBaseHeader(conn, parseUrl);
-
-                int respCode = conn.getResponseCode();
-                saveDomainCookie(conn.getHeaderFields(), parseUrl.getHost());
-
-                if (respCode >= 300 && respCode < 400) {
-                    redirectNum++;
-                    String location = conn.getHeaderField("Location");
-                    if (location == null || location.isEmpty()) {
-                        closeResource(conn, br, is);
-                        return null;
-                    }
-                    URI fullUri = parseUrl.toURI().resolve(location);
-                    nowUrl = fullUri.toString();
-                    closeResource(conn, br, is);
-                    continue;
-                }
-
-                if (respCode == 200) {
-                    is = conn.getInputStream();
-                    br = new BufferedReader(new InputStreamReader(is, "UTF-8"));
-                    StringBuilder sb = new StringBuilder();
-                    String line;
-                    while ((line = br.readLine()) != null) {
-                        sb.append(line).append("\n");
-                    }
-                    closeResource(conn, br, is);
-                    return sb.toString();
-                } else {
-                    closeResource(conn, br, is);
-                    return null;
-                }
-            } catch (Exception ex) {
-                closeResource(conn, br, is);
-                return null;
-            }
-        }
-        return null;
-    }
-
-    public static byte[] getByte(String url) {
-        String nowUrl = url;
-        int redirectNum = 0;
-        while (redirectNum <= MAX_REDIRECT) {
-            HttpURLConnection conn = null;
-            InputStream is = null;
-            ByteArrayOutputStream bos = null;
-            try {
-                URL parseUrl = new URL(nowUrl);
-                conn = (HttpURLConnection) parseUrl.openConnection();
-                setBaseHeader(conn, parseUrl);
-                conn.setRequestProperty("Accept", "application/octet-stream,*/*;q=0.9");
-                conn.setRequestProperty("Accept-Encoding", "identity");
-
-                int respCode = conn.getResponseCode();
-                saveDomainCookie(conn.getHeaderFields(), parseUrl.getHost());
-
-                if (respCode >= 300 && respCode < 400) {
-                    redirectNum++;
-                    String location = conn.getHeaderField("Location");
-                    if (location == null || location.isEmpty()) {
-                        closeResource(conn, null, is);
-                        return null;
-                    }
-                    URI fullUri = parseUrl.toURI().resolve(location);
-                    nowUrl = fullUri.toString();
-                    closeResource(conn, null, is);
-                    continue;
-                }
-
-                if (respCode == 200) {
-                    is = new BufferedInputStream(conn.getInputStream());
-                    bos = new ByteArrayOutputStream();
-                    byte[] buf = new byte[8192];
-                    int readLen;
-                    while ((readLen = is.read(buf)) != -1) {
-                        bos.write(buf, 0, readLen);
-                    }
-                    byte[] result = bos.toByteArray();
-                    closeResource(conn, null, is);
-                    return result;
-                } else {
-                    closeResource(conn, null, is);
-                    return null;
-                }
-            } catch (Exception ex) {
-                closeResource(conn, null, is);
-                return null;
-            }
-        }
-        return null;
-    }
-
+    /**
+     * 统一配置请求头：区分虎牙/中转域名的Referer、UA，携带历史Cookie，解决403 Forbidden
+     */
     private static void setBaseHeader(HttpURLConnection conn, URL urlObj) {
-        conn.setConnectTimeout(CONNECT_TIMEOUT);
-        conn.setReadTimeout(READ_TIMEOUT);
-        try {
-            conn.setRequestMethod("GET");
-        } catch (ProtocolException e) {
-            e.printStackTrace();
-        }
-        conn.setInstanceFollowRedirects(false);
-        conn.setUseCaches(false);
-
-        String host = urlObj.getHost();
-        if (host.contains("jdshipin.com") || host.contains("zxyxndc.top")) {
-            conn.setRequestProperty("Referer", "http://cdn.jdshipin.com:8880/");
-            conn.setRequestProperty("Origin", "http://cdn.jdshipin.com");
-            conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36");
-        } else if (host.contains("huya.com")) {
-            conn.setRequestProperty("Referer", "https://www.huya.com/");
-            conn.setRequestProperty("Origin", "https://www.huya.com");
-            conn.setRequestProperty("User-Agent", "ExoPlayerLib/2.19.1 (Linux; Android 11; Android TV)");
-        } else {
-            String domain = urlObj.getProtocol() + "://" + urlObj.getHost();
-            conn.setRequestProperty("Referer", domain);
-            conn.setRequestProperty("Origin", domain);
-            conn.setRequestProperty("User-Agent", UA);
-        }
-
-        conn.setRequestProperty("Accept-Language", "zh-CN,zh;q=0.9");
-        conn.setRequestProperty("Connection", "keep-alive");
+        String host = urlObj.getHost().toLowerCase();
+        // 通用UA（浏览器标识，防拦截）
+        String chromeUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+        conn.setRequestProperty("User-Agent", chromeUA);
         conn.setRequestProperty("Accept", "*/*");
-        conn.setRequestProperty("sec-fetch-site", "cross-site");
-        conn.setRequestProperty("sec-fetch-mode", "cors");
+        conn.setRequestProperty("Accept-Language", "zh-CN,zh;q=0.9");
 
-        String domainCk = cookieStore.get(urlObj.getHost());
-        if (domainCk != null && !domainCk.isEmpty()) {
-            conn.setRequestProperty("Cookie", domainCk);
+        // 携带该域名缓存的Cookie
+        if (DOMAIN_COOKIE_MAP.containsKey(host)) {
+            conn.setRequestProperty("Cookie", DOMAIN_COOKIE_MAP.get(host));
+        }
+
+        // 中转域名：jdshipin / zxyxndc 固定Referer
+        if (host.contains("jdshipin") || host.contains("zxyxndc")) {
+            conn.setRequestProperty("Referer", "http://cdn.jdshipin.com:8880");
+        }
+        // 虎牙域名：huya 固定Referer
+        else if (host.contains("huya")) {
+            conn.setRequestProperty("Referer", "https://www.huya.com");
         }
     }
 
+    /**
+     * 抓取响应头Set-Cookie，按域名缓存
+     */
     private static void saveDomainCookie(Map<String, List<String>> headerMap, String host) {
         if (headerMap == null || host == null) return;
         List<String> setCookieList = headerMap.get("Set-Cookie");
         if (setCookieList == null || setCookieList.isEmpty()) return;
-        for (String ckItem : setCookieList) {
-            if (ckItem.contains(";")) ckItem = ckItem.split(";")[0];
-            cookieStore.put(host, ckItem);
+
+        StringBuilder sb = new StringBuilder();
+        for (String cookieItem : setCookieList) {
+            if (cookieItem.contains(";")) {
+                sb.append(cookieItem.split(";")[0]).trim()).append("; ");
+            } else {
+                sb.append(cookieItem.trim()).append("; ");
+            }
+        }
+        String finalCookie = sb.toString().trim();
+        if (!finalCookie.isEmpty()) {
+            DOMAIN_COOKIE_MAP.put(host, finalCookie);
         }
     }
 
-    private static void closeResource(HttpURLConnection conn, BufferedReader br, InputStream is) {
-        try { if (br != null) br.close(); } catch (Exception ignored) {}
-        try { if (is != null) is.close(); } catch (Exception ignored) {}
-        try { if (conn != null) conn.disconnect(); } catch (Exception ignored) {}
-    }
-
-    public interface HttpStrCallback { void onResult(String result); }
-    public interface HttpByteCallback { void onResult(byte[] data); }
-
-    public static void getStrAsync(String url, HttpStrCallback callback) {
-        new Thread(()->{
-            String res = getStr(url);
-            if(callback != null && MainActivity.mInstance != null){
-                MainActivity.mInstance.runOnUiThread(()->callback.onResult(res));
-            }
-        }).start();
-    }
-
-    public static void getByteAsync(String url, HttpByteCallback callback) {
-        new Thread(()->{
-            byte[] data = getByte(url);
-            if(callback != null && MainActivity.mInstance != null){
-                MainActivity.mInstance.runOnUiThread(()->callback.onResult(data));
-            }
-        }).start();
-    }
-
+    /**
+     * 清空Cookie缓存（可选：设置页刷新源时调用）
+     */
     public static void clearAllCookie() {
-        cookieStore.clear();
+        DOMAIN_COOKIE_MAP.clear();
     }
 }

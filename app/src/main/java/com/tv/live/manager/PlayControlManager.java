@@ -5,11 +5,10 @@ import android.os.Looper;
 import android.widget.TextView;
 import android.text.TextUtils;
 import com.tv.live.Channel;
-import com.tv.live.ChannelSwitchManager;
 import com.tv.live.MainActivity;
 import com.tv.live.TVPlayerManager;
-import com.tv.live.config.AppConfig; // 修复
-import com.tv.live.widget.EpgManagerWrapper; // 修复
+import com.tv.live.config.AppConfig;
+import com.tv.live.widget.EpgManagerWrapper;
 import com.tv.live.util.LogUtils;
 import com.tv.live.util.RedirectUrlUtil;
 import java.util.List;
@@ -19,7 +18,6 @@ public class PlayControlManager {
     private long lastChannelChangeTime = 0;
     private final MainActivity activity;
     private final TVPlayerManager mPlayerManager;
-    private final ChannelSwitchManager switchManager;
     private final AppConfig appConfig;
     private final TextView tv_channel_num;
     private final InfoBarManager infoBarManager;
@@ -27,12 +25,11 @@ public class PlayControlManager {
     private final SettingsManager settingsManager;
     private int currentSelectedDateIndex;
 
-    public PlayControlManager(MainActivity activity, TVPlayerManager playerManager, ChannelSwitchManager switchMgr,
+    public PlayControlManager(MainActivity activity, TVPlayerManager playerManager,
                              AppConfig cfg, TextView numTv, InfoBarManager infoBar, EpgManagerWrapper epgWrap,
                              SettingsManager setMgr, int dateIndex) {
         this.activity = activity;
         this.mPlayerManager = playerManager;
-        this.switchManager = switchMgr;
         this.appConfig = cfg;
         this.tv_channel_num = numTv;
         this.infoBarManager = infoBar;
@@ -49,7 +46,7 @@ public class PlayControlManager {
         tv_channel_num.setText(String.valueOf(num));
         tv_channel_num.setVisibility(android.view.View.VISIBLE);
         new Handler(Looper.getMainLooper()).postDelayed(() -> {
-            tv_channel_num.setVisibility(android.view.View.GONE);
+            tv_channel_num.setVisibility(View.GONE);
         }, delay);
     }
 
@@ -58,7 +55,7 @@ public class PlayControlManager {
         if (now - lastChannelChangeTime < CHANNEL_COOLDOWN) return nowIndex;
         lastChannelChangeTime = now;
         LogUtils.log("【切台】上一台");
-        int idx = settingsManager.channel_reverse ? switchManager.next() : switchManager.prev();
+        int idx = settingsManager.channel_reverse ? activity.switchManager.next() : activity.switchManager.prev();
         playChannel(idx, sourceList);
         return idx;
     }
@@ -68,7 +65,7 @@ public class PlayControlManager {
         if (now - lastChannelChangeTime < CHANNEL_COOLDOWN) return nowIndex;
         lastChannelChangeTime = now;
         LogUtils.log("【切台】下一台");
-        int idx = settingsManager.channel_reverse ? switchManager.prev() : switchManager.next();
+        int idx = settingsManager.channel_reverse ? activity.switchManager.prev() : activity.switchManager.next();
         playChannel(idx, sourceList);
         return idx;
     }

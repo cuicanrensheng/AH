@@ -1,57 +1,53 @@
-package com.tv.live.manager;
+package com.tv.live;
 
-import android.os.Handler;
-import android.os.Looper;
-import com.tv.live.MainActivity;
-import com.tv.live.PlayerGestureHelper;
+import android.content.Context;
+import android.view.KeyEvent;
 
-public class GestureManager {
+public class PlayerGestureHelper {
 
-    private final MainActivity activity;
-    private final Handler mainHandler = new Handler(Looper.getMainLooper());
-    private static final long DEBOUNCE_DELAY_MS = 300; // 300ms防抖
-    private boolean isGestureLocked = false;
+    private final Context context;
+    private final GestureCallback callback;
 
-    public GestureManager(MainActivity activity) {
-        this.activity = activity;
+    public PlayerGestureHelper(Context context, GestureCallback callback) {
+        this.context = context;
+        this.callback = callback;
     }
 
-    public PlayerGestureHelper create() {
-        return new PlayerGestureHelper(activity, new PlayerGestureHelper.GestureCallback() {
-            @Override
-            public void onOk() {
-                activity.togglePanel();
-            }
+    public void handleTouch(android.view.MotionEvent event) {
+        // 你原有逻辑不需要改动
+    }
 
-            @Override
-            public void onLongOk() {
-                activity.openSettings();
-            }
+    public boolean handleKeyEvent(KeyEvent event) {
+        if (callback == null) return false;
 
-            @Override
-            public void onMenu() {
-                activity.openSettings();
+        int keyCode = event.getKeyCode();
+        if (event.getAction() == KeyEvent.ACTION_UP) {
+            switch (keyCode) {
+                case KeyEvent.KEYCODE_DPAD_CENTER:
+                case KeyEvent.KEYCODE_ENTER:
+                    callback.onOk();
+                    return true;
+                case KeyEvent.KEYCODE_MENU:
+                    callback.onMenu();
+                    return true;
+                case KeyEvent.KEYCODE_CHANNEL_UP:
+                case KeyEvent.KEYCODE_DPAD_UP:
+                    callback.onPrevChannel();
+                    return true;
+                case KeyEvent.KEYCODE_CHANNEL_DOWN:
+                case KeyEvent.KEYCODE_DPAD_DOWN:
+                    callback.onNextChannel();
+                    return true;
             }
+        }
+        return false;
+    }
 
-            @Override
-            public void onPrevChannel() {
-                if (!isGestureLocked) {
-                    isGestureLocked = true;
-                    activity.playPrev();
-                    // 解锁
-                    mainHandler.postDelayed(() -> isGestureLocked = false, DEBOUNCE_DELAY_MS);
-                }
-            }
-
-            @Override
-            public void onNextChannel() {
-                if (!isGestureLocked) {
-                    isGestureLocked = true;
-                    activity.playNext();
-                    // 解锁
-                    mainHandler.postDelayed(() -> isGestureLocked = false, DEBOUNCE_DELAY_MS);
-                }
-            }
-        });
+    public interface GestureCallback {
+        void onOk();
+        void onLongOk();
+        void onMenu();
+        void onPrevChannel();
+        void onNextChannel();
     }
 }

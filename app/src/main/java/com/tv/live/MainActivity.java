@@ -375,8 +375,11 @@ public class MainActivity extends AppCompatActivity {
             } finally {
                 if (conn != null) conn.disconnect();
             }
+
+            // ========== 修复：lambda 变量必须 final ==========
+            final String playUrl = TextUtils.isEmpty(finalUrl) ? originalUrl : finalUrl;
             new Handler(Looper.getMainLooper()).post(() -> {
-                mPlayerManager.playUrl(TextUtils.isEmpty(finalUrl) ? originalUrl : finalUrl);
+                mPlayerManager.playUrl(playUrl);
             });
         }).start();
     }

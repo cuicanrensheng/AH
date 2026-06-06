@@ -111,11 +111,11 @@ public class MainActivity extends AppCompatActivity {
         currentPlayIndex = appConfig.getLastPlayIndex();
 
         // ==============================
-        // ✅ 正确手势绑定（根据你的真实 GestureManager 编写）
+        // ✅ 终极正确手势绑定
         // ==============================
         PlayerGestureHelper gestureHelper = gestureManager.create();
         playerView.setOnTouchListener((v, event) -> {
-            gestureHelper.onTouchEvent(event);
+            gestureHelper.onTouch(event); // ✅ 修复完成
             return true;
         });
 

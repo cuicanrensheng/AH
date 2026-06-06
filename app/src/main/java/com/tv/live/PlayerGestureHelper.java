@@ -18,19 +18,32 @@ public class PlayerGestureHelper {
     }
 
     private class MyGestureListener extends GestureDetector.SimpleOnGestureListener {
-        @Override public boolean onSingleTapConfirmed(MotionEvent e) {
-            callback.onOk(); return true;
+        @Override
+        public boolean onSingleTapConfirmed(MotionEvent e) {
+            callback.onOk();
+            return true;
         }
-        @Override public boolean onDoubleTap(MotionEvent e) {
-            callback.onMenu(); return true;
+
+        @Override
+        public boolean onDoubleTap(MotionEvent e) {
+            callback.onMenu();
+            return true;
         }
-        @Override public void onLongPress(MotionEvent e) {
+
+        @Override
+        public void onLongPress(MotionEvent e) {
             callback.onLongOk();
         }
-        @Override public boolean onScroll(MotionEvent e1, MotionEvent e2, float dx, float dy) {
+
+        @Override
+        public boolean onScroll(MotionEvent e1, MotionEvent e2, float dx, float dy) {
             if (Math.abs(dy) > Math.abs(dx)) {
-                if (dy < -10) callback.onPrevChannel();
-                if (dy > 10) callback.onNextChannel();
+                if (dy < -10) {
+                    callback.onPrevChannel();
+                }
+                if (dy > 10) {
+                    callback.onNextChannel();
+                }
             }
             return true;
         }

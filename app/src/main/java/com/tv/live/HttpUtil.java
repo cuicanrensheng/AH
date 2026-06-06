@@ -112,7 +112,7 @@ public class HttpUtil {
         StringBuilder sb = new StringBuilder();
         for (String cookieItem : setCookieList) {
             if (cookieItem.contains(";")) {
-                sb.append(cookieItem.split(";")[0]).trim()).append("; ");
+               sb.append(cookieItem.split(";")[0].trim()).append("; ");
             } else {
                 sb.append(cookieItem.trim()).append("; ");
             }

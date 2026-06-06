@@ -1,6 +1,5 @@
 package com.tv.live.manager;
 
-import android.widget.AdapterView;
 import android.widget.ListView;
 import com.tv.live.Channel;
 import com.tv.live.MainActivity;
@@ -65,9 +64,9 @@ public class ViewClickManager {
         });
     }
 
-    // 修复：使用系统标准点击
-    public void bindChannelClick(ListView lv) {
-        lv.setOnItemClickListener((parent, view, position, id) -> {
+    // ✅ 修复 4：正常可用的点击事件
+    public void bindChannelClick(ListView lvChannelList) {
+        lvChannelList.setOnItemClickListener((parent, view, position, id) -> {
             activity.currentPlayIndex = position;
             playControlManager.playChannel(position, channelSourceList);
         });

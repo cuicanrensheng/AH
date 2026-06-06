@@ -197,72 +197,80 @@ public class MainActivity extends AppCompatActivity {
         screenRatioManager = new ScreenRatioManager(mPlayerManager, appConfig);
         screenRatioManager.apply();
 
-        // ========== 触摸逻辑（完美版） ==========
-        gestureManager = new GestureManager(this);
-        gestureHelper = gestureManager.create();
-
         playerView.setOnTouchListener((v, event) -> {
-            gestureHelper.handleTouch(event);
+    gestureHelper.handleTouch(event);
 
-            switch (event.getAction()) {
-                case MotionEvent.ACTION_DOWN:
-                    touchStartX = event.getX();
-                    touchStartY = event.getY();
-                    hasSwiped = false;
-                    isLongClickTriggered = false;
-                    longClickTimer = new Timer();
-                    longClickTimer.schedule(new TimerTask() {
-                        @Override
-                        public void run() {
-                            runOnUiThread(() -> {
-                                isLongClickTriggered = true;
-                                try { openSettings(); } catch (Exception ignored) {}
-                            });
-                        }
-                    }, LONG_CLICK_TIME);
-                    break;
+    switch (event.getAction()) {
+        case MotionEvent.ACTION_DOWN:
+            touchStartX = event.getX();
+            touchStartY = event.getY();
+            hasSwiped = false;       // 重置：手指按下 = 未滑动
+            isLongClickTriggered = false;
+            
+            // 长按计时
+            longClickTimer = new Timer();
+            longClickTimer.schedule(new TimerTask() {
+                @Override
+                public void run() {
+                    runOnUiThread(() -> {
+                        isLongClickTriggered = true;
+                        try { openSettings(); } catch (Exception ignored) {}
+                    });
+                }
+            }, LONG_CLICK_TIME);
+            break;
 
-                case MotionEvent.ACTION_MOVE:
-                    float dx = event.getX() - touchStartX;
-                    float dy = event.getY() - touchStartY;
-                    if (Math.abs(dy) > SWIPE_CHANNEL_THRESHOLD && Math.abs(dy) > Math.abs(dx)) {
-                        hasSwiped = true;
-                        long now = System.currentTimeMillis();
-                        if (now - lastChannelChangeTime > CHANNEL_COOLDOWN) {
-                            lastChannelChangeTime = now;
-                            try {
-                                if (dy < 0) playPrev();
-                                else playNext();
-                            } catch (Exception ignored) {}
-                        }
-                        if (longClickTimer != null) {
-                            longClickTimer.cancel();
-                            longClickTimer = null;
-                        }
-                    }
-                    break;
+        case MotionEvent.ACTION_MOVE:
+            float deltaX = event.getX() - touchStartX;
+            float deltaY = event.getY() - touchStartY;
 
-                case MotionEvent.ACTION_UP:
-                case MotionEvent.ACTION_CANCEL:
-                    if (longClickTimer != null) {
-                        longClickTimer.cancel();
-                        longClickTimer = null;
-                    }
-                    if (!isLongClickTriggered && !hasSwiped) {
-                        long now = System.currentTimeMillis();
-                        if (now - lastClickTime < DOUBLE_CLICK_TIME) {
-                            try { openSettings(); } catch (Exception ignored) {}
-                            lastClickTime = 0;
-                        } else {
-                            try { togglePanel(); } catch (Exception ignored) {}
-                            lastClickTime = now;
-                        }
-                    }
-                    break;
+            // 判断：上下滑动 → 切换频道
+            if (Math.abs(deltaY) > SWIPE_CHANNEL_THRESHOLD && Math.abs(deltaY) > Math.abs(deltaX)) {
+                hasSwiped = true;    // 标记：已经滑动了
+                
+                // 执行切台
+                long now = System.currentTimeMillis();
+                if (now - lastChannelChangeTime > CHANNEL_COOLDOWN) {
+                    lastChannelChangeTime = now;
+                    try {
+                        if (deltaY < 0) playPrev();
+                        else playNext();
+                    } catch (Exception ignored) {}
+                }
+                
+                // 取消长按
+                if (longClickTimer != null) {
+                    longClickTimer.cancel();
+                    longClickTimer = null;
+                }
             }
-            return true;
-        });
+            break;
 
+        case MotionEvent.ACTION_UP:
+        case MotionEvent.ACTION_CANCEL:
+            // 清理计时器
+            if (longClickTimer != null) {
+                longClickTimer.cancel();
+                longClickTimer = null;
+            }
+
+            // ==============================================
+            // 🔥 关键修复：只要滑动过，就不打开频道列表
+            // ==============================================
+            if (!isLongClickTriggered && !hasSwiped) {
+                long currentTime = System.currentTimeMillis();
+                if (currentTime - lastClickTime < DOUBLE_CLICK_TIME) {
+                    try { openSettings(); } catch (Exception ignored) {}
+                    lastClickTime = 0;
+                } else {
+                    try { togglePanel(); } catch (Exception ignored) {}
+                    lastClickTime = currentTime;
+                }
+            }
+            break;
+    }
+    return true;
+});
         keyEventManager = new KeyEventManager(this);
         switchManager = ChannelSwitchManager.getInstance();
         currentPlayIndex = appConfig.getLastPlayIndex();

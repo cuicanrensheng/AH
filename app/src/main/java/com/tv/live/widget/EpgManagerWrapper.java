@@ -35,7 +35,6 @@ public class EpgManagerWrapper {
     private final Context context;
     private EpgAdapter adapter;
     private final Set<String> bookedSet = new HashSet<>();
-    // 新增：缓存每个EpgItem对应的endTime，替代实体字段，原有代码不动
     private final Map<Channel.EpgItem, String> epgEndTimeMap = new HashMap<>();
     private static final String ACTION_REMINDER = "com.tv.live.EPG_REMINDER";
     private int selectedPosition = 0;
@@ -55,6 +54,7 @@ public class EpgManagerWrapper {
                     ((ArrayAdapter<?>) parent.getAdapter()).notifyDataSetChanged();
                 }
             }
+
             @Override
             public void onNothingSelected(AdapterView<?> parent) {}
         });
@@ -77,22 +77,24 @@ public class EpgManagerWrapper {
 
             List<Channel.EpgItem> data = new ArrayList<>();
 
-            // 【修复核心】正确匹配今天/周一/周二...
-    String targetDay;
-    if (dateIndex == 0) {
-        targetDay = "今天";
-    } else {
-        targetDay = weekMap[w % 7];
-    }
+            if (epgList != null && !epgList.isEmpty()) {
+                Calendar cal = Calendar.getInstance();
+                cal.add(Calendar.DAY_OF_YEAR, dateIndex);
+                int w = cal.get(Calendar.DAY_OF_WEEK);
+                String[] weekMap = {"周日", "周一", "周二", "周三", "周四", "周五", "周六"};
+                
+                String targetDay;
+                if (dateIndex == 0) {
+                    targetDay = "今天";
+                } else {
+                    targetDay = weekMap[w % 7];
+                }
 
-    // 筛选对应日期节目
-    data.clear();
-    for (Channel.EpgItem item : epgList) {
-        if (targetDay.equals(item.dayName)) {
-            data.add(item);
-        }
-    }
-
+                for (Channel.EpgItem item : epgList) {
+                    if (targetDay.equals(item.dayName)) {
+                        data.add(item);
+                    }
+                }
 
                 Collections.sort(data, Comparator.comparing(o -> o.time));
                 String now = getNow();
@@ -101,11 +103,10 @@ public class EpgManagerWrapper {
                 for (int i = 0; i < data.size(); i++) {
                     Channel.EpgItem curr = data.get(i);
 
-                    // 修复：自动清洗脏数据，只保留合法时间
                     if (!TextUtils.isEmpty(curr.time) && curr.time.contains("-")) {
                         curr.time = curr.time.split("-")[0].trim();
                     }
-                    // 原有endTime赋值逻辑完全保留，存入Map
+
                     if (TextUtils.isEmpty(epgEndTimeMap.get(curr))) {
                         if (i + 1 < data.size()) {
                             Channel.EpgItem next = data.get(i + 1);
@@ -134,44 +135,39 @@ public class EpgManagerWrapper {
                     playingIndex = 0;
                 }
             }
-            
-    ((MainActivity) context).runOnUiThread(() -> {
-    // 【修复核心】每次都强制重建适配器，彻底刷新UI
-    adapter = new EpgAdapter(context, currentChannel, data, selectDayIndex);
-    lvEpg.setAdapter(adapter);
 
-    // 定位到正在播放的节目
-    if (playingIndex >= 0) {
-        lvEpg.setSelection(playingIndex);
-        selectedPosition = playingIndex;
-    } else {
-        lvEpg.setSelection(0);
-        selectedPosition = 0;
+            ((MainActivity) context).runOnUiThread(() -> {
+                adapter = new EpgAdapter(context, currentChannel, data, selectDayIndex);
+                lvEpg.setAdapter(adapter);
+
+                if (playingIndex >= 0) {
+                    lvEpg.setSelection(playingIndex);
+                    selectedPosition = playingIndex;
+                } else {
+                    lvEpg.setSelection(0);
+                    selectedPosition = 0;
+                }
+            });
+
+        }).start();
     }
 
-    // 刷新列表
-    adapter.notifyDataSetChanged();
-});
-     // 安全时间比较（彻底防崩）
-private boolean isTimeBetween(String now, String start, String end) {
-    try {
-        if (now == null || start == null || end == null)
-            return false;
-        
-        if (now.contains(":") && start.contains(":") && end.contains(":")) {
-            return now.compareTo(start) >= 0 && now.compareTo(end) < 0;
+    private boolean isTimeBetween(String now, String start, String end) {
+        try {
+            if (now == null || start == null || end == null)
+                return false;
+
+            if (now.contains(":") && start.contains(":") && end.contains(":")) {
+                return now.compareTo(start) >= 0 && now.compareTo(end) < 0;
+            }
+        } catch (Exception e) {
         }
-    } catch (Exception e) {
+        return false;
     }
-    return false;
-}
- 
-    // 彻底修复：防脏数据、防崩
+
     private String addOneHour(String hm) {
         try {
             if (hm == null || !hm.contains(":")) return "23:59";
-
-            // 清洗脏数据
             hm = hm.trim();
             if (hm.contains("-")) hm = hm.split("-")[0].trim();
 
@@ -252,7 +248,6 @@ private boolean isTimeBetween(String now, String start, String end) {
             Channel.EpgItem item = list.get(position);
             String endTime = epgEndTimeMap.get(item);
             holder.tv_dayName.setText(item.dayName);
-            // 原有拼接格式保留不变
             holder.tv_time.setText(item.time + "-" + endTime);
             holder.tv_title.setText(item.title);
 

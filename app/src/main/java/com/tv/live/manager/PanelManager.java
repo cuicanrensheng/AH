@@ -47,8 +47,8 @@ public class PanelManager {
             // 自动刷新当前频道的节目单
             if (channelList != null && currentIndex >= 0 && currentIndex < channelList.size()) {
                 Channel currentChannel = channelList.get(currentIndex);
-                // 传入三个参数：频道、列表、日期索引（默认今天=0）
-                epgManagerWrapper.refresh(currentChannel, channelList, 0);
+            // 改成（正确，随日期走）：
+            epgManagerWrapper.refresh(currentChannel, channelList, currentSelectedDateIndex);  
             }
         }
     }

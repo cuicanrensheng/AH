@@ -327,6 +327,7 @@ public class MainActivity extends AppCompatActivity {
                 }
                 // 刷新频道列表UI
                 channelListManager.setChannelsByGroup(channelSourceList, groupName, currentPlayIndex);
+              }   
         });
 
         // 初始化所有列表管理器

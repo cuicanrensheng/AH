@@ -148,9 +148,8 @@ public class EpgManagerWrapper {
     // 刷新列表
     adapter.notifyDataSetChanged();
 });
-           
-    // 安全时间比较（彻底防崩）
-   private boolean isTimeBetween(String now, String start, String end) { 
+      // 安全时间比较（彻底防崩）
+private boolean isTimeBetween(String now, String start, String end) {
     try {
         if (now == null || start == null || end == null)
             return false;
@@ -159,10 +158,10 @@ public class EpgManagerWrapper {
             return now.compareTo(start) >= 0 && now.compareTo(end) < 0;
         }
     } catch (Exception e) {
-        // 不处理异常，防止崩溃
     }
     return false;
-}
+}     
+    
  
     // 彻底修复：防脏数据、防崩
     private String addOneHour(String hm) {

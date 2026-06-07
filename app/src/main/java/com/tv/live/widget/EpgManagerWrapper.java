@@ -76,20 +76,29 @@ public class EpgManagerWrapper {
             }
 
             List<Channel.EpgItem> data = new ArrayList<>();
-
             if (epgList != null && !epgList.isEmpty()) {
+                // 正确：每次都根据传入的 dateIndex 重新计算日期
                 Calendar cal = Calendar.getInstance();
                 cal.add(Calendar.DAY_OF_YEAR, dateIndex);
                 int w = cal.get(Calendar.DAY_OF_WEEK);
-                String[] weekMap = {"周日", "周一", "周二", "周三", "周四", "周五", "周六"};
-                String targetDay = dateIndex == 0 ? "今天" : weekMap[w % 7];
+              String[] weekMap = {"周日", "周一", "周二", "周三", "周四", "周五", "周六"};
+    
+              // 【修复核心】正确匹配今天/周一/周二...
+              String targetDay;
+              if (dateIndex == 0) {
+                  targetDay = "今天";
+              } else {
+                 targetDay = weekMap[w % 7];
+              }
 
-                for (Channel.EpgItem item : epgList) {
-                    if (targetDay.equals(item.dayName)) {
-                        data.add(item);
-                    }
-                }
-
+              // 筛选对应日期节目
+              data.clear();
+              for (Channel.EpgItem item : epgList) {
+                  if (targetDay.equals(item.dayName)) {
+                      data.add(item);
+                  }
+              }
+            
                 Collections.sort(data, Comparator.comparing(o -> o.time));
                 String now = getNow();
                 Channel.EpgItem playing = null;

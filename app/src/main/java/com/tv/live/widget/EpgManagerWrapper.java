@@ -130,25 +130,25 @@ public class EpgManagerWrapper {
                     playingIndex = 0;
                 }
             }
+            
+    ((MainActivity) context).runOnUiThread(() -> {
+    // 【修复核心】每次都强制重建适配器，彻底刷新UI
+    adapter = new EpgAdapter(context, currentChannel, data, selectDayIndex);
+    lvEpg.setAdapter(adapter);
 
-            ((MainActivity) context).runOnUiThread(() -> {
-                if (adapter == null) {
-                    adapter = new EpgAdapter(context, currentChannel, data, selectDayIndex);
-                    lvEpg.setAdapter(adapter);
-                } else {
-                    adapter.setData(currentChannel, data, selectDayIndex);
-                }
-                if (playingIndex >= 0) {
-                    lvEpg.setSelection(playingIndex);
-                    selectedPosition = playingIndex;
-                } else {
-                    lvEpg.setSelection(0);
-                    selectedPosition = 0;
-                }
-                adapter.notifyDataSetChanged();
-            });
-        }).start();
+    // 定位到正在播放的节目
+    if (playingIndex >= 0) {
+        lvEpg.setSelection(playingIndex);
+        selectedPosition = playingIndex;
+    } else {
+        lvEpg.setSelection(0);
+        selectedPosition = 0;
     }
+
+    // 刷新列表
+    adapter.notifyDataSetChanged();
+});
+           
 
     // 安全时间比较（彻底防崩）
     private boolean isTimeBetween(String now, String start, String end) {

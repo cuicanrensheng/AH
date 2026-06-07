@@ -35,6 +35,7 @@ public class EpgManagerWrapper {
     private final Context context;
     private EpgAdapter adapter;
     private final Set<String> bookedSet = new HashSet<>();
+    // 新增：缓存每个EpgItem对应的endTime，替代实体字段，原有代码不动
     private final Map<Channel.EpgItem, String> epgEndTimeMap = new HashMap<>();
     private static final String ACTION_REMINDER = "com.tv.live.EPG_REMINDER";
     private int selectedPosition = 0;
@@ -81,13 +82,7 @@ public class EpgManagerWrapper {
                 cal.add(Calendar.DAY_OF_YEAR, dateIndex);
                 int w = cal.get(Calendar.DAY_OF_WEEK);
                 String[] weekMap = {"周日", "周一", "周二", "周三", "周四", "周五", "周六"};
-                
-                String targetDay;
-                if (dateIndex == 0) {
-                    targetDay = "今天";
-                } else {
-                    targetDay = weekMap[w % 7];
-                }
+                String targetDay = dateIndex == 0 ? "今天" : weekMap[w % 7];
 
                 for (Channel.EpgItem item : epgList) {
                     if (targetDay.equals(item.dayName)) {
@@ -101,10 +96,12 @@ public class EpgManagerWrapper {
 
                 for (int i = 0; i < data.size(); i++) {
                     Channel.EpgItem curr = data.get(i);
+
+                    // 修复：自动清洗脏数据，只保留合法时间
                     if (!TextUtils.isEmpty(curr.time) && curr.time.contains("-")) {
                         curr.time = curr.time.split("-")[0].trim();
                     }
-
+                    // 原有endTime赋值逻辑完全保留，存入Map
                     if (TextUtils.isEmpty(epgEndTimeMap.get(curr))) {
                         if (i + 1 < data.size()) {
                             Channel.EpgItem next = data.get(i + 1);
@@ -135,8 +132,12 @@ public class EpgManagerWrapper {
             }
 
             ((MainActivity) context).runOnUiThread(() -> {
-                adapter = new EpgAdapter(context, currentChannel, data, selectDayIndex);
-                lvEpg.setAdapter(adapter);
+                if (adapter == null) {
+                    adapter = new EpgAdapter(context, currentChannel, data, selectDayIndex);
+                    lvEpg.setAdapter(adapter);
+                } else {
+                    adapter.setData(currentChannel, data, selectDayIndex);
+                }
                 if (playingIndex >= 0) {
                     lvEpg.setSelection(playingIndex);
                     selectedPosition = playingIndex;
@@ -144,11 +145,12 @@ public class EpgManagerWrapper {
                     lvEpg.setSelection(0);
                     selectedPosition = 0;
                 }
+                adapter.notifyDataSetChanged();
             });
-
         }).start();
     }
 
+    // 安全时间比较（彻底防崩）
     private boolean isTimeBetween(String now, String start, String end) {
         try {
             if (now == null || start == null || end == null) return false;
@@ -159,18 +161,24 @@ public class EpgManagerWrapper {
         return false;
     }
 
+    // 彻底修复：防脏数据、防崩
     private String addOneHour(String hm) {
         try {
             if (hm == null || !hm.contains(":")) return "23:59";
+
+            // 清洗脏数据
             hm = hm.trim();
             if (hm.contains("-")) hm = hm.split("-")[0].trim();
+
             String[] arr = hm.split(":");
             int h = Integer.parseInt(arr[0].trim());
             int m = Integer.parseInt(arr[1].trim());
+
             Calendar c = Calendar.getInstance();
             c.set(Calendar.HOUR_OF_DAY, h);
             c.set(Calendar.MINUTE, m);
             c.add(Calendar.MINUTE, 60);
+
             return String.format("%02d:%02d", c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE));
         } catch (Exception e) {
             return "23:59";
@@ -239,6 +247,7 @@ public class EpgManagerWrapper {
             Channel.EpgItem item = list.get(position);
             String endTime = epgEndTimeMap.get(item);
             holder.tv_dayName.setText(item.dayName);
+            // 原有拼接格式保留不变
             holder.tv_time.setText(item.time + "-" + endTime);
             holder.tv_title.setText(item.title);
 
@@ -281,13 +290,13 @@ public class EpgManagerWrapper {
                         Calendar startCal = (Calendar) playDay.clone();
                         startCal.set(Calendar.HOUR_OF_DAY, Integer.parseInt(startHm[0].trim()));
                         startCal.set(Calendar.MINUTE, Integer.parseInt(startHm[1].trim()));
-                        startCal.set(Second, 0);
+                        startCal.set(Calendar.SECOND, 0);
 
                         String[] endHm = endTime.split(":");
                         Calendar endCal = (Calendar) playDay.clone();
                         endCal.set(Calendar.HOUR_OF_DAY, Integer.parseInt(endHm[0].trim()));
                         endCal.set(Calendar.MINUTE, Integer.parseInt(endHm[1].trim()));
-                        endCal.set(Second, 0);
+                        endCal.set(Calendar.SECOND, 0);
 
                         String startStr = sdfFull.format(startCal.getTime());
                         String endStr = sdfFull.format(endCal.getTime());

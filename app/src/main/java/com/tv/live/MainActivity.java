@@ -296,7 +296,8 @@ lvDate.setOnItemClickListener(new AdapterView.OnItemClickListener() {
     public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
         // 记录选中日期
         currentSelectedDateIndex = position;
-
+         // ✅ 加上这一行
+         panelManager.setSelectedDateIndex(position);
         if (channelSourceList == null || channelSourceList.isEmpty()) {
             return;
         }

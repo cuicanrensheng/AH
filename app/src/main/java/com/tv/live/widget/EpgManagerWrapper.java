@@ -26,9 +26,9 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.Locale;
 
 public class EpgManagerWrapper {
     private final ListView lvEpg;
@@ -131,36 +131,39 @@ public class EpgManagerWrapper {
                 }
             }
             
-    ((MainActivity) context).runOnUiThread(() -> {
-    // 【修复核心】每次都强制重建适配器，彻底刷新UI
-    adapter = new EpgAdapter(context, currentChannel, data, selectDayIndex);
-    lvEpg.setAdapter(adapter);
+            ((MainActivity) context).runOnUiThread(() -> {
+                // 【修复核心】每次都强制重建适配器，彻底刷新UI
+                adapter = new EpgAdapter(context, currentChannel, data, selectDayIndex);
+                lvEpg.setAdapter(adapter);
 
-    // 定位到正在播放的节目
-    if (playingIndex >= 0) {
-        lvEpg.setSelection(playingIndex);
-        selectedPosition = playingIndex;
-    } else {
-        lvEpg.setSelection(0);
-        selectedPosition = 0;
-    }
+                // 定位到正在播放的节目
+                if (playingIndex >= 0) {
+                    lvEpg.setSelection(playingIndex);
+                    selectedPosition = playingIndex;
+                } else {
+                    lvEpg.setSelection(0);
+                    selectedPosition = 0;
+                }
 
-    // 刷新列表
-    adapter.notifyDataSetChanged();
-});
-     // 安全时间比较（彻底防崩）
-private boolean isTimeBetween(String now, String start, String end) {
-    try {
-        if (now == null || start == null || end == null)
-            return false;
-        
-        if (now.contains(":") && start.contains(":") && end.contains(":")) {
-            return now.compareTo(start) >= 0 && now.compareTo(end) < 0;
+                // 刷新列表
+                adapter.notifyDataSetChanged();
+            });
+        }).start(); // 【修复】添加了Thread.start()调用，之前只创建了线程但没有启动
+    } // 【修复】添加了refresh方法的闭合大括号，之前缺失
+
+    // 安全时间比较（彻底防崩）
+    private boolean isTimeBetween(String now, String start, String end) {
+        try {
+            if (now == null || start == null || end == null)
+                return false;
+            
+            if (now.contains(":") && start.contains(":") && end.contains(":")) {
+                return now.compareTo(start) >= 0 && now.compareTo(end) < 0;
+            }
+        } catch (Exception e) {
         }
-    } catch (Exception e) {
+        return false;
     }
-    return false;
-}
  
     // 彻底修复：防脏数据、防崩
     private String addOneHour(String hm) {

@@ -288,27 +288,39 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         });
-        
-        // EPG日期列表点击切换
-    lvDate.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+
+        // EPG日期列表点击切换 —— 点击日期 → 立即刷新对应节目单
+lvDate.setOnItemClickListener(new AdapterView.OnItemClickListener() {
     @Override
     public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
-        // 更新选中的日期索引
+        // 1. 记录当前选中的日期下标
         currentSelectedDateIndex = position;
 
-        // 安全判断：频道列表不为空才刷新
-        if (channelSourceList != null && !channelSourceList.isEmpty()) {
-            // 获取当前正在播放的频道
-            Channel currentChannel = channelSourceList.get(currentPlayIndex);
-            // 核心：刷新 【当前频道 + 选中日期】 的节目单
-            epgManagerWrapper.refresh(currentChannel, channelSourceList, currentSelectedDateIndex);
-            
-            // 可选日志（方便调试）
-            log("【EPG】已切换到日期下标：" + position + "，刷新对应节目单");
+        // 2. 安全判断：频道列表不能为空
+        if (channelSourceList == null || channelSourceList.isEmpty()) {
+            return;
         }
+
+        // 3. 获取当前正在播放的频道
+        Channel currentChannel = channelSourceList.get(currentPlayIndex);
+
+        // 4. 刷新节目单数据（核心）
+        epgManagerWrapper.refresh(currentChannel, channelSourceList, currentSelectedDateIndex);
+
+        // 5.【关键修复】强制刷新 EPG 列表 UI（你之前就缺这一句！）
+        lvEpg.post(new Runnable() {
+            @Override
+            public void run() {
+                if (epgManagerWrapper.getEpgAdapter() != null) {
+                    epgManagerWrapper.getEpgAdapter().notifyDataSetChanged();
+                }
+            }
+        });
+
+        log("【EPG】已切换到日期：" + position + "，节目单已刷新");
     }
-});
-   
+}); 
+        
         // 频道分组点击切换
 lvGroup.setOnItemClickListener(new AdapterView.OnItemClickListener() {
     @Override

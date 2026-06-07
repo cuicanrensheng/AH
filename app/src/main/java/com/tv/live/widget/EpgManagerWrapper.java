@@ -60,101 +60,97 @@ public class EpgManagerWrapper {
         });
         registerReminderReceiver();
     }
-
     public void refresh(Channel currentChannel, List<Channel> channelSourceList, int dateIndex) {
-        if (currentChannel == null) return;
-        playingIndex = -1;
-        selectDayIndex = dateIndex;
-        epgEndTimeMap.clear();
+    if (currentChannel == null) return;
+    playingIndex = -1;
+    selectDayIndex = dateIndex;
+    epgEndTimeMap.clear();
 
-        new Thread(() -> {
-            List<Channel.EpgItem> epgList = null;
-            try {
-                epgList = new ArrayList<>(EpgManager.getInstance().getEpg(currentChannel.getName()));
-            } catch (Exception e) {
-                epgList = new ArrayList<>();
+    new Thread(() -> {
+        List<Channel.EpgItem> epgList = null;
+        try {
+            epgList = new ArrayList<>(EpgManager.getInstance().getEpg(currentChannel.getName()));
+        } catch (Exception e) {
+            epgList = new ArrayList<>();
+        }
+
+        List<Channel.EpgItem> data = new ArrayList<>();
+
+        if (epgList != null && !epgList.isEmpty()) {
+            // ✅ 固定正确星期顺序
+            String[] weekMap = {"周日", "周一", "周二", "周三", "周四", "周五", "周六"};
+            Calendar cal = Calendar.getInstance();
+            cal.add(Calendar.DAY_OF_YEAR, dateIndex);
+            int w = cal.get(Calendar.DAY_OF_WEEK) - 1;
+            if (w < 0) w = 0;
+            String targetDay = weekMap[w];
+
+            // ✅ 强制匹配节目单里的星期（不管你点哪天都能匹配）
+            for (Channel.EpgItem item : epgList) {
+                if (item.dayName.trim().equals(targetDay.trim())) {
+                    data.add(item);
+                }
             }
 
-            List<Channel.EpgItem> data = new ArrayList<>();
+            Collections.sort(data, Comparator.comparing(o -> o.time));
+            String now = getNow();
+            Channel.EpgItem playing = null;
 
-            if (epgList != null && !epgList.isEmpty()) {
-                Calendar cal = Calendar.getInstance();
-                cal.add(Calendar.DAY_OF_YEAR, dateIndex);
-                int w = cal.get(Calendar.DAY_OF_WEEK);
-                String[] weekMap = {"周日", "周一", "周二", "周三", "周四", "周五", "周六"};
-                String targetDay;
-                if (dateIndex == 0) {
-                    targetDay = "今天";
-                } else {
-                    targetDay = weekMap[w % 7];
+            for (int i = 0; i < data.size(); i++) {
+                Channel.EpgItem curr = data.get(i);
+
+                if (!TextUtils.isEmpty(curr.time) && curr.time.contains("-")) {
+                    curr.time = curr.time.split("-")[0].trim();
                 }
 
-                for (Channel.EpgItem item : epgList) {
-                    if (targetDay.equals(item.dayName)) {
-                        data.add(item);
-                    }
-                }
-
-                Collections.sort(data, Comparator.comparing(o -> o.time));
-                String now = getNow();
-                Channel.EpgItem playing = null;
-
-                for (int i = 0; i < data.size(); i++) {
-                    Channel.EpgItem curr = data.get(i);
-
-                    // 修复：自动清洗脏数据，只保留合法时间
-                    if (!TextUtils.isEmpty(curr.time) && curr.time.contains("-")) {
-                        curr.time = curr.time.split("-")[0].trim();
-                    }
-                    // 原有endTime赋值逻辑完全保留，存入Map
-                    if (TextUtils.isEmpty(epgEndTimeMap.get(curr))) {
-                        if (i + 1 < data.size()) {
-                            Channel.EpgItem next = data.get(i + 1);
-                            if (next.time.contains("-")) {
-                                epgEndTimeMap.put(curr, next.time.split("-")[0].trim());
-                            } else {
-                                epgEndTimeMap.put(curr, next.time);
-                            }
+                if (TextUtils.isEmpty(epgEndTimeMap.get(curr))) {
+                    if (i + 1 < data.size()) {
+                        Channel.EpgItem next = data.get(i + 1);
+                        if (next.time.contains("-")) {
+                            epgEndTimeMap.put(curr, next.time.split("-")[0].trim());
                         } else {
-                            epgEndTimeMap.put(curr, addOneHour(curr.time));
+                            epgEndTimeMap.put(curr, next.time);
                         }
-                    }
-
-                    curr.isPlaying = false;
-                    String currEnd = epgEndTimeMap.get(curr);
-                    if (isTimeBetween(now, curr.time, currEnd)) {
-                        curr.isPlaying = true;
-                        playing = curr;
-                        playingIndex = i;
+                    } else {
+                        epgEndTimeMap.put(curr, addOneHour(curr.time));
                     }
                 }
 
-                if (playing != null && playingIndex > 0) {
-                    data.remove(playing);
-                    data.add(0, playing);
-                    playingIndex = 0;
+                curr.isPlaying = false;
+                String currEnd = epgEndTimeMap.get(curr);
+                if (isTimeBetween(now, curr.time, currEnd)) {
+                    curr.isPlaying = true;
+                    playing = curr;
+                    playingIndex = i;
                 }
             }
 
-            ((MainActivity) context).runOnUiThread(() -> {
-                if (adapter == null) {
-                    adapter = new EpgAdapter(context, currentChannel, data, selectDayIndex);
-                    lvEpg.setAdapter(adapter);
-                } else {
-                    adapter.setData(currentChannel, data, selectDayIndex);
-                }
-                if (playingIndex >= 0) {
-                    lvEpg.setSelection(playingIndex);
-                    selectedPosition = playingIndex;
-                } else {
-                    lvEpg.setSelection(0);
-                    selectedPosition = 0;
-                }
-                adapter.notifyDataSetChanged();
-            });
-        }).start();
-    }
+            if (playing != null && playingIndex > 0) {
+                data.remove(playing);
+                data.add(0, playing);
+                playingIndex = 0;
+            }
+        }
 
+        ((MainActivity) context).runOnUiThread(() -> {
+            if (adapter == null) {
+                adapter = new EpgAdapter(context, currentChannel, data, selectDayIndex);
+                lvEpg.setAdapter(adapter);
+            } else {
+                adapter.setData(currentChannel, data, selectDayIndex);
+            }
+
+            if (playingIndex >= 0) {
+                lvEpg.setSelection(playingIndex);
+                selectedPosition = playingIndex;
+            } else {
+                lvEpg.setSelection(0);
+                selectedPosition = 0;
+            }
+        });
+    }).start();
+}
+   
     // 安全时间比较（彻底防崩）
     private boolean isTimeBetween(String now, String start, String end) {
         try {

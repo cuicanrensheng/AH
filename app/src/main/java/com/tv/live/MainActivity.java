@@ -319,15 +319,6 @@ public class MainActivity extends AppCompatActivity {
                 }
                 // 刷新频道列表UI
                 channelListManager.setChannelsByGroup(channelSourceList, groupName, currentPlayIndex);
-                // 自动播放该分组第一个频道
-                if (!currentGroupChannelList.isEmpty()) {
-                    Channel firstChannel = currentGroupChannelList.get(0);
-                    int globalIndex = channelSourceList.indexOf(firstChannel);
-                    if (globalIndex != -1) {
-                        playChannel(globalIndex);
-                    }
-                }
-            }
         });
 
         // 初始化所有列表管理器

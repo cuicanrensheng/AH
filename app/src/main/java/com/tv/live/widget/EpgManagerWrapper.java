@@ -150,7 +150,7 @@ public class EpgManagerWrapper {
 });
            
     // 安全时间比较（彻底防崩）
-private boolean isTimeBetween(String now, String start, String end) {
+   private boolean isTimeBetween(String now, String start, String end) { 
     try {
         if (now == null || start == null || end == null)
             return false;

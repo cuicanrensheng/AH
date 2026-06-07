@@ -354,6 +354,8 @@ lvGroup.setOnItemClickListener(new AdapterView.OnItemClickListener() {
         epgManagerWrapper = new EpgManagerWrapper(this, lvEpg);
         dateListManager.initDate(); // 初始化日期数据
         panelManager = new PanelManager(panel_layout, channelListManager, epgManagerWrapper);
+        // 初始化面板内的日期索引，和页面当前选中日期保持一致
+         panelManager.setSelectedDateIndex(currentSelectedDateIndex);
 
         // 初始化播放器
         mPlayerManager = TVPlayerManager.getInstance(this);

@@ -288,7 +288,7 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         });
-
+        
         // EPG日期列表点击切换 —— 点击日期 → 立即刷新对应节目单
 lvDate.setOnItemClickListener(new AdapterView.OnItemClickListener() {
     @Override
@@ -304,22 +304,12 @@ lvDate.setOnItemClickListener(new AdapterView.OnItemClickListener() {
         // 3. 获取当前正在播放的频道
         Channel currentChannel = channelSourceList.get(currentPlayIndex);
 
-        // 4. 刷新节目单数据（核心）
+        // 4. 【你源码自带刷新】调用这个就够了，不需要任何多余代码
         epgManagerWrapper.refresh(currentChannel, channelSourceList, currentSelectedDateIndex);
-
-        // 5.【关键修复】强制刷新 EPG 列表 UI（你之前就缺这一句！）
-        lvEpg.post(new Runnable() {
-            @Override
-            public void run() {
-                if (epgManagerWrapper.getEpgAdapter() != null) {
-                    epgManagerWrapper.getEpgAdapter().notifyDataSetChanged();
-                }
-            }
-        });
 
         log("【EPG】已切换到日期：" + position + "，节目单已刷新");
     }
-}); 
+});
         
         // 频道分组点击切换
 lvGroup.setOnItemClickListener(new AdapterView.OnItemClickListener() {

@@ -492,11 +492,19 @@ public void playPrev() {
     // 如果当前分组没有频道，直接退出
     if (currentGroupChannelList == null || currentGroupChannelList.isEmpty()) return;
 
-    // 获取当前正在播放的频道
-    Channel currentChannel = channelSourceList.get(currentPlayIndex);
     // 获取当前频道在【分组列表】中的位置
-    int currentPosInGroup = currentGroupChannelList.indexOf(currentChannel);
-    if (currentPosInGroup == -1) return;
+    int currentPosInGroup = -1;
+    for (int i = 0; i < currentGroupChannelList.size(); i++) {
+        if (currentGroupChannelList.get(i).getPlayUrl().equals(channelSourceList.get(currentPlayIndex).getPlayUrl())) {
+            currentPosInGroup = i;
+            break;
+        }
+    }
+
+    // 找不到就默认从第0个开始
+    if (currentPosInGroup == -1) {
+        currentPosInGroup = 0;
+    }
 
     // 计算上一个位置（循环：到顶后跳转到最后一个）
     int prevPos = currentPosInGroup - 1;
@@ -507,12 +515,21 @@ public void playPrev() {
     // 获取目标频道并切换
     Channel targetChannel = currentGroupChannelList.get(prevPos);
     int globalIndex = channelSourceList.indexOf(targetChannel);
+    if (globalIndex == -1) {
+        // 全局找不到，强制遍历匹配
+        for (int i = 0; i < channelSourceList.size(); i++) {
+            if (channelSourceList.get(i).getPlayUrl().equals(targetChannel.getPlayUrl())) {
+                globalIndex = i;
+                break;
+            }
+        }
+    }
+
     if (globalIndex != -1) {
         playChannel(globalIndex);
     }
 }
-
-/**
+    /**
  * 播放下一个频道
  * 限制：只在【当前选中分组】内循环切换，不会跨分组
  */
@@ -527,11 +544,19 @@ public void playNext() {
     // 如果当前分组没有频道，直接退出
     if (currentGroupChannelList == null || currentGroupChannelList.isEmpty()) return;
 
-    // 获取当前正在播放的频道
-    Channel currentChannel = channelSourceList.get(currentPlayIndex);
-    // 获取当前频道在【分组列表】中的位置
-    int currentPosInGroup = currentGroupChannelList.indexOf(currentChannel);
-    if (currentPosInGroup == -1) return;
+    // 获取当前频道在【分组列表】中的位置（通过地址匹配，更稳定）
+    int currentPosInGroup = -1;
+    for (int i = 0; i < currentGroupChannelList.size(); i++) {
+        if (currentGroupChannelList.get(i).getPlayUrl().equals(channelSourceList.get(currentPlayIndex).getPlayUrl())) {
+            currentPosInGroup = i;
+            break;
+        }
+    }
+
+    // 找不到就默认从第0个开始
+    if (currentPosInGroup == -1) {
+        currentPosInGroup = 0;
+    }
 
     // 计算下一个位置（循环：到底后跳转到第一个）
     int nextPos = currentPosInGroup + 1;
@@ -542,10 +567,21 @@ public void playNext() {
     // 获取目标频道并切换
     Channel targetChannel = currentGroupChannelList.get(nextPos);
     int globalIndex = channelSourceList.indexOf(targetChannel);
+    if (globalIndex == -1) {
+        // 全局找不到，强制遍历匹配
+        for (int i = 0; i < channelSourceList.size(); i++) {
+            if (channelSourceList.get(i).getPlayUrl().equals(targetChannel.getPlayUrl())) {
+                globalIndex = i;
+                break;
+            }
+        }
+    }
+
     if (globalIndex != -1) {
         playChannel(globalIndex);
     }
 }
+    
     /**
      * 播放指定索引频道
      * 内部自动处理直播链接 301/302 重定向，最大重试10次

@@ -281,10 +281,10 @@ public class MainActivity extends AppCompatActivity {
                 epgPanelOpen = !epgPanelOpen;
                 lvDate.setVisibility(epgPanelOpen ? View.VISIBLE : View.GONE);
                 lvEpg.setVisibility(epgPanelOpen ? View.VISIBLE : View.GONE);
-                // 展开时刷新当前频道节目单
+                // 展开时 → 刷新当前选中日期的节目单
                 if (epgPanelOpen && !channelSourceList.isEmpty()) {
-                    Channel curr = channelSourceList.get(currentPlayIndex);
-                    epgManagerWrapper.refresh(curr, channelSourceList, currentSelectedDateIndex);
+                Channel curr = channelSourceList.get(currentPlayIndex);
+                epgManagerWrapper.refresh(curr, channelSourceList, currentSelectedDateIndex);
                 }
             }
         });

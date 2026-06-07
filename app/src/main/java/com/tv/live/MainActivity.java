@@ -478,34 +478,74 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * 播放上一个频道
-     */
-    public void playPrev() {
-        long now = System.currentTimeMillis();
-        // 切台防抖判断
-        if (now - lastChannelChangeTime < CHANNEL_COOLDOWN) return;
-        lastChannelChangeTime = now;
+ * 播放上一个频道
+ * 限制：只在【当前选中分组】内循环切换，不会跨分组
+ */
+public void playPrev() {
+    // 切台防抖：防止快速连续点击
+    long now = System.currentTimeMillis();
+    if (now - lastChannelChangeTime < CHANNEL_COOLDOWN) return;
+    lastChannelChangeTime = now;
 
-        log("【切台】上一台");
-        // 根据切台反转配置，判断调用上/下频道
-        int idx = channel_reverse ? switchManager.next() : switchManager.prev();
-        playChannel(idx);
+    log("【切台】上一台（当前分组内循环）");
+
+    // 如果当前分组没有频道，直接退出
+    if (currentGroupChannelList == null || currentGroupChannelList.isEmpty()) return;
+
+    // 获取当前正在播放的频道
+    Channel currentChannel = channelSourceList.get(currentPlayIndex);
+    // 获取当前频道在【分组列表】中的位置
+    int currentPosInGroup = currentGroupChannelList.indexOf(currentChannel);
+    if (currentPosInGroup == -1) return;
+
+    // 计算上一个位置（循环：到顶后跳转到最后一个）
+    int prevPos = currentPosInGroup - 1;
+    if (prevPos < 0) {
+        prevPos = currentGroupChannelList.size() - 1;
     }
 
-    /**
-     * 播放下一个频道
-     */
-    public void playNext() {
-        long now = System.currentTimeMillis();
-        // 切台防抖判断
-        if (now - lastChannelChangeTime < CHANNEL_COOLDOWN) return;
-        lastChannelChangeTime = now;
+    // 获取目标频道并切换
+    Channel targetChannel = currentGroupChannelList.get(prevPos);
+    int globalIndex = channelSourceList.indexOf(targetChannel);
+    if (globalIndex != -1) {
+        playChannel(globalIndex);
+    }
+}
 
-        log("【切台】下一台");
-        int idx = channel_reverse ? switchManager.prev() : switchManager.next();
-        playChannel(idx);
+/**
+ * 播放下一个频道
+ * 限制：只在【当前选中分组】内循环切换，不会跨分组
+ */
+public void playNext() {
+    // 切台防抖：防止快速连续点击
+    long now = System.currentTimeMillis();
+    if (now - lastChannelChangeTime < CHANNEL_COOLDOWN) return;
+    lastChannelChangeTime = now;
+
+    log("【切台】下一台（当前分组内循环）");
+
+    // 如果当前分组没有频道，直接退出
+    if (currentGroupChannelList == null || currentGroupChannelList.isEmpty()) return;
+
+    // 获取当前正在播放的频道
+    Channel currentChannel = channelSourceList.get(currentPlayIndex);
+    // 获取当前频道在【分组列表】中的位置
+    int currentPosInGroup = currentGroupChannelList.indexOf(currentChannel);
+    if (currentPosInGroup == -1) return;
+
+    // 计算下一个位置（循环：到底后跳转到第一个）
+    int nextPos = currentPosInGroup + 1;
+    if (nextPos >= currentGroupChannelList.size()) {
+        nextPos = 0;
     }
 
+    // 获取目标频道并切换
+    Channel targetChannel = currentGroupChannelList.get(nextPos);
+    int globalIndex = channelSourceList.indexOf(targetChannel);
+    if (globalIndex != -1) {
+        playChannel(globalIndex);
+    }
+}
     /**
      * 播放指定索引频道
      * 内部自动处理直播链接 301/302 重定向，最大重试10次
@@ -630,31 +670,29 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * 初始化频道列表点击事件
-     */
-    private void initListViewClick() {
-        ListView lvChannelList = findViewById(R.id.lv_channel_list);
-        lvChannelList.setOnItemClickListener(new AdapterView.OnItemClickListener() {
-            @Override
-            public void onItemClick(AdapterView<?> p, View v, int pos, long id) {
-                // 优先从当前分组列表查找
-                if (!currentGroupChannelList.isEmpty() && pos < currentGroupChannelList.size()) {
-                    Channel selectedChannel = currentGroupChannelList.get(pos);
-                    int globalIndex = channelSourceList.indexOf(selectedChannel);
-                    if (globalIndex != -1) {
-                        log("【列表点击】切换到全局索引：" + globalIndex);
-                        playChannel(globalIndex);
-                        togglePanel(); // 点击后关闭面板
-                    }
-                } else {
-                    // 直接按全局索引播放
-                    playChannel(pos);
-                    togglePanel();
+ * 初始化频道列表点击事件
+ * 限制：只能点击切换当前分组内的频道，不会跳到其他分组
+ */
+private void initListViewClick() {
+    ListView lvChannelList = findViewById(R.id.lv_channel_list);
+    lvChannelList.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+        @Override
+        public void onItemClick(AdapterView<?> p, View v, int pos, long id) {
+            // 只从当前分组的列表中获取频道（安全隔离）
+            if (!currentGroupChannelList.isEmpty() && pos < currentGroupChannelList.size()) {
+                Channel selectedChannel = currentGroupChannelList.get(pos);
+                int globalIndex = channelSourceList.indexOf(selectedChannel);
+
+                if (globalIndex != -1) {
+                    log("【列表点击】切换到当前分组频道：" + globalIndex);
+                    playChannel(globalIndex);
+                    togglePanel(); // 切台后关闭面板
                 }
             }
-        });
-    }
-
+        }
+    });
+}
+    
     /**
      * 切换频道面板 显示/隐藏
      */

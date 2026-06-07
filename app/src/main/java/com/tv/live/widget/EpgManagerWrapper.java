@@ -152,12 +152,14 @@ public class EpgManagerWrapper {
     // 安全时间比较（彻底防崩）
 private boolean isTimeBetween(String now, String start, String end) {
     try {
-        if (now == null || start == null || end == null) return false;
+        if (now == null || start == null || end == null)
+            return false;
+        
         if (now.contains(":") && start.contains(":") && end.contains(":")) {
             return now.compareTo(start) >= 0 && now.compareTo(end) < 0;
         }
     } catch (Exception e) {
-        // 异常不处理，返回false
+        // 不处理异常，防止崩溃
     }
     return false;
 }

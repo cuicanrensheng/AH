@@ -267,27 +267,28 @@ public class MainActivity extends AppCompatActivity {
         // 注册全局广播
         registerReceiver(toggleControllerReceiver, new IntentFilter("com.tv.live.TOGGLE_CONTROL"));
         registerReceiver(refreshReceiver, new IntentFilter("com.tv.live.REFRESH_LIVE_AND_EPG"));
-
         // 节目单展开/收起按钮点击事件
         btn_show_epg.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                // 校验EPG总开关
-                if (!epg_enable) {
-                    Toast.makeText(MainActivity.this, "节目单功能已关闭", Toast.LENGTH_SHORT).show();
-                    return;
-                }
-                // 切换面板状态
-                epgPanelOpen = !epgPanelOpen;
-                lvDate.setVisibility(epgPanelOpen ? View.VISIBLE : View.GONE);
-                lvEpg.setVisibility(epgPanelOpen ? View.VISIBLE : View.GONE);
-                // 展开时 → 刷新当前选中日期的节目单
-                if (epgPanelOpen && !channelSourceList.isEmpty()) {
-                Channel curr = channelSourceList.get(currentPlayIndex);
-                epgManagerWrapper.refresh(curr, channelSourceList, currentSelectedDateIndex);
-                }
-            }
-        });
+    @Override
+    public void onClick(View v) {
+        // 校验EPG总开关
+        if (!epg_enable) {
+            Toast.makeText(MainActivity.this, "节目单功能已关闭", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        // 切换面板状态
+        epgPanelOpen = !epgPanelOpen;
+        lvDate.setVisibility(epgPanelOpen ? View.VISIBLE : View.GONE);
+        lvEpg.setVisibility(epgPanelOpen ? View.VISIBLE : View.GONE);
+        
+        // 展开时 → 刷新【当前选中日期】的节目单
+        if (epgPanelOpen && !channelSourceList.isEmpty()) {
+            Channel currentChannel = channelSourceList.get(currentPlayIndex);
+            // ✅ 这里用 currentSelectedDateIndex 才对！
+            epgManagerWrapper.refresh(currentChannel, channelSourceList, currentSelectedDateIndex);
+        }
+    }
+});
         
        // EPG日期列表点击切换 —— 点击日期 → 立即刷新对应节目单
 lvDate.setOnItemClickListener(new AdapterView.OnItemClickListener() {

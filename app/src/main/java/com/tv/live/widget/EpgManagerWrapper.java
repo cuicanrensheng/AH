@@ -54,7 +54,6 @@ public class EpgManagerWrapper {
                     ((ArrayAdapter<?>) parent.getAdapter()).notifyDataSetChanged();
                 }
             }
-
             @Override
             public void onNothingSelected(AdapterView<?> parent) {}
         });
@@ -102,7 +101,6 @@ public class EpgManagerWrapper {
 
                 for (int i = 0; i < data.size(); i++) {
                     Channel.EpgItem curr = data.get(i);
-
                     if (!TextUtils.isEmpty(curr.time) && curr.time.contains("-")) {
                         curr.time = curr.time.split("-")[0].trim();
                     }
@@ -139,7 +137,6 @@ public class EpgManagerWrapper {
             ((MainActivity) context).runOnUiThread(() -> {
                 adapter = new EpgAdapter(context, currentChannel, data, selectDayIndex);
                 lvEpg.setAdapter(adapter);
-
                 if (playingIndex >= 0) {
                     lvEpg.setSelection(playingIndex);
                     selectedPosition = playingIndex;
@@ -154,14 +151,11 @@ public class EpgManagerWrapper {
 
     private boolean isTimeBetween(String now, String start, String end) {
         try {
-            if (now == null || start == null || end == null)
-                return false;
-
+            if (now == null || start == null || end == null) return false;
             if (now.contains(":") && start.contains(":") && end.contains(":")) {
                 return now.compareTo(start) >= 0 && now.compareTo(end) < 0;
             }
-        } catch (Exception e) {
-        }
+        } catch (Exception e) {}
         return false;
     }
 
@@ -170,16 +164,13 @@ public class EpgManagerWrapper {
             if (hm == null || !hm.contains(":")) return "23:59";
             hm = hm.trim();
             if (hm.contains("-")) hm = hm.split("-")[0].trim();
-
             String[] arr = hm.split(":");
             int h = Integer.parseInt(arr[0].trim());
             int m = Integer.parseInt(arr[1].trim());
-
             Calendar c = Calendar.getInstance();
             c.set(Calendar.HOUR_OF_DAY, h);
             c.set(Calendar.MINUTE, m);
             c.add(Calendar.MINUTE, 60);
-
             return String.format("%02d:%02d", c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE));
         } catch (Exception e) {
             return "23:59";
@@ -290,13 +281,13 @@ public class EpgManagerWrapper {
                         Calendar startCal = (Calendar) playDay.clone();
                         startCal.set(Calendar.HOUR_OF_DAY, Integer.parseInt(startHm[0].trim()));
                         startCal.set(Calendar.MINUTE, Integer.parseInt(startHm[1].trim()));
-                        startCal.set(Calendar.SECOND, 0);
+                        startCal.set(Second, 0);
 
                         String[] endHm = endTime.split(":");
                         Calendar endCal = (Calendar) playDay.clone();
                         endCal.set(Calendar.HOUR_OF_DAY, Integer.parseInt(endHm[0].trim()));
                         endCal.set(Calendar.MINUTE, Integer.parseInt(endHm[1].trim()));
-                        endCal.set(Calendar.SECOND, 0);
+                        endCal.set(Second, 0);
 
                         String startStr = sdfFull.format(startCal.getTime());
                         String endStr = sdfFull.format(endCal.getTime());

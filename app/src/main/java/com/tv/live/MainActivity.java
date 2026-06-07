@@ -288,19 +288,27 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         });
-
+        
         // EPG日期列表点击切换
-        lvDate.setOnItemClickListener(new AdapterView.OnItemClickListener() {
-            @Override
-            public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
-                currentSelectedDateIndex = position;
-                // 切换日期后刷新节目单
-                if (!channelSourceList.isEmpty()) {
-                    Channel curr = channelSourceList.get(currentPlayIndex);
-                    epgManagerWrapper.refresh(curr, channelSourceList, currentSelectedDateIndex);
-                }
-            }
-        });
+    lvDate.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+    @Override
+    public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
+        // 更新选中的日期索引
+        currentSelectedDateIndex = position;
+
+        // 安全判断：频道列表不为空才刷新
+        if (channelSourceList != null && !channelSourceList.isEmpty()) {
+            // 获取当前正在播放的频道
+            Channel currentChannel = channelSourceList.get(currentPlayIndex);
+            // 核心：刷新 【当前频道 + 选中日期】 的节目单
+            epgManagerWrapper.refresh(currentChannel, channelSourceList, currentSelectedDateIndex);
+            
+            // 可选日志（方便调试）
+            log("【EPG】已切换到日期下标：" + position + "，刷新对应节目单");
+        }
+    }
+});
+   
 
         // 频道分组点击切换
         lvGroup.setOnItemClickListener(new AdapterView.OnItemClickListener() {

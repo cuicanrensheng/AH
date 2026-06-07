@@ -289,25 +289,19 @@ public class MainActivity extends AppCompatActivity {
             }
         });
         
-        // EPG日期列表点击切换 —— 点击日期 → 立即刷新对应节目单
+       // EPG日期列表点击切换 —— 点击日期 → 立即刷新对应节目单
 lvDate.setOnItemClickListener(new AdapterView.OnItemClickListener() {
     @Override
     public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
-        // 1. 记录当前选中的日期下标
+        // 记录选中日期
         currentSelectedDateIndex = position;
 
-        // 2. 安全判断：频道列表不能为空
         if (channelSourceList == null || channelSourceList.isEmpty()) {
             return;
         }
 
-        // 3. 获取当前正在播放的频道
         Channel currentChannel = channelSourceList.get(currentPlayIndex);
-
-        // 4. 【你源码自带刷新】调用这个就够了，不需要任何多余代码
         epgManagerWrapper.refresh(currentChannel, channelSourceList, currentSelectedDateIndex);
-
-        log("【EPG】已切换到日期：" + position + "，节目单已刷新");
     }
 });
         

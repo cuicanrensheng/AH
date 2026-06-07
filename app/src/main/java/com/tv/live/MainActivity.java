@@ -309,26 +309,45 @@ public class MainActivity extends AppCompatActivity {
     }
 });
    
-
         // 频道分组点击切换
-        lvGroup.setOnItemClickListener(new AdapterView.OnItemClickListener() {
-            @Override
-            public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
-                lvGroup.setItemChecked(position, true);
-                lvGroup.setSelection(position);
-                // 获取选中分组名称
-                String groupName = groupListManager.getCurrentGroup(position);
-                // 筛选当前分组下的频道
-                currentGroupChannelList.clear();
-                for (Channel c : channelSourceList) {
-                    if (groupName.equals(c.getGroup())) {
-                        currentGroupChannelList.add(c);
-                    }
-                }
-                // 刷新频道列表UI
-                channelListManager.setChannelsByGroup(channelSourceList, groupName, currentPlayIndex);
-              }   
-        });
+lvGroup.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+    @Override
+    public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
+        lvGroup.setItemChecked(position, true);
+        lvGroup.setSelection(position);
+        
+        // 获取选中分组名称
+        String groupName = groupListManager.getCurrentGroup(position);
+        
+        // 筛选当前分组下的频道
+        currentGroupChannelList.clear();
+        for (Channel c : channelSourceList) {
+            if (groupName.equals(c.getGroup())) {
+                currentGroupChannelList.add(c);
+            }
+        }
+
+        // 刷新频道列表UI
+        channelListManager.setChannelsByGroup(channelSourceList, groupName, currentPlayIndex);
+
+        // ====================== 修复核心 ======================
+        // 自动让列表滚动到【当前正在播放的频道】
+        // 让光标/选中条 自动定位到当前播放频道
+        if (!currentGroupChannelList.isEmpty()) {
+            // 获取当前播放频道在【分组列表】中的位置
+            Channel currentChannel = channelSourceList.get(currentPlayIndex);
+            int posInGroup = currentGroupChannelList.indexOf(currentChannel);
+
+            // 如果找到，自动滚动 + 选中
+            if (posInGroup != -1) {
+                // 让 ListView 选中该项（光标移动过去）
+                lvChannelList.setItemChecked(posInGroup, true);
+                // 让列表自动滚动到该项位置
+                lvChannelList.setSelection(posInGroup);
+            }
+        }
+    }
+});
 
         // 初始化所有列表管理器
         channelListManager = new ChannelListManager(this, lvChannelList);

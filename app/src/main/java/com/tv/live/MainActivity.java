@@ -281,13 +281,13 @@ btn_show_epg.setOnClickListener(new View.OnClickListener() {
         lvEpg.setVisibility(epgPanelOpen ? View.VISIBLE : View.GONE);
 
         if (epgPanelOpen && !channelSourceList.isEmpty()) {
-            // 打开节目单 → 默认回到【今天】
-            currentSelectedDateIndex = 0;
+            // 【关键】不再强制重置为今天，保留用户之前选中的日期
+            // currentSelectedDateIndex = 0; // 删掉这行！
 
             // 日志
-            android.util.Log.d("EPG_DEBUG", "打开节目单 → 强制设置日期索引: " + currentSelectedDateIndex);
+            android.util.Log.d("EPG_DEBUG", "打开节目单，当前日期索引: " + currentSelectedDateIndex);
 
-            // 刷新今天的节目单
+            // 刷新节目单
             Channel curr = channelSourceList.get(currentPlayIndex);
             epgManagerWrapper.refresh(curr, channelSourceList, currentSelectedDateIndex);
         }
@@ -306,7 +306,7 @@ lvDate.setOnItemClickListener(new AdapterView.OnItemClickListener() {
         currentSelectedDateIndex = position;
         android.util.Log.d("EPG_DEBUG", "本地日期索引已更新为: " + currentSelectedDateIndex);
 
-        // 【关键】同步给 PanelManager
+        // 同步给 PanelManager
         panelManager.setSelectedDateIndex(position);
         android.util.Log.d("EPG_DEBUG", "同步到 PanelManager: " + position);
 
@@ -318,6 +318,12 @@ lvDate.setOnItemClickListener(new AdapterView.OnItemClickListener() {
         }
     }
 });
+
+// 【新增】给日期列表强制开启焦点和点击（必须加！）
+lvDate.setFocusable(true);
+lvDate.setFocusableInTouchMode(true);
+lvDate.setClickable(true);
+lvDate.setDescendantFocusability(ListView.FOCUS_AFTER_DESCENDANTS);
         // 频道分组点击切换
 lvGroup.setOnItemClickListener(new AdapterView.OnItemClickListener() {
     @Override

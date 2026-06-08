@@ -267,8 +267,8 @@ public class MainActivity extends AppCompatActivity {
         // 注册全局广播
         registerReceiver(toggleControllerReceiver, new IntentFilter("com.tv.live.TOGGLE_CONTROL"));
         registerReceiver(refreshReceiver, new IntentFilter("com.tv.live.REFRESH_LIVE_AND_EPG"));
-        // 节目单展开/收起按钮点击事件
-        btn_show_epg.setOnClickListener(new View.OnClickListener() {
+// 节目单展开/收起按钮点击事件
+btn_show_epg.setOnClickListener(new View.OnClickListener() {
     @Override
     public void onClick(View v) {
         // 校验EPG总开关
@@ -280,27 +280,39 @@ public class MainActivity extends AppCompatActivity {
         epgPanelOpen = !epgPanelOpen;
         lvDate.setVisibility(epgPanelOpen ? View.VISIBLE : View.GONE);
         lvEpg.setVisibility(epgPanelOpen ? View.VISIBLE : View.GONE);
-                // 显示时刷新节目单
-                if (epgPanelOpen && !channelSourceList.isEmpty()) {
-                    Channel curr = channelSourceList.get(currentPlayIndex);
-                    epgManagerWrapper.refresh(curr, channelSourceList, currentSelectedDateIndex);
-                }
-            }
-        });
-        
-        
-         // 日期列表点击：切换节目单日期
-        lvDate.setOnItemClickListener(new AdapterView.OnItemClickListener() {
-            @Override
-            public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
-                currentSelectedDateIndex = position;
-                if (!channelSourceList.isEmpty()) {
-                    Channel curr = channelSourceList.get(currentPlayIndex);
-                    epgManagerWrapper.refresh(curr, channelSourceList, currentSelectedDateIndex);
-                }
-            }
-        });       
-          
+
+        if (epgPanelOpen && !channelSourceList.isEmpty()) {
+            // 【修复 1】打开节目单 → 默认回到【今天】
+            currentSelectedDateIndex = 0;
+            lvDate.setSelection(0);
+
+            // 【修复 2】同步日期给 PanelManager（必须加！）
+            panelManager.setSelectedDateIndex(currentSelectedDateIndex);
+
+            // 刷新今天的节目单
+            Channel curr = channelSourceList.get(currentPlayIndex);
+            epgManagerWrapper.refresh(curr, channelSourceList, currentSelectedDateIndex);
+        }
+    }
+});
+
+// 日期列表点击：切换节目单日期
+lvDate.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+    @Override
+    public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
+        // 更新选中日期
+        currentSelectedDateIndex = position;
+
+        // 【修复 3】同步给 PanelManager（核心！）
+        panelManager.setSelectedDateIndex(currentSelectedDateIndex);
+
+        // 刷新对应日期节目单
+        if (!channelSourceList.isEmpty()) {
+            Channel curr = channelSourceList.get(currentPlayIndex);
+            epgManagerWrapper.refresh(curr, channelSourceList, currentSelectedDateIndex);
+        }
+    }
+});
         // 频道分组点击切换
 lvGroup.setOnItemClickListener(new AdapterView.OnItemClickListener() {
     @Override

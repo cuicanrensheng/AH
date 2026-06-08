@@ -342,20 +342,17 @@ public class MainActivity extends AppCompatActivity {
             }
         });
     }
+public void playChannel(int index) {
+    if (channelSourceList == null || channelSourceList.isEmpty()) return;
 
-    /**
-     * 播放指定索引频道
-     */
-    public void playChannel(int index) {
-        if (channelSourceList == null || channelSourceList.isEmpty()) return;
+    // 防止越界
+    index = Math.max(0, Math.min(index, channelSourceList.size() - 1));
+    currentPlayIndex = index;
 
-        // 防止越界
-        index = Math.max(0, Math.min(index, channelSourceList.size() - 1));
-        currentPlayIndex = index;
+    Channel ch = channelSourceList.get(index);
+    if (TextUtils.isEmpty(ch.getPlayUrl())) return;
 
-        Channel ch = channelSourceList.get(index);
-        if (TextUtils.isEmpty(ch.getPlayUrl())) return;
-            // 调用独立工具类（带日志） ←←← 就是你要的这段！
+    // 调用独立工具类（带日志）
     PlayerHelper.playWithRedirect(ch.getPlayUrl(), new PlayerHelper.PlayerStateListener() {
         @Override
         public void setCurrentChannelName(String name) {

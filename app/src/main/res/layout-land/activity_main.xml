@@ -46,7 +46,7 @@
         <!-- 竖向节目单按钮（居中竖排文字，原id btn_show_epg不变） -->
         <TextView
             android:id="@+id/btn_show_epg"
-            android:layout_width="40dp"
+            android:layout_width="50dp"
             android:layout_height="match_parent"
             android:background="#99000000"
             android:gravity="center"

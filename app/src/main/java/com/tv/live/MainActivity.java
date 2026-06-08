@@ -390,16 +390,60 @@ lvGroup.setOnItemClickListener(new AdapterView.OnItemClickListener() {
         screenRatioManager = new ScreenRatioManager(mPlayerManager, appConfig);
         screenRatioManager.apply();
 
-        // 初始化手势控制
-        gestureManager = new GestureManager(this);
-        final PlayerGestureHelper gestureHelper = gestureManager.create();
-        playerView.setOnTouchListener(new View.OnTouchListener() {
-            @Override
-            public boolean onTouch(View v, MotionEvent event) {
+// 初始化手势控制（修复触摸冲突：保留手势 + 列表可点击）
+gestureManager = new GestureManager(this);
+final PlayerGestureHelper gestureHelper = gestureManager.create();
+
+// 触摸坐标，用于区分 点击 / 滑动
+float touchDownX = 0;
+float touchDownY = 0;
+final float SLIDE_THRESHOLD = 80; // 滑动判定距离
+
+playerView.setOnTouchListener(new View.OnTouchListener() {
+    @Override
+    public boolean onTouch(View v, MotionEvent event) {
+        float x = event.getX();
+        float y = event.getY();
+
+        switch (event.getAction()) {
+            case MotionEvent.ACTION_DOWN:
+                // 记录按下位置
+                touchDownX = x;
+                touchDownY = y;
                 gestureHelper.handleTouch(event);
                 return true;
-            }
-        });
+
+            case MotionEvent.ACTION_MOVE:
+                float dx = Math.abs(x - touchDownX);
+                float dy = Math.abs(y - touchDownY);
+
+                // 真正滑动 → 执行手势，消费事件
+                if (dx > SLIDE_THRESHOLD || dy > SLIDE_THRESHOLD) {
+                    gestureHelper.handleTouch(event);
+                    return true;
+                }
+                // 微小移动 → 不消费，给列表/按钮点击用
+                return false;
+
+            case MotionEvent.ACTION_UP:
+                float finalDx = Math.abs(x - touchDownX);
+                float finalDy = Math.abs(y - touchDownY);
+
+                // 判定为点击 → 放行事件
+                if (finalDx <= SLIDE_THRESHOLD && finalDy <= SLIDE_THRESHOLD) {
+                    gestureHelper.handleTouch(event);
+                    return false; // 👈 关键：放行点击
+                }
+                // 滑动结束
+                gestureHelper.handleTouch(event);
+                return true;
+
+            default:
+                gestureHelper.handleTouch(event);
+                return true;
+        }
+    }
+});
 
         // 初始化按键管理、频道切换管理
         keyEventManager = new KeyEventManager(this);

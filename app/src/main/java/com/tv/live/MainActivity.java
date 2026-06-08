@@ -299,6 +299,9 @@ lvDate.setOnItemClickListener(new AdapterView.OnItemClickListener() {
         // 更新选中日期
         currentSelectedDateIndex = position;
 
+        // 【关键】同步给 PanelManager
+        panelManager.setSelectedDateIndex(position);
+
         // 刷新对应日期节目单
         if (!channelSourceList.isEmpty()) {
             Channel curr = channelSourceList.get(currentPlayIndex);

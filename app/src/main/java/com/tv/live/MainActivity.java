@@ -204,7 +204,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // 重定向增强版，保留为 playChannelEx
-    public void playChannelEx(final int index) {
+    public void playChannelEx( int index) {
         if (channelSourceList == null || channelSourceList.isEmpty()) return;
         index = Math.max(0, Math.min(index, channelSourceList.size() - 1));
         currentPlayIndex = index;

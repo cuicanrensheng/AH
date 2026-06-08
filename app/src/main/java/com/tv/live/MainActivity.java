@@ -282,12 +282,8 @@ btn_show_epg.setOnClickListener(new View.OnClickListener() {
         lvEpg.setVisibility(epgPanelOpen ? View.VISIBLE : View.GONE);
 
         if (epgPanelOpen && !channelSourceList.isEmpty()) {
-            // 【修复 1】打开节目单 → 默认回到【今天】
+            // 打开节目单 → 默认回到【今天】
             currentSelectedDateIndex = 0;
-            lvDate.setSelection(0);
-
-            // 【修复 2】同步日期给 PanelManager（必须加！）
-            panelManager.setSelectedDateIndex(currentSelectedDateIndex);
 
             // 刷新今天的节目单
             Channel curr = channelSourceList.get(currentPlayIndex);
@@ -302,9 +298,6 @@ lvDate.setOnItemClickListener(new AdapterView.OnItemClickListener() {
     public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
         // 更新选中日期
         currentSelectedDateIndex = position;
-
-        // 【修复 3】同步给 PanelManager（核心！）
-        panelManager.setSelectedDateIndex(currentSelectedDateIndex);
 
         // 刷新对应日期节目单
         if (!channelSourceList.isEmpty()) {

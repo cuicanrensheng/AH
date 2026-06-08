@@ -352,7 +352,7 @@ public class MainActivity extends AppCompatActivity {
     Channel ch = channelSourceList.get(index);
     if (TextUtils.isEmpty(ch.getPlayUrl())) return;
 
-    // 调用独立工具类（带日志）
+    // 只保留干净调用，无log
     PlayerHelper.playWithRedirect(ch.getPlayUrl(), new PlayerHelper.PlayerStateListener() {
         @Override
         public void setCurrentChannelName(String name) {

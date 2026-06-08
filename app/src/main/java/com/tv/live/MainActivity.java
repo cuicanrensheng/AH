@@ -293,37 +293,34 @@ btn_show_epg.setOnClickListener(new View.OnClickListener() {
         }
     }
 });
-
-// 日期列表点击：切换节目单日期
+           // 日期列表点击：切换节目单日期
 lvDate.setOnItemClickListener(new AdapterView.OnItemClickListener() {
     @Override
     public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
-        // 日志：看有没有触发点击
-        android.util.Log.d("EPG_DEBUG", "=====================================");
-        android.util.Log.d("EPG_DEBUG", "日期被点击了 → 位置: " + position);
+        // 你项目自带的标准日志（会出现在设置里的日志面板）
+        log("【EPG】日期被点击 → 位置: " + position);
 
         // 更新选中日期
         currentSelectedDateIndex = position;
-        android.util.Log.d("EPG_DEBUG", "本地日期索引已更新为: " + currentSelectedDateIndex);
 
         // 同步给 PanelManager
         panelManager.setSelectedDateIndex(position);
-        android.util.Log.d("EPG_DEBUG", "同步到 PanelManager: " + position);
 
-        // 刷新对应日期节目单
+        // 刷新节目单
         if (!channelSourceList.isEmpty()) {
             Channel curr = channelSourceList.get(currentPlayIndex);
-            android.util.Log.d("EPG_DEBUG", "调用刷新节目单，传入日期: " + currentSelectedDateIndex);
             epgManagerWrapper.refresh(curr, channelSourceList, currentSelectedDateIndex);
+            log("【EPG】已刷新 → 日期索引: " + position);
         }
     }
 });
 
-// 【新增】给日期列表强制开启焦点和点击（必须加！）
+// 强制让日期列表能获取焦点（TV 盒子必备）
 lvDate.setFocusable(true);
 lvDate.setFocusableInTouchMode(true);
 lvDate.setClickable(true);
-lvDate.setDescendantFocusability(ListView.FOCUS_AFTER_DESCENDANTS);
+lvDate.setDescendantFocusability(ListView.FOCUS_BLOCK_DESCENDANTS);
+
         // 频道分组点击切换
 lvGroup.setOnItemClickListener(new AdapterView.OnItemClickListener() {
     @Override

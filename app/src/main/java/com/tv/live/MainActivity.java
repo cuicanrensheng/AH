@@ -19,7 +19,6 @@ import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import com.google.android.exoplayer2.ui.PlayerView;
 import com.tv.live.config.AppConfig;
-import com.tv.live.config.UrlConfig;
 import com.tv.live.loader.LiveSourceLoader;
 import com.tv.live.manager.*;
 import com.tv.live.widget.*;
@@ -72,6 +71,7 @@ public class MainActivity extends AppCompatActivity {
                 runOnUiThread(() -> {
                     loadSettings();
                     applyScreenRatio();
+                    // 恢复 UrlConfig 自定义地址逻辑
                     String customLive = appConfig.getCustomLiveUrl();
                     String customEpg = appConfig.getCustomEpgUrl();
                     if (customLive != null) UrlConfig.LIVE_URL = customLive;
@@ -185,9 +185,7 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    // ==============================
-    // 【保留】原来的旧方法，不删除
-    // ==============================
+    // 原版 playChannel（保留）
     public void playChannel(int index) {
         if (channelSourceList == null || channelSourceList.isEmpty()) return;
         index = Math.max(0, Math.min(index, channelSourceList.size() - 1));
@@ -205,10 +203,8 @@ public class MainActivity extends AppCompatActivity {
         tv_channel_name.setText(ch.getName());
     }
 
-    // ==============================
-    // 【保留】你要的重定向版本，完全不动
-    // ==============================
-    public void playChannel(final int index) {
+    // 重定向增强版，保留为 playChannelEx
+    public void playChannelEx(final int index) {
         if (channelSourceList == null || channelSourceList.isEmpty()) return;
         index = Math.max(0, Math.min(index, channelSourceList.size() - 1));
         currentPlayIndex = index;
@@ -231,7 +227,6 @@ public class MainActivity extends AppCompatActivity {
 
         final String[] finalUrl = {ch.getPlayUrl()};
 
-        // 子线程处理链接重定向 ———— 【完全原样保留，一行不改】
         new Thread(() -> {
             java.net.HttpURLConnection conn = null;
             try {

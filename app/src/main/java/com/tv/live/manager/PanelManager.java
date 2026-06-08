@@ -18,8 +18,6 @@ public class PanelManager {
     private final ChannelListManager channelListManager;
     // 节目单管理器
     private final EpgManagerWrapper epgManagerWrapper;
-    // 当前选中的日期索引
-    private int currentSelectedDateIndex = 0;
 
     /**
      * 构造方法
@@ -32,18 +30,6 @@ public class PanelManager {
         this.channelListManager = channelListManager;
         this.epgManagerWrapper = epgManagerWrapper;
     }
-    
-    /**
-     * 设置当前选中日期索引
-     * @param index 日期下标（0~6 代表一周）
-     */
-    public void setSelectedDateIndex(int index) {
-        // 自动限制在 0~6 之间，防止越界
-        if (index >= 0 && index < 7) {
-            this.currentSelectedDateIndex = index;
-        }
-    }
-
 
     /**
      * 开关面板：显示 / 隐藏
@@ -61,7 +47,8 @@ public class PanelManager {
             // 自动刷新当前频道的节目单
             if (channelList != null && currentIndex >= 0 && currentIndex < channelList.size()) {
                 Channel currentChannel = channelList.get(currentIndex);
-                epgManagerWrapper.refresh(currentChannel, channelList, currentSelectedDateIndex);
+                // 传入三个参数：频道、列表、日期索引（默认今天=0）
+                epgManagerWrapper.refresh(currentChannel, channelList, 0);
             }
         }
     }

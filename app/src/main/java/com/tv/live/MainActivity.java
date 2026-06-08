@@ -266,8 +266,7 @@ public class MainActivity extends AppCompatActivity {
 
         // 注册全局广播
         registerReceiver(toggleControllerReceiver, new IntentFilter("com.tv.live.TOGGLE_CONTROL"));
-        registerReceiver(refreshReceiver, new IntentFilter("com.tv.live.REFRESH_LIVE_AND_EPG"));
-// 节目单展开/收起按钮点击事件
+        // 节目单展开/收起按钮点击事件
 btn_show_epg.setOnClickListener(new View.OnClickListener() {
     @Override
     public void onClick(View v) {
@@ -285,6 +284,9 @@ btn_show_epg.setOnClickListener(new View.OnClickListener() {
             // 打开节目单 → 默认回到【今天】
             currentSelectedDateIndex = 0;
 
+            // 日志
+            android.util.Log.d("EPG_DEBUG", "打开节目单 → 强制设置日期索引: " + currentSelectedDateIndex);
+
             // 刷新今天的节目单
             Channel curr = channelSourceList.get(currentPlayIndex);
             epgManagerWrapper.refresh(curr, channelSourceList, currentSelectedDateIndex);
@@ -296,15 +298,22 @@ btn_show_epg.setOnClickListener(new View.OnClickListener() {
 lvDate.setOnItemClickListener(new AdapterView.OnItemClickListener() {
     @Override
     public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
+        // 日志：看有没有触发点击
+        android.util.Log.d("EPG_DEBUG", "=====================================");
+        android.util.Log.d("EPG_DEBUG", "日期被点击了 → 位置: " + position);
+
         // 更新选中日期
         currentSelectedDateIndex = position;
+        android.util.Log.d("EPG_DEBUG", "本地日期索引已更新为: " + currentSelectedDateIndex);
 
         // 【关键】同步给 PanelManager
         panelManager.setSelectedDateIndex(position);
+        android.util.Log.d("EPG_DEBUG", "同步到 PanelManager: " + position);
 
         // 刷新对应日期节目单
         if (!channelSourceList.isEmpty()) {
             Channel curr = channelSourceList.get(currentPlayIndex);
+            android.util.Log.d("EPG_DEBUG", "调用刷新节目单，传入日期: " + currentSelectedDateIndex);
             epgManagerWrapper.refresh(curr, channelSourceList, currentSelectedDateIndex);
         }
     }

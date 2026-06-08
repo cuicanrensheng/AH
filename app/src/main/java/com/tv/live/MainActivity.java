@@ -280,33 +280,27 @@ public class MainActivity extends AppCompatActivity {
         epgPanelOpen = !epgPanelOpen;
         lvDate.setVisibility(epgPanelOpen ? View.VISIBLE : View.GONE);
         lvEpg.setVisibility(epgPanelOpen ? View.VISIBLE : View.GONE);
+                // 显示时刷新节目单
+                if (epgPanelOpen && !channelSourceList.isEmpty()) {
+                    Channel curr = channelSourceList.get(currentPlayIndex);
+                    epgManagerWrapper.refresh(curr, channelSourceList, currentSelectedDateIndex);
+                }
+            }
+        });
         
-        // 展开时 → 刷新【当前选中日期】的节目单
-        if (epgPanelOpen && !channelSourceList.isEmpty()) {
-            Channel currentChannel = channelSourceList.get(currentPlayIndex);
-            // ✅ 这里用 currentSelectedDateIndex 才对！
-            epgManagerWrapper.refresh(currentChannel, channelSourceList, currentSelectedDateIndex);
-        }
-    }
-});
         
-       // EPG日期列表点击切换 —— 点击日期 → 立即刷新对应节目单
-lvDate.setOnItemClickListener(new AdapterView.OnItemClickListener() {
-    @Override
-    public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
-        // 记录选中日期
-        currentSelectedDateIndex = position;
-         // ✅ 加上这一行
-         panelManager.setSelectedDateIndex(position);
-        if (channelSourceList == null || channelSourceList.isEmpty()) {
-            return;
-        }
-
-        Channel currentChannel = channelSourceList.get(currentPlayIndex);
-        epgManagerWrapper.refresh(currentChannel, channelSourceList, currentSelectedDateIndex);
-    }
-});
-        
+         // 日期列表点击：切换节目单日期
+        lvDate.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+            @Override
+            public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
+                currentSelectedDateIndex = position;
+                if (!channelSourceList.isEmpty()) {
+                    Channel curr = channelSourceList.get(currentPlayIndex);
+                    epgManagerWrapper.refresh(curr, channelSourceList, currentSelectedDateIndex);
+                }
+            }
+        });       
+          
         // 频道分组点击切换
 lvGroup.setOnItemClickListener(new AdapterView.OnItemClickListener() {
     @Override

@@ -20,7 +20,8 @@ public class GestureManager {
         return new PlayerGestureHelper(activity, new PlayerGestureHelper.GestureCallback() {
             @Override
             public void onOk() {
-                activity.togglePanel();
+                // 【已修复】注释掉单击关闭面板，解决日期列表/频道列表点击被拦截的问题
+                // activity.togglePanel();
             }
 
             @Override

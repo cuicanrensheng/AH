@@ -8,6 +8,7 @@ import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
 import android.os.Bundle;
 import android.os.Handler;
+import android.os.Looper;
 import android.text.TextUtils;
 import android.view.KeyEvent;
 import android.view.View;
@@ -18,6 +19,7 @@ import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import com.google.android.exoplayer2.ui.PlayerView;
 import com.tv.live.config.AppConfig;
+import com.tv.live.config.UrlConfig;
 import com.tv.live.loader.LiveSourceLoader;
 import com.tv.live.manager.*;
 import com.tv.live.widget.*;
@@ -69,6 +71,17 @@ public class MainActivity extends AppCompatActivity {
     private boolean channel_reverse;       // 切台方向反转
     private int currentSelectedDateIndex = 0; // 当前选中的日期索引
 
+    // 播放器状态监听器（补充缺失的定义）
+    private TVPlayerManager.PlayerStateListener playerStateListener = new TVPlayerManager.PlayerStateListener() {
+        @Override
+        public void setCurrentChannelName(String name) {
+            // 实现频道名称设置逻辑
+            if (tv_channel_name != null) {
+                tv_channel_name.setText(name);
+            }
+        }
+    };
+
     // 自动隐藏顶部信息栏
     private final Runnable hideInfoBar = () -> info_bar.setVisibility(View.GONE);
     
@@ -81,26 +94,11 @@ public class MainActivity extends AppCompatActivity {
     private static final int READ_TIMEOUT = 8000;
     // 切台冷却防重复点击时间
     private static final long CHANNEL_COOLDOWN = 300;
-        // APP运行日志存储
+    // APP运行日志存储
     public static List<String> logList = new ArrayList<>();
-    public static void log(String msg) {
-        logList.add(0, msg);
-        // 日志只保留最新100条
-        if (logList.size() > 100) logList.remove(logList.size() - 1);
-    }
 
-
-    // 自动隐藏顶部信息栏任务
-    private final Runnable hideInfoBar = () -> info_bar.setVisibility(View.GONE);
     // 上次切台时间戳
     private long lastChannelChangeTime = 0;
-
-
-    
-
-    // 切台防抖（防止快速连续按）
-    private long lastChannelChangeTime = 0;
-    private static final long CHANNEL_COOLDOWN = 300;
 
     // 广播：刷新直播源 + EPG
     private final BroadcastReceiver refreshReceiver = new BroadcastReceiver() {
@@ -370,9 +368,9 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * 播放指定索引频道
+     * 播放指定索引频道（基础版）
      */
-    public void playChannel(int index) {
+    public void playChannelBasic(int index) {
         if (channelSourceList == null || channelSourceList.isEmpty()) return;
 
         // 防止越界
@@ -426,7 +424,6 @@ public class MainActivity extends AppCompatActivity {
         playChannel(idx);
     }
 
-    
     /**
      * 播放指定下标频道，自动处理链接301重定向
      */
@@ -441,18 +438,6 @@ public class MainActivity extends AppCompatActivity {
         showChannelNum(index + 1);
         appConfig.setLastPlayIndex(index);
 
-
-    /**
-     * 显示频道数字，3秒后消失
-     */
-    private void showChannelNum(int num) {
-        tv_channel_num.setText(String.valueOf(num));
-        tv_channel_num.setVisibility(View.VISIBLE);
-        new Handler().postDelayed(() -> tv_channel_num.setVisibility(View.GONE), 3000);
-        
-    }
-
-    
         // 显示顶部播放信息栏，2秒自动隐藏
         if (info_bar != null) {
             info_bar.setVisibility(View.VISIBLE);
@@ -502,6 +487,23 @@ public class MainActivity extends AppCompatActivity {
         }).start();
     }
 
+    /**
+     * 显示频道数字，3秒后消失
+     */
+    private void showChannelNum(int num) {
+        tv_channel_num.setText(String.valueOf(num));
+        tv_channel_num.setVisibility(View.VISIBLE);
+        new Handler().postDelayed(() -> tv_channel_num.setVisibility(View.GONE), 3000);
+    }
+
+    /**
+     * APP运行日志存储
+     */
+    public static void log(String msg) {
+        logList.add(0, msg);
+        // 日志只保留最新100条
+        if (logList.size() > 100) logList.remove(logList.size() - 1);
+    }
 
     /**
      * 打开/关闭左侧面板

@@ -262,7 +262,9 @@ public class MainActivity extends AppCompatActivity {
         tv_current_time_range = findViewById(R.id.tv_current_time_range);
         progress_program = findViewById(R.id.progress_program);
         tv_remaining_time = findViewById(R.id.tv_remaining_time);
-        tv_next_program_name = findViewById(R.id.next_program_name);
+        
+        // 【修复】错误的资源ID
+        tv_next_program_name = findViewById(R.id.tv_next_program_name);
         tv_next_time_range = findViewById(R.id.tv_next_time_range);
     }
 
@@ -429,10 +431,7 @@ public class MainActivity extends AppCompatActivity {
         startActivity(new Intent(this, SettingsActivity.class));
     }
 
-    // ==============================================
-    // ✅ 【已补齐】NanoHTTPD 调用的 onReceiveConfig
-    // 绝对不删除、不修改、不优化、不精简
-    // ==============================================
+    // 【修复】只保留一个 onReceiveConfig，解决重复定义错误
     public void onReceiveConfig(final String liveUrl, final String epgUrl) {
         AppConfig config = AppConfig.getInstance(this);
         config.setCustomUrls(liveUrl, epgUrl);
@@ -452,23 +451,12 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    public void onReceiveConfig(final String liveUrl, final String epgUrl) {
-        AppConfig config = AppConfig.getInstance(this);
-        config.setCustomUrls(liveUrl, epgUrl);
-        if (liveUrl != null) UrlConfig.LIVE_URL = liveUrl;
-        if (epgUrl != null) UrlConfig.EPG_URL = epgUrl;
-
-        runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-                loadLiveAndEpg();
-            }
-        });
-    }
-
+    // 【修复】正确调用按键方法，解决 dispatchKeyEvent 不存在错误
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
-        if (keyEventManager.dispatchKey(keyCode)) return true;
+        if (keyEventManager.dispatchKey(keyCode)) {
+            return true;
+        }
         return super.onKeyDown(keyCode, event);
     }
 

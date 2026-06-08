@@ -71,6 +71,32 @@ public class MainActivity extends AppCompatActivity {
 
     // 自动隐藏顶部信息栏
     private final Runnable hideInfoBar = () -> info_bar.setVisibility(View.GONE);
+    
+    //===================== 常量定义 =====================
+    // 直播链接最大重定向次数
+    private static final int MAX_REDIRECT_COUNT = 10;
+    // 链接连接超时
+    private static final int CONNECT_TIMEOUT = 8000;
+    // 链接读取超时
+    private static final int READ_TIMEOUT = 8000;
+    // 切台冷却防重复点击时间
+    private static final long CHANNEL_COOLDOWN = 300;
+        // APP运行日志存储
+    public static List<String> logList = new ArrayList<>();
+    public static void log(String msg) {
+        logList.add(0, msg);
+        // 日志只保留最新100条
+        if (logList.size() > 100) logList.remove(logList.size() - 1);
+    }
+
+
+    // 自动隐藏顶部信息栏任务
+    private final Runnable hideInfoBar = () -> info_bar.setVisibility(View.GONE);
+    // 上次切台时间戳
+    private long lastChannelChangeTime = 0;
+
+
+    
 
     // 切台防抖（防止快速连续按）
     private long lastChannelChangeTime = 0;
@@ -400,6 +426,22 @@ public class MainActivity extends AppCompatActivity {
         playChannel(idx);
     }
 
+    
+    /**
+     * 播放指定下标频道，自动处理链接301重定向
+     */
+    public void playChannel(int index) {
+        if (channelSourceList == null || channelSourceList.isEmpty()) return;
+        index = Math.max(0, Math.min(index, channelSourceList.size() - 1));
+        currentPlayIndex = index;
+        Channel ch = channelSourceList.get(index);
+        if (ch == null || TextUtils.isEmpty(ch.getPlayUrl())) return;
+
+        playerStateListener.setCurrentChannelName(ch.getName());
+        showChannelNum(index + 1);
+        appConfig.setLastPlayIndex(index);
+
+
     /**
      * 显示频道数字，3秒后消失
      */
@@ -407,7 +449,59 @@ public class MainActivity extends AppCompatActivity {
         tv_channel_num.setText(String.valueOf(num));
         tv_channel_num.setVisibility(View.VISIBLE);
         new Handler().postDelayed(() -> tv_channel_num.setVisibility(View.GONE), 3000);
+        
     }
+
+    
+        // 显示顶部播放信息栏，2秒自动隐藏
+        if (info_bar != null) {
+            info_bar.setVisibility(View.VISIBLE);
+            info_bar.removeCallbacks(hideInfoBar);
+            info_bar.postDelayed(hideInfoBar, 2000);
+            tv_channel_name.setText(ch.getName());
+            TVPlayerManager.LiveInfo info = mPlayerManager.getLiveInfo();
+            tv_tag_fhd.setText(info.quality);
+            tv_tag_audio.setText(info.audio);
+            tv_bitrate.setText(info.bitrate);
+        }
+
+        final String url = ch.getPlayUrl();
+        final String[] finalUrl = {url};
+
+        // 子线程处理链接重定向
+        new Thread(() -> {
+            java.net.HttpURLConnection conn = null;
+            try {
+                for (int i = 0; i < MAX_REDIRECT_COUNT; i++) {
+                    java.net.URL u = new java.net.URL(finalUrl[0]);
+                    conn = (java.net.HttpURLConnection) u.openConnection();
+                    conn.setConnectTimeout(CONNECT_TIMEOUT);
+                    conn.setReadTimeout(READ_TIMEOUT);
+                    conn.setRequestMethod("GET");
+                    conn.setInstanceFollowRedirects(false);
+                    int code = conn.getResponseCode();
+                    // 301/302重定向处理
+                    if (code == 301 || code == 302) {
+                        String loc = conn.getHeaderField("Location");
+                        if (loc != null) finalUrl[0] = loc;
+                        conn.disconnect();
+                        conn = null;
+                    } else {
+                        break;
+                    }
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            } finally {
+                if (conn != null) conn.disconnect();
+            }
+            // 主线程开始播放
+            new Handler(Looper.getMainLooper()).post(() -> {
+                mPlayerManager.playUrl(finalUrl[0]);
+            });
+        }).start();
+    }
+
 
     /**
      * 打开/关闭左侧面板

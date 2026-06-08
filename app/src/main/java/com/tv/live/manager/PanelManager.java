@@ -19,9 +19,6 @@ public class PanelManager {
     // 节目单管理器
     private final EpgManagerWrapper epgManagerWrapper;
 
-    // 新增：保存选中的日期索引（默认今天=0）
-    private int selectedDateIndex = 0;
-
     /**
      * 构造方法
      * @param panelLayout 整个左侧面板布局
@@ -32,16 +29,6 @@ public class PanelManager {
         this.panelLayout = panelLayout;
         this.channelListManager = channelListManager;
         this.epgManagerWrapper = epgManagerWrapper;
-    }
-
-    // 【关键方法1】给MainActivity调用，更新选中的日期
-    public void setSelectedDateIndex(int index) {
-        this.selectedDateIndex = index;
-    }
-
-    // 【关键方法2】获取当前选中的日期，给toggle()使用
-    public int getSelectedDateIndex() {
-        return selectedDateIndex;
     }
 
     /**
@@ -60,8 +47,8 @@ public class PanelManager {
             // 自动刷新当前频道的节目单
             if (channelList != null && currentIndex >= 0 && currentIndex < channelList.size()) {
                 Channel currentChannel = channelList.get(currentIndex);
-                // 【关键修复】用 selectedDateIndex 代替固定的 0
-                epgManagerWrapper.refresh(currentChannel, channelList, selectedDateIndex);
+                // 传入三个参数：频道、列表、日期索引（默认今天=0）
+                epgManagerWrapper.refresh(currentChannel, channelList, 0);
             }
         }
     }

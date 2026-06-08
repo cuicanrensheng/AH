@@ -32,14 +32,18 @@ public class PanelManager {
         this.channelListManager = channelListManager;
         this.epgManagerWrapper = epgManagerWrapper;
     }
-
+    
     /**
      * 设置当前选中日期索引
-     * @param index 日期下标
+     * @param index 日期下标（0~6 代表一周）
      */
     public void setSelectedDateIndex(int index) {
-        this.currentSelectedDateIndex = index;
+        // 自动限制在 0~6 之间，防止越界
+        if (index >= 0 && index < 7) {
+            this.currentSelectedDateIndex = index;
+        }
     }
+
 
     /**
      * 开关面板：显示 / 隐藏

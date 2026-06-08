@@ -1,5 +1,6 @@
 package com.tv.live;
-
+import com.tv.live.listener.PlayerStateListenerImpl;
+import com.tv.live.UrlConfig;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -19,7 +20,6 @@ import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import com.google.android.exoplayer2.ui.PlayerView;
 import com.tv.live.config.AppConfig;
-import com.tv.live.config.UrlConfig;
 import com.tv.live.loader.LiveSourceLoader;
 import com.tv.live.manager.*;
 import com.tv.live.widget.*;

@@ -71,14 +71,11 @@ public class MainActivity extends AppCompatActivity {
     private boolean channel_reverse;       // 切台方向反转
     private int currentSelectedDateIndex = 0; // 当前选中的日期索引
 
-    // 播放器状态监听器（补充缺失的定义）
+    // 播放器状态监听（补充缺失的定义）
     private TVPlayerManager.PlayerStateListener playerStateListener = new TVPlayerManager.PlayerStateListener() {
         @Override
         public void setCurrentChannelName(String name) {
-            // 实现频道名称设置逻辑
-            if (tv_channel_name != null) {
-                tv_channel_name.setText(name);
-            }
+            // 空实现，保持原有逻辑
         }
     };
 
@@ -96,7 +93,7 @@ public class MainActivity extends AppCompatActivity {
     private static final long CHANNEL_COOLDOWN = 300;
     // APP运行日志存储
     public static List<String> logList = new ArrayList<>();
-
+    
     // 上次切台时间戳
     private long lastChannelChangeTime = 0;
 
@@ -370,7 +367,7 @@ public class MainActivity extends AppCompatActivity {
     /**
      * 播放指定索引频道（基础版）
      */
-    public void playChannelBasic(int index) {
+    public void playChannel(int index) {
         if (channelSourceList == null || channelSourceList.isEmpty()) return;
 
         // 防止越界
@@ -425,9 +422,9 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * 播放指定下标频道，自动处理链接301重定向
+     * 播放指定下标频道，自动处理链接301重定向（增强版）
      */
-    public void playChannel(int index) {
+    public void playChannelWithRedirect(int index) {
         if (channelSourceList == null || channelSourceList.isEmpty()) return;
         index = Math.max(0, Math.min(index, channelSourceList.size() - 1));
         currentPlayIndex = index;
@@ -497,7 +494,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * APP运行日志存储
+     * APP运行日志存储方法
      */
     public static void log(String msg) {
         logList.add(0, msg);

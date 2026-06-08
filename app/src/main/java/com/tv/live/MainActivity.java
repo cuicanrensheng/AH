@@ -342,38 +342,41 @@ public class MainActivity extends AppCompatActivity {
             }
         });
     }
-    public void playChannel(int index) {
+     public void playChannel(int index) {
     if (channelSourceList == null || channelSourceList.isEmpty()) return;
 
+    // 防止越界
     index = Math.max(0, Math.min(index, channelSourceList.size() - 1));
     currentPlayIndex = index;
 
     Channel ch = channelSourceList.get(index);
     if (TextUtils.isEmpty(ch.getPlayUrl())) return;
 
-    // 调用带界面日志的版本
+    // 调用独立工具类（带日志）
     PlayerHelper.playWithRedirect(ch.getPlayUrl(), new PlayerHelper.PlayerStateListener() {
         @Override
-        public void setCurrentChannelName(String name) {}
-    }, mPlayerManager, new PlayerHelper.LogCallback() {
-        @Override
-        public void onLog(String log) {
-            // 这里就是输出到你电视界面的解析日志
-            addParseLog(log);
+        public void setCurrentChannelName(String name) {
         }
-    });
+    }, mPlayerManager);
 
+    // 显示频道号
     showChannelNum(index + 1);
+
+    // 保存记录
     appConfig.setLastPlayIndex(index);
+
+    // 刷新列表选中状态
     channelListManager.setChannels(channelSourceList, index);
+
+    // 刷新节目单
     epgManagerWrapper.refresh(ch, channelSourceList, currentSelectedDateIndex);
 
+    // 显示顶部信息，2秒后自动隐藏
     info_bar.setVisibility(View.VISIBLE);
     info_bar.removeCallbacks(hideInfoBar);
     info_bar.postDelayed(hideInfoBar, 2000);
     tv_channel_name.setText(ch.getName());
 }
-
     /**
      * 上一个频道
      */

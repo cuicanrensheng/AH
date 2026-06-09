@@ -6,7 +6,6 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.graphics.Color;
 import android.text.TextUtils;
-import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -36,7 +35,6 @@ public class EpgManagerWrapper {
     private final Context context;
     private EpgAdapter adapter;
     private final Set<String> bookedSet = new HashSet<>();
-    // 新增：缓存每个EpgItem对应的endTime，替代实体字段，原有代码不动
     private final Map<Channel.EpgItem, String> epgEndTimeMap = new HashMap<>();
     private static final String ACTION_REMINDER = "com.tv.live.EPG_REMINDER";
     private int selectedPosition = 0;
@@ -79,12 +77,10 @@ public class EpgManagerWrapper {
             List<Channel.EpgItem> data = new ArrayList<>();
 
             if (epgList != null && !epgList.isEmpty()) {
-                // ==================== 核心修复：和EpgManager.getDayName() 100%对齐 ====================
                 Calendar today = Calendar.getInstance();
                 Calendar targetCal = Calendar.getInstance();
                 targetCal.add(Calendar.DAY_OF_YEAR, dateIndex);
 
-                // 准确计算自然天差（兼容跨年/闰年，彻底解决12月31日切换问题）
                 long todayMs = today.getTimeInMillis() / (1000 * 60 * 60 * 24);
                 long targetMs = targetCal.getTimeInMillis() / (1000 * 60 * 60 * 24);
                 int dayDiff = (int) (targetMs - todayMs);
@@ -93,38 +89,31 @@ public class EpgManagerWrapper {
                 if (dayDiff == 0) {
                     targetDay = "今天";
                 } else {
-                    // 星期映射表：Calendar.DAY_OF_WEEK 1=周天，2=周一...7=周六
                     String[] weekMap = {"周天", "周一", "周二", "周三", "周四", "周五", "周六"};
                     int w = targetCal.get(Calendar.DAY_OF_WEEK);
-                    targetDay = weekMap[w - 1]; // 修复Calendar周日=1的索引错误
+                    targetDay = weekMap[w - 1];
                 }
-                // ====================================================================================
 
-                // ==================== 调试日志（问题解决后可注释） ====================
-                Log.d("EPG_DEBUG", "========================================");
-                Log.d("EPG_DEBUG", "当前频道：" + currentChannel.getName());
-                Log.d("EPG_DEBUG", "选中日期索引：" + dateIndex);
-                Log.d("EPG_DEBUG", "计算天数差：" + dayDiff);
-                Log.d("EPG_DEBUG", "筛选目标日期：" + targetDay);
-                Log.d("EPG_DEBUG", "该频道总节目数：" + epgList.size());
-                // ================================================================
+                // ==================== 日志已接入 MainActivity 静态 log ====================
+                MainActivity.log("========================================");
+                MainActivity.log("EPG 当前频道：" + currentChannel.getName());
+                MainActivity.log("EPG 选中索引：" + dateIndex + " 天数差：" + dayDiff + " 目标：" + targetDay);
+                MainActivity.log("EPG 总节目数：" + epgList.size());
 
                 for (Channel.EpgItem item : epgList) {
                     boolean isMatch = targetDay.equals(item.dayName);
-                    // 调试日志：打印每个节目的匹配情况
-                    Log.d("EPG_DEBUG", String.format(
-                        "节目：%-20s | 节目日期：%-6s | 目标日期：%-6s | 匹配：%s",
-                        item.title, item.dayName, targetDay, isMatch
-                    ));
+                    MainActivity.log("EPG 节目：" + item.title + " | " + item.dayName + " → 匹配：" + isMatch);
+                }
+                // ========================================================================
 
-                    if (isMatch) {
+                for (Channel.EpgItem item : epgList) {
+                    if (targetDay.equals(item.dayName)) {
                         data.add(item);
                     }
                 }
 
-                // 调试日志：打印最终筛选结果
-                Log.d("EPG_DEBUG", "筛选后节目数：" + data.size());
-                Log.d("EPG_DEBUG", "========================================");
+                MainActivity.log("EPG 筛选后节目数：" + data.size());
+                MainActivity.log("========================================");
 
                 Collections.sort(data, Comparator.comparing(o -> o.time));
                 String now = getNow();
@@ -133,11 +122,10 @@ public class EpgManagerWrapper {
                 for (int i = 0; i < data.size(); i++) {
                     Channel.EpgItem curr = data.get(i);
 
-                    // 修复：自动清洗脏数据，只保留合法时间
                     if (!TextUtils.isEmpty(curr.time) && curr.time.contains("-")) {
                         curr.time = curr.time.split("-")[0].trim();
                     }
-                    // 原有endTime赋值逻辑完全保留，存入Map
+
                     if (TextUtils.isEmpty(epgEndTimeMap.get(curr))) {
                         if (i + 1 < data.size()) {
                             Channel.EpgItem next = data.get(i + 1);
@@ -160,7 +148,6 @@ public class EpgManagerWrapper {
                     }
                 }
 
-                // 仅今天的节目把播放中的移到首位
                 if (dayDiff == 0 && playing != null && playingIndex > 0) {
                     data.remove(playing);
                     data.add(0, playing);
@@ -187,7 +174,6 @@ public class EpgManagerWrapper {
         }).start();
     }
 
-    // 安全时间比较（彻底防崩）
     private boolean isTimeBetween(String now, String start, String end) {
         try {
             if (now == null || start == null || end == null) return false;
@@ -198,12 +184,9 @@ public class EpgManagerWrapper {
         return false;
     }
 
-    // 彻底修复：防脏数据、防崩
     private String addOneHour(String hm) {
         try {
             if (hm == null || !hm.contains(":")) return "23:59";
-
-            // 清洗脏数据
             hm = hm.trim();
             if (hm.contains("-")) hm = hm.split("-")[0].trim();
 
@@ -284,7 +267,6 @@ public class EpgManagerWrapper {
             Channel.EpgItem item = list.get(position);
             String endTime = epgEndTimeMap.get(item);
             holder.tv_dayName.setText(item.dayName);
-            // 原有拼接格式保留不变
             holder.tv_time.setText(item.time + "-" + endTime);
             holder.tv_title.setText(item.title);
 
@@ -353,7 +335,7 @@ public class EpgManagerWrapper {
                         ((MainActivity) ctx).mPlayerManager.playUrl(catchUrl);
                         Toast.makeText(ctx, "回看：" + item.title, Toast.LENGTH_SHORT).show();
                     } catch (Exception e) {
-                        Toast.makeText(ctx, "回看失败", Toast.makeText_SHORT).show();
+                        Toast.makeText(ctx, "回看失败", Toast.LENGTH_SHORT).show();
                     }
                 });
             } else {

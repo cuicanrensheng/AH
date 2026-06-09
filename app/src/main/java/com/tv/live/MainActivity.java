@@ -702,7 +702,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         if (keyEventManager.dispatchKey(keyCode)) return true;
-        return super.onKeyDown(keyCode);
+        return super.onKeyDown(keyCode, event);
     }
 
     /**

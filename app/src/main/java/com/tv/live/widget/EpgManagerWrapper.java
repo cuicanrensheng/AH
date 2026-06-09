@@ -92,13 +92,10 @@ public class EpgManagerWrapper {
                 String targetDay;
                 if (dayDiff == 0) {
                     targetDay = "今天";
-                } else if (dayDiff == 1) {
-                    targetDay = "明天";
-                } else if (dayDiff == 2) {
-                    targetDay = "后天";
                 } else {
+                    // 星期映射表：Calendar.DAY_OF_WEEK 1=周天，2=周一...7=周六
+                    String[] weekMap = {"周天", "周一", "周二", "周三", "周四", "周五", "周六"};
                     int w = targetCal.get(Calendar.DAY_OF_WEEK);
-                    String[] weekMap = {"周日", "周一", "周二", "周三", "周四", "周五", "周六"};
                     targetDay = weekMap[w - 1]; // 修复Calendar周日=1的索引错误
                 }
                 // ====================================================================================
@@ -356,7 +353,7 @@ public class EpgManagerWrapper {
                         ((MainActivity) ctx).mPlayerManager.playUrl(catchUrl);
                         Toast.makeText(ctx, "回看：" + item.title, Toast.LENGTH_SHORT).show();
                     } catch (Exception e) {
-                        Toast.makeText(ctx, "回看失败", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(ctx, "回看失败", Toast.makeText_SHORT).show();
                     }
                 });
             } else {

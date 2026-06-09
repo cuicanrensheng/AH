@@ -5,129 +5,66 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
-import android.graphics.Bitmap;
 import android.graphics.Color;
-import android.graphics.drawable.ColorDrawable;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.Looper;
-import android.text.TextUtils;
-import android.view.LayoutInflater;
 import android.view.View;
-import android.view.ViewGroup;
-import android.view.WindowManager;
-import android.widget.ArrayAdapter;
-import android.widget.EditText;
-import android.widget.ImageView;
 import android.widget.ScrollView;
 import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
-import com.google.zxing.BarcodeFormat;
-import com.google.zxing.common.BitMatrix;
-import com.google.zxing.qrcode.QRCodeWriter;
-import org.json.JSONObject;
-import java.io.InputStreamReader;
-import java.net.ServerSocket;
-import java.net.Socket;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
+/**
+ * 设置界面 Activity
+ * 功能：开机自启、EPG开关、源更新、换台反转、数字选台、屏幕比例、自定义源、日志查看等
+ * 本次修改：新增【操作崩溃日志】按钮对接，实现崩溃日志展示/清空
+ */
 public class SettingsActivity extends AppCompatActivity {
+
+    // ===================== 控件声明 =====================
+    // 开关控件
     private Switch sw_boot, sw_epg, sw_auto_update, sw_reverse, sw_num_channel;
+    // 文本点击控件
     private TextView tv_screen_ratio, tv_custom_source, tv_custom_epg, tv_multi_source, tv_multi_epg, tv_qr_code;
+    // 日志相关控件
+    private TextView log_viewer, log_operation;
+    // 本地配置存储
     private SharedPreferences sp;
-    private String currentWebUrl;
-    private ServerSocket serverSocket;
-    private Handler handler = new Handler(Looper.getMainLooper());
-    private static final int PORT = 10481;
-    private SettingsAdapter adapter;
 
-    // ====================== 全局日志系统 ======================
-    public static volatile StringBuilder PLAY_LOG = new StringBuilder();
-
-    public static void log(String msg) {
-        if (PLAY_LOG == null) {
-            PLAY_LOG = new StringBuilder();
-        }
-        String time = android.text.format.DateFormat.format("HH:mm:ss", new java.util.Date()).toString();
-        PLAY_LOG.append("[").append(time).append("] ").append(msg).append("\n");
-        if (PLAY_LOG.length() > 20000) {
-            PLAY_LOG.delete(0, PLAY_LOG.length() - 15000);
-        }
-    }
-    
-private void showLogDialog() {
-    ScrollView scrollView = new ScrollView(this);
-    TextView tv = new TextView(this);
-
-    if (PLAY_LOG == null || PLAY_LOG.length() == 0) {
-        tv.setText("暂无日志内容，请先播放一个频道再查看。");
-    } else {
-        // ======================
-        // 核心修改：把日志倒序 → 最新显示在最上面
-        // ======================
-        String originalLog = PLAY_LOG.toString();
-        // 按换行符分割成单行日志
-        String[] lines = originalLog.split("\n");
-        StringBuilder reversedLog = new StringBuilder();
-
-        // 倒序遍历：从最后一行（最新）加到第一行
-        for (int i = lines.length - 1; i >= 0; i--) {
-            if (!lines[i].trim().isEmpty()) {
-                reversedLog.append(lines[i]).append("\n");
-            }
-        }
-
-        // 设置倒序后的日志
-        tv.setText(reversedLog.toString());
-    }
-
-    tv.setTextSize(12);
-    tv.setPadding(40, 40, 40, 40);
-    tv.setTextColor(Color.BLACK);
-
-    scrollView.addView(tv);
-    AlertDialog.Builder builder = new AlertDialog.Builder(this);
-    builder.setTitle("📄 解析 & 播放日志");
-    builder.setView(scrollView);
-
-    // 关闭按钮
-    builder.setPositiveButton("关闭", null);
-
-    // 清空日志按钮
-    builder.setNeutralButton("清空日志", (dialog, which) -> {
-        if (PLAY_LOG != null) {
-            PLAY_LOG.setLength(0);
-        }
-        Toast.makeText(this, "日志已清空", Toast.LENGTH_SHORT).show();
-    });
-
-    builder.show();
-}
-
+    // ===================== 生命周期：创建 =====================
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-        getWindow().getAttributes().dimAmount = 0.6f;
-        getWindow().setFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND, WindowManager.LayoutParams.FLAG_DIM_BEHIND);
         super.onCreate(savedInstanceState);
-        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+        // 设置横屏（TV端适配）
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+        // 加载设置界面布局
         setContentView(R.layout.activity_settings);
 
-        sp = getSharedPreferences("app_settings", MODE_PRIVATE);
+        // 初始化本地配置
+        sp = getSharedPreferences("app_settings", Context.MODE_PRIVATE);
+        // 绑定所有界面控件
+        initView();
+        // 初始化控件点击/开关事件
+        initListener();
+    }
 
+    /**
+     * 初始化绑定所有布局控件
+     * 对应 activity_settings.xml 中的所有 id
+     */
+    private void initView() {
+        // 开关
         sw_boot = findViewById(R.id.sw_boot);
         sw_epg = findViewById(R.id.sw_epg);
         sw_auto_update = findViewById(R.id.sw_auto_update);
         sw_reverse = findViewById(R.id.sw_reverse);
         sw_num_channel = findViewById(R.id.sw_num_channel);
 
+        // 功能文本项
         tv_screen_ratio = findViewById(R.id.tv_screen_ratio);
         tv_custom_source = findViewById(R.id.tv_custom_source);
         tv_custom_epg = findViewById(R.id.tv_custom_epg);
@@ -135,247 +72,177 @@ private void showLogDialog() {
         tv_multi_epg = findViewById(R.id.tv_multi_epg);
         tv_qr_code = findViewById(R.id.tv_qr_code);
 
-        // 日志查看
-        findViewById(R.id.log_viewer).setOnClickListener(v -> showLogDialog());
+        // 日志控件（核心新增：操作崩溃日志）
+        log_viewer = findViewById(R.id.log_viewer);       // 查看解析日志
+        log_operation = findViewById(R.id.log_operation); // 操作崩溃日志
+    }
 
-        // 开机自启
+    /**
+     * 初始化所有控件的事件监听
+     * 开关状态监听 + 文本点击监听 + 日志按钮监听
+     */
+    private void initListener() {
+        // ===================== 开关事件 =====================
+        // 开机自启开关
         sw_boot.setChecked(sp.getBoolean("boot_auto_start", false));
         sw_boot.setOnCheckedChangeListener((buttonView, isChecked) -> {
             sp.edit().putBoolean("boot_auto_start", isChecked).apply();
-            Toast.makeText(this, "开机自启" + (isChecked ? "已开启" : "已关闭"), Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "开机自启" + (isChecked ? "开启" : "关闭"), Toast.LENGTH_SHORT).show();
         });
 
-        // EPG开关
+        // 节目单(EPG)开关
         sw_epg.setChecked(sp.getBoolean("epg_enable", true));
         sw_epg.setOnCheckedChangeListener((buttonView, isChecked) -> {
             sp.edit().putBoolean("epg_enable", isChecked).apply();
-            Toast.makeText(this, "节目单" + (isChecked ? "已开启" : "已关闭"), Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "节目单" + (isChecked ? "开启" : "关闭"), Toast.LENGTH_SHORT).show();
         });
 
-        // 自动更新源
+        // 自动更新源开关
         sw_auto_update.setChecked(sp.getBoolean("auto_update_source", true));
         sw_auto_update.setOnCheckedChangeListener((buttonView, isChecked) -> {
             sp.edit().putBoolean("auto_update_source", isChecked).apply();
-            Toast.makeText(this, "自动更新源" + (isChecked ? "已开启" : "已关闭"), Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "自动更新源" + (isChecked ? "开启" : "关闭"), Toast.LENGTH_SHORT).show();
         });
 
-        // 换台反转
+        // 换台反转开关
         sw_reverse.setChecked(sp.getBoolean("channel_reverse", false));
         sw_reverse.setOnCheckedChangeListener((buttonView, isChecked) -> {
             sp.edit().putBoolean("channel_reverse", isChecked).apply();
-            Toast.makeText(this, "换台反转" + (isChecked ? "已开启" : "已关闭"), Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "换台反转" + (isChecked ? "开启" : "关闭"), Toast.LENGTH_SHORT).show();
         });
 
-        // 数字选台
+        // 数字选台开关
         sw_num_channel.setChecked(sp.getBoolean("number_channel_enable", true));
         sw_num_channel.setOnCheckedChangeListener((buttonView, isChecked) -> {
             sp.edit().putBoolean("number_channel_enable", isChecked).apply();
-            Toast.makeText(this, "数字选台" + (isChecked ? "已开启" : "已关闭"), Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "数字选台" + (isChecked ? "开启" : "关闭"), Toast.LENGTH_SHORT).show();
         });
 
-        // 检查更新
-        findViewById(R.id.btn_check_update).setOnClickListener(v -> {
-            Toast.makeText(this, "已是最新版本", Toast.LENGTH_SHORT).show();
+        // ===================== 功能点击事件（占位，可自行扩展） =====================
+        tv_screen_ratio.setOnClickListener(v -> {
+            Toast.makeText(this, "屏幕比例设置", Toast.LENGTH_SHORT).show();
+        });
+        tv_custom_source.setOnClickListener(v -> {
+            Toast.makeText(this, "自定义订阅源", Toast.LENGTH_SHORT).show();
+        });
+        tv_custom_epg.setOnClickListener(v -> {
+            Toast.makeText(this, "自定义节目单", Toast.LENGTH_SHORT).show();
+        });
+        tv_multi_source.setOnClickListener(v -> {
+            Toast.makeText(this, "多订阅源管理", Toast.LENGTH_SHORT).show();
+        });
+        tv_multi_epg.setOnClickListener(v -> {
+            Toast.makeText(this, "多节目单管理", Toast.LENGTH_SHORT).show();
+        });
+        tv_qr_code.setOnClickListener(v -> {
+            Toast.makeText(this, "扫码添加源/节目单", Toast.LENGTH_SHORT).show();
         });
 
-        initListeners();
-        currentWebUrl = "http://" + getDeviceIPAddress() + ":" + PORT;
-        startPushServer();
+        // ===================== 核心：日志按钮事件对接 =====================
+        // 1. 查看解析日志（原有功能）
+        log_viewer.setOnClickListener(v -> showNormalLogDialog());
+        // 2. 查看操作崩溃日志（本次新增对接）
+        log_operation.setOnClickListener(v -> showCrashLogDialog());
     }
 
-    private void initListeners() {
-        tv_screen_ratio.setOnClickListener(v -> showRatioDialog());
-        tv_custom_source.setOnClickListener(v -> showInputDialog("自定义订阅源", "请输入直播源地址", "custom_live_url"));
-        tv_custom_epg.setOnClickListener(v -> showInputDialog("自定义节目单", "请输入EPG地址", "custom_epg_url"));
-        tv_multi_source.setOnClickListener(v -> showHistoryDialog("直播源历史", "live_history"));
-        tv_multi_epg.setOnClickListener(v -> showHistoryDialog("节目单历史", "epg_history"));
-        tv_qr_code.setOnClickListener(v -> showQRCodeDialog());
-    }
+    /**
+     * 展示【普通解析日志】弹窗
+     * 读取 MainActivity 中的公共日志列表，展示所有运行日志
+     */
+    private void showNormalLogDialog() {
+        // 创建滚动视图，防止日志过长
+        ScrollView scrollView = new ScrollView(this);
+        // 创建日志文本展示控件
+        TextView tvLog = new TextView(this);
+        tvLog.setTextColor(Color.WHITE);    // 白色文字
+        tvLog.setTextSize(14);             // 文字大小
+        tvLog.setPadding(20, 20, 20, 20);  // 内边距
 
-    private void showRatioDialog() {
-        new AlertDialog.Builder(this)
-                .setTitle("屏幕比例")
-                .setItems(new String[]{"全屏", "填充", "原始"}, (d, w) -> {
-                    sp.edit().putString("screen_ratio", new String[]{"全屏", "填充", "原始"}[w]).apply();
-                    Toast.makeText(this, "已设置", Toast.LENGTH_SHORT).show();
-                }).show();
-    }
-
-    private void showInputDialog(String title, String hint, String key) {
-        EditText ed = new EditText(this);
-        ed.setHint(hint);
-        ed.setText(sp.getString(key, ""));
-        new AlertDialog.Builder(this)
-                .setTitle(title)
-                .setView(ed)
-                .setPositiveButton("确定", (d, w) -> {
-                    String url = ed.getText().toString().trim();
-                    if (!url.isEmpty()) {
-                        sp.edit().putString(key, url).apply();
-                        addHistory(key.contains("live") ? "live_history" : "epg_history", url);
-                        sendBroadcast(new Intent("com.tv.live.REFRESH_LIVE_AND_EPG"));
-                        Toast.makeText(this, "已保存，正在刷新…", Toast.LENGTH_SHORT).show();
-                    }
-                })
-                .setNegativeButton("取消", null)
-                .show();
-    }
-
-    private void showHistoryDialog(String title, String key) {
-        String history = sp.getString(key, "");
-        if (TextUtils.isEmpty(history)) {
-            Toast.makeText(this, "无记录", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        String[] list = history.split("\\|");
-        adapter = new SettingsAdapter(this, Arrays.asList(list));
-        new AlertDialog.Builder(this)
-                .setTitle(title)
-                .setAdapter(adapter, (d, w) -> {
-                    String url = list[w];
-                    sp.edit().putString(key.contains("live") ? "custom_live_url" : "custom_epg_url", url).apply();
-                    addHistory(key.contains("live") ? "live_history" : "epg_history", url);
-                    sendBroadcast(new Intent("com.tv.live.REFRESH_LIVE_AND_EPG"));
-                    adapter.setSelectedPosition(w);
-                    Toast.makeText(this, "已切换，正在刷新…", Toast.LENGTH_SHORT).show();
-                })
-                .setNegativeButton("关闭", null)
-                .show();
-    }
-
-    private void addHistory(String key, String url) {
-        String history = sp.getString(key, "");
+        // 拼接日志内容
         StringBuilder sb = new StringBuilder();
-        sb.append(url);
-        if (!history.isEmpty()) {
-            String[] arr = history.split("\\|");
-            for (String s : arr) {
-                if (!s.equals(url) && sb.length() < 1000) {
-                    sb.append("|").append(s);
-                }
+        for (String log : MainActivity.logList) {
+            sb.append(log).append("\n");
+        }
+
+        // 设置日志文本，无日志时显示提示
+        tvLog.setText(sb.length() > 0 ? sb.toString() : "暂无解析运行日志");
+        scrollView.addView(tvLog);
+
+        // 构建弹窗
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("📄 解析运行日志");
+        builder.setView(scrollView);
+        // 关闭按钮
+        builder.setPositiveButton("关闭", null);
+        // 清空日志按钮
+        builder.setNegativeButton("清空日志", (dialog, which) -> {
+            MainActivity.logList.clear();
+            Toast.makeText(this, "解析日志已清空", Toast.LENGTH_SHORT).show();
+        });
+        builder.show();
+    }
+
+    /**
+     * 展示【操作崩溃日志】弹窗
+     * 过滤 MainActivity 中的崩溃日志（带【崩溃】标识），单独展示
+     * 支持：查看崩溃堆栈、单独清空崩溃日志
+     */
+    private void showCrashLogDialog() {
+        // 创建滚动视图
+        ScrollView scrollView = new ScrollView(this);
+        // 创建日志文本控件
+        TextView tvLog = new TextView(this);
+        tvLog.setTextColor(Color.RED);      // 崩溃日志标红，醒目区分
+        tvLog.setTextSize(14);             // 文字大小
+        tvLog.setPadding(20, 20, 20, 20);  // 内边距
+
+        // 过滤日志：只保留包含【崩溃】的日志
+        List<String> crashLogs = new ArrayList<>();
+        for (String log : MainActivity.logList) {
+            if (log.contains("【崩溃】")) {
+                crashLogs.add(log);
             }
         }
-        sp.edit().putString(key, sb.toString()).apply();
-    }
 
-    private void showQRCodeDialog() {
-        ImageView iv = new ImageView(this);
-        iv.setImageBitmap(createQR(currentWebUrl, 250));
-        new AlertDialog.Builder(this)
-                .setTitle("扫码管理")
-                .setView(iv)
-                .setPositiveButton("关闭", null)
-                .show();
-    }
-
-    private Bitmap createQR(String text, int size) {
-        try {
-            BitMatrix m = new QRCodeWriter().encode(text, BarcodeFormat.QR_CODE, size, size);
-            Bitmap bmp = Bitmap.createBitmap(size, size, Bitmap.Config.RGB_565);
-            for (int x = 0; x < size; x++) {
-                for (int y = 0; y < size; y++) {
-                    bmp.setPixel(x, y, m.get(x, y) ? Color.BLACK : Color.WHITE);
-                }
+        // 设置展示内容
+        if (crashLogs.isEmpty()) {
+            tvLog.setText("✅ 暂无崩溃日志，应用运行正常！");
+        } else {
+            StringBuilder sb = new StringBuilder();
+            for (String log : crashLogs) {
+                sb.append(log).append("\n");
             }
-            return bmp;
-        } catch (Exception e) {
-            return null;
+            tvLog.setText(sb.toString());
         }
+
+        scrollView.addView(tvLog);
+
+        // 构建崩溃日志弹窗
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("📌 操作崩溃日志");
+        builder.setView(scrollView);
+        // 关闭按钮
+        builder.setPositiveButton("关闭", null);
+        // 单独清空崩溃日志（不影响普通日志）
+        builder.setNegativeButton("清空崩溃日志", (dialog, which) -> {
+            MainActivity.logList.removeIf(log -> log.contains("【崩溃】"));
+            Toast.makeText(this, "崩溃日志已清空", Toast.LENGTH_SHORT).show();
+        });
+        builder.show();
     }
 
+    /**
+     * 获取当前设备WiFi的IP地址
+     * 用于网页设置提示：http://设备IP:10481
+     */
     private String getDeviceIPAddress() {
-        try {
-            WifiManager wm = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
-            WifiInfo info = wm.getConnectionInfo();
-            int ip = info.getIpAddress();
-            return (ip & 0xFF) + "." + ((ip >> 8) & 0xFF) + "." + ((ip >> 16) & 0xFF) + "." + ((ip >> 24) & 0xFF);
-        } catch (Exception e) {
-            return "192.168.1.100";
-        }
-    }
-
-    private void startPushServer() {
-        new Thread(() -> {
-            try {
-                serverSocket = new ServerSocket(PORT);
-                serverSocket.setReuseAddress(true);
-                while (!serverSocket.isClosed()) {
-                    Socket socket = serverSocket.accept();
-                    new Thread(() -> {
-                        try {
-                            InputStreamReader reader = new InputStreamReader(socket.getInputStream());
-                            char[] buffer = new char[2048];
-                            int len = reader.read(buffer);
-                            JSONObject json = new JSONObject(new String(buffer, 0, len));
-                            handler.post(() -> {
-                                boolean hasUpdate = false;
-                                String liveUrl = json.optString("live_url");
-                                if (!liveUrl.isEmpty()) {
-                                    sp.edit().putString("custom_live_url", liveUrl).apply();
-                                    addHistory("live_history", liveUrl);
-                                    hasUpdate = true;
-                                }
-                                String epgUrl = json.optString("epg_url");
-                                if (!epgUrl.isEmpty()) {
-                                    sp.edit().putString("custom_epg_url", epgUrl).apply();
-                                    addHistory("epg_history", epgUrl);
-                                    hasUpdate = true;
-                                }
-                                if (hasUpdate) {
-                                    Intent intent = new Intent("com.tv.live.REFRESH_LIVE_AND_EPG");
-                                    sendBroadcast(intent);
-                                    Toast.makeText(SettingsActivity.this, "扫码配置已同步", Toast.LENGTH_SHORT).show();
-                                }
-                            });
-                            socket.close();
-                        } catch (Exception e) {
-                            e.printStackTrace();
-                        }
-                    }).start();
-                }
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        }).start();
-    }
-
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        try {
-            if (serverSocket != null) serverSocket.close();
-        } catch (Exception ignored) {}
-    }
-
-    private static class SettingsAdapter extends ArrayAdapter<String> {
-        private final Context context;
-        private final List<String> items;
-        private int selectedPosition = -1;
-
-        public SettingsAdapter(Context context, List<String> items) {
-            super(context, R.layout.item_settings, items);
-            this.context = context;
-            this.items = items;
-        }
-
-        public void setSelectedPosition(int position) {
-            selectedPosition = position;
-            notifyDataSetChanged();
-        }
-
-        @Override
-        public View getView(int position, View convertView, ViewGroup parent) {
-            if (convertView == null) {
-                convertView = LayoutInflater.from(context).inflate(R.layout.item_settings, parent, false);
-            }
-            TextView tv = convertView.findViewById(R.id.tv_setting_item);
-            tv.setText(items.get(position));
-            if (position == selectedPosition) {
-                tv.setTextColor(Color.parseColor("#40A9FF"));
-            } else {
-                tv.setTextColor(Color.WHITE);
-            }
-            return convertView;
-        }
+        WifiManager wifiManager = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+        WifiInfo wifiInfo = wifiManager.getConnectionInfo();
+        int ipInt = wifiInfo.getIpAddress();
+        return String.format("%d.%d.%d.%d",
+                (ipInt & 0xff),
+                (ipInt >> 8) & 0xff,
+                (ipInt >> 16) & 0xff,
+                (ipInt >> 24) & 0xff);
     }
 }

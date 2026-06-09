@@ -13,6 +13,7 @@ import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
 import android.os.Bundle;
 import android.os.Handler;
+import android.os.Looper;
 import android.text.TextUtils;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
@@ -28,6 +29,9 @@ import com.tv.live.config.AppConfig;
 import com.tv.live.listener.PlayerStateListenerImpl;
 import com.tv.live.loader.LiveSourceLoader;
 import com.tv.live.manager.*;
+import java.io.PrintWriter;
+import java.io.StringWriter;
+import java.lang.Thread.UncaughtExceptionHandler;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -42,6 +46,8 @@ import java.util.List;
  * 3. 日期状态不同步：点击日期后同步更新DateListManager的选中状态
  * 4. 打开面板强制跳回今天：togglePanel使用当前选中的日期索引，不硬编码0
  * 5. 边界防护统一：所有点击事件先判断channelSourceList是否为空，防止空指针
+ * 
+ * ✅ 新增：全局崩溃捕获，记录崩溃日志并做基础异常处理
  */
 public class MainActivity extends AppCompatActivity {
     // 单例实例，供其他模块获取主界面上下文/调用方法
@@ -159,6 +165,61 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
+     * 初始化全局崩溃捕获
+     * 捕获未处理的异常，记录详细崩溃日志，可选重启应用
+     */
+    private void initCrashHandler() {
+        // 保存系统默认的异常处理器
+        final UncaughtExceptionHandler defaultHandler = Thread.getDefaultUncaughtExceptionHandler();
+        
+        Thread.setDefaultUncaughtExceptionHandler(new UncaughtExceptionHandler() {
+            @Override
+            public void uncaughtException(Thread thread, Throwable throwable) {
+                try {
+                    // 1. 记录崩溃详细日志
+                    StringWriter sw = new StringWriter();
+                    PrintWriter pw = new PrintWriter(sw);
+                    throwable.printStackTrace(pw);
+                    String crashLog = sw.toString();
+                    
+                    // 2. 写入本地日志列表
+                    log("【崩溃捕获】线程：" + thread.getName());
+                    log("【崩溃详情】" + crashLog);
+                    
+                    // 3. 主线程弹提示（可选）
+                    new Handler(Looper.getMainLooper()).post(new Runnable() {
+                        @Override
+                        public void run() {
+                            Toast.makeText(MainActivity.this, "应用发生异常，即将重启", Toast.LENGTH_LONG).show();
+                        }
+                    });
+                    
+                    // 4. 延迟重启应用（可选，根据需求开启）
+                    new Handler().postDelayed(new Runnable() {
+                        @Override
+                        public void run() {
+                            Intent intent = getPackageManager().getLaunchIntentForPackage(getPackageName());
+                            intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_NEW_TASK);
+                            startActivity(intent);
+                            android.os.Process.killProcess(android.os.Process.myPid());
+                            System.exit(1);
+                        }
+                    }, 2000);
+                    
+                } catch (Exception e) {
+                    log("【崩溃捕获】处理异常时出错：" + e.getMessage());
+                } finally {
+                    // 如果自定义处理失败，交给系统默认处理器
+                    if (defaultHandler != null) {
+                        defaultHandler.uncaughtException(thread, throwable);
+                    }
+                }
+            }
+        });
+        log("【崩溃捕获】全局异常处理器初始化完成");
+    }
+
+    /**
      * 切换播放器控制器可见性的广播接收器
      * 接收"com.tv.live.TOGGLE_CONTROL"广播，切换播放器原生控制器的显示/隐藏
      */
@@ -210,6 +271,10 @@ public class MainActivity extends AppCompatActivity {
 
         // 初始化单例
         mInstance = this;
+        
+        // ===================== 新增：初始化崩溃捕获（最优先执行） =====================
+        initCrashHandler();
+        
         // 设置屏幕为横屏
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
         // 设置全屏标志

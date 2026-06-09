@@ -420,14 +420,15 @@ public class MainActivity extends AppCompatActivity {
             }
         });
     }
+     public void togglePanel() {
+    // ✅ 传入用户当前选中的日期索引，不再强制跳回今天
+    panelManager.toggle(channelSourceList, currentPlayIndex, currentSelectedDateIndex);
+}
 
-    public void togglePanel() {
-        panelManager.toggle(channelSourceList, currentPlayIndex);
-    }
+public void openSettings() {
+    startActivity(new Intent(this, SettingsActivity.class));
+}
 
-    public void openSettings() {
-        startActivity(new Intent(this, SettingsActivity.class));
-    }
 
     public void onReceiveConfig(final String liveUrl, final String epgUrl) {
         AppConfig config = AppConfig.getInstance(this);

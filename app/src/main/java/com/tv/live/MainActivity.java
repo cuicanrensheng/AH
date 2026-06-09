@@ -1,5 +1,5 @@
 package com.tv.live;
-
+import com.tv.live.SettingsActivity;
 import com.tv.live.widget.ChannelListManager;
 import com.tv.live.widget.GroupListManager;
 import com.tv.live.widget.DateListManager;

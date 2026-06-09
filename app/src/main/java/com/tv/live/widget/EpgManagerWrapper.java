@@ -6,6 +6,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.graphics.Color;
 import android.text.TextUtils;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -78,17 +79,55 @@ public class EpgManagerWrapper {
             List<Channel.EpgItem> data = new ArrayList<>();
 
             if (epgList != null && !epgList.isEmpty()) {
-                Calendar cal = Calendar.getInstance();
-                cal.add(Calendar.DAY_OF_YEAR, dateIndex);
-                int w = cal.get(Calendar.DAY_OF_WEEK);
-                String[] weekMap = {"周日", "周一", "周二", "周三", "周四", "周五", "周六"};
-                String targetDay = dateIndex == 0 ? "今天" : weekMap[w % 7];
+                // ==================== 核心修复：和EpgManager.getDayName() 100%对齐 ====================
+                Calendar today = Calendar.getInstance();
+                Calendar targetCal = Calendar.getInstance();
+                targetCal.add(Calendar.DAY_OF_YEAR, dateIndex);
+
+                // 准确计算自然天差（兼容跨年/闰年，彻底解决12月31日切换问题）
+                long todayMs = today.getTimeInMillis() / (1000 * 60 * 60 * 24);
+                long targetMs = targetCal.getTimeInMillis() / (1000 * 60 * 60 * 24);
+                int dayDiff = (int) (targetMs - todayMs);
+
+                String targetDay;
+                if (dayDiff == 0) {
+                    targetDay = "今天";
+                } else if (dayDiff == 1) {
+                    targetDay = "明天";
+                } else if (dayDiff == 2) {
+                    targetDay = "后天";
+                } else {
+                    int w = targetCal.get(Calendar.DAY_OF_WEEK);
+                    String[] weekMap = {"周日", "周一", "周二", "周三", "周四", "周五", "周六"};
+                    targetDay = weekMap[w - 1]; // 修复Calendar周日=1的索引错误
+                }
+                // ====================================================================================
+
+                // ==================== 调试日志（问题解决后可注释） ====================
+                Log.d("EPG_DEBUG", "========================================");
+                Log.d("EPG_DEBUG", "当前频道：" + currentChannel.getName());
+                Log.d("EPG_DEBUG", "选中日期索引：" + dateIndex);
+                Log.d("EPG_DEBUG", "计算天数差：" + dayDiff);
+                Log.d("EPG_DEBUG", "筛选目标日期：" + targetDay);
+                Log.d("EPG_DEBUG", "该频道总节目数：" + epgList.size());
+                // ================================================================
 
                 for (Channel.EpgItem item : epgList) {
-                    if (targetDay.equals(item.dayName)) {
+                    boolean isMatch = targetDay.equals(item.dayName);
+                    // 调试日志：打印每个节目的匹配情况
+                    Log.d("EPG_DEBUG", String.format(
+                        "节目：%-20s | 节目日期：%-6s | 目标日期：%-6s | 匹配：%s",
+                        item.title, item.dayName, targetDay, isMatch
+                    ));
+
+                    if (isMatch) {
                         data.add(item);
                     }
                 }
+
+                // 调试日志：打印最终筛选结果
+                Log.d("EPG_DEBUG", "筛选后节目数：" + data.size());
+                Log.d("EPG_DEBUG", "========================================");
 
                 Collections.sort(data, Comparator.comparing(o -> o.time));
                 String now = getNow();
@@ -124,7 +163,8 @@ public class EpgManagerWrapper {
                     }
                 }
 
-                if (playing != null && playingIndex > 0) {
+                // 仅今天的节目把播放中的移到首位
+                if (dayDiff == 0 && playing != null && playingIndex > 0) {
                     data.remove(playing);
                     data.add(0, playing);
                     playingIndex = 0;

@@ -175,18 +175,18 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         });
-
-        lvDate.setOnItemClickListener(new AdapterView.OnItemClickListener() {
-            @Override
-            public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
-                currentSelectedDateIndex = position;
-                if (!channelSourceList.isEmpty()) {
-                    Channel curr = channelSourceList.get(currentPlayIndex);
-                    epgManagerWrapper.refresh(curr, channelSourceList, currentSelectedDateIndex);
-                }
-            }
-        });
-
+         dateListManager.initDate();
+// ✅ 新增：设置日期选择回调，替代被覆盖的点击事件
+dateListManager.setOnDateSelectedListener(new DateListManager.OnDateSelectedListener() {
+    @Override
+    public void onDateSelected(int position) {
+        currentSelectedDateIndex = position;
+        if (!channelSourceList.isEmpty()) {
+            Channel curr = channelSourceList.get(currentPlayIndex);
+            epgManagerWrapper.refresh(curr, channelSourceList, currentSelectedDateIndex);
+        }
+    }
+});
         lvGroup.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {

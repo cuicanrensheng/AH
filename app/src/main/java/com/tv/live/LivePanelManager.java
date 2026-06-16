@@ -62,7 +62,8 @@ public class LivePanelManager {
 
             for (int i = 0; i < 8; i++) {
                 int dayOfWeek = cal.get(Calendar.DAY_OF_WEEK);
-                String display = i == 0 ? "今天" : week[dayOfWeek % 7];
+                // 修复：DAY_OF_WEEK 取值范围 1(周日)~7(周六)，对应数组索引 0~6
+                String display = i == 0 ? "今天" : week[dayOfWeek - 1];
                 dates.add(display);
                 cal.add(Calendar.DAY_OF_YEAR, 1);
             }
@@ -183,7 +184,8 @@ public class LivePanelManager {
                     cal.add(Calendar.DAY_OF_YEAR, dateIndex);
                     int w = cal.get(Calendar.DAY_OF_WEEK);
                     String[] weekMap = {"周日", "周一", "周二", "周三", "周四", "周五", "周六"};
-                    String targetDay = dateIndex == 0 ? "今天" : weekMap[w % 7];
+                    // 修复：日期索引与星期数组对应关系修正
+                    String targetDay = dateIndex == 0 ? "今天" : weekMap[w - 1];
 
                     for (Channel.EpgItem item : epgList) {
                         if (targetDay.equals(item.dayName)) {

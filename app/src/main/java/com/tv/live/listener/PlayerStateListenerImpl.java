@@ -21,6 +21,8 @@ public class PlayerStateListenerImpl implements TVPlayerManager.OnPlayStateListe
 
     @Override
     public void onBuffering() {
+        // ✅ 删除Toast，彻底解决"正在播放"弹窗
+    }
 
     @Override
     public void onPlayReady() {}

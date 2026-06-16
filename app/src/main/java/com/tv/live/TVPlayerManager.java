@@ -8,14 +8,12 @@ import android.view.View;
 import android.webkit.CookieManager;
 import android.webkit.CookieSyncManager;
 import android.widget.TextView;
-import com.google.android.exoplayer2.C;
 import com.google.android.exoplayer2.DefaultLoadControl;
 import com.google.android.exoplayer2.DefaultRenderersFactory;
 import com.google.android.exoplayer2.ExoPlayer;
 import com.google.android.exoplayer2.MediaItem;
 import com.google.android.exoplayer2.PlaybackException;
 import com.google.android.exoplayer2.Player;
-import com.google.android.exoplayer2.audio.AudioAttributes;
 import com.google.android.exoplayer2.source.ProgressiveMediaSource;
 import com.google.android.exoplayer2.source.hls.HlsMediaSource;
 import com.google.android.exoplayer2.ui.PlayerView;
@@ -125,23 +123,11 @@ public class TVPlayerManager {
                 .setLoadControl(loadControl)
                 .build();
 
-        // ========== 核心屏蔽系统"正在播放"弹窗（兼容低版本ExoPlayer）==========
-        // 1. 配置音频属性，关闭自动音频焦点管理（切断系统识别播放的核心路径）
-        AudioAttributes audioAttributes = new AudioAttributes.Builder()
-                .setUsage(C.USAGE_GAME)
-                .setContentType(C.CONTENT_TYPE_MOVIE)
-                .build();
-        // 第二个参数false：不自动申请/释放音频焦点，系统无法通过音频焦点感知播放状态
-        player.setAudioAttributes(audioAttributes, false);
-
-        // 2. 禁用音频嘈杂自动暂停，减少与系统音频服务交互
-        player.setHandleAudioBecomingNoisy(false);
-
         CookieSyncManager.createInstance(context);
         CookieManager.getInstance().setAcceptCookie(true);
     }
 
-    // 切后台：暂停播放 + 解绑View
+    // 切后台：暂停播放 + 解绑View（满足你的需求）
     public void onBackground() {
         try {
             if (player != null) {
@@ -153,7 +139,7 @@ public class TVPlayerManager {
         } catch (Exception e) {}
     }
 
-    // 切前台：重新绑定 + 恢复播放
+    // 切前台：重新绑定 + 恢复播放（修复黑屏）
     public void onForeground() {
         try {
             if (player != null && playerView != null) {
@@ -171,7 +157,7 @@ public class TVPlayerManager {
     public void attachPlayerView(PlayerView view) {
         playerView = view;
         playerView.setPlayer(player);
-        playerView.setUseController(false);
+        playerView.setUseController(false); // 彻底隐藏系统控制器
     }
 
     private void updateWakeLock(boolean enable) {

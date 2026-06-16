@@ -160,17 +160,13 @@ public class MainActivity extends AppCompatActivity {
         playerView.setFocusable(false);
         playerView.setFocusableInTouchMode(false);
 
-        // ========== 新增：屏蔽所有原生弹窗与提示 ==========
-        // 1. 禁用缓冲加载转圈弹窗
+        // 屏蔽所有PlayerView原生弹窗与提示
         playerView.setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER);
-        // 2. 禁用原生错误提示弹窗
         playerView.setErrorMessageProvider(null);
-        // 3. 禁用快进/快退预览弹窗与按钮
         playerView.setShowRewindButton(false);
         playerView.setShowFastForwardButton(false);
         playerView.setShowPreviousButton(false);
         playerView.setShowNextButton(false);
-        // 4. 禁用播放状态变化时的原生UI提示
         playerView.setKeepContentOnPlayerReset(true);
 
         panel_layout = findViewById(R.id.panel_layout);
@@ -242,12 +238,6 @@ public class MainActivity extends AppCompatActivity {
 
         mPlayerManager = TVPlayerManager.getInstance(this);
         mPlayerManager.attachPlayerView(playerView);
-
-        // ========== 新增：屏蔽系统级"正在播放"弹窗（解绑MediaSession）==========
-        // 解绑媒体会话，阻止系统捕获播放状态弹出原生正在播放悬浮窗
-        if (mPlayerManager.getPlayer() != null) {
-            mPlayerManager.getPlayer().setMediaSessionToken(null);
-        }
 
         playerStateListener = new PlayerStateListenerImpl(this);
         mPlayerManager.setOnPlayStateListener(playerStateListener);

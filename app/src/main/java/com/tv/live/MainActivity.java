@@ -30,31 +30,20 @@ import com.tv.live.manager.ChannelSwitchManager;
 import com.tv.live.listener.PlayerStateListenerImpl;
 import com.tv.live.loader.LiveSourceLoader;
 
-/**
- * 直播应用主界面
- * 本次修复重点：日期列表与EPG节目单联动
- * 1. 日期选中立刻刷新对应日期节目单
- * 2. 打开EPG面板默认刷新当前日期节目
- * 3. 切台时保留选中日期，不重置
- * 4. 日期列表默认选中今天
- */
 public class MainActivity extends AppCompatActivity {
     public static MainActivity mInstance;
 
-    // ====================== 频道数据 ======================
     public List<Channel> channelSourceList = new ArrayList<>();
     public List<Channel> currentGroupChannelList = new ArrayList<>();
     public int currentPlayIndex = 0;
     private String nowSelectGroup = "";
 
-    // ====================== 视图与核心组件 ======================
     private View panel_layout;
     public TVPlayerManager mPlayerManager;
     private PlayerView playerView;
     private AppConfig appConfig;
     private ScreenRatioManager screenRatioManager;
 
-    // ====================== 业务管理器 ======================
     private LivePanelManager.PanelManager panelManager;
     private GestureManager gestureManager;
     private KeyEventManager keyEventManager;
@@ -65,16 +54,14 @@ public class MainActivity extends AppCompatActivity {
     private PlayerStateListenerImpl playerStateListener;
     private ChannelSwitchManager switchManager;
 
-    // ====================== 状态标志 ======================
     private boolean epgPanelOpen = false;
     private boolean epg_enable;
     private boolean channel_reverse;
     private boolean number_channel_enable;
     private boolean auto_update_source;
-    private int currentSelectedDateIndex = 0; // EPG当前选中的日期索引（0=今天，1=明天...）
+    private int currentSelectedDateIndex = 0;
     private SharedPreferences sp;
 
-    // ====================== 自定义播放信息栏 ======================
     private View info_bar;
     private TextView tv_channel_name;
     private TextView tv_tag_fhd;
@@ -88,7 +75,6 @@ public class MainActivity extends AppCompatActivity {
     private ProgressBar progress_program;
     private TextView tv_channel_num;
 
-    // ====================== 常量配置 ======================
     private static final int MAX_REDIRECT_COUNT = 10;
     private static final int CONNECT_TIMEOUT = 8000;
     private static final int READ_TIMEOUT = 8000;
@@ -96,7 +82,6 @@ public class MainActivity extends AppCompatActivity {
     private static final String DEF_REFER = "https://www.huya.com/";
     private static final long CHANNEL_COOLDOWN = 300;
 
-    // 信息栏自动隐藏任务
     private final Runnable hideInfoBar = new Runnable() {
         @Override
         public void run() {
@@ -114,7 +99,6 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // ====================== 广播接收器 ======================
     private final BroadcastReceiver toggleControllerReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
@@ -147,7 +131,6 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         mInstance = this;
 
-        // 窗口基础配置
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -170,7 +153,6 @@ public class MainActivity extends AppCompatActivity {
         if (customLive != null) UrlConfig.LIVE_URL = customLive;
         if (customEpg != null) UrlConfig.EPG_URL = customEpg;
 
-        // 播放器视图初始化
         playerView = findViewById(R.id.player_view);
         playerView.setUseController(false);
         playerView.setControllerVisibilityListener(null);
@@ -189,7 +171,6 @@ public class MainActivity extends AppCompatActivity {
         try { playerView.setControllerAutoShow(false); } catch (Exception ignored) {}
         try { playerView.setControllerHideOnTouch(false); } catch (Exception ignored) {}
 
-        // 面板控件初始化
         panel_layout = findViewById(R.id.panel_layout);
         ListView lvGroup = findViewById(R.id.lv_group);
         ListView lvChannelList = findViewById(R.id.lv_channel_list);
@@ -197,11 +178,9 @@ public class MainActivity extends AppCompatActivity {
         ListView lvEpg = findViewById(R.id.lv_epg);
         TextView btn_show_epg = findViewById(R.id.btn_show_epg);
 
-        // 注册广播
         registerReceiver(toggleControllerReceiver, new IntentFilter("com.tv.live.TOGGLE_CONTROL"));
         registerReceiver(refreshReceiver, new IntentFilter("com.tv.live.REFRESH_LIVE_AND_EPG"));
 
-        // ========== 【修复联动1】EPG展开按钮：打开时立刻刷新当前日期节目单 ==========
         btn_show_epg.setOnClickListener(v -> {
             if (!epg_enable) {
                 Toast.makeText(MainActivity.this, "节目单功能已关闭", Toast.LENGTH_SHORT).show();
@@ -210,8 +189,6 @@ public class MainActivity extends AppCompatActivity {
             epgPanelOpen = !epgPanelOpen;
             lvDate.setVisibility(epgPanelOpen ? View.VISIBLE : View.GONE);
             lvEpg.setVisibility(epgPanelOpen ? View.VISIBLE : View.GONE);
-            
-            // 关键：展开EPG时，用当前选中的日期刷新节目单
             if (epgPanelOpen && !channelSourceList.isEmpty()) {
                 currentSelectedDateIndex = dateListManager.getSelectedPosition();
                 Channel curr = channelSourceList.get(currentPlayIndex);
@@ -219,20 +196,16 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        // ========== 【修复联动2】日期列表：选中日期立刻刷新节目单 ==========
         dateListManager = new LivePanelManager.DateListManager(this, lvDate);
-        dateListManager.initDate(); // 内部已默认选中第0项（今天）
+        dateListManager.initDate();
         dateListManager.setOnDateSelectedListener(pos -> {
-            // 保存用户选中的日期索引
             currentSelectedDateIndex = pos;
-            // 关键：日期变化立刻刷新对应日期的节目
             if (!channelSourceList.isEmpty()) {
                 Channel currentChannel = channelSourceList.get(currentPlayIndex);
                 epgManagerWrapper.refresh(currentChannel, channelSourceList, pos);
             }
         });
 
-        // 频道列表
         channelListManager = new LivePanelManager.ChannelListManager(this, lvChannelList);
         channelListManager.setOnChannelClickListener(filterPos -> {
             if (filterPos >= 0 && filterPos < currentGroupChannelList.size()) {
@@ -245,7 +218,6 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        // 分组列表
         groupListManager = new LivePanelManager.GroupListManager(this, lvGroup);
         groupListManager.setOnGroupChangeListener(groupName -> {
             if (TextUtils.isEmpty(groupName)) return;
@@ -262,11 +234,9 @@ public class MainActivity extends AppCompatActivity {
             channelListManager.setChannelsByGroup(channelSourceList, nowSelectGroup, currentPlayIndex);
         });
 
-        // EPG & 面板管理器
         epgManagerWrapper = new LivePanelManager.EpgManagerWrapper(this, lvEpg);
-        panelManager = new LivePanelManager.PanelManager(panel_layout, channelListManager, epgManagerWrapper);
+        panelManager = new LivePanelManager.PanelManager(panel_layout, channelListManager, epgManagerWrapper, dateListManager);
 
-        // 播放器初始化
         mPlayerManager = TVPlayerManager.getInstance(this);
         mPlayerManager.attachPlayerView(playerView);
 
@@ -281,7 +251,6 @@ public class MainActivity extends AppCompatActivity {
         screenRatioManager = new ScreenRatioManager(mPlayerManager, appConfig);
         screenRatioManager.apply();
 
-        // 手势管理
         gestureManager = new GestureManager(this);
         PlayerGestureHelper gestureHelper = gestureManager.create();
         playerView.setOnTouchListener((v, event) -> {
@@ -452,9 +421,6 @@ public class MainActivity extends AppCompatActivity {
         playChannel(idx);
     }
 
-    /**
-     * 【修复联动3】播放指定频道：用当前选中的日期刷新EPG，不重置
-     */
     public void playChannel(int index) {
         if (channelSourceList == null || channelSourceList.isEmpty()) return;
         index = Math.max(0, Math.min(index, channelSourceList.size() - 1));
@@ -472,7 +438,6 @@ public class MainActivity extends AppCompatActivity {
             channelListManager.setChannels(channelSourceList, index);
         }
 
-        // 关键：切台时沿用当前选中的日期，不要重置为今天
         epgManagerWrapper.refresh(ch, channelSourceList, currentSelectedDateIndex);
 
         if (info_bar != null) {
@@ -490,6 +455,11 @@ public class MainActivity extends AppCompatActivity {
         new Thread(() -> {
             java.net.HttpURLConnection conn = null;
             String finalUrl = originalUrl;
+            
+            // ✅ 日志：开始URL解析
+            MainActivity.log("🔗 开始解析：" + ch.getName());
+            MainActivity.log("   原始URL：" + (originalUrl.length() > 60 ? originalUrl.substring(0, 60) + "..." : originalUrl));
+            
             try {
                 for (int step = 0; step < MAX_REDIRECT_COUNT; step++) {
                     java.net.URL urlObj = new java.net.URL(finalUrl);
@@ -501,15 +471,27 @@ public class MainActivity extends AppCompatActivity {
                     conn.setRequestProperty("Refer", DEF_REFER);
                     conn.setInstanceFollowRedirects(false);
                     int code = conn.getResponseCode();
+                    
+                    // ✅ 日志：每一步重定向
+                    String shortUrl = finalUrl.length() > 60 ? finalUrl.substring(0, 60) + "..." : finalUrl;
+                    MainActivity.log("   第" + (step + 1) + "次：HTTP " + code + " → " + shortUrl);
+                    
                     if (code == 301 || code == 302) {
                         String loc = conn.getHeaderField("Location");
-                        if (loc != null) finalUrl = loc;
+                        if (loc != null) {
+                            finalUrl = loc;
+                            MainActivity.log("        重定向到：" + (loc.length() > 60 ? loc.substring(0, 60) + "..." : loc));
+                        }
                         conn.disconnect();
                         conn = null;
-                    } else break;
+                    } else {
+                        MainActivity.log("   ✅ 解析完成，共" + (step + 1) + "次跳转");
+                        break;
+                    }
                 }
             } catch (Exception e) {
                 e.printStackTrace();
+                MainActivity.log("   ❌ 解析异常：" + e.getMessage());
             } finally {
                 if (conn != null) conn.disconnect();
             }

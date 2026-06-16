@@ -264,7 +264,7 @@ public class MainActivity extends AppCompatActivity {
 
         // EPG & 面板管理器
         epgManagerWrapper = new LivePanelManager.EpgManagerWrapper(this, lvEpg);
-        panelManager = new LivePanelManager.PanelManager(panel_layout, channelListManager, epgManagerWrapper, dateListManager);
+        panelManager = new LivePanelManager.PanelManager(panel_layout, channelListManager, epgManagerWrapper);
 
         // 播放器初始化
         mPlayerManager = TVPlayerManager.getInstance(this);

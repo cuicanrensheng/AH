@@ -1,4 +1,5 @@
 package com.tv.live;
+import com.tv.live.Channel;  // ✅ 确保导入Channel类
 
 import android.content.BroadcastReceiver;
 import android.content.Context;

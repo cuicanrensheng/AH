@@ -152,13 +152,30 @@ public class MainActivity extends AppCompatActivity {
         if (customEpg != null) UrlConfig.EPG_URL = customEpg;
 
         playerView = findViewById(R.id.player_view);
+        // ========== 核心：彻底禁用原生控制器，从根源杜绝滑动唤起 ==========
         playerView.setUseController(false);
         playerView.setControllerVisibilityListener(null);
-        // 彻底禁用PlayerView原生交互，从根源避免手势冲突
+        // 禁用控制器自动弹出（双重保险，即使控制器意外启用也不会自动弹出）
+        playerView.setControllerAutoShow(false);
+
+        // 禁用所有原生交互属性，阻断点击/焦点/长按唤起控制器
         playerView.setClickable(false);
         playerView.setLongClickable(false);
         playerView.setFocusable(false);
         playerView.setFocusableInTouchMode(false);
+
+        // ========== 新增：屏蔽所有原生状态弹窗 ==========
+        // 关闭缓冲加载转圈弹窗
+        playerView.setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER);
+        // 关闭原生错误提示弹窗
+        playerView.setErrorMessageProvider(null);
+        // 隐藏所有原生控制按钮（快退/快进/上一个/下一个）
+        playerView.setShowRewindButton(false);
+        playerView.setShowFastForwardButton(false);
+        playerView.setShowPreviousButton(false);
+        playerView.setShowNextButton(false);
+        // 切台/播放器重置时保留最后一帧，避免黑屏和状态提示文字
+        playerView.setKeepContentOnPlayerReset(true);
 
         panel_layout = findViewById(R.id.panel_layout);
 
@@ -229,6 +246,7 @@ public class MainActivity extends AppCompatActivity {
 
         mPlayerManager = TVPlayerManager.getInstance(this);
         mPlayerManager.attachPlayerView(playerView);
+
         playerStateListener = new PlayerStateListenerImpl(this);
         mPlayerManager.setOnPlayStateListener(playerStateListener);
         mPlayerManager.setOnLiveInfoUpdateListener(info -> {
@@ -244,12 +262,16 @@ public class MainActivity extends AppCompatActivity {
         gestureManager = new GestureManager(this);
         PlayerGestureHelper gestureHelper = gestureManager.create();
 
-        // 触摸事件完全由自定义手势消费，阻断原生手势；面板弹出时透传事件给列表
+        // ========== 核心：触摸事件完全拦截，滑动不会触发原生逻辑 ==========
         playerView.setOnTouchListener((v, event) -> {
+            // 侧边面板弹出时透传事件，保证列表可正常点击
             if (panel_layout.getVisibility() == View.VISIBLE) {
                 return false;
             }
+            // 自定义手势处理滑动切台、调音量等操作
             gestureHelper.handleTouch(event);
+            // 返回true：完全消费所有触摸事件，事件不会传到PlayerView原生逻辑
+            // 从事件流层面彻底阻断滑动/点击唤起原生控制器的可能
             return true;
         });
 
@@ -341,7 +363,7 @@ public class MainActivity extends AppCompatActivity {
         }));
     }
 
-    // ========== 修复：上一台支持分组内循环切换 ==========
+    // 修复：上一台支持分组内循环切换
     public void playPrev() {
         long now = System.currentTimeMillis();
         if (now - lastChannelChangeTime < CHANNEL_COOLDOWN) return;
@@ -384,7 +406,7 @@ public class MainActivity extends AppCompatActivity {
         playChannel(idx);
     }
 
-    // ========== 修复：下一台支持分组内循环切换 ==========
+    // 修复：下一台支持分组内循环切换
     public void playNext() {
         long now = System.currentTimeMillis();
         if (now - lastChannelChangeTime < CHANNEL_COOLDOWN) return;

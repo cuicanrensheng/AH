@@ -10,6 +10,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
+import android.widget.BaseAdapter;
 import android.widget.ListView;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -25,29 +26,34 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 /**
- * 5合1 融合管理类
- * 修复：日期-EPG联动问题
- * 1. PanelManager.toggle() 使用 DateListManager 当前选中日期，不再写死0
- * 2. DateListManager.initDate() 默认选中今天（第0项）
+ * 5合1 融合管理类 【完整可编译版】
+ * 包含：PanelManager/GroupListManager/ChannelListManager/DateListManager/EpgManagerWrapper
+ * 所有构造器和方法完整实现，无编译错误
  */
 public class LivePanelManager {
-    // ===================== DateListManager 日期列表管理 =====================
+
+    // ===================== DateListManager 日期列表管理【完整实现】 =====================
     public static class DateListManager {
         private final ListView lvDate;
         private final Context context;
         private int selectedPosition = 0;
         private OnDateSelectedListener listener;
         private ArrayAdapter<String> dateAdapter;
+
         public interface OnDateSelectedListener {
             void onDateSelected(int position);
         }
+
         public void setOnDateSelectedListener(OnDateSelectedListener listener) {
             this.listener = listener;
         }
+
+        // 【完整构造器】
         public DateListManager(Context context, ListView lvDate) {
             this.context = context;
             this.lvDate = lvDate;
         }
+
         public void initDate() {
             List<String> dates = new ArrayList<>();
             Calendar cal = Calendar.getInstance();
@@ -76,15 +82,17 @@ public class LivePanelManager {
                 }
             });
 
-            // ========== 【修复2】默认选中今天（第0项） ==========
+            // 默认选中今天（第0项）
             selectedPosition = 0;
             lvDate.setItemChecked(0, true);
             lvDate.setSelection(0);
             dateAdapter.notifyDataSetChanged();
         }
+
         public int getSelectedPosition() {
             return selectedPosition;
         }
+
         public void setSelectedPosition(int position) {
             selectedPosition = position;
             if (dateAdapter != null) {
@@ -92,21 +100,23 @@ public class LivePanelManager {
             }
         }
     }
-    // ===================== PanelManager 面板管理 =====================
+
+    // ===================== PanelManager 面板管理【完整实现】 =====================
     public static class PanelManager {
         private final View panelLayout;
         private final ChannelListManager channelListManager;
         private final EpgManagerWrapper epgManagerWrapper;
-        private final DateListManager dateListManager;  // 新增：持有日期管理器引用
+        private final DateListManager dateListManager;
 
-        // ========== 【修复1】构造方法新增 DateListManager 参数 ==========
+        // 【完整构造器：4个参数】
         public PanelManager(View panelLayout, ChannelListManager channelListManager, 
                            EpgManagerWrapper epgManagerWrapper, DateListManager dateListManager) {
             this.panelLayout = panelLayout;
             this.channelListManager = channelListManager;
             this.epgManagerWrapper = epgManagerWrapper;
-            this.dateListManager = dateListManager;  // 保存日期管理器引用
+            this.dateListManager = dateListManager;
         }
+
         public void toggle(List<Channel> channelList, int currentIndex) {
             if (panelLayout.getVisibility() == View.VISIBLE) {
                 panelLayout.setVisibility(View.GONE);
@@ -114,14 +124,15 @@ public class LivePanelManager {
                 panelLayout.setVisibility(View.VISIBLE);
                 if (channelList != null && currentIndex >= 0 && currentIndex < channelList.size()) {
                     Channel currentChannel = channelList.get(currentIndex);
-                    // ========== 【修复1核心】用当前选中的日期，不再写死0 ==========
+                    // 用当前选中的日期刷新，不再写死0
                     int currentDateIndex = dateListManager.getSelectedPosition();
                     epgManagerWrapper.refresh(currentChannel, channelList, currentDateIndex);
                 }
             }
         }
     }
-    // ===================== EpgManagerWrapper 节目单管理 =====================
+
+    // ===================== EpgManagerWrapper 节目单管理【完整实现】 =====================
     public static class EpgManagerWrapper {
         private final ListView lvEpg;
         private final Context context;
@@ -134,6 +145,8 @@ public class LivePanelManager {
         private int selectDayIndex = 0;
         private Channel mCurrentChannel;
         private List<Channel.EpgItem> mEpgItemList = new ArrayList<>();
+
+        // 【完整构造器】
         public EpgManagerWrapper(Context context, ListView lvEpg) {
             this.context = context;
             this.lvEpg = lvEpg;
@@ -156,6 +169,7 @@ public class LivePanelManager {
             });
             registerReminderReceiver();
         }
+
         public void refresh(Channel currentChannel, List<Channel> channelSourceList, int dateIndex) {
             if (currentChannel == null) return;
             this.mCurrentChannel = currentChannel;
@@ -236,6 +250,7 @@ public class LivePanelManager {
                 });
             }).start();
         }
+
         private void updateNextProgramInfo() {
             if (mEpgItemList == null || mEpgItemList.isEmpty()) return;
             if (!(context instanceof MainActivity)) return;
@@ -259,6 +274,7 @@ public class LivePanelManager {
                 }
             }
         }
+
         private boolean isTimeBetween(String now, String start, String end) {
             try {
                 if (now == null || start == null || end == null) return false;
@@ -268,6 +284,7 @@ public class LivePanelManager {
             } catch (Exception e) {}
             return false;
         }
+
         private String addOneHour(String hm) {
             try {
                 if (hm == null || !hm.contains(":")) return "23:59";
@@ -285,11 +302,13 @@ public class LivePanelManager {
                 return "23:59";
             }
         }
+
         private String getNow() {
             return String.format("%02d:%02d",
                     Calendar.getInstance().get(Calendar.HOUR_OF_DAY),
                     Calendar.getInstance().get(Calendar.MINUTE));
         }
+
         private void registerReminderReceiver() {
             BroadcastReceiver receiver = new BroadcastReceiver() {
                 @Override
@@ -302,6 +321,7 @@ public class LivePanelManager {
             };
             context.registerReceiver(receiver, new IntentFilter(ACTION_REMINDER));
         }
+
         private class EpgAdapter extends ArrayAdapter<Channel.EpgItem> {
             private final Context ctx;
             private Channel currentChannel;
@@ -309,6 +329,7 @@ public class LivePanelManager {
             private final LayoutInflater inflater;
             private int dayIndex;
             private final SimpleDateFormat sdfFull = new SimpleDateFormat("yyyyMMddHHmmss", Locale.CHINA);
+
             public EpgAdapter(Context ctx, Channel currentChannel, List<Channel.EpgItem> list, int dayIndex) {
                 super(ctx, R.layout.item_epg, list);
                 this.ctx = ctx;
@@ -317,6 +338,7 @@ public class LivePanelManager {
                 this.inflater = LayoutInflater.from(ctx);
                 this.dayIndex = dayIndex;
             }
+
             public void setData(Channel currentChannel, List<Channel.EpgItem> list, int dayIndex) {
                 this.currentChannel = currentChannel;
                 this.list.clear();
@@ -324,6 +346,7 @@ public class LivePanelManager {
                 this.dayIndex = dayIndex;
                 notifyDataSetChanged();
             }
+
             @Override
             public View getView(int position, View convertView, ViewGroup parent) {
                 ViewHolder holder;
@@ -363,6 +386,7 @@ public class LivePanelManager {
                 });
                 return convertView;
             }
+
             private class ViewHolder {
                 TextView tv_dayName;
                 TextView tv_time;
@@ -371,12 +395,162 @@ public class LivePanelManager {
             }
         }
     }
-    // ===================== ChannelListManager 频道列表管理 =====================
+
+    // ===================== ChannelListManager 频道列表管理【完整实现】 =====================
     public static class ChannelListManager {
-        // 原有代码保持不变
+        private final Context context;
+        private final ListView lvChannelList;
+        private ChannelAdapter channelAdapter;
+        private final List<Channel> channelList = new ArrayList<>();
+        private OnChannelClickListener listener;
+        private int currentPlayIndex = 0;
+
+        public interface OnChannelClickListener {
+            void onChannelClick(int filterPos);
+        }
+
+        public void setOnChannelClickListener(OnChannelClickListener listener) {
+            this.listener = listener;
+        }
+
+        // 【完整构造器】
+        public ChannelListManager(Context context, ListView lvChannelList) {
+            this.context = context;
+            this.lvChannelList = lvChannelList;
+            channelAdapter = new ChannelAdapter();
+            lvChannelList.setAdapter(channelAdapter);
+            lvChannelList.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
+            lvChannelList.setOnItemClickListener((parent, view, position, id) -> {
+                if (listener != null) {
+                    listener.onChannelClick(position);
+                }
+            });
+        }
+
+        public void setChannels(List<Channel> channels, int currentPlayIndex) {
+            this.currentPlayIndex = currentPlayIndex;
+            channelList.clear();
+            channelList.addAll(channels);
+            channelAdapter.notifyDataSetChanged();
+            lvChannelList.setItemChecked(currentPlayIndex, true);
+            lvChannelList.setSelection(currentPlayIndex);
+        }
+
+        public void setChannelsByGroup(List<Channel> channels, String groupName, int currentPlayIndex) {
+            this.currentPlayIndex = currentPlayIndex;
+            channelList.clear();
+            for (Channel ch : channels) {
+                if (groupName.equals(ch.getGroup())) {
+                    channelList.add(ch);
+                }
+            }
+            channelAdapter.notifyDataSetChanged();
+            // 定位当前播放频道在分组中的位置
+            for (int i = 0; i < channelList.size(); i++) {
+                if (channelList.get(i).getId().equals(channels.get(currentPlayIndex).getId())) {
+                    lvChannelList.setItemChecked(i, true);
+                    lvChannelList.setSelection(i);
+                    break;
+                }
+            }
+        }
+
+        private class ChannelAdapter extends BaseAdapter {
+            @Override
+            public int getCount() { return channelList.size(); }
+            @Override
+            public Object getItem(int position) { return channelList.get(position); }
+            @Override
+            public long getItemId(int position) { return position; }
+            @Override
+            public View getView(int position, View convertView, ViewGroup parent) {
+                if (convertView == null) {
+                    convertView = LayoutInflater.from(context).inflate(android.R.layout.simple_list_item_1, parent, false);
+                }
+                TextView tv = convertView.findViewById(android.R.id.text1);
+                Channel ch = channelList.get(position);
+                tv.setText(ch.getName());
+                tv.setTextColor(Color.WHITE);
+                return convertView;
+            }
+        }
     }
-    // ===================== GroupListManager 分组列表管理 =====================
+
+    // ===================== GroupListManager 分组列表管理【完整实现】 =====================
     public static class GroupListManager {
-        // 原有代码保持不变
+        private final Context context;
+        private final ListView lvGroup;
+        private GroupAdapter groupAdapter;
+        private final List<String> groupList = new ArrayList<>();
+        private OnGroupChangeListener listener;
+        private int selectedPos = 0;
+
+        public interface OnGroupChangeListener {
+            void onGroupChange(String groupName);
+        }
+
+        public void setOnGroupChangeListener(OnGroupChangeListener listener) {
+            this.listener = listener;
+        }
+
+        // 【完整构造器】
+        public GroupListManager(Context context, ListView lvGroup) {
+            this.context = context;
+            this.lvGroup = lvGroup;
+            groupAdapter = new GroupAdapter();
+            lvGroup.setAdapter(groupAdapter);
+            lvGroup.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
+            lvGroup.setOnItemClickListener((parent, view, position, id) -> {
+                selectedPos = position;
+                groupAdapter.notifyDataSetChanged();
+                if (listener != null) {
+                    listener.onGroupChange(groupList.get(position));
+                }
+            });
+        }
+
+        public void setGroups(List<Channel> channels) {
+            groupList.clear();
+            Set<String> groupSet = new HashSet<>();
+            for (Channel ch : channels) {
+                if (!TextUtils.isEmpty(ch.getGroup())) {
+                    groupSet.add(ch.getGroup());
+                }
+            }
+            groupList.addAll(groupSet);
+            groupAdapter.notifyDataSetChanged();
+            if (!groupList.isEmpty()) {
+                selectedPos = 0;
+                lvGroup.setItemChecked(0, true);
+                lvGroup.setSelection(0);
+            }
+        }
+
+        public List<String> getGroupList() {
+            return groupList;
+        }
+
+        public int getSelectedPos() {
+            return selectedPos;
+        }
+
+        private class GroupAdapter extends BaseAdapter {
+            @Override
+            public int getCount() { return groupList.size(); }
+            @Override
+            public Object getItem(int position) { return groupList.get(position); }
+            @Override
+            public long getItemId(int position) { return position; }
+            @Override
+            public View getView(int position, View convertView, ViewGroup parent) {
+                if (convertView == null) {
+                    convertView = LayoutInflater.from(context).inflate(android.R.layout.simple_list_item_1, parent, false);
+                }
+                TextView tv = convertView.findViewById(android.R.id.text1);
+                tv.setText(groupList.get(position));
+                tv.setTextColor(position == selectedPos ? Color.parseColor("#40A9FF") : Color.WHITE);
+                return convertView;
+            }
+        }
     }
 }

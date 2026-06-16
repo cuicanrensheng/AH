@@ -128,7 +128,7 @@ public class TVPlayerManager {
         // ========== 核心屏蔽系统"正在播放"弹窗（兼容低版本ExoPlayer）==========
         // 1. 配置音频属性，关闭自动音频焦点管理（切断系统识别播放的核心路径）
         AudioAttributes audioAttributes = new AudioAttributes.Builder()
-                .setUsage(C.USAGE_MEDIA)
+                .setUsage(C.USAGE_GAME)
                 .setContentType(C.CONTENT_TYPE_MOVIE)
                 .build();
         // 第二个参数false：不自动申请/释放音频焦点，系统无法通过音频焦点感知播放状态

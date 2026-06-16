@@ -154,6 +154,12 @@ public class MainActivity extends AppCompatActivity {
         playerView = findViewById(R.id.player_view);
         playerView.setUseController(false);
         playerView.setControllerVisibilityListener(null);
+        // 修复：彻底禁用PlayerView原生点击/长按/焦点交互，从根源避免手势冲突
+        playerView.setClickable(false);
+        playerView.setLongClickable(false);
+        playerView.setFocusable(false);
+        playerView.setFocusableInTouchMode(false);
+
         panel_layout = findViewById(R.id.panel_layout);
 
         ListView lvGroup = findViewById(R.id.lv_group);
@@ -201,7 +207,7 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        // 修复：分组监听统一由 GroupListManager 分发，避免监听被覆盖
+        // 修复：分组监听统一由GroupListManager分发，避免监听被覆盖导致频道列表不更新
         groupListManager = new LivePanelManager.GroupListManager(this, lvGroup);
         groupListManager.setOnGroupChangeListener(groupName -> {
             if (TextUtils.isEmpty(groupName)) return;
@@ -234,14 +240,19 @@ public class MainActivity extends AppCompatActivity {
         screenRatioManager = new ScreenRatioManager(mPlayerManager, appConfig);
         screenRatioManager.apply();
 
-        // 手势管理（完全适配你现有的类）
+        // 手势管理
         gestureManager = new GestureManager(this);
         PlayerGestureHelper gestureHelper = gestureManager.create();
 
-        // 屏蔽控制器 + 手势正常工作
+        // 修复：触摸事件完全由自定义手势管理器消费，阻断PlayerView原生手势
         playerView.setOnTouchListener((v, event) -> {
+            // 面板弹出时不消费事件，交由内部列表控件处理，避免误触
+            if (panel_layout.getVisibility() == View.VISIBLE) {
+                return false;
+            }
             gestureHelper.handleTouch(event);
-            return false;
+            // 返回true消费全部事件，彻底解决双套手势冲突问题
+            return true;
         });
 
         keyEventManager = new KeyEventManager(this);
@@ -406,7 +417,6 @@ public class MainActivity extends AppCompatActivity {
                 if (conn != null) conn.disconnect();
             }
 
-            // 修复 lambda 变量必须 final
             final String realPlayUrl = TextUtils.isEmpty(finalUrl) ? originalUrl : finalUrl;
             new Handler(Looper.getMainLooper()).post(() -> {
                 mPlayerManager.playUrl(realPlayUrl);

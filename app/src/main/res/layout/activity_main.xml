@@ -1,16 +1,43 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- 主播放页面根布局：FrameLayout 层叠结构，播放器在最底层，UI元素依次叠加在上层 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#000000">
-    <!-- 底层播放器 -->
+
+    <!-- ====================== 底层播放器视图 ======================
+         核心：所有原生控制器、弹窗、交互全部静态禁用
+         1. use_controller="false"：彻底关闭原生控制栏（最核心）
+         2. controller_auto_show="false"：禁止控制器自动弹出（双重保险）
+         3. show_buffering="never"：关闭缓冲加载转圈弹窗
+         4. 所有控制按钮设为false：隐藏快退/快进/上一个/下一个/播放按钮
+         5. keep_content_on_player_reset="true"：切台/重置时保留最后一帧，避免黑屏闪烁
+         6. 禁用点击/焦点/长按：从交互层面阻断所有唤起控制器的入口
+    -->
     <com.google.android.exoplayer2.ui.PlayerView
         android:id="@+id/player_view"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:layout_gravity="center"/>
+        android:layout_gravity="center"
+        android:clickable="false"
+        android:focusable="false"
+        android:longClickable="false"
+        app:use_controller="false"
+        app:controller_auto_show="false"
+        app:controller_hide_on_touch="false"
+        app:show_buffering="never"
+        app:show_rewind_button="false"
+        app:show_fastforward_button="false"
+        app:show_previous_button="false"
+        app:show_next_button="false"
+        app:show_play_button="false"
+        app:show_subtitle_button="false"
+        app:keep_content_on_player_reset="true"/>
 
-    <!-- 右上角切台数字弹窗 -->
+    <!-- ====================== 右上角切台数字弹窗 ======================
+         切换频道时短暂显示频道号，3秒后自动隐藏
+    -->
     <TextView
         android:id="@+id/tv_channel_num"
         android:layout_width="wrap_content"
@@ -24,26 +51,32 @@
         android:alpha="0.8"
         android:visibility="gone"/>
 
-    <!-- 侧边控制面板总布局 -->
+    <!-- ====================== 侧边控制面板总布局 ======================
+         横向排列：分组列表 + 频道列表 + 节目单按钮 + 日期列表 + EPG列表
+         默认隐藏，通过遥控器/手势唤出
+    -->
     <LinearLayout
         android:id="@+id/panel_layout"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:orientation="horizontal"
         android:visibility="gone">
-        <!-- 左侧分组列表 -->
+
+        <!-- 左侧：频道分组列表 -->
         <ListView
             android:id="@+id/lv_group"
             android:layout_width="130dp"
             android:layout_height="match_parent"
             android:background="#CC000000"/>
-        <!-- 中间频道列表 -->
+
+        <!-- 中间：频道列表 -->
         <ListView
             android:id="@+id/lv_channel_list"
             android:layout_width="200dp"
             android:layout_height="match_parent"
             android:background="#CC000000"/>
-        <!-- 竖向节目单按钮（居中竖排文字，原id btn_show_epg不变） -->
+
+        <!-- 节目单展开按钮：竖向文字，点击展开/收起EPG面板 -->
         <TextView
             android:id="@+id/btn_show_epg"
             android:layout_width="50dp"
@@ -53,14 +86,16 @@
             android:text="节\n目\n单"
             android:textColor="#ffffff"
             android:textSize="14sp" />
-        <!-- 日期列表 默认隐藏 -->
+
+        <!-- 日期选择列表：EPG展开时显示，默认隐藏 -->
         <ListView
             android:id="@+id/lv_date"
             android:layout_width="60dp"
             android:layout_height="match_parent"
             android:background="#CC000000"
             android:visibility="gone"/>
-        <!-- EPG节目列表 默认隐藏 -->
+
+        <!-- EPG节目单列表：EPG展开时显示，默认隐藏 -->
         <ListView
             android:id="@+id/lv_epg"
             android:layout_width="360dp"
@@ -69,7 +104,11 @@
             android:visibility="gone"/>
     </LinearLayout>
 
-    <!-- 底部信息栏 原样保留 -->
+    <!-- ====================== 底部播放信息栏 ======================
+         自定义信息栏，替代原生控制器的信息展示能力
+         包含：频道名、画质/音频标签、码率、当前节目、进度条、下一个节目
+         默认隐藏，切台/唤出时短暂显示
+    -->
     <LinearLayout
         android:id="@+id/info_bar"
         android:layout_width="match_parent"
@@ -79,10 +118,13 @@
         android:layout_gravity="bottom"
         android:background="#CC000000"
         android:visibility="gone">
+
+        <!-- 第一行：频道名 + 画质标签 + 音频标签 + 码率 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:gravity="center_vertical">
+
             <TextView
                 android:id="@+id/tv_channel_name"
                 android:layout_width="wrap_content"
@@ -90,6 +132,7 @@
                 android:textColor="#FFFFFF"
                 android:textSize="22sp"
                 android:textStyle="bold"/>
+
             <TextView
                 android:id="@+id/tv_tag_fhd"
                 android:layout_width="wrap_content"
@@ -100,6 +143,7 @@
                 android:paddingVertical="2dp"
                 android:textSize="12sp"
                 android:textColor="#000"/>
+
             <TextView
                 android:id="@+id/tv_tag_audio"
                 android:layout_width="wrap_content"
@@ -110,6 +154,7 @@
                 android:paddingVertical="2dp"
                 android:textSize="12sp"
                 android:textColor="#000"/>
+
             <TextView
                 android:id="@+id/tv_bitrate"
                 android:layout_width="wrap_content"
@@ -118,17 +163,21 @@
                 android:textColor="#FFFFFF"
                 android:textSize="14sp"/>
         </LinearLayout>
+
+        <!-- 第二行：当前节目时间 + 进度条 + 剩余时长 + 节目名 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:gravity="center_vertical"
             android:layout_marginTop="4dp">
+
             <TextView
                 android:id="@+id/tv_current_time_range"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:textColor="#FFFFFF"
                 android:textSize="13sp"/>
+
             <ProgressBar
                 android:id="@+id/progress_program"
                 style="?android:attr/progressBarStyleHorizontal"
@@ -136,12 +185,14 @@
                 android:layout_weight="1"
                 android:layout_height="3dp"
                 android:layout_marginHorizontal="8dp"/>
+
             <TextView
                 android:id="@+id/tv_remaining_time"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:textColor="#FFFFFF"
                 android:textSize="13sp"/>
+
             <TextView
                 android:id="@+id/tv_current_program_name"
                 android:layout_width="wrap_content"
@@ -150,17 +201,21 @@
                 android:textColor="#FFFFFF"
                 android:textSize="13sp"/>
         </LinearLayout>
+
+        <!-- 第三行：下一个节目时间 + 节目名称 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:gravity="center_vertical"
             android:layout_marginTop="4dp">
+
             <TextView
                 android:id="@+id/tv_next_time_range"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:textColor="#AAAAAA"
                 android:textSize="12sp"/>
+
             <TextView
                 android:id="@+id/tv_next_program_name"
                 android:layout_width="wrap_content"

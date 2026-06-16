@@ -127,7 +127,7 @@ public class TVPlayerManager {
         CookieManager.getInstance().setAcceptCookie(true);
     }
 
-    // 切后台：暂停播放 + 解绑View
+    // 切后台：暂停播放 + 解绑View（满足你的需求）
     public void onBackground() {
         try {
             if (player != null) {
@@ -139,7 +139,7 @@ public class TVPlayerManager {
         } catch (Exception e) {}
     }
 
-    // 切前台：重新绑定 + 恢复播放
+    // 切前台：重新绑定 + 恢复播放（修复黑屏）
     public void onForeground() {
         try {
             if (player != null && playerView != null) {
@@ -157,14 +157,7 @@ public class TVPlayerManager {
     public void attachPlayerView(PlayerView view) {
         playerView = view;
         playerView.setPlayer(player);
-        playerView.setUseController(false);
-    }
-
-    // 新增：禁用媒体会话，屏蔽系统级"正在播放"弹窗
-    public void disableMediaSession() {
-        if (player != null) {
-            player.setMediaSessionToken(null);
-        }
+        playerView.setUseController(false); // 彻底隐藏系统控制器
     }
 
     private void updateWakeLock(boolean enable) {

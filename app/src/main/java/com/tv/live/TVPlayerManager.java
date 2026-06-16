@@ -125,7 +125,7 @@ public class TVPlayerManager {
                 .setLoadControl(loadControl)
                 .build();
 
-        // ========== 新增：核心屏蔽系统"正在播放"弹窗 ==========
+        // ========== 核心屏蔽系统"正在播放"弹窗（兼容低版本ExoPlayer）==========
         // 1. 配置音频属性，关闭自动音频焦点管理（切断系统识别播放的核心路径）
         AudioAttributes audioAttributes = new AudioAttributes.Builder()
                 .setUsage(C.USAGE_MEDIA)
@@ -134,11 +134,8 @@ public class TVPlayerManager {
         // 第二个参数false：不自动申请/释放音频焦点，系统无法通过音频焦点感知播放状态
         player.setAudioAttributes(audioAttributes, false);
 
-        // 2. 禁用音频嘈杂自动暂停（拔耳机/断蓝牙时不暂停），减少与系统音频服务交互
+        // 2. 禁用音频嘈杂自动暂停，减少与系统音频服务交互
         player.setHandleAudioBecomingNoisy(false);
-
-        // 3. 禁用平台诊断上报，不向系统同步播放状态数据
-        player.setUsePlatformDiagnostics(false);
 
         CookieSyncManager.createInstance(context);
         CookieManager.getInstance().setAcceptCookie(true);
@@ -216,8 +213,6 @@ public class TVPlayerManager {
 
             player.stop();
             player.clearMediaItems();
-            // 新增：清空所有媒体元数据，不给系统提供频道名等展示信息
-            player.clearMediaMetadata();
 
             DefaultHttpDataSource.Factory httpFactory = new DefaultHttpDataSource.Factory()
                     .setDefaultRequestProperties(getHeaders(currentUrl))

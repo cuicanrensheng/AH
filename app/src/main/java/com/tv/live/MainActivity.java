@@ -219,8 +219,7 @@ public class MainActivity extends AppCompatActivity {
         // ========== 第二层：低版本兼容增强屏蔽（有就生效，没有也不报错） ==========
         try { playerView.setControllerAutoShow(false); } catch (Exception ignored) {}
         try { playerView.setControllerHideOnTouch(false); } catch (Exception ignored) {}
-        try { playerView.setShowPlayButton(false); } catch (Exception ignored) {}
-        try { playerView.setShowSubtitleButton(false); } catch (Exception ignored) {}
+ 
 
         // ========== 面板与列表控件初始化 ==========
         panel_layout = findViewById(R.id.panel_layout);

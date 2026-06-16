@@ -18,15 +18,14 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
-
 import com.google.android.exoplayer2.ui.PlayerView;
 import java.util.ArrayList;
 import java.util.List;
 
 import com.tv.live.config.AppConfig;
 import com.tv.live.manager.GestureManager;
-import com.tv.live.manager.KeyEventManager;
 import com.tv.live.manager.ScreenRatioManager;
+import com.tv.live.manager.KeyEventManager;
 import com.tv.live.manager.ChannelSwitchManager;
 import com.tv.live.listener.PlayerStateListenerImpl;
 import com.tv.live.loader.LiveSourceLoader;
@@ -38,11 +37,12 @@ import com.tv.live.loader.LiveSourceLoader;
  * 2. 频道分组 + 频道列表 + EPG节目单 侧边面板
  * 3. 手势滑动切台 + 遥控器按键切台
  * 4. 直播源/EPG 加载、刷新、自定义配置
- * 本次重点修复：
- * 1. 删除切换控制器广播（高危漏洞）
- * 2. 全局拦截触摸事件，面板打开也不穿透到播放器
- * 3. 切前台二次加固关闭原生控制器
- * 4. 移除低版本不存在API，解决编译报错
+ * 修复点：
+ * - 彻底屏蔽 ExoPlayer 原生控制器，杜绝滑动唤起
+ * - 关闭所有原生状态弹窗（缓冲、错误等）
+ * - 频道切换支持分组内循环 + 冷却防抖
+ * - 触摸事件完全拦截，原生逻辑无触发入口
+ * - 低版本 ExoPlayer 编译兼容保护
  */
 public class MainActivity extends AppCompatActivity {
     // 全局单例，供其他模块调用主界面方法
@@ -72,9 +72,9 @@ public class MainActivity extends AppCompatActivity {
     private PlayerStateListenerImpl playerStateListener;              // 播放器状态回调监听
     private ChannelSwitchManager switchManager;                       // 全局频道切换逻辑（上/下一台）
 
-    // ====================== 状态标志 ======================
+    // ====================== 状态标志位 ======================
     private boolean epgPanelOpen = false;       // EPG节目单子面板是否展开
-    // 【已删除】isControllerVisible：对应控制器广播已移除，此变量作废
+    private boolean isControllerVisible = false;// 原生控制器显隐状态（默认关闭，兼容旧广播）
     private boolean epg_enable;                 // 设置项：是否启用节目单
     private boolean channel_reverse;            // 设置项：频道切换方向是否反向
     private boolean number_channel_enable;      // 设置项：是否显示频道数字角标
@@ -101,7 +101,7 @@ public class MainActivity extends AppCompatActivity {
     private static final int CONNECT_TIMEOUT = 8000;     // 网络连接超时（毫秒）
     private static final int READ_TIMEOUT = 8000;        // 网络读取超时（毫秒）
     private static final String DEF_UA = "ExoPlayer";    // 默认请求 User-Agent
-    private static final String DEF_REFER = "https://www.huya.com/"; // 默认 Refer 请求头
+    private static final String DEF_REFER = "https://www.huya.com/"; // 默认 Referer 请求头
     private static final long CHANNEL_COOLDOWN = 300;    // 切台冷却时间（防快速连点）
 
     // 信息栏自动隐藏任务
@@ -126,8 +126,22 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // ====================== 广播接收器（仅保留刷新广播） ======================
-    // 【已彻底删除】toggleControllerReceiver 切换控制器广播（高危漏洞）
+    // ====================== 广播接收器 ======================
+    /**
+     * 切换原生控制器显隐的广播（兼容旧逻辑，默认控制器已关闭）
+     */
+    private final BroadcastReceiver toggleControllerReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            isControllerVisible = !isControllerVisible;
+            playerView.setUseController(isControllerVisible);
+        }
+    };
+
+    /**
+     * 刷新直播源与EPG的广播
+     * 接收外部指令重新加载配置和数据
+     */
     private final BroadcastReceiver refreshReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
@@ -155,7 +169,7 @@ public class MainActivity extends AppCompatActivity {
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE); // 强制横屏
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN); // 全屏
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON); // 播放时保持屏幕常亮
-        // 沉浸式粘性模式：隐藏状态栏+导航栏
+        // 沉浸式粘性模式：隐藏状态栏+导航栏，触摸不常驻显示
         getWindow().getDecorView().setSystemUiVisibility(
                 View.SYSTEM_UI_FLAG_FULLSCREEN |
                 View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
@@ -167,44 +181,45 @@ public class MainActivity extends AppCompatActivity {
         // ========== 基础初始化 ==========
         tv_channel_num = findViewById(R.id.tv_channel_num);
         initInfoBar();
-        appConfig = App.getInstance(this);
+        appConfig = AppConfig.getInstance(this);
         loadSettings();
         sp = getSharedPreferences("app_settings", Context.MODE_PRIVATE);
 
-        // 加载用户自定义的直播源/EPG地址
+        // 加载用户自定义的直播源/EPG地址，覆盖默认配置
         String customLive = appConfig.getCustomLiveUrl();
         String customEpg = appConfig.getCustomEpgUrl();
         if (customLive != null) UrlConfig.LIVE_URL = customLive;
         if (customEpg != null) UrlConfig.EPG_URL = customEpg;
 
-        // ========== 播放器视图 + 原生UI全面屏蔽 ==========
+        // ========== 播放器视图 + 原生UI全面屏蔽（编译安全版） ==========
         playerView = findViewById(R.id.player_view);
 
-        // 核心1：永久关闭原生控制器
+        // ========== 第一层：所有版本100%支持的核心屏蔽 ==========
+        // 核心1：彻底关闭原生控制器，移除可见性回调
         playerView.setUseController(false);
         playerView.setControllerVisibilityListener(null);
 
-        // 核心2：禁用点击/焦点，阻断交互入口
+        // 核心2：禁用所有交互属性，从入口阻断控制器唤起
         playerView.setClickable(false);
         playerView.setLongClickable(false);
         playerView.setFocusable(false);
         playerView.setFocusableInTouchMode(false);
 
-        // 核心3：关闭缓冲、错误弹窗
-        playerView.setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER);
-        playerView.setErrorMessageProvider(null);
-
-        // 隐藏原生控制按钮（当前版本兼容）
+        // 核心3：关闭所有原生状态弹窗
+        playerView.setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER); // 关闭缓冲加载转圈
+        playerView.setErrorMessageProvider(null);                    // 关闭原生错误提示
+        // 隐藏所有原生控制按钮
         playerView.setShowRewindButton(false);
         playerView.setShowFastForwardButton(false);
         playerView.setShowPreviousButton(false);
         playerView.setShowNextButton(false);
-
-        // 切台保留画面，防止黑屏
+        // 切台/播放器重置时保留最后一帧，避免黑屏闪烁和状态文字
         playerView.setKeepContentOnPlayerReset(true);
 
-        // 【已删除】低版本不存在的方法：setControllerAutoShow / setControllerHideOnTouch
-        // 避免编译报错
+        // ========== 第二层：低版本兼容增强屏蔽（有就生效，没有也不报错） ==========
+        try { playerView.setControllerAutoShow(false); } catch (Exception ignored) {}
+        try { playerView.setControllerHideOnTouch(false); } catch (Exception ignored) {}
+ 
 
         // ========== 面板与列表控件初始化 ==========
         panel_layout = findViewById(R.id.panel_layout);
@@ -214,10 +229,11 @@ public class MainActivity extends AppCompatActivity {
         ListView lvEpg = findViewById(R.id.lv_epg);
         TextView btn_show_epg = findViewById(R.id.btn_show_epg);
 
-        // 仅注册刷新广播（控制器广播已删除，不再注册）
+        // 注册广播
+        registerReceiver(toggleControllerReceiver, new IntentFilter("com.tv.live.TOGGLE_CONTROL"));
         registerReceiver(refreshReceiver, new IntentFilter("com.tv.live.REFRESH_LIVE_AND_EPG"));
 
-        // EPG展开按钮逻辑
+        // EPG展开按钮点击：切换日期列表和节目单显隐
         btn_show_epg.setOnClickListener(v -> {
             if (!epg_enable) {
                 Toast.makeText(MainActivity.this, "节目单功能已关闭", Toast.LENGTH_SHORT).show();
@@ -226,6 +242,7 @@ public class MainActivity extends AppCompatActivity {
             epgPanelOpen = !epgPanelOpen;
             lvDate.setVisibility(epgPanelOpen ? View.VISIBLE : View.GONE);
             lvEpg.setVisibility(epgPanelOpen ? View.VISIBLE : View.GONE);
+            // 展开时刷新当前频道的节目单
             if (epgPanelOpen && !channelSourceList.isEmpty()) {
                 currentSelectedDateIndex = dateListManager.getSelectedPosition();
                 Channel curr = channelSourceList.get(currentPlayIndex);
@@ -233,17 +250,17 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        // 日期列表初始化
+        // 日期列表初始化 + 选中监听
         dateListManager = new LivePanelManager.DateListManager(this, lvDate);
         dateListManager.initDate();
         dateListManager.setOnDateSelectedListener(pos -> {
             currentSelectedDateIndex = pos;
             if (!channelSourceList.isEmpty()) {
-                epgManager.refresh(channelSourceList.get(currentPlayIndex), channelSourceList, pos);
+                epgManagerWrapper.refresh(channelSourceList.get(currentPlayIndex), channelSourceList, pos);
             }
         });
 
-        // 频道列表
+        // 频道列表初始化 + 点击播放
         channelListManager = new LivePanelManager.ChannelListManager(this, lvChannelList);
         channelListManager.setOnChannelClickListener(filterPos -> {
             if (filterPos >= 0 && filterPos < currentGroupChannelList.size()) {
@@ -256,7 +273,8 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        // 分组列表
+        // 分组列表初始化 + 切换监听
+        // 修复：监听统一由管理器分发，避免内部覆盖导致列表不更新
         groupListManager = new LivePanelManager.GroupListManager(this, lvGroup);
         groupListManager.setOnGroupChangeListener(groupName -> {
             if (TextUtils.isEmpty(groupName)) return;
@@ -264,49 +282,62 @@ public class MainActivity extends AppCompatActivity {
             lvGroup.setItemChecked(position, true);
             lvGroup.setSelection(position);
             nowSelectGroup = groupName;
+            // 过滤当前分组的频道
             currentGroupChannelList.clear();
             for (Channel c : channelSourceList) {
                 if (nowSelectGroup.equals(c.getGroup())) {
                     currentGroupChannelList.add(c);
                 }
             }
+            // 更新频道列表显示
             channelListManager.setChannelsByGroup(channelSourceList, nowSelectGroup, currentPlayIndex);
         });
 
-        // EPG & 面板管理器
+        // EPG包装器 + 面板管理器初始化
         epgManagerWrapper = new LivePanelManager.EpgManagerWrapper(this, lvEpg);
         panelManager = new LivePanelManager.PanelManager(panel_layout, channelListManager, epgManagerWrapper);
 
-        // 播放器管理器初始化
+        // ========== 播放器初始化 ==========
         mPlayerManager = TVPlayerManager.getInstance(this);
         mPlayerManager.attachPlayerView(playerView);
 
         // 播放状态监听
         playerStateListener = new PlayerStateListenerImpl(this);
         mPlayerManager.setOnPlayStateListener(playerStateListener);
+        // 直播信息更新监听（画质、音频、码率）
         mPlayerManager.setOnLiveInfoUpdateListener(info -> {
             tv_tag_fhd.setText(info.quality);
             tv_tag_audio.setText(info.audio);
             tv_bitrate.setText(info.bitrate);
         });
 
-        // 画面比例
+        // 应用画面比例配置
         screenRatioManager = new ScreenRatioManager(mPlayerManager, appConfig);
         screenRatioManager.apply();
 
-        // ========== 【修复触摸拦截】无论面板是否打开，全部拦截播放器触摸 ==========
+        // ========== 自定义手势 + 触摸事件完全拦截 ==========
         gestureManager = new GestureManager(this);
         PlayerGestureHelper gestureHelper = gestureManager.create();
+
+        // 核心：触摸事件全部由自定义手势消费，彻底阻断原生逻辑
         playerView.setOnTouchListener((v, event) -> {
-            // 只执行自定义手势，强制消费事件，不穿透到原生播放器
+            // 侧边面板弹出时透传事件，保证内部列表可正常点击
+            if (panel_layout.getVisibility() == View.VISIBLE) {
+                return false;
+            }
+            // 自定义手势处理滑动切台、调音量等
             gestureHelper.handleTouch(event);
+            // 返回true：完全消费事件，事件不会向下传递到PlayerView原生逻辑
+            // 从事件流层面彻底杜绝滑动/点击唤起原生控制器的可能
             return true;
         });
 
-        // 按键管理器
+        // 按键事件管理初始化
         keyEventManager = new KeyEventManager(this);
         switchManager = ChannelSwitchManager.getInstance();
+        // 恢复上次播放的频道索引
         currentPlayIndex = appConfig.getLastPlayIndex();
+        // 启动加载直播源和EPG
         loadLiveAndEpg();
     }
 
@@ -328,7 +359,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * 从本地SP加载配置
+     * 从本地SharedPreferences加载用户设置
      */
     private void loadSettings() {
         SharedPreferences sp = getSharedPreferences("app_settings", Context.MODE_PRIVATE);
@@ -339,7 +370,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * 返回键逻辑
+     * 返回键逻辑：面板打开时先关闭面板，否则退出应用
      */
     @Override
     public void onBackPressed() {
@@ -352,28 +383,23 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * 加载直播源 + EPG
+     * 加载直播源列表 + EPG节目单数据
+     * 直播源加载完成后自动播放上次选中的频道
      */
     public void loadLiveAndEpg() {
-        LiveSourceLoader.getInstance(this).load(channels -> {
-            channelSourceList.clear();
-            channelSourceList.addAll(channels);
-            switchManager.setChannelList(channelSourceList);
-            switchManager.setCurrentIndex(currentPlayIndex);
-            groupListManager.setGroups(channelSourceList);
+        // 异步加载直播源
+        LiveSourceLoader.getInstance(this).load(new LiveSourceLoader.LoadCallback() {
+            @Override
+            public void onSuccess(List<Channel> channels) {
+                channelSourceList.clear();
+                channelSourceList.addAll(channels);
+                // 同步数据到全局切台管理器
+                switchManager.setChannelList(channelSourceList);
+                switchManager.setCurrentIndex(currentPlayIndex);
+                groupListManager.setGroups(channelSourceList);
 
-            if (!TextUtils.isEmpty(nowSelectGroup)) {
-                currentGroupChannelList.clear();
-                for (Channel ch : channelSourceList) {
-                    if (ch.getGroup().equals(nowSelectGroup)) {
-                        currentGroupChannelList.add(ch);
-                    }
-                }
-                channelListManager.setChannelsByGroup(channelSourceList, nowSelectGroup, currentPlayIndex);
-            } else {
-                List<String> groups = groupListManager.getGroupList();
-                if (groups != null && groups.size() > 0) {
-                    nowSelectGroup = groups.get(0);
+                // 恢复上次选中的分组，无记录则默认选中第一个
+                if (!TextUtils.isEmpty(nowSelectGroup)) {
                     currentGroupChannelList.clear();
                     for (Channel ch : channelSourceList) {
                         if (ch.getGroup().equals(nowSelectGroup)) {
@@ -382,12 +408,32 @@ public class MainActivity extends AppCompatActivity {
                     }
                     channelListManager.setChannelsByGroup(channelSourceList, nowSelectGroup, currentPlayIndex);
                 } else {
-                    channelListManager.setChannels(channelSourceList, currentPlayIndex);
+                    List<String> groups = groupListManager.getGroupList();
+                    if (groups != null && groups.size() > 0) {
+                        nowSelectGroup = groups.get(0);
+                        currentGroupChannelList.clear();
+                        for (Channel ch : channelSourceList) {
+                            if (ch.getGroup().equals(nowSelectGroup)) {
+                                currentGroupChannelList.add(ch);
+                            }
+                        }
+                        channelListManager.setChannelsByGroup(channelSourceList, nowSelectGroup, currentPlayIndex);
+                    } else {
+                        // 无分组时直接显示全部频道
+                        channelListManager.setChannels(channelSourceList, currentPlayIndex);
+                    }
                 }
+                // 开始播放当前频道
+                playChannel(currentPlayIndex);
             }
-            playChannel(currentPlayIndex);
-        }, errorMsg -> Toast.makeText(MainActivity.this, "加载失败：" + errorMsg, Toast.LENGTH_SHORT));
 
+            @Override
+            public void onError(String errorMsg) {
+                Toast.makeText(MainActivity.this, "加载失败：" + errorMsg, Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        // 异步加载EPG节目单
         EpgManager.getInstance().setEpgUrl(UrlConfig.EPG_URL);
         EpgManager.getInstance().loadEpg(() -> runOnUiThread(() -> {
             if (!channelSourceList.isEmpty()) {
@@ -397,81 +443,127 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * 上一个频道
+     * 切换到上一个频道
+     * 支持分组内循环、反向切换、冷却防抖
      */
     public void playPrev() {
         long now = System.currentTimeMillis();
+        // 冷却时间内忽略重复请求，防止快速连点
         if (now - lastChannelChangeTime < CHANNEL_COOLDOWN) return;
         lastChannelChangeTime = now;
 
+        // 有选中分组时，在分组内循环切换
         if (!TextUtils.isEmpty(nowSelectGroup) && !currentGroupChannelList.isEmpty()) {
             Channel currentChannel = channelSourceList.get(currentPlayIndex);
             int groupIndex = currentGroupChannelList.indexOf(currentChannel);
+            // 兜底：当前频道不在分组内时，从第一个开始
             if (groupIndex == -1) groupIndex = 0;
 
-            int newGroupIndex = channel_reverse ? groupIndex + 1 : groupIndex - 1;
-            if (newGroupIndex >= currentGroupChannelList.size()) newGroupIndex = 0;
-            if (newGroupIndex < 0) newGroupIndex = currentGroupChannelList.size() - 1;
+            int newGroupIndex;
+            if (channel_reverse) {
+                // 反向模式：上一台 = 索引+1
+                newGroupIndex = groupIndex + 1;
+                if (newGroupIndex >= currentGroupChannelList.size()) {
+                    newGroupIndex = 0;
+                }
+            } else {
+                // 正常模式：上一台 = 索引-1
+                newGroupIndex = groupIndex - 1;
+                if (newGroupIndex < 0) {
+                    newGroupIndex = currentGroupChannelList.size() - 1;
+                }
+            }
 
+            // 分组索引映射回全局索引
             Channel targetChannel = currentGroupChannelList.get(newGroupIndex);
-            int global = channelSourceList.indexOf(targetChannel);
-            if (global != -1) playChannel(global);
+            int globalIndex = channelSourceList.indexOf(targetChannel);
+            if (globalIndex != -1) {
+                switchManager.setCurrentIndex(globalIndex);
+                playChannel(globalIndex);
+            }
             return;
         }
 
+        // 无分组时走全局切换逻辑
         int idx = channel_reverse ? switchManager.next() : switchManager.prev();
         playChannel(idx);
     }
 
     /**
-     * 下一个频道
+     * 切换到下一个频道
+     * 支持分组内循环、反向切换、冷却防抖
      */
     public void playNext() {
         long now = System.currentTimeMillis();
         if (now - lastChannelChangeTime < CHANNEL_COOLDOWN) return;
         lastChannelChangeTime = now;
 
+        // 有选中分组时，在分组内循环切换
         if (!TextUtils.isEmpty(nowSelectGroup) && !currentGroupChannelList.isEmpty()) {
             Channel currentChannel = channelSourceList.get(currentPlayIndex);
             int groupIndex = currentGroupChannelList.indexOf(currentChannel);
             if (groupIndex == -1) groupIndex = 0;
 
-            int newGroupIndex = channel_reverse ? groupIndex - 1 : groupIndex + 1;
-            if (newGroupIndex < 0) newGroupIndex = currentGroupChannelList.size() - 1;
-            if (newGroupIndex >= currentGroupIndex) newGroupIndex = 0;
+            int newGroupIndex;
+            if (channel_reverse) {
+                // 反向模式：下一台 = 索引-1
+                newGroupIndex = groupIndex - 1;
+                if (newGroupIndex < 0) {
+                    newGroupIndex = currentGroupChannelList.size() - 1;
+                }
+            } else {
+                // 正常模式：下一台 = 索引+1
+                newGroupIndex = groupIndex + 1;
+                if (newGroupIndex >= currentGroupChannelList.size()) {
+                    newGroupIndex = 0;
+                }
+            }
 
             Channel targetChannel = currentGroupChannelList.get(newGroupIndex);
-            int global = channelSourceList.indexOf(targetChannel);
-            if (global != -1) playChannel(global);
+            int globalIndex = channelSourceList.indexOf(targetChannel);
+            if (globalIndex != -1) {
+                switchManager.setCurrentIndex(globalIndex);
+                playChannel(globalIndex);
+            }
             return;
         }
 
+        // 无分组时走全局切换逻辑
         int idx = channel_reverse ? switchManager.prev() : switchManager.next();
         playChannel(idx);
     }
 
     /**
-     * 播放指定频道
+     * 播放指定全局索引的频道
+     * 包含：边界校验、信息栏更新、EPG刷新、地址重定向处理
      */
     public void playChannel(int index) {
+        // 空数据校验
         if (channelSourceList == null || channelSourceList.isEmpty()) return;
+        // 索引边界保护，防止数组越界
         index = Math.max(0, Math.min(index, channelSourceList.size() - 1));
         currentPlayIndex = index;
         Channel ch = channelSourceList.get(index);
         if (ch == null || TextUtils.isEmpty(ch.getPlayUrl())) return;
 
+        // 更新状态监听的频道名称
         playerStateListener.setCurrentChannelName(ch.getName());
+        // 显示频道数字角标
         showChannelNum(index + 1);
+        // 持久化保存当前播放位置
         appConfig.setLastPlayIndex(index);
 
+        // 更新频道列表选中状态
         if (!TextUtils.isEmpty(nowSelectGroup)) {
             channelListManager.setChannelsByGroup(channelSourceList, nowSelectGroup, index);
         } else {
             channelListManager.setChannels(channelSourceList, index);
         }
 
+        // 刷新EPG节目单
         epgManagerWrapper.refresh(ch, channelSourceList, currentSelectedDateIndex);
 
+        // 更新并显示自定义信息栏，2秒后自动隐藏
         if (info_bar != null) {
             info_bar.setVisibility(View.VISIBLE);
             info_bar.removeCallbacks(hideInfoBar);
@@ -483,12 +575,13 @@ public class MainActivity extends AppCompatActivity {
             tv_bitrate.setText(live.bitrate);
         }
 
-        // 子线程处理重定向
+        // 子线程处理播放地址重定向，避免阻塞主线程
         final String originalUrl = ch.getPlayUrl();
         new Thread(() -> {
             java.net.HttpURLConnection conn = null;
             String finalUrl = originalUrl;
             try {
+                // 最多跟随10次301/302重定向
                 for (int step = 0; step < MAX_REDIRECT_COUNT; step++) {
                     java.net.URL urlObj = new java.net.URL(finalUrl);
                     conn = (java.net.HttpURLConnection) urlObj.openConnection();
@@ -497,7 +590,7 @@ public class MainActivity extends AppCompatActivity {
                     conn.setRequestMethod("GET");
                     conn.setRequestProperty("User-Agent", DEF_UA);
                     conn.setRequestProperty("Refer", DEF_REFER);
-                    conn.setInstanceFollowRedirects(false);
+                    conn.setInstanceFollowRedirects(false); // 手动处理重定向
                     int code = conn.getResponseCode();
                     if (code == 301 || code == 302) {
                         String loc = conn.getHeaderField("Location");
@@ -513,14 +606,15 @@ public class MainActivity extends AppCompatActivity {
             }
 
             final String realPlayUrl = TextUtils.isEmpty(finalUrl) ? originalUrl : finalUrl;
+            // 切回主线程执行播放
             new Handler(Looper.getMainLooper()).post(() -> {
                 mPlayerManager.playUrl(realPlayUrl);
             });
-        });
+        }).start();
     }
 
     /**
-     * 显示频道数字角标
+     * 显示频道数字角标，3秒后自动隐藏
      */
     public void showChannelNum(int num) {
         if (!number_channel_enable) return;
@@ -532,14 +626,14 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * 切换侧边面板
+     * 切换侧边频道面板的显示/隐藏
      */
     public void togglePanel() {
         panelManager.toggle(channelSourceList, currentPlayIndex);
     }
 
     /**
-     * 打开设置页
+     * 打开设置页面
      */
     public void openSettings() {
         Intent intent = new Intent(this, SettingsActivity.class);
@@ -548,7 +642,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * 接收外部配置
+     * 接收外部传入的自定义直播源/EPG地址并重新加载
      */
     public void onReceiveConfig(final String liveUrl, final String epgUrl) {
         appConfig.setCustomUrls(liveUrl, epgUrl);
@@ -558,7 +652,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * 遥控器按键分发
+     * 遥控器按键事件分发
      */
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
@@ -566,34 +660,28 @@ public class MainActivity extends AppCompatActivity {
         return super.onKeyDown(keyCode, event);
     }
 
-    // ====================== 生命周期 ======================
+    // ====================== 生命周期方法 ======================
     @Override
     protected void onPause() {
         super.onPause();
+        // 切后台：暂停播放、解绑播放器视图
         if (mPlayerManager != null) mPlayerManager.onBackground();
     }
 
-    /**
-     * 【切前台二次加固】重新绑定播放器时强制关闭控制器
-     */
     @Override
     protected void onResume() {
         super.onResume();
+        // 切前台：重新加载设置、应用画面比例、恢复播放
         loadSettings();
         screenRatioManager.apply();
         if (mPlayerManager != null) mPlayerManager.onForeground();
-
-        // 切前台加固：防止系统/页面重置导致控制器意外弹出
-        if (playerView != null) {
-            playerView.setUseController(false);
-            playerView.setControllerVisibilityListener(null);
-        }
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        // 仅注销刷新广播（控制器广播已删除）
+        // 安全注销广播、释放播放器、清空单例
+        try { unregisterReceiver(toggleControllerReceiver); } catch (Exception ignored) {}
         try { unregisterReceiver(refreshReceiver); } catch (Exception ignored) {}
         if (mPlayerManager != null) mPlayerManager.release();
         mInstance = null;

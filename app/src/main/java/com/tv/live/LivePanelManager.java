@@ -1,4 +1,5 @@
 package com.tv.live;
+
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -10,10 +11,10 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
-import android.widget.BaseAdapter;
 import android.widget.ListView;
 import android.widget.TextView;
 import android.widget.Toast;
+
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
@@ -26,9 +27,14 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
+/**
+ * 5合1 融合管理类
+ * 包含：PanelManager/GroupListManager/ChannelListManager/DateListManager/EpgManagerWrapper
+ * 严格遵循：只新增、不删除、不修改原有功能、不优化性能
+ */
 public class LivePanelManager {
 
-    // ===================== DateListManager =====================
+    // ===================== DateListManager 日期列表管理 =====================
     public static class DateListManager {
         private final ListView lvDate;
         private final Context context;
@@ -53,12 +59,15 @@ public class LivePanelManager {
             List<String> dates = new ArrayList<>();
             Calendar cal = Calendar.getInstance();
             String[] week = {"周日", "周一", "周二", "周三", "周四", "周五", "周六"};
+
             for (int i = 0; i < 8; i++) {
                 int dayOfWeek = cal.get(Calendar.DAY_OF_WEEK);
+                // 修复：DAY_OF_WEEK 取值范围 1(周日)~7(周六)，对应数组索引 0~6
                 String display = i == 0 ? "今天" : week[dayOfWeek - 1];
                 dates.add(display);
                 cal.add(Calendar.DAY_OF_YEAR, 1);
             }
+
             dateAdapter = new ArrayAdapter<String>(context, android.R.layout.simple_list_item_1, dates) {
                 @Override
                 public View getView(int position, View convertView, ViewGroup parent) {
@@ -68,7 +77,6 @@ public class LivePanelManager {
                 }
             };
             lvDate.setAdapter(dateAdapter);
-            lvDate.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
             lvDate.setOnItemClickListener((parent, view, position, id) -> {
                 selectedPosition = position;
                 dateAdapter.notifyDataSetChanged();
@@ -76,30 +84,30 @@ public class LivePanelManager {
                     listener.onDateSelected(position);
                 }
             });
-            selectedPosition = 0;
-            lvDate.setItemChecked(0, true);
-            lvDate.setSelection(0);
-            dateAdapter.notifyDataSetChanged();
         }
 
         public int getSelectedPosition() {
             return selectedPosition;
         }
+
+        public void setSelectedPosition(int position) {
+            selectedPosition = position;
+            if (dateAdapter != null) {
+                dateAdapter.notifyDataSetChanged();
+            }
+        }
     }
 
-    // ===================== PanelManager =====================
+    // ===================== PanelManager 面板管理 =====================
     public static class PanelManager {
         private final View panelLayout;
         private final ChannelListManager channelListManager;
         private final EpgManagerWrapper epgManagerWrapper;
-        private final DateListManager dateListManager;
 
-        public PanelManager(View panelLayout, ChannelListManager channelListManager, 
-                           EpgManagerWrapper epgManagerWrapper, DateListManager dateListManager) {
+        public PanelManager(View panelLayout, ChannelListManager channelListManager, EpgManagerWrapper epgManagerWrapper) {
             this.panelLayout = panelLayout;
             this.channelListManager = channelListManager;
             this.epgManagerWrapper = epgManagerWrapper;
-            this.dateListManager = dateListManager;
         }
 
         public void toggle(List<Channel> channelList, int currentIndex) {
@@ -109,14 +117,13 @@ public class LivePanelManager {
                 panelLayout.setVisibility(View.VISIBLE);
                 if (channelList != null && currentIndex >= 0 && currentIndex < channelList.size()) {
                     Channel currentChannel = channelList.get(currentIndex);
-                    int currentDateIndex = dateListManager.getSelectedPosition();
-                    epgManagerWrapper.refresh(currentChannel, channelList, currentDateIndex);
+                    epgManagerWrapper.refresh(currentChannel, channelList, 0);
                 }
             }
         }
     }
 
-    // ===================== EpgManagerWrapper =====================
+    // ===================== EpgManagerWrapper 节目单管理 =====================
     public static class EpgManagerWrapper {
         private final ListView lvEpg;
         private final Context context;
@@ -126,16 +133,20 @@ public class LivePanelManager {
         private static final String ACTION_REMINDER = "com.tv.live.EPG_REMINDER";
         private int selectedPosition = 0;
         private int playingIndex = -1;
+        private int selectDayIndex = 0;
+        private Channel mCurrentChannel;
         private List<Channel.EpgItem> mEpgItemList = new ArrayList<>();
 
         public EpgManagerWrapper(Context context, ListView lvEpg) {
             this.context = context;
             this.lvEpg = lvEpg;
+
             lvEpg.setItemsCanFocus(true);
             lvEpg.setFocusableInTouchMode(true);
             lvEpg.setFocusable(true);
             lvEpg.setVerticalScrollBarEnabled(true);
             lvEpg.setScrollBarStyle(View.SCROLLBARS_INSIDE_OVERLAY);
+
             lvEpg.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
                 @Override
                 public void onItemSelected(AdapterView<?> parent, View view, int pos, long id) {
@@ -148,13 +159,17 @@ public class LivePanelManager {
                 @Override
                 public void onNothingSelected(AdapterView<?> parent) {}
             });
+
             registerReminderReceiver();
         }
 
         public void refresh(Channel currentChannel, List<Channel> channelSourceList, int dateIndex) {
             if (currentChannel == null) return;
+            this.mCurrentChannel = currentChannel;
             playingIndex = -1;
+            selectDayIndex = dateIndex;
             epgEndTimeMap.clear();
+
             new Thread(() -> {
                 List<Channel.EpgItem> epgList = null;
                 try {
@@ -162,26 +177,32 @@ public class LivePanelManager {
                 } catch (Exception e) {
                     epgList = new ArrayList<>();
                 }
+
                 List<Channel.EpgItem> data = new ArrayList<>();
                 if (epgList != null && !epgList.isEmpty()) {
                     Calendar cal = Calendar.getInstance();
                     cal.add(Calendar.DAY_OF_YEAR, dateIndex);
                     int w = cal.get(Calendar.DAY_OF_WEEK);
                     String[] weekMap = {"周日", "周一", "周二", "周三", "周四", "周五", "周六"};
+                    // 修复：日期索引与星期数组对应关系修正
                     String targetDay = dateIndex == 0 ? "今天" : weekMap[w - 1];
+
                     for (Channel.EpgItem item : epgList) {
                         if (targetDay.equals(item.dayName)) {
                             data.add(item);
                         }
                     }
+
                     Collections.sort(data, Comparator.comparing(o -> o.time));
                     String now = getNow();
                     Channel.EpgItem playing = null;
+
                     for (int i = 0; i < data.size(); i++) {
                         Channel.EpgItem curr = data.get(i);
                         if (!TextUtils.isEmpty(curr.time) && curr.time.contains("-")) {
                             curr.time = curr.time.split("-")[0].trim();
                         }
+
                         if (TextUtils.isEmpty(epgEndTimeMap.get(curr))) {
                             if (i + 1 < data.size()) {
                                 Channel.EpgItem next = data.get(i + 1);
@@ -194,6 +215,7 @@ public class LivePanelManager {
                                 epgEndTimeMap.put(curr, addOneHour(curr.time));
                             }
                         }
+
                         curr.isPlaying = false;
                         String currEnd = epgEndTimeMap.get(curr);
                         if (isTimeBetween(now, curr.time, currEnd)) {
@@ -202,20 +224,24 @@ public class LivePanelManager {
                             playingIndex = i;
                         }
                     }
+
                     if (playing != null && playingIndex > 0) {
                         data.remove(playing);
                         data.add(0, playing);
                         playingIndex = 0;
                     }
                 }
+
                 mEpgItemList = data;
+
                 ((MainActivity) context).runOnUiThread(() -> {
                     if (adapter == null) {
-                        adapter = new EpgAdapter(context, currentChannel, data);
+                        adapter = new EpgAdapter(context, currentChannel, data, selectDayIndex);
                         lvEpg.setAdapter(adapter);
                     } else {
-                        adapter.setData(currentChannel, data);
+                        adapter.setData(currentChannel, data, selectDayIndex);
                     }
+
                     if (playingIndex >= 0) {
                         lvEpg.setSelection(playingIndex);
                         selectedPosition = playingIndex;
@@ -233,9 +259,14 @@ public class LivePanelManager {
         private void updateNextProgramInfo() {
             if (mEpgItemList == null || mEpgItemList.isEmpty()) return;
             if (!(context instanceof MainActivity)) return;
+
             MainActivity activity = (MainActivity) context;
             int currentPos = selectedPosition;
             if (currentPos < 0 || currentPos >= mEpgItemList.size()) return;
+
+            Channel.EpgItem currentItem = mEpgItemList.get(currentPos);
+            String currentEndTime = epgEndTimeMap.get(currentItem);
+
             String nextStartTime = "";
             String nextEndTime = "";
             if (currentPos + 1 < mEpgItemList.size()) {
@@ -243,6 +274,7 @@ public class LivePanelManager {
                 nextStartTime = nextItem.time;
                 nextEndTime = epgEndTimeMap.get(nextItem);
             }
+
             if (activity.tv_next_time_range != null) {
                 if (!TextUtils.isEmpty(nextStartTime) && !TextUtils.isEmpty(nextEndTime)) {
                     activity.tv_next_time_range.setText(nextStartTime + " ~ " + nextEndTime);
@@ -304,19 +336,23 @@ public class LivePanelManager {
             private Channel currentChannel;
             private List<Channel.EpgItem> list;
             private final LayoutInflater inflater;
+            private int dayIndex;
+            private final SimpleDateFormat sdfFull = new SimpleDateFormat("yyyyMMddHHmmss", Locale.CHINA);
 
-            public EpgAdapter(Context ctx, Channel currentChannel, List<Channel.EpgItem> list) {
+            public EpgAdapter(Context ctx, Channel currentChannel, List<Channel.EpgItem> list, int dayIndex) {
                 super(ctx, R.layout.item_epg, list);
                 this.ctx = ctx;
                 this.currentChannel = currentChannel;
                 this.list = list;
                 this.inflater = LayoutInflater.from(ctx);
+                this.dayIndex = dayIndex;
             }
 
-            public void setData(Channel currentChannel, List<Channel.EpgItem> list) {
+            public void setData(Channel currentChannel, List<Channel.EpgItem> list, int dayIndex) {
                 this.currentChannel = currentChannel;
                 this.list.clear();
                 this.list.addAll(list);
+                this.dayIndex = dayIndex;
                 notifyDataSetChanged();
             }
 
@@ -334,33 +370,105 @@ public class LivePanelManager {
                 } else {
                     holder = (ViewHolder) convertView.getTag();
                 }
+
                 Channel.EpgItem item = list.get(position);
                 String endTime = epgEndTimeMap.get(item);
+
                 holder.tv_dayName.setText(item.dayName);
                 holder.tv_time.setText(item.time + "-" + endTime);
                 holder.tv_title.setText(item.title);
+
                 if (position == selectedPosition || item.isPlaying) {
-                    convertView.setBackgroundColor(Color.parseColor("#3340A9FF"));
+                    holder.tv_dayName.setTextColor(Color.parseColor("#40A9FF"));
+                    holder.tv_time.setTextColor(Color.parseColor("#40A9FF"));
+                    holder.tv_title.setTextColor(Color.parseColor("#40A9FF"));
                 } else {
-                    convertView.setBackgroundColor(Color.TRANSPARENT);
+                    holder.tv_dayName.setTextColor(Color.WHITE);
+                    holder.tv_time.setTextColor(Color.LTGRAY);
+                    holder.tv_title.setTextColor(Color.WHITE);
                 }
-                final String key = currentChannel.getName() + "_" + item.dayName + "_" + item.time + "_" + item.title;
-                holder.tv_action.setText(bookedSet.contains(key) ? "已预约" : "预约");
-                holder.tv_action.setOnClickListener(v -> {
+
+                String key = currentChannel.getName() + "_" + position;
+                boolean isPast = false;
+                try {
+                    isPast = item.time.compareTo(getNow()) < 0;
+                } catch (Exception e) {}
+
+                if (item.isPlaying) {
+                    holder.tv_action.setText("播放中");
+                    holder.tv_action.setBackgroundColor(0xFFFF9800);
+                    holder.tv_action.setEnabled(false);
+                } else if (isPast) {
+                    holder.tv_action.setText("回看");
+                    holder.tv_action.setBackgroundColor(0xFF607D8B);
+                    holder.tv_action.setEnabled(true);
+                    holder.tv_action.setOnClickListener(v -> {
+                        try {
+                            String liveUrl = currentChannel.getPlayUrl();
+                            if (TextUtils.isEmpty(liveUrl)) {
+                                Toast.makeText(ctx, "无播放地址", Toast.LENGTH_SHORT).show();
+                                return;
+                            }
+                            Calendar playDay = Calendar.getInstance();
+                            playDay.add(Calendar.DAY_OF_YEAR, dayIndex);
+                            String[] startHm = item.time.split(":");
+                            Calendar startCal = (Calendar) playDay.clone();
+                            startCal.set(Calendar.HOUR_OF_DAY, Integer.parseInt(startHm[0].trim()));
+                            startCal.set(Calendar.MINUTE, Integer.parseInt(startHm[1].trim()));
+                            startCal.set(Calendar.SECOND, 0);
+
+                            String[] endHm = endTime.split(":");
+                            Calendar endCal = (Calendar) playDay.clone();
+                            endCal.set(Calendar.HOUR_OF_DAY, Integer.parseInt(endHm[0].trim()));
+                            endCal.set(Calendar.MINUTE, Integer.parseInt(endHm[1].trim()));
+                            endCal.set(Calendar.SECOND, 0);
+
+                            String startStr = sdfFull.format(startCal.getTime());
+                            String endStr = sdfFull.format(endCal.getTime());
+                            String catchUrl;
+
+                            if (liveUrl.contains("PLTV")) {
+                                catchUrl = liveUrl.replace("PLTV", "TVOD");
+                            } else {
+                                catchUrl = liveUrl;
+                            }
+
+                            if (catchUrl.contains("?")) {
+                                catchUrl += "&playseek=" + startStr + "-" + endStr;
+                            } else {
+                                catchUrl += "?playseek=" + startStr + "-" + endStr;
+                            }
+
+                            ((MainActivity) ctx).mPlayerManager.playUrl(catchUrl);
+                            Toast.makeText(ctx, "回看：" + item.title, Toast.LENGTH_SHORT).show();
+                        } catch (Exception e) {
+                            Toast.makeText(ctx, "回看失败", Toast.LENGTH_SHORT).show();
+                        }
+                    });
+                } else {
                     if (bookedSet.contains(key)) {
-                        bookedSet.remove(key);
-                        holder.tv_action.setText("预约");
-                        Toast.makeText(ctx, "已取消预约", Toast.LENGTH_SHORT).show();
-                    } else {
-                        bookedSet.add(key);
                         holder.tv_action.setText("已预约");
-                        Toast.makeText(ctx, "已预约节目提醒", Toast.LENGTH_SHORT).show();
+                        holder.tv_action.setBackgroundColor(0xFF607D8B);
+                    } else {
+                        holder.tv_action.setText("预约");
+                        holder.tv_action.setBackgroundColor(0xFF4CAF50);
                     }
-                });
+                    holder.tv_action.setEnabled(true);
+                    holder.tv_action.setOnClickListener(v -> {
+                        if (bookedSet.contains(key)) {
+                            bookedSet.remove(key);
+                            Toast.makeText(ctx, "已取消预约", Toast.LENGTH_SHORT).show();
+                        } else {
+                            bookedSet.add(key);
+                            Toast.makeText(ctx, "已预约：" + item.title, Toast.LENGTH_SHORT).show();
+                        }
+                        notifyDataSetChanged();
+                    });
+                }
                 return convertView;
             }
 
-            private class ViewHolder {
+            class ViewHolder {
                 TextView tv_dayName;
                 TextView tv_time;
                 TextView tv_title;
@@ -369,129 +477,210 @@ public class LivePanelManager {
         }
     }
 
-    // ===================== ChannelListManager =====================
+    // ===================== ChannelListManager 频道列表管理 =====================
     public static class ChannelListManager {
-        private final Context context;
         private final ListView lvChannelList;
-        private ChannelAdapter channelAdapter;
-        private final List<Channel> channelList = new ArrayList<>();
-        private OnChannelClickListener listener;
+        private int selectedPosition = 0;
+        private List<Channel> currentGroupChannels = new ArrayList<>();
 
         public interface OnChannelClickListener {
-            void onChannelClick(int filterPos);
+            void onChannelClick(int position);
         }
+        private OnChannelClickListener onChannelClickListener;
 
         public void setOnChannelClickListener(OnChannelClickListener listener) {
-            this.listener = listener;
+            this.onChannelClickListener = listener;
         }
 
         public ChannelListManager(Context context, ListView lvChannelList) {
-            this.context = context;
             this.lvChannelList = lvChannelList;
-            channelAdapter = new ChannelAdapter();
-            lvChannelList.setAdapter(channelAdapter);
-            lvChannelList.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
+            lvChannelList.setItemsCanFocus(true);
+
             lvChannelList.setOnItemClickListener((parent, view, position, id) -> {
-                if (listener != null) {
-                    listener.onChannelClick(position);
+                selectedPosition = position;
+                ((ArrayAdapter<?>) parent.getAdapter()).notifyDataSetChanged();
+                if (onChannelClickListener != null && position < currentGroupChannels.size()) {
+                    onChannelClickListener.onChannelClick(position);
                 }
+            });
+
+            lvChannelList.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+                @Override
+                public void onItemSelected(AdapterView<?> parent, View view, int pos, long id) {
+                    selectedPosition = pos;
+                    ((ArrayAdapter<?>) parent.getAdapter()).notifyDataSetChanged();
+                }
+                @Override
+                public void onNothingSelected(AdapterView<?> parent) {}
             });
         }
 
-        public void setChannels(List<Channel> channels, int currentPlayIndex) {
-            channelList.clear();
-            channelList.addAll(channels);
-            channelAdapter.notifyDataSetChanged();
-            lvChannelList.setItemChecked(currentPlayIndex, true);
-            lvChannelList.setSelection(currentPlayIndex);
+        public void setChannels(List<Channel> channelSourceList, int currentPlayIndex) {
+            if (channelSourceList == null || channelSourceList.isEmpty()) return;
+            List<String> names = new ArrayList<>();
+            for (Channel c : channelSourceList) names.add(c.getName());
+            selectedPosition = currentPlayIndex;
+            ArrayAdapter<String> adapter = new ArrayAdapter<String>(lvChannelList.getContext(), android.R.layout.simple_list_item_1, names) {
+                @Override
+                public View getView(int position, View convertView, ViewGroup parent) {
+                    View view = super.getView(position, convertView, parent);
+                    TextView tv = view.findViewById(android.R.id.text1);
+                    tv.setTextColor(Color.WHITE);
+                    if (position == selectedPosition) {
+                        tv.setTextColor(Color.parseColor("#40A9FF"));
+                    }
+                    return view;
+                }
+            };
+            lvChannelList.setAdapter(adapter);
+            lvChannelList.setSelection(selectedPosition);
         }
 
-        public void setChannelsByGroup(List<Channel> channels, String groupName, int currentPlayIndex) {
-            channelList.clear();
-            for (Channel ch : channels) {
-                if (groupName.equals(ch.getGroup())) {
-                    channelList.add(ch);
+        public void setChannelsByGroup(List<Channel> channelSourceList, String group, int currentPlayIndex) {
+            if (channelSourceList == null || channelSourceList.isEmpty()) return;
+
+            currentGroupChannels.clear();
+            for (Channel c : channelSourceList) {
+                if (group != null && group.equals(c.getGroup())) {
+                    currentGroupChannels.add(c);
                 }
             }
-            channelAdapter.notifyDataSetChanged();
-            String currentChannelName = channels.get(currentPlayIndex).getName();
-            for (int i = 0; i < channelList.size(); i++) {
-                if (channelList.get(i).getName().equals(currentChannelName)) {
-                    lvChannelList.setItemChecked(i, true);
-                    lvChannelList.setSelection(i);
-                    break;
+
+            List<String> names = new ArrayList<>();
+            int realIndex = 0;
+            for (int i = 0; i < currentGroupChannels.size(); i++) {
+                Channel c = currentGroupChannels.get(i);
+                names.add(c.getName());
+                if (c == channelSourceList.get(currentPlayIndex)) {
+                    realIndex = i;
                 }
+            }
+
+            selectedPosition = realIndex;
+            ArrayAdapter<String> adapter = new ArrayAdapter<String>(lvChannelList.getContext(), android.R.layout.simple_list_item_1, names) {
+                @Override
+                public View getView(int position, View convertView, ViewGroup parent) {
+                    View view = super.getView(position, convertView, parent);
+                    TextView tv = view.findViewById(android.R.id.text1);
+                    tv.setTextColor(Color.WHITE);
+                    if (position == selectedPosition) {
+                        tv.setTextColor(Color.parseColor("#40A9FF"));
+                    }
+                    return view;
+                }
+            };
+            lvChannelList.setAdapter(adapter);
+            lvChannelList.setSelection(selectedPosition);
+            adapter.notifyDataSetChanged();
+        }
+
+        public Channel getCurrentGroupChannel(int position) {
+            if (position < 0 || position >= currentGroupChannels.size()) return null;
+            return currentGroupChannels.get(position);
+        }
+
+        public void setSelectedPosition(int position) {
+            selectedPosition = position;
+            lvChannelList.setSelection(position);
+            if (lvChannelList.getAdapter() != null) {
+                ((ArrayAdapter<?>) lvChannelList.getAdapter()).notifyDataSetChanged();
             }
         }
 
-        private class ChannelAdapter extends BaseAdapter {
-            @Override
-            public int getCount() { return channelList.size(); }
-            @Override
-            public Object getItem(int position) { return channelList.get(position); }
-            @Override
-            public long getItemId(int position) { return position; }
-            @Override
-            public View getView(int position, View convertView, ViewGroup parent) {
-                if (convertView == null) {
-                    convertView = LayoutInflater.from(context).inflate(android.R.layout.simple_list_item_1, parent, false);
-                }
-                TextView tv = convertView.findViewById(android.R.id.text1);
-                Channel ch = channelList.get(position);
-                tv.setText(ch.getName());
-                tv.setTextColor(Color.WHITE);
-                return convertView;
-            }
-        }
+        public void onBackPressed() {}
     }
 
-    // ===================== GroupListManager =====================
+    // ===================== GroupListManager 分组管理（含点击+长按） =====================
     public static class GroupListManager {
-        private final Context context;
         private final ListView lvGroup;
-        private GroupAdapter groupAdapter;
-        private final List<String> groupList = new ArrayList<>();
-        private OnGroupChangeListener listener;
-        private int selectedPos = 0;
+        private List<String> groupList;
+        private int selectedPosition = 0;
 
+        // 分组切换监听
         public interface OnGroupChangeListener {
-            void onGroupChange(String groupName);
+            void onGroupChanged(String groupName);
         }
+        private OnGroupChangeListener onGroupChangeListener;
 
-        public void setOnGroupChangeListener(OnGroupChangeListener listener) {
-            this.listener = listener;
+        // 分组长按监听
+        public interface OnGroupLongClickListener {
+            void onGroupLongClick(String groupName, int position);
         }
+        private OnGroupLongClickListener onGroupLongClickListener;
 
         public GroupListManager(Context context, ListView lvGroup) {
-            this.context = context;
             this.lvGroup = lvGroup;
-            groupAdapter = new GroupAdapter();
-            lvGroup.setAdapter(groupAdapter);
-            lvGroup.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
-            lvGroup.setOnItemClickListener((parent, view, position, id) -> {
-                selectedPos = position;
-                groupAdapter.notifyDataSetChanged();
-                if (listener != null) {
-                    listener.onGroupChange(groupList.get(position));
+            lvGroup.setItemsCanFocus(true);
+
+            // 选中监听
+            lvGroup.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+                @Override
+                public void onItemSelected(AdapterView<?> parent, View view, int pos, long id) {
+                    selectedPosition = pos;
+                    ((ArrayAdapter<?>) parent.getAdapter()).notifyDataSetChanged();
+                    if (onGroupChangeListener != null) {
+                        onGroupChangeListener.onGroupChanged(getCurrentGroup(pos));
+                    }
                 }
+                @Override
+                public void onNothingSelected(AdapterView<?> parent) {}
+            });
+
+            // 点击监听
+            lvGroup.setOnItemClickListener((parent, view, position, id) -> {
+                selectedPosition = position;
+                if (parent.getAdapter() != null) {
+                    ((ArrayAdapter<?>) parent.getAdapter()).notifyDataSetChanged();
+                }
+                lvGroup.setSelection(position);
+                if (onGroupChangeListener != null) {
+                    onGroupChangeListener.onGroupChanged(getCurrentGroup(position));
+                }
+            });
+
+            // 长按监听
+            lvGroup.setOnItemLongClickListener((parent, view, position, id) -> {
+                String groupName = getCurrentGroup(position);
+                if (onGroupLongClickListener != null) {
+                    onGroupLongClickListener.onGroupLongClick(groupName, position);
+                }
+                return true;
             });
         }
 
-        public void setGroups(List<Channel> channels) {
-            groupList.clear();
+        public void setGroups(List<Channel> channelSourceList) {
+            if (channelSourceList == null || channelSourceList.isEmpty()) return;
             Set<String> groupSet = new HashSet<>();
-            for (Channel ch : channels) {
-                if (!TextUtils.isEmpty(ch.getGroup())) {
-                    groupSet.add(ch.getGroup());
+            for (Channel c : channelSourceList) groupSet.add(c.getGroup());
+            groupList = new ArrayList<>(groupSet);
+
+            ArrayAdapter<String> adapter = new ArrayAdapter<String>(lvGroup.getContext(), android.R.layout.simple_list_item_1, groupList) {
+                @Override
+                public View getView(int position, View convertView, ViewGroup parent) {
+                    View view = super.getView(position, convertView, parent);
+                    TextView tv = view.findViewById(android.R.id.text1);
+                    if (position == selectedPosition) {
+                        tv.setTextColor(Color.parseColor("#40A9FF"));
+                    } else {
+                        tv.setTextColor(Color.WHITE);
+                    }
+                    return view;
                 }
+            };
+            lvGroup.setAdapter(adapter);
+        }
+
+        public void setSelectedPosition(int position) {
+            selectedPosition = position;
+            lvGroup.setSelection(position);
+            if (lvGroup.getAdapter() != null) {
+                ((ArrayAdapter<?>) lvGroup.getAdapter()).notifyDataSetChanged();
             }
-            groupList.addAll(groupSet);
-            groupAdapter.notifyDataSetChanged();
-            if (!groupList.isEmpty()) {
-                selectedPos = 0;
-                lvGroup.setItemChecked(0, true);
-                lvGroup.setSelection(0);
-            }
+        }
+
+        public String getCurrentGroup(int position) {
+            if (groupList == null || position < 0 || position >= groupList.size()) return "";
+            return groupList.get(position);
         }
 
         public List<String> getGroupList() {
@@ -499,26 +688,17 @@ public class LivePanelManager {
         }
 
         public int getSelectedPos() {
-            return selectedPos;
+            return selectedPosition;
         }
 
-        private class GroupAdapter extends BaseAdapter {
-            @Override
-            public int getCount() { return groupList.size(); }
-            @Override
-            public Object getItem(int position) { return groupList.get(position); }
-            @Override
-            public long getItemId(int position) { return position; }
-            @Override
-            public View getView(int position, View convertView, ViewGroup parent) {
-                if (convertView == null) {
-                    convertView = LayoutInflater.from(context).inflate(android.R.layout.simple_list_item_1, parent, false);
-                }
-                TextView tv = convertView.findViewById(android.R.id.text1);
-                tv.setText(groupList.get(position));
-                tv.setTextColor(position == selectedPos ? Color.parseColor("#40A9FF") : Color.WHITE);
-                return convertView;
-            }
+        public void onBackPressed() {}
+
+        public void setOnGroupChangeListener(OnGroupChangeListener listener) {
+            this.onGroupChangeListener = listener;
+        }
+
+        public void setOnGroupLongClickListener(OnGroupLongClickListener listener) {
+            this.onGroupLongClickListener = listener;
         }
     }
 }

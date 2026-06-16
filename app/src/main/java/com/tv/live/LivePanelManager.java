@@ -428,7 +428,8 @@ public class LivePanelManager {
             channelAdapter.notifyDataSetChanged();
             // 定位当前播放频道在分组中的位置
             for (int i = 0; i < channelList.size(); i++) {
-                if (channelList.get(i).getId().equals(channels.get(currentPlayIndex).getId())) {
+            String currentChannelName = channels.get(currentPlayIndex).getName();
+            if (channelList.get(i).getName().equals(currentChannelName))  
                     lvChannelList.setItemChecked(i, true);
                     lvChannelList.setSelection(i);
                     break;

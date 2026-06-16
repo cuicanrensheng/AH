@@ -120,11 +120,11 @@ public class LivePanelManager {
             } else {
                 panelLayout.setVisibility(View.VISIBLE);
                 if (channelList != null && currentIndex >= 0 && currentIndex < channelList.size()) {
-                // ✅ 直接传参，不声明中间变量，100%编译通过
-                epgManagerWrapper.refresh(
-                    channelList.get(currentIndex), 
-                    channelList, 
-                    dateListManager.getSelectedPosition()
+                            // ✅ 所有符号都是英文！
+            epgManagerWrapper.refresh(
+                channelList.get(currentIndex), 
+                channelList, 
+                dateListManager.getSelectedPosition()
                 }
             }
         }

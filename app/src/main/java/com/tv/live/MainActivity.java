@@ -189,19 +189,6 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        lvGroup.setOnItemClickListener((parent, view, position, id) -> {
-            lvGroup.setItemChecked(position, true);
-            lvGroup.setSelection(position);
-            nowSelectGroup = groupListManager.getCurrentGroup(position);
-            currentGroupChannelList.clear();
-            for (Channel c : channelSourceList) {
-                if (nowSelectGroup.equals(c.getGroup())) {
-                    currentGroupChannelList.add(c);
-                }
-            }
-            channelListManager.setChannelsByGroup(channelSourceList, nowSelectGroup, currentPlayIndex);
-        });
-
         channelListManager = new LivePanelManager.ChannelListManager(this, lvChannelList);
         channelListManager.setOnChannelClickListener(filterPos -> {
             if (filterPos >= 0 && filterPos < currentGroupChannelList.size()) {
@@ -214,7 +201,23 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+        // 修复：分组监听统一由 GroupListManager 分发，避免监听被覆盖
         groupListManager = new LivePanelManager.GroupListManager(this, lvGroup);
+        groupListManager.setOnGroupChangeListener(groupName -> {
+            if (TextUtils.isEmpty(groupName)) return;
+            int position = groupListManager.getSelectedPos();
+            lvGroup.setItemChecked(position, true);
+            lvGroup.setSelection(position);
+            nowSelectGroup = groupName;
+            currentGroupChannelList.clear();
+            for (Channel c : channelSourceList) {
+                if (nowSelectGroup.equals(c.getGroup())) {
+                    currentGroupChannelList.add(c);
+                }
+            }
+            channelListManager.setChannelsByGroup(channelSourceList, nowSelectGroup, currentPlayIndex);
+        });
+
         epgManagerWrapper = new LivePanelManager.EpgManagerWrapper(this, lvEpg);
         panelManager = new LivePanelManager.PanelManager(panel_layout, channelListManager, epgManagerWrapper);
 

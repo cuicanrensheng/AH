@@ -103,11 +103,14 @@ public class LivePanelManager {
         private final View panelLayout;
         private final ChannelListManager channelListManager;
         private final EpgManagerWrapper epgManagerWrapper;
+        private final DateListManager dateListManager;  // ✅ 必须有这一行
 
-        public PanelManager(View panelLayout, ChannelListManager channelListManager, EpgManagerWrapper epgManagerWrapper) {
+
+        public PanelManager(View panelLayout, ChannelListManager channelListManager, EpgManagerWrapper epgManagerWrapper,DateListManager dateListManager) {
             this.panelLayout = panelLayout;
             this.channelListManager = channelListManager;
             this.epgManagerWrapper = epgManagerWrapper;
+            this.dateListManager = dateListManager;
         }
 
         public void toggle(List<Channel> channelList, int currentIndex) {
@@ -116,8 +119,9 @@ public class LivePanelManager {
             } else {
                 panelLayout.setVisibility(View.VISIBLE);
                 if (channelList != null && currentIndex >= 0 && currentIndex < channelList.size()) {
-                    Channel currentChannel = channelList.get(currentIndex);
-                    epgManagerWrapper.refresh(currentChannel, channelList, 0);
+                // ✅ 用当前选中的日期，不再写死0
+                int currentDateIndex = dateListManager.getSelectedPosition();
+                epgManagerWrapper.refresh(currentChannel, channelList, currentDateIndex);
                 }
             }
         }

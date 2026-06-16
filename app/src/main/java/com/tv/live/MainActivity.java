@@ -221,6 +221,7 @@ public class MainActivity extends AppCompatActivity {
         });
 
         epgManagerWrapper = new LivePanelManager.EpgManagerWrapper(this, lvEpg);
+        // ✅ PanelManager必须是4个参数！日期联动必须的！
         panelManager = new LivePanelManager.PanelManager(panel_layout, channelListManager, epgManagerWrapper, dateListManager);
 
         mPlayerManager = TVPlayerManager.getInstance(this);

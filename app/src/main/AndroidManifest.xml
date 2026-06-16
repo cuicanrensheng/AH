@@ -18,6 +18,11 @@
         android:usesCleartextTraffic="true"
         android:networkSecurityConfig="@xml/network_security_config">
 
+        <!-- 新增：屏蔽系统级"正在播放"弹窗，禁止系统捕获应用播放状态 -->
+        <meta-data
+            android:name="android.media.metadata.ADVERTISE_PLAYBACK"
+            android:value="false" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

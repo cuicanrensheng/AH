@@ -1,5 +1,4 @@
 package com.tv.live;
-import com.tv.live.Channel;  // ✅ 确保导入Channel类
 
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -63,8 +62,7 @@ public class LivePanelManager {
 
             for (int i = 0; i < 8; i++) {
                 int dayOfWeek = cal.get(Calendar.DAY_OF_WEEK);
-                // 修复：DAY_OF_WEEK 取值范围 1(周日)~7(周六)，对应数组索引 0~6
-                String display = i == 0 ? "今天" : week[dayOfWeek - 1];
+                String display = i == 0 ? "今天" : week[dayOfWeek % 7];
                 dates.add(display);
                 cal.add(Calendar.DAY_OF_YEAR, 1);
             }
@@ -104,14 +102,11 @@ public class LivePanelManager {
         private final View panelLayout;
         private final ChannelListManager channelListManager;
         private final EpgManagerWrapper epgManagerWrapper;
-        private final DateListManager dateListManager;  // ✅ 必须有这一行
 
-
-        public PanelManager(View panelLayout, ChannelListManager channelListManager, EpgManagerWrapper epgManagerWrapper,DateListManager dateListManager) {
+        public PanelManager(View panelLayout, ChannelListManager channelListManager, EpgManagerWrapper epgManagerWrapper) {
             this.panelLayout = panelLayout;
             this.channelListManager = channelListManager;
             this.epgManagerWrapper = epgManagerWrapper;
-            this.dateListManager = dateListManager;
         }
 
         public void toggle(List<Channel> channelList, int currentIndex) {
@@ -120,12 +115,9 @@ public class LivePanelManager {
             } else {
                 panelLayout.setVisibility(View.VISIBLE);
                 if (channelList != null && currentIndex >= 0 && currentIndex < channelList.size()) {
-                            // ✅ 所有符号都是英文！
-            epgManagerWrapper.refresh(
-                channelList.get(currentIndex), 
-                channelList, 
-                dateListManager.getSelectedPosition()
-               );  // ✅ 这里加右括号 + 分号！
+                    Channel currentChannel = channelList.get(currentIndex);
+                    epgManagerWrapper.refresh(currentChannel, channelList, 0);
+                }
             }
         }
     }
@@ -191,8 +183,7 @@ public class LivePanelManager {
                     cal.add(Calendar.DAY_OF_YEAR, dateIndex);
                     int w = cal.get(Calendar.DAY_OF_WEEK);
                     String[] weekMap = {"周日", "周一", "周二", "周三", "周四", "周五", "周六"};
-                    // 修复：日期索引与星期数组对应关系修正
-                    String targetDay = dateIndex == 0 ? "今天" : weekMap[w - 1];
+                    String targetDay = dateIndex == 0 ? "今天" : weekMap[w % 7];
 
                     for (Channel.EpgItem item : epgList) {
                         if (targetDay.equals(item.dayName)) {
@@ -709,4 +700,3 @@ public class LivePanelManager {
         }
     }
 }
-}     

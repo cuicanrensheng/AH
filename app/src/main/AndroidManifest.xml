@@ -22,6 +22,9 @@
         <meta-data
             android:name="android.media.metadata.ADVERTISE_PLAYBACK"
             android:value="false" />
+        <meta-data
+    android:name="android.media.session.MEDIA_SESSION_ENABLED"
+    android:value="false" />
 
         <activity
             android:name=".MainActivity"

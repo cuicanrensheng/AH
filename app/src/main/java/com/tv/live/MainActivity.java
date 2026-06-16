@@ -154,11 +154,24 @@ public class MainActivity extends AppCompatActivity {
         playerView = findViewById(R.id.player_view);
         playerView.setUseController(false);
         playerView.setControllerVisibilityListener(null);
-        // 修复：彻底禁用PlayerView原生点击/长按/焦点交互，从根源避免手势冲突
+        // 禁用PlayerView原生交互，解决手势冲突
         playerView.setClickable(false);
         playerView.setLongClickable(false);
         playerView.setFocusable(false);
         playerView.setFocusableInTouchMode(false);
+
+        // ========== 新增：屏蔽所有原生弹窗与提示 ==========
+        // 1. 禁用缓冲加载转圈弹窗
+        playerView.setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER);
+        // 2. 禁用原生错误提示弹窗
+        playerView.setErrorMessageProvider(null);
+        // 3. 禁用快进/快退预览弹窗与按钮
+        playerView.setShowRewindButton(false);
+        playerView.setShowFastForwardButton(false);
+        playerView.setShowPreviousButton(false);
+        playerView.setShowNextButton(false);
+        // 4. 禁用播放状态变化时的原生UI提示
+        playerView.setKeepContentOnPlayerReset(true);
 
         panel_layout = findViewById(R.id.panel_layout);
 
@@ -207,7 +220,7 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        // 修复：分组监听统一由GroupListManager分发，避免监听被覆盖导致频道列表不更新
+        // 分组监听统一回调，解决列表不更新问题
         groupListManager = new LivePanelManager.GroupListManager(this, lvGroup);
         groupListManager.setOnGroupChangeListener(groupName -> {
             if (TextUtils.isEmpty(groupName)) return;
@@ -229,6 +242,13 @@ public class MainActivity extends AppCompatActivity {
 
         mPlayerManager = TVPlayerManager.getInstance(this);
         mPlayerManager.attachPlayerView(playerView);
+
+        // ========== 新增：屏蔽系统级"正在播放"弹窗（解绑MediaSession）==========
+        // 解绑媒体会话，阻止系统捕获播放状态弹出原生正在播放悬浮窗
+        if (mPlayerManager.getPlayer() != null) {
+            mPlayerManager.getPlayer().setMediaSessionToken(null);
+        }
+
         playerStateListener = new PlayerStateListenerImpl(this);
         mPlayerManager.setOnPlayStateListener(playerStateListener);
         mPlayerManager.setOnLiveInfoUpdateListener(info -> {
@@ -244,14 +264,12 @@ public class MainActivity extends AppCompatActivity {
         gestureManager = new GestureManager(this);
         PlayerGestureHelper gestureHelper = gestureManager.create();
 
-        // 修复：触摸事件完全由自定义手势管理器消费，阻断PlayerView原生手势
+        // 触摸事件完全由自定义手势消费，面板弹出时透传给列表
         playerView.setOnTouchListener((v, event) -> {
-            // 面板弹出时不消费事件，交由内部列表控件处理，避免误触
             if (panel_layout.getVisibility() == View.VISIBLE) {
                 return false;
             }
             gestureHelper.handleTouch(event);
-            // 返回true消费全部事件，彻底解决双套手势冲突问题
             return true;
         });
 
@@ -343,18 +361,76 @@ public class MainActivity extends AppCompatActivity {
         }));
     }
 
+    // 分组内循环切换：上一台
     public void playPrev() {
         long now = System.currentTimeMillis();
         if (now - lastChannelChangeTime < CHANNEL_COOLDOWN) return;
         lastChannelChangeTime = now;
+
+        if (!TextUtils.isEmpty(nowSelectGroup) && !currentGroupChannelList.isEmpty()) {
+            Channel currentChannel = channelSourceList.get(currentPlayIndex);
+            int groupIndex = currentGroupChannelList.indexOf(currentChannel);
+            if (groupIndex == -1) groupIndex = 0;
+
+            int newGroupIndex;
+            if (channel_reverse) {
+                newGroupIndex = groupIndex + 1;
+                if (newGroupIndex >= currentGroupChannelList.size()) {
+                    newGroupIndex = 0;
+                }
+            } else {
+                newGroupIndex = groupIndex - 1;
+                if (newGroupIndex < 0) {
+                    newGroupIndex = currentGroupChannelList.size() - 1;
+                }
+            }
+
+            Channel targetChannel = currentGroupChannelList.get(newGroupIndex);
+            int globalIndex = channelSourceList.indexOf(targetChannel);
+            if (globalIndex != -1) {
+                switchManager.setCurrentIndex(globalIndex);
+                playChannel(globalIndex);
+            }
+            return;
+        }
+
         int idx = channel_reverse ? switchManager.next() : switchManager.prev();
         playChannel(idx);
     }
 
+    // 分组内循环切换：下一台
     public void playNext() {
         long now = System.currentTimeMillis();
         if (now - lastChannelChangeTime < CHANNEL_COOLDOWN) return;
         lastChannelChangeTime = now;
+
+        if (!TextUtils.isEmpty(nowSelectGroup) && !currentGroupChannelList.isEmpty()) {
+            Channel currentChannel = channelSourceList.get(currentPlayIndex);
+            int groupIndex = currentGroupChannelList.indexOf(currentChannel);
+            if (groupIndex == -1) groupIndex = 0;
+
+            int newGroupIndex;
+            if (channel_reverse) {
+                newGroupIndex = groupIndex - 1;
+                if (newGroupIndex < 0) {
+                    newGroupIndex = currentGroupChannelList.size() - 1;
+                }
+            } else {
+                newGroupIndex = groupIndex + 1;
+                if (newGroupIndex >= currentGroupChannelList.size()) {
+                    newGroupIndex = 0;
+                }
+            }
+
+            Channel targetChannel = currentGroupChannelList.get(newGroupIndex);
+            int globalIndex = channelSourceList.indexOf(targetChannel);
+            if (globalIndex != -1) {
+                switchManager.setCurrentIndex(globalIndex);
+                playChannel(globalIndex);
+            }
+            return;
+        }
+
         int idx = channel_reverse ? switchManager.prev() : switchManager.next();
         playChannel(idx);
     }

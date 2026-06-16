@@ -125,7 +125,7 @@ public class LivePanelManager {
                 channelList.get(currentIndex), 
                 channelList, 
                 dateListManager.getSelectedPosition()
-                }
+               );  // ✅ 这里加右括号 + 分号！
             }
         }
     }

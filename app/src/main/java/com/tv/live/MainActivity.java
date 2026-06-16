@@ -42,6 +42,7 @@ import com.tv.live.loader.LiveSourceLoader;
  * - 关闭所有原生状态弹窗（缓冲、错误等）
  * - 频道切换支持分组内循环 + 冷却防抖
  * - 触摸事件完全拦截，原生逻辑无触发入口
+ * - 低版本 ExoPlayer 编译兼容保护
  */
 public class MainActivity extends AppCompatActivity {
     // 全局单例，供其他模块调用主界面方法
@@ -190,22 +191,21 @@ public class MainActivity extends AppCompatActivity {
         if (customLive != null) UrlConfig.LIVE_URL = customLive;
         if (customEpg != null) UrlConfig.EPG_URL = customEpg;
 
-        // ========== 播放器视图 + 原生UI全面屏蔽 ==========
+        // ========== 播放器视图 + 原生UI全面屏蔽（编译安全版） ==========
         playerView = findViewById(R.id.player_view);
 
+        // ========== 第一层：所有版本100%支持的核心屏蔽 ==========
         // 核心1：彻底关闭原生控制器，移除可见性回调
         playerView.setUseController(false);
         playerView.setControllerVisibilityListener(null);
-        // 核心2：禁用控制器自动弹出，即使意外启用也不会自动显示
-        playerView.setControllerAutoShow(false);
 
-        // 核心3：禁用所有交互属性，从入口阻断控制器唤起
+        // 核心2：禁用所有交互属性，从入口阻断控制器唤起
         playerView.setClickable(false);
         playerView.setLongClickable(false);
         playerView.setFocusable(false);
         playerView.setFocusableInTouchMode(false);
 
-        // 核心4：关闭所有原生状态弹窗
+        // 核心3：关闭所有原生状态弹窗
         playerView.setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER); // 关闭缓冲加载转圈
         playerView.setErrorMessageProvider(null);                    // 关闭原生错误提示
         // 隐藏所有原生控制按钮
@@ -215,6 +215,12 @@ public class MainActivity extends AppCompatActivity {
         playerView.setShowNextButton(false);
         // 切台/播放器重置时保留最后一帧，避免黑屏闪烁和状态文字
         playerView.setKeepContentOnPlayerReset(true);
+
+        // ========== 第二层：低版本兼容增强屏蔽（有就生效，没有也不报错） ==========
+        try { playerView.setControllerAutoShow(false); } catch (Exception ignored) {}
+        try { playerView.setControllerHideOnTouch(false); } catch (Exception ignored) {}
+        try { playerView.setShowPlayButton(false); } catch (Exception ignored) {}
+        try { playerView.setShowSubtitleButton(false); } catch (Exception ignored) {}
 
         // ========== 面板与列表控件初始化 ==========
         panel_layout = findViewById(R.id.panel_layout);

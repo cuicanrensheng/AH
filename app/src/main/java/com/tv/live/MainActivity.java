@@ -75,7 +75,7 @@ public class MainActivity extends AppCompatActivity {
     private ProgressBar progress_program;
     private TextView tv_channel_num;
 
-    private static final int MAX_REDIRECT_COUNT = 20;
+    private static final int MAX_REDIRECT_COUNT = 10;
     private static final int CONNECT_TIMEOUT = 8000;
     private static final int READ_TIMEOUT = 8000;
     private static final String DEF_UA = "ExoPlayer";
@@ -421,144 +421,87 @@ public class MainActivity extends AppCompatActivity {
         playChannel(idx);
     }
 
-public void playChannel(int index) {
-    if (channelSourceList == null || channelSourceList.isEmpty()) return;
-    index = Math.max(0, Math.min(index, channelSourceList.size() - 1));
-    currentPlayIndex = index;
-    Channel ch = channelSourceList.get(index);
-    if (ch == null || TextUtils.isEmpty(ch.getPlayUrl())) return;
+    public void playChannel(int index) {
+        if (channelSourceList == null || channelSourceList.isEmpty()) return;
+        index = Math.max(0, Math.min(index, channelSourceList.size() - 1));
+        currentPlayIndex = index;
+        Channel ch = channelSourceList.get(index);
+        if (ch == null || TextUtils.isEmpty(ch.getPlayUrl())) return;
 
-    playerStateListener.setCurrentChannelName(ch.getName());
-    showChannelNum(index + 1);
-    appConfig.setLastPlayIndex(index);
+        playerStateListener.setCurrentChannelName(ch.getName());
+        showChannelNum(index + 1);
+        appConfig.setLastPlayIndex(index);
 
-    if (!TextUtils.isEmpty(nowSelectGroup)) {
-        channelListManager.setChannelsByGroup(channelSourceList, nowSelectGroup, index);
-    } else {
-        channelListManager.setChannels(channelSourceList, index);
-    }
-
-    epgManagerWrapper.refresh(ch, channelSourceList, currentSelectedDateIndex);
-
-    if (info_bar != null) {
-        info_bar.setVisibility(View.VISIBLE);
-        info_bar.removeCallbacks(hideInfoBar);
-        info_bar.postDelayed(hideInfoBar, 2000);
-        tv_channel_name.setText(ch.getName());
-        TVPlayerManager.LiveInfo live = mPlayerManager.getLiveInfo();
-        tv_tag_fhd.setText(live.quality);
-        tv_tag_audio.setText(live.audio);
-        tv_bitrate.setText(live.bitrate);
-    }
-
-    final String originalUrl = ch.getPlayUrl();
-    new Thread(() -> {
-        java.net.HttpURLConnection conn = null;
-        String finalUrl = originalUrl;
-        
-        SettingsActivity.log("🔗 开始解析：" + ch.getName());
-        SettingsActivity.log("   原始URL：" + (originalUrl.length() > 600 ? originalUrl.substring(0, 600) + "..." : originalUrl));
-        
-        try {
-            for (int step = 0; step < MAX_REDIRECT_COUNT; step++) {
-                java.net.URL urlObj = new java.net.URL(finalUrl);
-                conn = (java.net.HttpURLConnection) urlObj.openConnection();
-                conn.setConnectTimeout(CONNECT_TIMEOUT);
-                conn.setReadTimeout(READ_TIMEOUT);
-                conn.setRequestMethod("GET");
-                conn.setRequestProperty("User-Agent", DEF_UA);
-                conn.setRequestProperty("Refer", DEF_REFER);
-                conn.setInstanceFollowRedirects(false);
-                int code = conn.getResponseCode();
-                
-                String shortUrl = finalUrl.length() > 600 ? finalUrl.substring(0, 600) + "..." : finalUrl;
-                SettingsActivity.log("   第" + (step + 1) + "次：HTTP " + code + " → " + shortUrl);
-                
-                boolean hasRedirect = false;
-                
-                // ====================== 1. 所有HTTP 3xx 重定向 ======================
-                if ((code == 301 || code == 302 || code == 303 || code == 307 || code == 308)
-                    || (code >= 300 && code < 400 && code != 304 && code != 305 && code != 306)) {
-                    String loc = conn.getHeaderField("Location");
-                    if (loc != null) {
-                        if (loc.startsWith("/")) {
-                            loc = urlObj.getProtocol() + "://" + urlObj.getHost() + loc;
-                        }
-                        finalUrl = loc;
-                        hasRedirect = true;
-                        SettingsActivity.log("        HTTP重定向：" + (loc.length() > 600 ? loc.substring(0, 600) + "..." : loc));
-                    }
-                }
-                // ====================== 2. HTTP 200，解析页面内跳转 ======================
-                else if (code == 200) {
-                    try {
-                        java.io.InputStream is = conn.getInputStream();
-                        byte[] buffer = new byte[4096];
-                        int len = is.read(buffer);
-                        is.close();
-                        
-                        if (len > 0) {
-                            String content = new String(buffer, 0, len);
-                            
-                            // Meta Refresh 跳转
-                            java.util.regex.Pattern metaPattern = java.util.regex.Pattern.compile(
-                                "<meta[^>]+http-equiv\\s*=\\s*['\"]refresh['\"][^>]+content\\s*=\\s*['\"][^'\"]*url\\s*=\\s*([^'\">]+)",
-                                java.util.regex.Pattern.CASE_INSENSITIVE
-                            );
-                            java.util.regex.Matcher metaMatcher = metaPattern.matcher(content);
-                            if (metaMatcher.find()) {
-                                String loc = metaMatcher.group(1).trim();
-                                if (loc.startsWith("/")) {
-                                    loc = urlObj.getProtocol() + "://" + urlObj.getHost() + loc;
-                                }
-                                finalUrl = loc;
-                                hasRedirect = true;
-                                SettingsActivity.log("        Meta跳转：" + (loc.length() > 600 ? loc.substring(0, 600) + "..." : loc));
-                            }
-                            
-                            // JS 跳转
-                            if (!hasRedirect) {
-                                java.util.regex.Pattern jsPattern = java.util.regex.Pattern.compile(
-                                    "window\\.location\\s*=\\s*['\"]([^'\"]+)['\"]",
-                                    java.util.regex.Pattern.CASE_INSENSITIVE
-                                );
-                                java.util.regex.Matcher jsMatcher = jsPattern.matcher(content);
-                                if (jsMatcher.find()) {
-                                    String loc = jsMatcher.group(1).trim();
-                                    if (loc.startsWith("/")) {
-                                        loc = urlObj.getProtocol() + "://" + urlObj.getHost() + loc;
-                                    }
-                                    finalUrl = loc;
-                                    hasRedirect = true;
-                                    SettingsActivity.log("        JS跳转：" + (loc.length() > 600 ? loc.substring(0, 600) + "..." : loc));
-                                }
-                            }
-                        }
-                    } catch (Exception e) {}
-                }
-                
-                conn.disconnect();
-                conn = null;
-                
-                if (!hasRedirect) {
-                    SettingsActivity.log("   ✅ 解析完成，共" + (step + 1) + "次跳转");
-                    SettingsActivity.log("   最终URL：" + (finalUrl.length() > 600 ? finalUrl.substring(0, 600) + "..." : finalUrl));
-                    break;
-                }
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-            SettingsActivity.log("   ❌ 解析异常：" + e.getMessage());
-        } finally {
-            if (conn != null) conn.disconnect();
+        if (!TextUtils.isEmpty(nowSelectGroup)) {
+            channelListManager.setChannelsByGroup(channelSourceList, nowSelectGroup, index);
+        } else {
+            channelListManager.setChannels(channelSourceList, index);
         }
 
-        final String realPlayUrl = TextUtils.isEmpty(finalUrl) ? originalUrl : finalUrl;
-        new Handler(Looper.getMainLooper()).post(() -> {
-            mPlayerManager.playUrl(realPlayUrl);
-        });
-    }).start();
-}
+        epgManagerWrapper.refresh(ch, channelSourceList, currentSelectedDateIndex);
+
+        if (info_bar != null) {
+            info_bar.setVisibility(View.VISIBLE);
+            info_bar.removeCallbacks(hideInfoBar);
+            info_bar.postDelayed(hideInfoBar, 2000);
+            tv_channel_name.setText(ch.getName());
+            TVPlayerManager.LiveInfo live = mPlayerManager.getLiveInfo();
+            tv_tag_fhd.setText(live.quality);
+            tv_tag_audio.setText(live.audio);
+            tv_bitrate.setText(live.bitrate);
+        }
+
+        final String originalUrl = ch.getPlayUrl();
+        new Thread(() -> {
+            java.net.HttpURLConnection conn = null;
+            String finalUrl = originalUrl;
+            
+            // ✅ 日志：开始URL解析
+            MainActivity.log("🔗 开始解析：" + ch.getName());
+            MainActivity.log("   原始URL：" + (originalUrl.length() > 60 ? originalUrl.substring(0, 60) + "..." : originalUrl));
+            
+            try {
+                for (int step = 0; step < MAX_REDIRECT_COUNT; step++) {
+                    java.net.URL urlObj = new java.net.URL(finalUrl);
+                    conn = (java.net.HttpURLConnection) urlObj.openConnection();
+                    conn.setConnectTimeout(CONNECT_TIMEOUT);
+                    conn.setReadTimeout(READ_TIMEOUT);
+                    conn.setRequestMethod("GET");
+                    conn.setRequestProperty("User-Agent", DEF_UA);
+                    conn.setRequestProperty("Refer", DEF_REFER);
+                    conn.setInstanceFollowRedirects(false);
+                    int code = conn.getResponseCode();
+                    
+                    // ✅ 日志：每一步重定向
+                    String shortUrl = finalUrl.length() > 60 ? finalUrl.substring(0, 60) + "..." : finalUrl;
+                    MainActivity.log("   第" + (step + 1) + "次：HTTP " + code + " → " + shortUrl);
+                    
+                    if (code == 301 || code == 302) {
+                        String loc = conn.getHeaderField("Location");
+                        if (loc != null) {
+                            finalUrl = loc;
+                            MainActivity.log("        重定向到：" + (loc.length() > 60 ? loc.substring(0, 60) + "..." : loc));
+                        }
+                        conn.disconnect();
+                        conn = null;
+                    } else {
+                        MainActivity.log("   ✅ 解析完成，共" + (step + 1) + "次跳转");
+                        break;
+                    }
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+                MainActivity.log("   ❌ 解析异常：" + e.getMessage());
+            } finally {
+                if (conn != null) conn.disconnect();
+            }
+
+            final String realPlayUrl = TextUtils.isEmpty(finalUrl) ? originalUrl : finalUrl;
+            new Handler(Looper.getMainLooper()).post(() -> {
+                mPlayerManager.playUrl(realPlayUrl);
+            });
+        }).start();
+    }
 
     public void showChannelNum(int num) {
         if (!number_channel_enable) return;

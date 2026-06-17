@@ -127,7 +127,7 @@ public class MainActivity extends AppCompatActivity {
                     String customLive = appConfig.getCustomLiveUrl();
                     String customEpg = appConfig.getCustomEpgUrl();
                     if (customLive != null) UrlConfig.LIVE_URL = customLive;
-                    if (customEpg != null) UrlConfig.EPG_URL = epgUrl;
+                    if (customEpg != null) UrlConfig.EPG_URL = customEpg;
                     // 手动刷新时才重新加载网络
                     loadLiveAndEpgFromNetwork();
                     Toast.makeText(MainActivity.this, "已刷新直播源/EPG", Toast.LENGTH_SHORT).show();
@@ -368,9 +368,9 @@ public class MainActivity extends AppCompatActivity {
         tv_current_program_name = findViewById(R.id.tv_current_program_name);
         tv_current_time_range = findViewById(R.id.tv_current_time_range);
         progress_program = findViewById(R.id.progress_program);
-        tv_remaining_time = findViewById(R.id.tv_remaining_time);
-        tv_next_program_name = findViewById(R.id.tv_next_program_name);
-        tv_next_time_range = findViewById(R.id.tv_next_time_range);
+        tv_remaining_time = findViewById(R.id.remaining_time);
+        tv_next_program_name = findViewById(R.id.next_program_name);
+        tv_next_time_range = findViewById(R.id.next_time_range);
     }
 
     private void loadSettings() {

@@ -29,6 +29,11 @@ import com.tv.live.manager.KeyEventManager;
 import com.tv.live.manager.ChannelSwitchManager;
 import com.tv.live.listener.PlayerStateListenerImpl;
 import com.tv.live.loader.LiveSourceLoader;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.Serializable;
 
 public class MainActivity extends AppCompatActivity {
     public static MainActivity mInstance;
@@ -61,6 +66,12 @@ public class MainActivity extends AppCompatActivity {
     private boolean auto_update_source;
     private int currentSelectedDateIndex = 0;
     private SharedPreferences sp;
+
+    // ====================== 本地缓存配置（关APP不清空） ======================
+    private static final String SP_CACHE = "live_cache";
+    private static final String KEY_CHANNEL_LIST = "channel_list";
+    private static final String KEY_LAST_GROUP = "last_group";
+    private static final String KEY_LAST_INDEX = "last_index";
 
     private View info_bar;
     private TextView tv_channel_name;
@@ -116,8 +127,9 @@ public class MainActivity extends AppCompatActivity {
                     String customLive = appConfig.getCustomLiveUrl();
                     String customEpg = appConfig.getCustomEpgUrl();
                     if (customLive != null) UrlConfig.LIVE_URL = customLive;
-                    if (customEpg != null) UrlConfig.EPG_URL = customEpg;
-                    loadLiveAndEpg();
+                    if (customEpg != null) UrlConfig.EPG_URL = epgUrl;
+                    // 手动刷新时才重新加载网络
+                    loadLiveAndEpgFromNetwork();
                     Toast.makeText(MainActivity.this, "已刷新直播源/EPG", Toast.LENGTH_SHORT).show();
                 });
             }
@@ -147,6 +159,9 @@ public class MainActivity extends AppCompatActivity {
         appConfig = AppConfig.getInstance(this);
         loadSettings();
         sp = getSharedPreferences("app_settings", Context.MODE_PRIVATE);
+
+        // ====================== 核心：优先加载本地缓存，关APP不清空 ======================
+        loadCacheChannelList();
 
         String customLive = appConfig.getCustomLiveUrl();
         String customEpg = appConfig.getCustomEpgUrl();
@@ -225,6 +240,8 @@ public class MainActivity extends AppCompatActivity {
             lvGroup.setItemChecked(position, true);
             lvGroup.setSelection(position);
             nowSelectGroup = groupName;
+            // 保存最后选择的分组
+            saveLastGroup(groupName);
             currentGroupChannelList.clear();
             for (Channel c : channelSourceList) {
                 if (nowSelectGroup.equals(c.getGroup())) {
@@ -263,8 +280,83 @@ public class MainActivity extends AppCompatActivity {
 
         keyEventManager = new KeyEventManager(this);
         switchManager = ChannelSwitchManager.getInstance();
-        currentPlayIndex = appConfig.getLastPlayIndex();
-        loadLiveAndEpg();
+        // 加载缓存的最后播放频道
+        currentPlayIndex = getLastPlayIndex();
+        // ====================== 有缓存直接播放，不加载网络 ======================
+        if(!channelSourceList.isEmpty()){
+            switchManager.setChannelList(channelSourceList);
+            switchManager.setCurrentIndex(currentPlayIndex);
+            groupListManager.setGroups(channelSourceList);
+            restoreGroupChannels();
+            playChannel(currentPlayIndex);
+            // 加载缓存EPG
+            loadEpgFromCache();
+        }else{
+            // 无缓存才加载网络
+            loadLiveAndEpgFromNetwork();
+        }
+    }
+
+    // ====================== 本地缓存工具方法 ======================
+    // 保存频道列表到本地
+    private void saveChannelList(List<Channel> list) {
+        try {
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            ObjectOutputStream oos = new ObjectOutputStream(baos);
+            oos.writeObject(list);
+            String cache = android.util.Base64.encodeToString(baos.toByteArray(), android.util.Base64.DEFAULT);
+            getSharedPreferences(SP_CACHE, Context.MODE_PRIVATE).edit().putString(KEY_CHANNEL_LIST, cache).apply();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    // 读取本地缓存频道列表
+    private void loadCacheChannelList() {
+        try {
+            String cache = getSharedPreferences(SP_CACHE, Context.MODE_PRIVATE).getString(KEY_CHANNEL_LIST, null);
+            if (!TextUtils.isEmpty(cache)) {
+                byte[] bytes = android.util.Base64.decode(cache, android.util.Base64.DEFAULT);
+                ObjectInputStream ois = new ObjectInputStream(new ByteArrayInputStream(bytes));
+                List<Channel> cacheList = (List<Channel>) ois.readObject();
+                if (cacheList != null && !cacheList.isEmpty()) {
+                    channelSourceList.clear();
+                    channelSourceList.addAll(cacheList);
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    // 保存最后选择的分组
+    private void saveLastGroup(String group) {
+        getSharedPreferences(SP_CACHE, Context.MODE_PRIVATE).edit().putString(KEY_LAST_GROUP, group).apply();
+    }
+
+    // 保存最后播放的频道下标
+    private void saveLastPlayIndex(int index) {
+        getSharedPreferences(SP_CACHE, Context.MODE_PRIVATE).edit().putInt(KEY_LAST_INDEX, index).apply();
+    }
+
+    // 获取最后播放的频道下标
+    private int getLastPlayIndex() {
+        return getSharedPreferences(SP_CACHE, Context.MODE_PRIVATE).getInt(KEY_LAST_INDEX, 0);
+    }
+
+    // 恢复分组频道
+    private void restoreGroupChannels() {
+        String lastGroup = getSharedPreferences(SP_CACHE, Context.MODE_PRIVATE).getString(KEY_LAST_GROUP, "");
+        if (!TextUtils.isEmpty(lastGroup)) {
+            nowSelectGroup = lastGroup;
+            currentGroupChannelList.clear();
+            for (Channel ch : channelSourceList) {
+                if (nowSelectGroup.equals(ch.getGroup())) {
+                    currentGroupChannelList.add(ch);
+                }
+            }
+            channelListManager.setChannelsByGroup(channelSourceList, nowSelectGroup, currentPlayIndex);
+        }
     }
 
     private void initInfoBar() {
@@ -299,39 +391,19 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    public void loadLiveAndEpg() {
+    // 网络加载直播源
+    public void loadLiveAndEpgFromNetwork() {
         LiveSourceLoader.getInstance(this).load(new LiveSourceLoader.LoadCallback() {
             @Override
             public void onSuccess(List<Channel> channels) {
                 channelSourceList.clear();
                 channelSourceList.addAll(channels);
+                // 保存到本地缓存
+                saveChannelList(channels);
                 switchManager.setChannelList(channelSourceList);
                 switchManager.setCurrentIndex(currentPlayIndex);
                 groupListManager.setGroups(channelSourceList);
-
-                if (!TextUtils.isEmpty(nowSelectGroup)) {
-                    currentGroupChannelList.clear();
-                    for (Channel ch : channelSourceList) {
-                        if (ch.getGroup().equals(nowSelectGroup)) {
-                            currentGroupChannelList.add(ch);
-                        }
-                    }
-                    channelListManager.setChannelsByGroup(channelSourceList, nowSelectGroup, currentPlayIndex);
-                } else {
-                    List<String> groups = groupListManager.getGroupList();
-                    if (groups != null && groups.size() > 0) {
-                        nowSelectGroup = groups.get(0);
-                        currentGroupChannelList.clear();
-                        for (Channel ch : channelSourceList) {
-                            if (ch.getGroup().equals(nowSelectGroup)) {
-                                currentGroupChannelList.add(ch);
-                            }
-                        }
-                        channelListManager.setChannelsByGroup(channelSourceList, nowSelectGroup, currentPlayIndex);
-                    } else {
-                        channelListManager.setChannels(channelSourceList, currentPlayIndex);
-                    }
-                }
+                restoreGroupChannels();
                 playChannel(currentPlayIndex);
             }
 
@@ -340,13 +412,21 @@ public class MainActivity extends AppCompatActivity {
                 Toast.makeText(MainActivity.this, "加载失败：" + errorMsg, Toast.LENGTH_SHORT).show();
             }
         });
-
         EpgManager.getInstance().setEpgUrl(UrlConfig.EPG_URL);
         EpgManager.getInstance().loadEpg(() -> runOnUiThread(() -> {
             if (!channelSourceList.isEmpty()) {
                 epgManagerWrapper.refresh(channelSourceList.get(currentPlayIndex), channelSourceList, currentSelectedDateIndex);
             }
         }));
+    }
+
+    // 从缓存加载EPG
+    private void loadEpgFromCache() {
+        runOnUiThread(() -> {
+            if (!channelSourceList.isEmpty()) {
+                epgManagerWrapper.refresh(channelSourceList.get(currentPlayIndex), channelSourceList, currentSelectedDateIndex);
+            }
+        });
     }
 
     public void playPrev() {
@@ -421,86 +501,87 @@ public class MainActivity extends AppCompatActivity {
         playChannel(idx);
     }
 
-public void playChannel(int index) {
-    if (channelSourceList == null || channelSourceList.isEmpty()) return;
-    index = Math.max(0, Math.min(index, channelSourceList.size() - 1));
-    currentPlayIndex = index;
-    Channel ch = channelSourceList.get(index);
-    if (ch == null || TextUtils.isEmpty(ch.getPlayUrl())) return;
+    public void playChannel(int index) {
+        // 保存最后播放的频道
+        saveLastPlayIndex(index);
+        if (channelSourceList == null || channelSourceList.isEmpty()) return;
+        index = Math.max(0, Math.min(index, channelSourceList.size() - 1));
+        currentPlayIndex = index;
+        Channel ch = channelSourceList.get(index);
+        if (ch == null || TextUtils.isEmpty(ch.getPlayUrl())) return;
 
-    playerStateListener.setCurrentChannelName(ch.getName());
-    showChannelNum(index + 1);
-    appConfig.setLastPlayIndex(index);
+        playerStateListener.setCurrentChannelName(ch.getName());
+        showChannelNum(index + 1);
+        appConfig.setLastPlayIndex(index);
 
-    if (!TextUtils.isEmpty(nowSelectGroup)) {
-        channelListManager.setChannelsByGroup(channelSourceList, nowSelectGroup, index);
-    } else {
-        channelListManager.setChannels(channelSourceList, index);
-    }
-
-    epgManagerWrapper.refresh(ch, channelSourceList, currentSelectedDateIndex);
-
-    if (info_bar != null) {
-        info_bar.setVisibility(View.VISIBLE);
-        info_bar.removeCallbacks(hideInfoBar);
-        info_bar.postDelayed(hideInfoBar, 2000);
-        tv_channel_name.setText(ch.getName());
-        TVPlayerManager.LiveInfo live = mPlayerManager.getLiveInfo();
-        tv_tag_fhd.setText(live.quality);
-        tv_tag_audio.setText(live.audio);
-        tv_bitrate.setText(live.bitrate);
-    }
-
-    final String originalUrl = ch.getPlayUrl();
-    new Thread(() -> {
-        java.net.HttpURLConnection conn = null;
-        String finalUrl = originalUrl;
-        
-        // ✅ 全部改成 SettingsActivity.log()
-        SettingsActivity.log("🔗 开始解析：" + ch.getName());
-        SettingsActivity.log("   原始URL：" + (originalUrl.length() > 600 ? originalUrl.substring(0, 600) + "..." : originalUrl));
-        
-        try {
-            for (int step = 0; step < MAX_REDIRECT_COUNT; step++) {
-                java.net.URL urlObj = new java.net.URL(finalUrl);
-                conn = (java.net.HttpURLConnection) urlObj.openConnection();
-                conn.setConnectTimeout(CONNECT_TIMEOUT);
-                conn.setReadTimeout(READ_TIMEOUT);
-                conn.setRequestMethod("GET");
-                conn.setRequestProperty("User-Agent", DEF_UA);
-                conn.setRequestProperty("Refer", DEF_REFER);
-                conn.setInstanceFollowRedirects(false);
-                int code = conn.getResponseCode();
-                
-                String shortUrl = finalUrl.length() > 600 ? finalUrl.substring(0, 600) + "..." : finalUrl;
-                SettingsActivity.log("   第" + (step + 1) + "次：HTTP " + code + " → " + shortUrl);
-                
-                if (code == 301 || code == 302) {
-                    String loc = conn.getHeaderField("Location");
-                    if (loc != null) {
-                        finalUrl = loc;
-                        SettingsActivity.log("        重定向到：" + (loc.length() > 600 ? loc.substring(0, 600) + "..." : loc));
-                    }
-                    conn.disconnect();
-                    conn = null;
-                } else {
-                    SettingsActivity.log("   ✅ 解析完成，共" + (step + 1) + "次跳转");
-                    break;
-                }
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-            SettingsActivity.log("   ❌ 解析异常：" + e.getMessage());
-        } finally {
-            if (conn != null) conn.disconnect();
+        if (!TextUtils.isEmpty(nowSelectGroup)) {
+            channelListManager.setChannelsByGroup(channelSourceList, nowSelectGroup, index);
+        } else {
+            channelListManager.setChannels(channelSourceList, index);
         }
 
-        final String realPlayUrl = TextUtils.isEmpty(finalUrl) ? originalUrl : finalUrl;
-        new Handler(Looper.getMainLooper()).post(() -> {
-            mPlayerManager.playUrl(realPlayUrl);
-        });
-    }).start();
-}
+        epgManagerWrapper.refresh(ch, channelSourceList, currentSelectedDateIndex);
+
+        if (info_bar != null) {
+            info_bar.setVisibility(View.VISIBLE);
+            info_bar.removeCallbacks(hideInfoBar);
+            info_bar.postDelayed(hideInfoBar, 2000);
+            tv_channel_name.setText(ch.getName());
+            TVPlayerManager.LiveInfo live = mPlayerManager.getLiveInfo();
+            tv_tag_fhd.setText(live.quality);
+            tv_tag_audio.setText(live.audio);
+            tv_bitrate.setText(live.bitrate);
+        }
+
+        final String originalUrl = ch.getPlayUrl();
+        new Thread(() -> {
+            java.net.HttpURLConnection conn = null;
+            String finalUrl = originalUrl;
+
+            SettingsActivity.log("🔗 开始解析：" + ch.getName());
+            SettingsActivity.log("   原始URL：" + (originalUrl.length() > 600 ? originalUrl.substring(0, 600) + "..." : originalUrl));
+
+            try {
+                for (int step = 0; step < MAX_REDIRECT_COUNT; step++) {
+                    java.net.URL urlObj = new java.net.URL(finalUrl);
+                    conn = (java.net.HttpURLConnection) urlObj.openConnection();
+                    conn.setConnectTimeout(CONNECT_TIMEOUT);
+                    conn.setReadTimeout(READ_TIMEOUT);
+                    conn.setRequestMethod("GET");
+                    conn.setRequestProperty("User-Agent", DEF_UA);
+                    conn.setRequestProperty("Refer", DEF_REFER);
+                    conn.setInstanceFollowRedirects(false);
+                    int code = conn.getResponseCode();
+
+                    String shortUrl = finalUrl.length() > 600 ? finalUrl.substring(0, 600) + "..." : finalUrl;
+                    SettingsActivity.log("   第" + (step + 1) + "次：HTTP " + code + " → " + shortUrl);
+
+                    if (code == 301 || code == 302) {
+                        String loc = conn.getHeaderField("Location");
+                        if (loc != null) {
+                            finalUrl = loc;
+                            SettingsActivity.log("        重定向到：" + (loc.length() > 600 ? loc.substring(0, 600) + "..." : loc));
+                        }
+                        conn.disconnect();
+                        conn = null;
+                    } else {
+                        SettingsActivity.log("   ✅ 解析完成，共" + (step + 1) + "次跳转");
+                        break;
+                    }
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+                SettingsActivity.log("   ❌ 解析异常：" + e.getMessage());
+            } finally {
+                if (conn != null) conn.disconnect();
+            }
+
+            final String realPlayUrl = TextUtils.isEmpty(finalUrl) ? originalUrl : finalUrl;
+            new Handler(Looper.getMainLooper()).post(() -> {
+                mPlayerManager.playUrl(realPlayUrl);
+            });
+        }).start();
+    }
 
     public void showChannelNum(int num) {
         if (!number_channel_enable) return;
@@ -525,7 +606,7 @@ public void playChannel(int index) {
         appConfig.setCustomUrls(liveUrl, epgUrl);
         if (liveUrl != null) UrlConfig.LIVE_URL = liveUrl;
         if (epgUrl != null) UrlConfig.EPG_URL = epgUrl;
-        runOnUiThread(this::loadLiveAndEpg);
+        runOnUiThread(this::loadLiveAndEpgFromNetwork);
     }
 
     @Override

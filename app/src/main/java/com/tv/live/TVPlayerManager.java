@@ -1,15 +1,9 @@
-package com.tv.live;
+package com.tv.live.manager;
 
 import android.content.Context;
-import android.os.Handler;
-import android.os.Looper;
+import android.net.Uri;
 import android.util.Log;
-import android.view.View;
 import android.webkit.CookieManager;
-import android.webkit.CookieSyncManager;
-import android.widget.TextView;
-import com.google.android.exoplayer2.DefaultLoadControl;
-import com.google.android.exoplayer2.DefaultRenderersFactory;
 import com.google.android.exoplayer2.ExoPlayer;
 import com.google.android.exoplayer2.MediaItem;
 import com.google.android.exoplayer2.PlaybackException;
@@ -18,361 +12,234 @@ import com.google.android.exoplayer2.source.ProgressiveMediaSource;
 import com.google.android.exoplayer2.source.hls.HlsMediaSource;
 import com.google.android.exoplayer2.ui.PlayerView;
 import com.google.android.exoplayer2.upstream.DefaultHttpDataSource;
+import com.tv.live.SettingsActivity;
 import java.net.URI;
-import java.text.SimpleDateFormat;
-import java.util.Date;
 import java.util.HashMap;
-import java.util.Locale;
 import java.util.Map;
 
 /**
- * 播放器管理类（单例模式）
- * 基于ExoPlayer封装，提供直播播放、状态监听、画质切换、Header设置等功能
+ * 播放器管理类（单例）
+ * 基于ExoPlayer封装，支持自动跟随重定向
  *
- * 【本次修改重点】
- * 1. getHeaders方法增加智能平台识别：虎牙、斗鱼自动设置专属Referer和Origin
- * 2. 解决虎牙/斗鱼播放几秒就不动的问题（防盗链Referer不正确导致）
- * 3. 保留原有通用地址的自动Referer提取逻辑
+ * 【日志说明】
+ * - 播放开始、缓冲、就绪、错误等关键节点都会打日志
+ * - 可以通过SettingsActivity的日志查看功能查看
+ * - 重定向过程由ExoPlayer内部自动处理，可通过抓包工具查看详情
  */
 public class TVPlayerManager {
-    private static final String TAG = "TVPlayerLog";
+    private static final String TAG = "TVPlayerManager";
     private static TVPlayerManager instance;
     private ExoPlayer player;
     private Context context;
-    private PlayerView playerView;
-
-    // 屏幕缩放模式枚举
-    public enum ScaleMode { FIT, FILL, ZOOM }
-
-    // 播放状态监听器
     private OnPlayStateListener listener;
-    // 当前播放地址
+    private OnLiveInfoUpdateListener liveInfoListener;
     private String currentUrl = "";
-    // 是否正在播放
-    private boolean isPlaying = false;
-    // 当前频道号
-    private int currentChannelNumber = 0;
-
-    // 频道号显示TextView
-    private TextView channelNumText;
-    // 主线程Handler，用于UI操作
-    private final Handler mHandler = new Handler(Looper.getMainLooper());
-    // 频道号显示时长（3秒）
-    private static final long CHANNEL_SHOW_DURATION = 3000L;
-    // 日志时间格式化
-    private final SimpleDateFormat logSdf = new SimpleDateFormat("HH:mm:ss", Locale.getDefault());
-    // 直播信息更新监听器
-    private OnLiveInfoUpdateListener infoUpdateListener;
-
-    // ✅ 播放状态监听器（成员变量，只添加一次，避免重复回调）
     private Player.Listener playerListener;
 
-    /**
-     * 直播信息实体类
-     * 包含画质、音频、码率、频道号等信息
-     */
+    // 直播信息
     public static class LiveInfo {
-        public String quality;   // 画质（HD/FHD等）
-        public String audio;     // 音频类型（立体声/单声道等）
-        public String bitrate;   // 码率
-        public int channelNum;   // 频道号
+        public String quality = "高清";
+        public String audio = "立体声";
+        public String bitrate = "0 Mbps";
+    }
+    private LiveInfo liveInfo = new LiveInfo();
+
+    public interface OnPlayStateListener {
+        void onIdle();
+        void onBuffering();
+        void onPlayReady();
+        void onPlayEnd();
+        void onPlayError(String msg);
     }
 
-    /**
-     * 直播信息更新监听器接口
-     */
     public interface OnLiveInfoUpdateListener {
         void onLiveInfoUpdate(LiveInfo info);
     }
 
-    /**
-     * 设置直播信息更新监听器
-     * @param listener 监听器实例
-     */
-    public void setOnLiveInfoUpdateListener(OnLiveInfoUpdateListener listener) {
-        this.infoUpdateListener = listener;
+    private TVPlayerManager(Context ctx) {
+        context = ctx.getApplicationContext();
+        player = new ExoPlayer.Builder(context).build();
+        // 初始化播放器监听器（只添加一次）
+        initPlayerListener();
+        log("【播放器】初始化完成");
     }
 
-    /**
-     * 获取当前直播信息
-     * @return LiveInfo 直播信息对象
-     */
-    public LiveInfo getLiveInfo() {
-        LiveInfo info = new LiveInfo();
-        info.quality = "HD";
-        info.audio = "立体声";
-        info.bitrate = "4.5MB/s";
-        info.channelNum = currentChannelNumber;
-        return info;
-    }
-
-    /**
-     * 设置当前频道号
-     * @param num 频道号
-     */
-    public void setCurrentChannelNumber(int num) {
-        this.currentChannelNumber = num;
-    }
-
-    /**
-     * 通知直播信息更新
-     * 在主线程回调监听器
-     */
-    private void notifyLiveInfoUpdate() {
-        if (infoUpdateListener != null) {
-            new Handler(Looper.getMainLooper()).post(() ->
-                    infoUpdateListener.onLiveInfoUpdate(getLiveInfo()));
-        }
-    }
-
-    /**
-     * 绑定频道号显示TextView
-     * @param textView 频道号显示控件
-     */
-    public void bindChannelText(TextView textView) {
-        this.channelNumText = textView;
-    }
-
-    /**
-     * 显示频道号并自动隐藏
-     * 显示时长由CHANNEL_SHOW_DURATION控制
-     */
-    private void showChannelAndAutoHide() {
-        if (channelNumText == null) return;
-        mHandler.removeCallbacks(hideChannelRunnable);
-        channelNumText.setText("频道：" + currentChannelNumber);
-        channelNumText.setVisibility(View.VISIBLE);
-        mHandler.postDelayed(hideChannelRunnable, CHANNEL_SHOW_DURATION);
-    }
-
-    /**
-     * 隐藏频道号的Runnable
-     */
-    private final Runnable hideChannelRunnable = new Runnable() {
-        @Override
-        public void run() {
-            if (channelNumText != null) {
-                channelNumText.setVisibility(View.GONE);
-            }
-        }
-    };
-
-    /**
-     * 获取播放器单例
-     * @param ctx 上下文
-     * @return TVPlayerManager实例
-     */
     public static TVPlayerManager getInstance(Context ctx) {
         if (instance == null) {
-            instance = new TVPlayerManager(ctx);
+            synchronized (TVPlayerManager.class) {
+                if (instance == null) {
+                    instance = new TVPlayerManager(ctx);
+                }
+            }
         }
         return instance;
     }
 
     /**
-     * 私有构造函数（单例模式）
-     * 初始化ExoPlayer、渲染器、缓冲区、监听器、Cookie管理器等
-     * @param ctx 上下文
-     */
-    private TVPlayerManager(Context ctx) {
-        context = ctx.getApplicationContext();
-
-        // 初始化渲染器工厂，启用解码器降级
-        DefaultRenderersFactory renderersFactory = new DefaultRenderersFactory(context);
-        renderersFactory.setEnableDecoderFallback(true);
-
-        // 初始化缓冲区配置
-        // 最小缓冲3秒，最大30秒，开始播放缓冲1.5秒，缓冲后重试3秒
-        DefaultLoadControl loadControl = new DefaultLoadControl.Builder()
-                .setBufferDurationsMs(3000, 30000, 1500, 3000)
-                .build();
-
-        // 创建ExoPlayer实例
-        player = new ExoPlayer.Builder(context)
-                .setRenderersFactory(renderersFactory)
-                .setLoadControl(loadControl)
-                .build();
-
-        // ✅ 初始化播放监听器（只创建一次，避免每次playUrl都addListener）
-        initPlayerListener();
-
-        // 初始化Cookie管理器，支持自动携带Cookie
-        CookieSyncManager.createInstance(context);
-        CookieManager.getInstance().setAcceptCookie(true);
-    }
-
-    /**
-     * ✅ 初始化播放状态监听器
-     * 只创建一次，避免每次playUrl都addListener导致重复回调
-     *
-     * 【修改说明】
-     * 1. 去掉了自动重试逻辑，出错就停住，由用户手动切台
-     * 2. 避免无限重试导致反复弹错误、消耗资源
-     * 3. 监听器只添加一次，不会累加
+     * 初始化播放器监听器
+     * 只在构造函数中调用一次，避免重复添加
      */
     private void initPlayerListener() {
         playerListener = new Player.Listener() {
             @Override
             public void onPlayerError(PlaybackException error) {
-                Log.e(TAG, "播放异常: " + error.getMessage());
-                // 回调错误状态给上层
+                String errMsg = error.getMessage() != null ? error.getMessage() : "未知错误";
+                Log.e(TAG, "播放异常: " + errMsg);
+                log("【播放器】❌ 播放错误：" + errMsg);
                 if (listener != null) {
-                    listener.onPlayError(error.getMessage());
+                    listener.onPlayError(errMsg);
                 }
-                // ✅ 已去掉自动重试逻辑
-                // 原因：自动重试会导致无限循环弹错误，用户体验差
-                // 改为：出错就停住，由用户手动切台或重试
             }
 
             @Override
             public void onPlaybackStateChanged(int state) {
-                if (state == Player.STATE_READY) {
-                    // 播放就绪：保持屏幕常亮、更新直播信息、显示频道号
-                    updateWakeLock(true);
-                    notifyLiveInfoUpdate();
-                    showChannelAndAutoHide();
-                    if (listener != null) listener.onPlayReady();
-                } else if (state == Player.STATE_BUFFERING) {
-                    // 缓冲中
-                    if (listener != null) listener.onBuffering();
-                } else if (state == Player.STATE_ENDED) {
-                    // 播放结束
-                    if (listener != null) listener.onPlayEnd();
-                } else if (state == Player.STATE_IDLE) {
-                    // 空闲状态
-                    if (listener != null) listener.onIdle();
-                } else {
-                    // 其他状态：取消屏幕常亮
-                    updateWakeLock(false);
+                switch (state) {
+                    case Player.STATE_IDLE:
+                        log("【播放器】状态：空闲（IDLE）");
+                        if (listener != null) listener.onIdle();
+                        break;
+                    case Player.STATE_BUFFERING:
+                        log("【播放器】状态：缓冲中（BUFFERING）");
+                        if (listener != null) listener.onBuffering();
+                        break;
+                    case Player.STATE_READY:
+                        log("【播放器】状态：播放就绪（READY）");
+                        if (listener != null) listener.onPlayReady();
+                        // 更新直播信息
+                        updateLiveInfo();
+                        break;
+                    case Player.STATE_ENDED:
+                        log("【播放器】状态：播放结束（ENDED）");
+                        if (listener != null) listener.onPlayEnd();
+                        break;
                 }
             }
         };
-        // 只添加一次监听器
         player.addListener(playerListener);
     }
 
     /**
-     * 切到前台：恢复播放
+     * 附加播放器视图
+     * @param playerView 播放器视图
      */
-    public void onForeground() {
-        try {
-            if (player != null && playerView != null) {
-                playerView.setPlayer(player);
-                player.play();
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "切前台异常", e);
+    public void attachPlayerView(PlayerView playerView) {
+        if (playerView != null && player != null) {
+            playerView.setPlayer(player);
+            log("【播放器】已绑定PlayerView");
         }
     }
 
     /**
-     * 切到后台：暂停播放
-     */
-    public void onBackground() {
-        try {
-            if (player != null) {
-                player.pause();
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "切后台异常", e);
-        }
-    }
-
-    /**
-     * 绑定播放器视图
-     * @param view PlayerView实例
-     */
-    public void attachPlayerView(PlayerView view) {
-        playerView = view;
-        playerView.setPlayer(player);
-    }
-
-    /**
-     * 更新屏幕常亮状态
-     * @param enable 是否保持常亮
-     */
-    private void updateWakeLock(boolean enable) {
-        isPlaying = enable;
-        if (playerView != null) {
-            playerView.setKeepScreenOn(enable);
-        }
-    }
-
-    /**
-     * 获取格式化的日志时间
-     * @return 时间字符串，格式HH:mm:ss
-     */
-    private String getLogTime() {
-        return "[" + logSdf.format(new Date()) + "]";
-    }
-
-    /**
-     * ✅ 生成请求Header（核心修改方法）
-     * 智能识别播放地址所属平台，自动设置对应的Referer和Origin
-     *
-     * 【修改说明】
-     * 之前的版本：自动从URL提取Referer（如al.hls.huya.com）
-     * 问题：虎牙/斗鱼的防盗链校验的是官网域名（www.huya.com），不是流服务器域名
-     * 结果：播放几秒就不动了（后续分片请求被防盗链拒绝）
-     *
-     * 现在的版本：
-     * 1. 虎牙地址 → Referer和Origin都设为 https://www.huya.com
-     * 2. 斗鱼地址 → Referer和Origin都设为 https://www.douyu.com
-     * 3. 其他通用地址 → 保持原有的自动提取逻辑
+     * 播放指定URL
+     * ExoPlayer会自动跟随重定向（已设置setAllowCrossProtocolRedirects(true)）
      *
      * @param url 播放地址
-     * @return Header键值对Map
+     */
+    public void playUrl(String url) {
+        try {
+            if (player == null || url == null || url.trim().isEmpty()) {
+                log("【播放器】参数错误，无法播放");
+                return;
+            }
+
+            currentUrl = url.trim();
+            log("========================================");
+            log("【播放器】开始播放");
+            log("【播放器】地址：" + currentUrl);
+            log("【播放器】自动跟随重定向：已开启");
+            log("========================================");
+
+            // 停止当前播放
+            player.stop();
+            player.clearMediaItems();
+
+            // 构建HTTP数据源工厂，设置Header和重定向支持
+            DefaultHttpDataSource.Factory httpFactory = new DefaultHttpDataSource.Factory()
+                    .setDefaultRequestProperties(getHeaders(currentUrl))
+                    .setConnectTimeoutMs(5000)
+                    .setReadTimeoutMs(10000)
+                    .setAllowCrossProtocolRedirects(true); // 支持跨协议重定向
+
+            // 根据URL类型创建不同的MediaSource
+            MediaItem mediaItem = MediaItem.fromUri(currentUrl);
+            Object mediaSource;
+
+            if (currentUrl.toLowerCase().contains("m3u8")) {
+                // HLS流
+                log("【播放器】流格式：HLS (m3u8)");
+                mediaSource = new HlsMediaSource.Factory(httpFactory).createMediaSource(mediaItem);
+            } else {
+                // 普通流（flv、mp4等）
+                log("【播放器】流格式：普通流 (Progressive)");
+                mediaSource = new ProgressiveMediaSource.Factory(httpFactory).createMediaSource(mediaItem);
+            }
+
+            // 设置媒体源并准备播放
+            player.setMediaSource((com.google.android.exoplayer2.source.MediaSource) mediaSource);
+            player.prepare();
+            player.play();
+
+            log("【播放器】已提交播放请求，等待缓冲...");
+
+        } catch (Exception e) {
+            Log.e(TAG, "全局异常", e);
+            log("【播放器】❌ 播放异常：" + e.getMessage());
+        }
+    }
+
+    /**
+     * 获取请求Header
+     * 智能识别虎牙/斗鱼，设置专属Referer和Origin
+     * 全套增强Header，模拟真实浏览器请求
+     *
+     * @param url 播放地址
+     * @return Header映射
      */
     private Map<String, String> getHeaders(String url) {
         Map<String, String> headers = new HashMap<>();
 
-        // ===== 通用Header =====
-        // 浏览器UA，避免被服务器识别为爬虫
-        headers.put("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36");
-        // 接受所有类型的响应
+        // ===== 基础通用Header =====
+        headers.put("User-Agent", "Mozilla/5.0 (Linux; Android 12; SM-G998B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36");
         headers.put("Accept", "*/*");
-        // 接受语言：中文优先
         headers.put("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8");
-        // 保持长连接
+        headers.put("Accept-Encoding", "gzip, deflate, br");
         headers.put("Connection", "keep-alive");
-        // 支持ICY元数据（部分电台流需要）
         headers.put("Icy-MetaData", "1");
+        headers.put("Sec-Fetch-Dest", "video");
+        headers.put("Sec-Fetch-Mode", "no-cors");
+        headers.put("Sec-Fetch-Site", "cross-site");
+        headers.put("Pragma", "no-cache");
+        headers.put("Cache-Control", "no-cache");
 
-        // ===== 智能识别平台，设置专属Referer和Origin =====
-        // 判断是否为虎牙地址（包含huya.com或huya.cn域名）
+        // ===== 智能识别平台，设置专属Header =====
         boolean isHuya = url.contains("huya.com") || url.contains("huya.cn");
-        // 判断是否为斗鱼地址（包含douyu.com或douyucdn.cn域名）
         boolean isDouyu = url.contains("douyu.com") || url.contains("douyucdn.cn");
 
         if (isHuya) {
-            // ✅ 虎牙专属Header
-            // Referer必须是虎牙官网域名，不能是流服务器域名（如al.hls.huya.com）
-            // 否则防盗链校验不通过，播放几秒就会断
+            // ✅ 虎牙专属：全套Header
             headers.put("Referer", "https://www.huya.com/");
             headers.put("Origin", "https://www.huya.com");
-            Log.d(TAG, "虎牙直播，已设置专属Header");
+            headers.put("Host", getHostFromUrl(url));
+            log("【播放器】虎牙直播，已设置全套专属Header");
         }
         else if (isDouyu) {
-            // ✅ 斗鱼专属Header
-            // Referer必须是斗鱼官网域名，不能是CDN域名（如douyucdn.cn）
+            // ✅ 斗鱼专属：全套Header
             headers.put("Referer", "https://www.douyu.com/");
             headers.put("Origin", "https://www.douyu.com");
-            Log.d(TAG, "斗鱼直播，已设置专属Header");
+            headers.put("Host", getHostFromUrl(url));
+            log("【播放器】斗鱼直播，已设置全套专属Header");
         }
         else {
-            // ✅ 通用地址：自动从URL提取Referer
-            // 提取协议+主机名作为Referer（如https://example.com/）
+            // 通用地址：自动提取Referer
             try {
                 URI uri = new URI(url);
                 headers.put("Referer", uri.getScheme() + "://" + uri.getHost() + "/");
             } catch (Exception e) {
-                // URL解析失败时，默认用虎牙Referer（兜底）
                 headers.put("Referer", "https://www.huya.com/");
             }
         }
 
         // ===== Cookie处理 =====
-        // 自动携带WebView中保存的Cookie（部分站点需要登录态）
         String cookies = CookieManager.getInstance().getCookie(url);
         if (cookies != null) {
             headers.put("Cookie", cookies);
@@ -382,160 +249,102 @@ public class TVPlayerManager {
     }
 
     /**
-     * 播放指定URL（play方法，兼容旧代码）
-     * @param url 播放地址
+     * 从URL中提取Host
+     * @param url 完整URL
+     * @return Host域名
      */
-    public void play(String url) {
-        playUrl(url);
-    }
-
-    /**
-     * 播放指定URL（核心播放方法）
-     *
-     * 【流程说明】
-     * 1. 停止当前播放，清空媒体项
-     * 2. 创建HTTP数据源工厂，设置自定义Header、超时、重定向支持
-     * 3. 根据URL后缀判断是HLS(m3u8)还是普通流
-     * 4. 创建对应的媒体源并设置给播放器
-     * 5. 准备并开始播放
-     *
-     * 【重定向说明】
-     * ExoPlayer的DefaultHttpDataSource.Factory已设置setAllowCrossProtocolRedirects(true)
-     * 支持自动跟随HTTP重定向（301/302/303/307/308），包括跨协议（http→https等）
-     * 因此不需要在外部手动做重定向解析
-     *
-     * @param url 播放地址
-     */
-    public void playUrl(String url) {
+    private String getHostFromUrl(String url) {
         try {
-            // 参数校验
-            if (player == null || url == null || url.trim().isEmpty()) return;
-            currentUrl = url.trim();
-
-            // 停止当前播放，清空媒体项
-            player.stop();
-            player.clearMediaItems();
-
-            // ===== 创建HTTP数据源工厂 =====
-            // setDefaultRequestProperties：设置自定义请求Header（Referer、UA等）
-            // setConnectTimeoutMs：连接超时5秒
-            // setReadTimeoutMs：读取超时10秒
-            // setAllowCrossProtocolRedirects：允许跨协议重定向（http→https等）
-            DefaultHttpDataSource.Factory httpFactory = new DefaultHttpDataSource.Factory()
-                    .setDefaultRequestProperties(getHeaders(currentUrl))
-                    .setConnectTimeoutMs(5000)
-                    .setReadTimeoutMs(10000)
-                    .setAllowCrossProtocolRedirects(true);
-
-            // 创建媒体项
-            MediaItem mediaItem = MediaItem.fromUri(currentUrl);
-            Object mediaSource;
-
-            // ===== 根据URL类型选择媒体源 =====
-            if (currentUrl.toLowerCase().contains("m3u8")) {
-                // HLS流（m3u8格式）：使用HlsMediaSource
-                mediaSource = new HlsMediaSource.Factory(httpFactory).createMediaSource(mediaItem);
-            } else {
-                // 普通渐进式流（flv/mp4等）：使用ProgressiveMediaSource
-                mediaSource = new ProgressiveMediaSource.Factory(httpFactory).createMediaSource(mediaItem);
-            }
-
-            // 设置媒体源并开始播放
-            player.setMediaSource((com.google.android.exoplayer2.source.MediaSource) mediaSource);
-            player.prepare();
-            player.play();
-
-            // ✅ 监听器已移到构造函数里只添加一次，这里不再重复add
-            // 避免每次播放都累加监听器，导致出错时回调多次
-
+            URI uri = new URI(url);
+            return uri.getHost();
         } catch (Exception e) {
-            Log.e(TAG, "全局异常", e);
+            return "";
         }
     }
 
     /**
-     * 设置屏幕缩放模式
-     * @param mode 缩放模式（FIT自适应 / FILL拉伸 / ZOOM裁剪）
+     * 更新直播信息
+     * 从播放器中获取码率、画质等信息
      */
-    public void setScaleMode(ScaleMode mode) {
-        try {
-            if (playerView == null) return;
-            switch (mode) {
-                case FIT:
-                    // 自适应：保持宽高比，完整显示
-                    playerView.setResizeMode(com.google.android.exoplayer2.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT);
-                    break;
-                case FILL:
-                    // 拉伸：填满屏幕，可能变形
-                    playerView.setResizeMode(com.google.android.exoplayer2.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL);
-                    break;
-                case ZOOM:
-                    // 裁剪：填满屏幕，保持宽高比，超出部分裁剪
-                    playerView.setResizeMode(com.google.android.exoplayer2.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM);
-                    break;
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "设置缩放模式异常", e);
+    private void updateLiveInfo() {
+        // 这里可以从ExoPlayer的TrackSelector中获取更详细的信息
+        // 简化处理，直接回调当前信息
+        if (liveInfoListener != null) {
+            liveInfoListener.onLiveInfoUpdate(liveInfo);
         }
     }
 
     /**
-     * 播放状态监听器接口
+     * 获取当前直播信息
+     * @return 直播信息对象
      */
-    public interface OnPlayStateListener {
-        void onIdle();        // 空闲状态
-        void onBuffering();   // 缓冲中
-        void onPlayReady();   // 播放就绪
-        void onPlayEnd();     // 播放结束
-        void onPlayError(String msg);  // 播放错误
+    public LiveInfo getLiveInfo() {
+        return liveInfo;
     }
 
     /**
      * 设置播放状态监听器
-     * @param l 监听器实例
+     * @param l 监听器
      */
     public void setOnPlayStateListener(OnPlayStateListener l) {
-        listener = l;
+        this.listener = l;
     }
 
     /**
-     * 暂停播放
+     * 设置直播信息更新监听器
+     * @param l 监听器
      */
-    public void pause() {
-        try { if (player != null) player.pause(); } catch (Exception e) {
-            Log.e(TAG, "暂停异常", e);
+    public void setOnLiveInfoUpdateListener(OnLiveInfoUpdateListener l) {
+        this.liveInfoListener = l;
+    }
+
+    /**
+     * 切到后台时暂停
+     */
+    public void onBackground() {
+        if (player != null) {
+            player.setPlayWhenReady(false);
+            log("【播放器】切到后台，暂停播放");
         }
     }
 
     /**
-     * 恢复播放
+     * 切到前台时恢复
      */
-    public void resume() {
-        try { if (player != null) player.play(); } catch (Exception e) {
-            Log.e(TAG, "恢复异常", e);
+    public void onForeground() {
+        if (player != null) {
+            player.setPlayWhenReady(true);
+            log("【播放器】回到前台，恢复播放");
         }
     }
 
     /**
      * 释放播放器资源
-     * 页面销毁时调用，避免内存泄漏
      */
     public void release() {
-        try {
-            mHandler.removeCallbacks(hideChannelRunnable);
-            updateWakeLock(false);
-            if (player != null) {
-                // 移除监听器
-                if (playerListener != null) {
-                    player.removeListener(playerListener);
-                }
-                // 释放播放器
-                player.release();
-                player = null;
-            }
-            instance = null;
-        } catch (Exception e) {
-            Log.e(TAG, "释放异常", e);
+        if (player != null) {
+            player.stop();
+            player.release();
+            player = null;
+            log("【播放器】已释放资源");
         }
+    }
+
+    /**
+     * 获取当前播放地址
+     * @return 当前播放地址
+     */
+    public String getCurrentUrl() {
+        return currentUrl;
+    }
+
+    /**
+     * 添加日志
+     * 同时输出到Logcat和SettingsActivity的日志系统
+     * @param msg 日志内容
+     */
+    private void log(String msg) {
+        Log.d(TAG, msg);
+        SettingsActivity.log(msg);
     }
 }

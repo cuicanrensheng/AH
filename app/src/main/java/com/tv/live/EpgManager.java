@@ -17,7 +17,7 @@ public class EpgManager {
     private static EpgManager instance;
     private final Map<String, List<Channel.EpgItem>> channelEpgMap = new HashMap<>();
     private String epgUrl = UrlConfig.EPG_URL;
-    private boolean hasPrintedSample = false; // 只打印前5个节目样本，避免日志太多
+    private boolean hasPrintedSample = false;
 
     public static EpgManager getInstance() {
         if (instance == null) {
@@ -30,46 +30,19 @@ public class EpgManager {
         this.epgUrl = url;
     }
 
-    /**
-     * ✅ 【新增】从M3U直播源文件中自动提取EPG地址并加载
-     * 
-     * 原理：M3U文件的 #EXTM3U 行通常会带 x-tvg-url 属性，指定对应的EPG地址
-     * 比如：#EXTM3U x-tvg-url="https://xxx.com/epg.xml.gz"
-     * 
-     * 优点：换直播源时自动切换对应的EPG，不用手动配置
-     * 如果直播源里没有指定EPG地址，会自动使用默认的 UrlConfig.EPG_URL
-     * 
-     * @param m3uUrl M3U直播源地址
-     * @param callback 加载完成后的回调（主线程执行）
-     */
     public void loadEpgFromM3u(String m3uUrl, Runnable callback) {
         new Thread(() -> {
-            // 第一步：从M3U文件中提取EPG地址
             String extractedEpgUrl = extractEpgUrlFromM3u(m3uUrl);
-            
             if (extractedEpgUrl != null && !extractedEpgUrl.isEmpty()) {
                 SettingsActivity.log("【EPG】📡 从直播源获取到EPG地址：" + extractedEpgUrl);
                 epgUrl = extractedEpgUrl;
             } else {
                 SettingsActivity.log("【EPG】📡 直播源未指定EPG地址，使用默认：" + epgUrl);
             }
-            
-            // 第二步：加载EPG（复用原有的加载逻辑）
             loadEpg(callback);
         }).start();
     }
 
-    /**
-     * 从M3U文件头部提取 x-tvg-url 属性
-     * 
-     * 只读取前10行，因为x-tvg-url一定在#EXTM3U那一行（文件开头）
-     * 支持两种格式：
-     * - x-tvg-url="https://xxx.com/epg.xml" （带引号，最常见）
-     * - x-tvg-url=https://xxx.com/epg.xml （不带引号）
-     * 
-     * @param m3uUrl M3U文件地址
-     * @return 提取到的EPG地址，提取失败返回null
-     */
     private String extractEpgUrlFromM3u(String m3uUrl) {
         HttpURLConnection conn = null;
         BufferedReader reader = null;
@@ -81,7 +54,6 @@ public class EpgManager {
             conn.connect();
 
             InputStream is = conn.getInputStream();
-            // 如果是.gz压缩的M3U，自动解压
             if (m3uUrl.endsWith(".gz")) {
                 is = new GZIPInputStream(is);
             }
@@ -89,15 +61,9 @@ public class EpgManager {
             reader = new BufferedReader(new InputStreamReader(is, "UTF-8"));
             String line;
             int lineCount = 0;
-            
-            // 只看前10行，x-tvg-url一定在开头
             while ((line = reader.readLine()) != null && lineCount < 10) {
                 lineCount++;
-                
-                // 找到包含x-tvg-url的行
                 if (line.contains("x-tvg-url") || line.contains("tvgtvg-url")) {
-                    
-                    // 方式1：提取引号中的URL（最常见）
                     int start = line.indexOf("\"");
                     if (start >= 0) {
                         int end = line.indexOf("\"", start + 1);
@@ -105,24 +71,13 @@ public class EpgManager {
                             return line.substring(start + 1, end).trim();
                         }
                     }
-                    
-                    // 方式2：= 后面直接跟URL（不带引号）
                     String[] parts = line.split("x-tvg-url=");
                     if (parts.length >= 2) {
                         String urlPart = parts[1].trim();
-                        // 去掉开头的引号
-                        if (urlPart.startsWith("\"")) {
-                            urlPart = urlPart.substring(1);
-                        }
-                        // 遇到空格就截止（后面还有其他属性）
+                        if (urlPart.startsWith("\"")) urlPart = urlPart.substring(1);
                         int spaceIdx = urlPart.indexOf(" ");
-                        if (spaceIdx > 0) {
-                            urlPart = urlPart.substring(0, spaceIdx);
-                        }
-                        // 去掉结尾的引号
-                        if (urlPart.endsWith("\"")) {
-                            urlPart = urlPart.substring(0, urlPart.length() - 1);
-                        }
+                        if (spaceIdx > 0) urlPart = urlPart.substring(0, spaceIdx);
+                        if (urlPart.endsWith("\"")) urlPart = urlPart.substring(0, urlPart.length() - 1);
                         return urlPart.trim();
                     }
                 }
@@ -130,7 +85,6 @@ public class EpgManager {
         } catch (Exception e) {
             SettingsActivity.log("【EPG】从M3U提取EPG地址失败：" + e.getMessage());
         } finally {
-            // 关闭资源
             try {
                 if (reader != null) reader.close();
                 if (conn != null) conn.disconnect();
@@ -156,6 +110,7 @@ public class EpgManager {
                 }
 
                 hasPrintedSample = false;
+                channelEpgMap.clear();
                 parseXml(in);
                 SettingsActivity.log("【EPG】✅ 加载完成，共" + channelEpgMap.size() + "个频道");
             } catch (Exception e) {
@@ -181,11 +136,10 @@ public class EpgManager {
         SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMddHHmmss");
         sdf.setLenient(true);
 
-        // 打印今天的日期，确认基准是否正确
         Calendar todayCheck = Calendar.getInstance();
         SettingsActivity.log("【EPG】📅 今天日期：" + todayCheck.get(Calendar.YEAR) + "-"
                 + (todayCheck.get(Calendar.MONTH) + 1) + "-" + todayCheck.get(Calendar.DAY_OF_MONTH)
-                + "（一年中的第" + todayCheck.get(Calendar.DAY_OF_YEAR) + "天）");
+                + "（周" + new String[]{"日","一","二","三","四","五","六"}[todayCheck.get(Calendar.DAY_OF_WEEK)-1] + "）");
 
         String currentChannelName = null;
         List<Channel.EpgItem> tempPrograms = new ArrayList<>();
@@ -210,9 +164,8 @@ public class EpgManager {
                     if (start == null || stop == null) continue;
 
                     try {
-                        String originalStart = start; // 保存原始字符串
+                        String originalStart = start;
 
-                        // 去掉时区后缀，只取前14位
                         if (start.length() > 14) start = start.substring(0, 14);
                         if (stop.length() > 14) stop = stop.substring(0, 14);
 
@@ -222,12 +175,11 @@ public class EpgManager {
                         Calendar today = Calendar.getInstance();
                         String dayName = getDayName(startCal, today);
 
-                        // 只打印前5个节目样本，方便排查
                         if (!hasPrintedSample && programCount < 5) {
                             SettingsActivity.log("【EPG】🔍 样本" + (programCount + 1)
                                     + "：原始时间=" + originalStart
-                                    + "，截取后=" + start
                                     + "，解析日期=" + (startCal.get(Calendar.MONTH) + 1) + "月" + startCal.get(Calendar.DAY_OF_MONTH) + "日"
+                                    + "，周" + new String[]{"日","一","二","三","四","五","六"}[startCal.get(Calendar.DAY_OF_WEEK)-1]
                                     + "，dayName=" + dayName);
                             programCount++;
                             if (programCount >= 5) hasPrintedSample = true;
@@ -259,7 +211,6 @@ public class EpgManager {
             xml.next();
         }
 
-        // 打印前3个频道的日期分布
         int count = 0;
         for (Map.Entry<String, List<Channel.EpgItem>> entry : channelEpgMap.entrySet()) {
             if (count >= 3) break;
@@ -289,9 +240,10 @@ public class EpgManager {
     }
 
     /**
-     * ✅ 毫秒差计算天数，彻底解决跨年、跨月、时区问题
+     * ✅ 【修复】用 Calendar 直接比较日期，彻底解决毫秒差精度问题
      */
     public String getDayName(Calendar itemCal, Calendar todayCal) {
+        // 节目日期：清零时分秒
         Calendar itemDay = Calendar.getInstance();
         itemDay.setTime(itemCal.getTime());
         itemDay.set(Calendar.HOUR_OF_DAY, 0);
@@ -299,6 +251,7 @@ public class EpgManager {
         itemDay.set(Calendar.SECOND, 0);
         itemDay.set(Calendar.MILLISECOND, 0);
 
+        // 今天日期：清零时分秒
         Calendar todayDay = Calendar.getInstance();
         todayDay.setTime(todayCal.getTime());
         todayDay.set(Calendar.HOUR_OF_DAY, 0);
@@ -306,15 +259,33 @@ public class EpgManager {
         todayDay.set(Calendar.SECOND, 0);
         todayDay.set(Calendar.MILLISECOND, 0);
 
-        long diffMs = itemDay.getTimeInMillis() - todayDay.getTimeInMillis();
-        int dayDiff = (int) (diffMs / (1000L * 60 * 60 * 24));
+        // 今天
+        if (itemDay.get(Calendar.YEAR) == todayDay.get(Calendar.YEAR)
+                && itemDay.get(Calendar.DAY_OF_YEAR) == todayDay.get(Calendar.DAY_OF_YEAR)) {
+            return "今天";
+        }
 
+        // 明天
+        Calendar tomorrow = Calendar.getInstance();
+        tomorrow.setTime(todayDay.getTime());
+        tomorrow.add(Calendar.DAY_OF_YEAR, 1);
+        if (itemDay.get(Calendar.YEAR) == tomorrow.get(Calendar.YEAR)
+                && itemDay.get(Calendar.DAY_OF_YEAR) == tomorrow.get(Calendar.DAY_OF_YEAR)) {
+            return "明天";
+        }
+
+        // 后天
+        Calendar dayAfter = Calendar.getInstance();
+        dayAfter.setTime(todayDay.getTime());
+        dayAfter.add(Calendar.DAY_OF_YEAR, 2);
+        if (itemDay.get(Calendar.YEAR) == dayAfter.get(Calendar.YEAR)
+                && itemDay.get(Calendar.DAY_OF_YEAR) == dayAfter.get(Calendar.DAY_OF_YEAR)) {
+            return "后天";
+        }
+
+        // 其他返回周几
         String[] weekDays = {"周日", "周一", "周二", "周三", "周四", "周五", "周六"};
         int dayOfWeek = itemCal.get(Calendar.DAY_OF_WEEK) - 1;
-
-        if (dayDiff == 0) return "今天";
-        if (dayDiff == 1) return "明天";
-        if (dayDiff == 2) return "后天";
         return weekDays[dayOfWeek];
     }
 }

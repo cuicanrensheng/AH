@@ -458,7 +458,7 @@ public void playChannel(int index) {
         
         // ✅ 全部改成 SettingsActivity.log()
         SettingsActivity.log("🔗 开始解析：" + ch.getName());
-        SettingsActivity.log("   原始URL：" + (originalUrl.length() > 60 ? originalUrl.substring(0, 60) + "..." : originalUrl));
+        SettingsActivity.log("   原始URL：" + (originalUrl.length() > 200 ? originalUrl.substring(0, 200) + "..." : originalUrl));
         
         try {
             for (int step = 0; step < MAX_REDIRECT_COUNT; step++) {
@@ -472,14 +472,14 @@ public void playChannel(int index) {
                 conn.setInstanceFollowRedirects(false);
                 int code = conn.getResponseCode();
                 
-                String shortUrl = finalUrl.length() > 60 ? finalUrl.substring(0, 60) + "..." : finalUrl;
+                String shortUrl = finalUrl.length() > 200 ? finalUrl.substring(0, 200) + "..." : finalUrl;
                 SettingsActivity.log("   第" + (step + 1) + "次：HTTP " + code + " → " + shortUrl);
                 
                 if (code == 301 || code == 302) {
                     String loc = conn.getHeaderField("Location");
                     if (loc != null) {
                         finalUrl = loc;
-                        SettingsActivity.log("        重定向到：" + (loc.length() > 60 ? loc.substring(0, 60) + "..." : loc));
+                        SettingsActivity.log("        重定向到：" + (loc.length() > 200 ? loc.substring(0, 200) + "..." : loc));
                     }
                     conn.disconnect();
                     conn = null;

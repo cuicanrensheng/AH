@@ -559,7 +559,12 @@ public void playChannel(int index) {
         });
     }).start();
 }
-
+// ====================== 加在这里 ======================
+public void refreshCurrentChannel() {
+    if (channelSourceList == null || channelSourceList.isEmpty()) return;
+    playChannel(currentPlayIndex);
+}
+// =====================================================
     public void showChannelNum(int num) {
         if (!number_channel_enable) return;
         tv_channel_num.setText(String.valueOf(num));

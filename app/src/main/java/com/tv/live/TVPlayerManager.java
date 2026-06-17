@@ -17,7 +17,7 @@ import com.google.android.exoplayer2.Player;
 import com.google.android.exoplayer2.source.ProgressiveMediaSource;
 import com.google.android.exoplayer2.source.hls.HlsMediaSource;
 import com.google.android.exoplayer2.ui.PlayerView;
-import java.net.URI;
+import com.google.android.exoplayer2.upstream.DefaultHttpDataSource;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.HashMap;
@@ -28,11 +28,12 @@ import java.util.Map;
  * 播放器管理类（单例模式）
  * 基于ExoPlayer封装，提供直播播放、状态监听、画质切换、Header设置等功能
  *
- * 【本次修改重点】
- * 1. 替换为 RedirectLoggingHttpDataSource：带重定向日志的自定义数据源
- * 2. 每一次HTTP重定向都会打印详细日志，方便调试虎牙/斗鱼等多级重定向的流
- * 3. getHeaders方法保留智能平台识别：虎牙、斗鱼自动设置专属Referer和Origin
- * 4. 解决虎牙/斗鱼播放几秒就不动的问题（防盗链Referer不正确导致）
+ * 【稳定版 - 基于老版本优化】
+ * 1. 用回 DefaultHttpDataSource，保证稳定性（老版本能正常播放虎牙）
+ * 2. 简化Header，只保留必要的，避免触发防盗链
+ * 3. 智能识别平台：虎牙用虎牙Referer，斗鱼用斗鱼Referer
+ * 4. 修复监听器重复添加的bug（只添加一次）
+ * 5. 保留自动重定向支持
  */
 public class TVPlayerManager {
     private static final String TAG = "TVPlayerLog";
@@ -204,11 +205,6 @@ public class TVPlayerManager {
     /**
      * ✅ 初始化播放状态监听器
      * 只创建一次，避免每次playUrl都addListener导致重复回调
-     *
-     * 【修改说明】
-     * 1. 去掉了自动重试逻辑，出错就停住，由用户手动切台
-     * 2. 避免无限重试导致反复弹错误、消耗资源
-     * 3. 监听器只添加一次，不会累加
      */
     private void initPlayerListener() {
         playerListener = new Player.Listener() {
@@ -219,9 +215,6 @@ public class TVPlayerManager {
                 if (listener != null) {
                     listener.onPlayError(error.getMessage());
                 }
-                // ✅ 已去掉自动重试逻辑
-                // 原因：自动重试会导致无限循环弹错误，用户体验差
-                // 改为：出错就停住，由用户手动切台或重试
             }
 
             @Override
@@ -285,6 +278,7 @@ public class TVPlayerManager {
     public void attachPlayerView(PlayerView view) {
         playerView = view;
         playerView.setPlayer(player);
+        playerView.setUseController(false); // 隐藏原生控制器
     }
 
     /**
@@ -307,18 +301,17 @@ public class TVPlayerManager {
     }
 
     /**
-     * ✅ 生成请求Header（核心修改方法）
-     * 智能识别播放地址所属平台，自动设置对应的Referer和Origin
+     * ✅ 生成请求Header（稳定版）
      *
-     * 【修改说明】
-     * 之前的版本：自动从URL提取Referer（如al.hls.huya.com）
-     * 问题：虎牙/斗鱼的防盗链校验的是官网域名（www.huya.com），不是流服务器域名
-     * 结果：播放几秒就不动了（后续分片请求被防盗链拒绝）
+     * 【设计思路】
+     * 老版本就是简单的几个Header，能正常播放虎牙
+     * 新版本加了太多Header（Origin、Host、Sec-Fetch-*等），反而触发防盗链
+     * 所以改回简洁风格，只保留必要的
      *
-     * 现在的版本：
-     * 1. 虎牙地址 → Referer和Origin都设为 https://www.huya.com
-     * 2. 斗鱼地址 → Referer和Origin都设为 https://www.douyu.com
-     * 3. 其他通用地址 → 保持原有的自动提取逻辑
+     * 【智能识别】
+     * - 虎牙地址 → Referer 用虎牙官网
+     * - 斗鱼地址 → Referer 用斗鱼官网
+     * - 其他地址 → 默认用虎牙Referer兜底
      *
      * @param url 播放地址
      * @return Header键值对Map
@@ -326,53 +319,37 @@ public class TVPlayerManager {
     private Map<String, String> getHeaders(String url) {
         Map<String, String> headers = new HashMap<>();
 
-        // ===== 通用Header =====
-        // 浏览器UA，避免被服务器识别为爬虫
-        headers.put("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36");
-        // 接受所有类型的响应
+        // ===== 基础Header（和老版本保持一致，简洁稳定） =====
+        // UA 用 ExoPlayer，不要用浏览器UA，反而不自然
+        headers.put("User-Agent", "ExoPlayer");
+        // 接受所有类型
         headers.put("Accept", "*/*");
-        // 接受语言：中文优先
-        headers.put("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8");
         // 保持长连接
         headers.put("Connection", "keep-alive");
         // 支持ICY元数据（部分电台流需要）
         headers.put("Icy-MetaData", "1");
 
-        // ===== 智能识别平台，设置专属Referer和Origin =====
-        // 判断是否为虎牙地址（包含huya.com或huya.cn域名）
+        // ===== 智能识别平台，设置对应的Referer =====
         boolean isHuya = url.contains("huya.com") || url.contains("huya.cn");
-        // 判断是否为斗鱼地址（包含douyu.com或douyucdn.cn域名）
         boolean isDouyu = url.contains("douyu.com") || url.contains("douyucdn.cn");
 
         if (isHuya) {
-            // ✅ 虎牙专属Header
-            // Referer必须是虎牙官网域名，不能是流服务器域名（如al.hls.huya.com）
-            // 否则防盗链校验不通过，播放几秒就会断
+            // 虎牙：用虎牙官网Referer
             headers.put("Referer", "https://www.huya.com/");
-            headers.put("Origin", "https://www.huya.com");
-            Log.d(TAG, "虎牙直播，已设置专属Header");
+            Log.d(TAG, "虎牙直播，设置虎牙Referer");
         }
         else if (isDouyu) {
-            // ✅ 斗鱼专属Header
-            // Referer必须是斗鱼官网域名，不能是CDN域名（如douyucdn.cn）
+            // 斗鱼：用斗鱼官网Referer
             headers.put("Referer", "https://www.douyu.com/");
-            headers.put("Origin", "https://www.douyu.com");
-            Log.d(TAG, "斗鱼直播，已设置专属Header");
+            Log.d(TAG, "斗鱼直播，设置斗鱼Referer");
         }
         else {
-            // ✅ 通用地址：自动从URL提取Referer
-            // 提取协议+主机名作为Referer（如https://example.com/）
-            try {
-                URI uri = new URI(url);
-                headers.put("Referer", uri.getScheme() + "://" + uri.getHost() + "/");
-            } catch (Exception e) {
-                // URL解析失败时，默认用虎牙Referer（兜底）
-                headers.put("Referer", "https://www.huya.com/");
-            }
+            // 其他地址：默认用虎牙Referer兜底
+            headers.put("Referer", "https://www.huya.com/");
         }
 
         // ===== Cookie处理 =====
-        // 自动携带WebView中保存的Cookie（部分站点需要登录态）
+        // 自动携带WebView中保存的Cookie
         String cookies = CookieManager.getInstance().getCookie(url);
         if (cookies != null) {
             headers.put("Cookie", cookies);
@@ -392,20 +369,9 @@ public class TVPlayerManager {
     /**
      * ✅ 播放指定URL（核心播放方法）
      *
-     * 【流程说明】
-     * 1. 停止当前播放，清空媒体项
-     * 2. 创建自定义的RedirectLoggingHttpDataSource数据源工厂
-     * 3. 设置自定义Header、超时、重定向支持
-     * 4. 根据URL后缀判断是HLS(m3u8)还是普通流
-     * 5. 创建对应的媒体源并设置给播放器
-     * 6. 准备并开始播放
-     *
-     * 【重定向说明】
-     * 使用自定义的RedirectLoggingHttpDataSource
-     * - 自动跟随HTTP重定向（301/302/303/307/308）
-     * - 支持跨协议重定向（http→https等）
-     * - 每一次重定向都打印详细日志，方便调试
-     * - Header全程生效，每一层重定向都会带上
+     * 【说明】
+     * 用回系统自带的 DefaultHttpDataSource，稳定可靠
+     * 自动跟随重定向，Header全程生效
      *
      * @param url 播放地址
      */
@@ -421,36 +387,32 @@ public class TVPlayerManager {
             player.stop();
             player.clearMediaItems();
 
-            // ===== 创建自定义的HTTP数据源工厂 =====
-            // ✅ RedirectLoggingHttpDataSource.Factory
-            // 功能：
-            // 1. 自动跟随重定向（支持301/302/303/307/308）
-            // 2. 每一次重定向都打印详细日志
-            // 3. Header全程生效（每一层重定向都带上）
-            // 4. 支持跨协议重定向（http→https）
-            RedirectLoggingHttpDataSource.Factory httpFactory = new RedirectLoggingHttpDataSource.Factory()
+            // ===== 用系统自带的 DefaultHttpDataSource =====
+            // 稳定可靠，老版本就是用的这个，能正常播放虎牙
+            // setAllowCrossProtocolRedirects：支持跨协议重定向（http→https）
+            DefaultHttpDataSource.Factory httpFactory = new DefaultHttpDataSource.Factory()
                     .setDefaultRequestProperties(getHeaders(currentUrl))
                     .setConnectTimeoutMs(5000)
                     .setReadTimeoutMs(10000)
-                    .setAllowCrossProtocolRedirects(true); // 接口兼容，实际默认支持
+                    .setAllowCrossProtocolRedirects(true);
 
             // 创建媒体项
             MediaItem mediaItem = MediaItem.fromUri(currentUrl);
-            Object mediaSource;
+            com.google.android.exoplayer2.source.MediaSource mediaSource;
 
             // ===== 根据URL类型选择媒体源 =====
             if (currentUrl.toLowerCase().contains("m3u8")) {
-                // HLS流（m3u8格式）：使用HlsMediaSource
+                // HLS流（m3u8格式）
                 Log.d(TAG, "流格式：HLS (m3u8)");
                 mediaSource = new HlsMediaSource.Factory(httpFactory).createMediaSource(mediaItem);
             } else {
-                // 普通渐进式流（flv/mp4等）：使用ProgressiveMediaSource
+                // 普通渐进式流（flv/mp4等）
                 Log.d(TAG, "流格式：普通流 (Progressive)");
                 mediaSource = new ProgressiveMediaSource.Factory(httpFactory).createMediaSource(mediaItem);
             }
 
             // 设置媒体源并开始播放
-            player.setMediaSource((com.google.android.exoplayer2.source.MediaSource) mediaSource);
+            player.setMediaSource(mediaSource);
             player.prepare();
             player.play();
 

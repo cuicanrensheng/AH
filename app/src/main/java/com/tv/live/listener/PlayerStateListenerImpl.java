@@ -1,7 +1,6 @@
 package com.tv.live.listener;
 
 import android.content.Context;
-import android.widget.Toast;
 import com.tv.live.TVPlayerManager;
 
 /**
@@ -14,9 +13,9 @@ import com.tv.live.TVPlayerManager;
  * ================================================
  */
 public class PlayerStateListenerImpl implements TVPlayerManager.OnPlayStateListener {
-    // 应用上下文，用于弹出Toast
+    // 应用上下文，保留引用备用
     private final Context context;
-    // 当前播放的频道名称，用于提示信息拼接
+    // 当前播放的频道名称，保留备用
     private String currentChannelName = "";
 
     /**
@@ -66,21 +65,20 @@ public class PlayerStateListenerImpl implements TVPlayerManager.OnPlayStateListe
 
     /**
      * 播放结束回调
-     * 直播流正常结束/断流时触发，仅提示用户，不做自动重试
+     * ✅ 已屏蔽：不弹Toast提示
      */
     @Override
     public void onPlayEnd() {
-        Toast.makeText(context, currentChannelName + " 播放结束", Toast.LENGTH_SHORT).show();
+        // 已屏蔽播放结束提示
     }
 
     /**
      * 播放错误回调
-     * 网络异常、源失效、解码失败等情况触发，弹出错误详情
-     * 不做自动重试，避免后台无效循环消耗资源
-     * @param msg 错误详情信息
+     * ✅ 已屏蔽：不弹Toast提示
+     * 网络异常、源失效、解码失败等情况触发
      */
     @Override
     public void onPlayError(String msg) {
-        Toast.makeText(context, "播放异常：" + msg, Toast.LENGTH_SHORT).show();
+        // 已屏蔽播放错误提示
     }
 }

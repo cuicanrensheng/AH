@@ -14,19 +14,19 @@ import java.util.zip.GZIPInputStream;
 
 /**
  * 节目单解析器：下载、解压、解析XML
- * 默认源：https://epg.catvod.com/epg.xml
- * 修复点：
+ * 默认地址自动从 UrlConfig.EPG_URL 获取
+ * 修复优化点：
  * 1. 修复跨年/跨月天数计算错误，解决「明天/后天」标签失效
- * 2. 修复日期基准过期问题，零点后自动更新日期标签
- * 3. 兼容带时区的时间格式，异常节目自动跳过
- * 4. 自动识别gzip压缩，兼容压缩/非压缩源
+ * 2. 修复日期基准过期问题，APP挂到零点后日期自动更新
+ * 3. 兼容带时区的时间格式，异常节目自动跳过不崩溃
+ * 4. 自动识别gzip压缩，同时兼容压缩/非压缩源
  */
 public class EpgManager {
     private static final String TAG = "EPG";
     private static EpgManager instance;
     private final Map<String, List<Channel.EpgItem>> channelEpgMap = new HashMap<>();
-    // ✅ 已替换为新的节目单地址
-    private String epgUrl = "https://epg.catvod.com/epg.xml";
+    // ✅ 自动从UrlConfig读取默认EPG地址，统一配置入口
+    private String epgUrl = UrlConfig.EPG_URL;
 
     public static EpgManager getInstance() {
         if (instance == null) {
@@ -36,7 +36,7 @@ public class EpgManager {
     }
 
     /**
-     * 设置节目单地址（支持动态切换源）
+     * 动态设置节目单地址（可覆盖默认配置）
      */
     public void setEpgUrl(String url) {
         this.epgUrl = url;
@@ -58,7 +58,7 @@ public class EpgManager {
                 conn.connect();
 
                 in = conn.getInputStream();
-                // 自动识别gzip：URL后缀或响应头标记压缩则解压
+                // 自动识别gzip压缩：URL后缀 或 响应头标记
                 if (epgUrl.endsWith(".gz") || "gzip".equals(conn.getContentEncoding())) {
                     in = new GZIPInputStream(in);
                 }
@@ -90,7 +90,7 @@ public class EpgManager {
         xml.setInput(is, "UTF-8");
 
         SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMddHHmmss");
-        sdf.setLenient(true);
+        sdf.setLenient(true); // 宽松解析，兼容格式偏差
 
         String currentChannelId = null;
         String currentChannelName = null;
@@ -115,14 +115,14 @@ public class EpgManager {
                     if (start == null || stop == null) continue;
 
                     try {
-                        // 清洗时间：去掉时区后缀，只取前14位数字
+                        // 清洗时间：去掉时区后缀，只取前14位数字部分
                         if (start.length() > 14) start = start.substring(0, 14);
                         if (stop.length() > 14) stop = stop.substring(0, 14);
 
                         Calendar startCal = Calendar.getInstance();
                         startCal.setTime(sdf.parse(start));
 
-                        // 每次取最新当前日期，避免隔夜后基准过期
+                        // 每次都取最新当前日期，避免APP隔夜后日期基准过期
                         Calendar today = Calendar.getInstance();
                         String dayName = getDayName(startCal, today);
 
@@ -144,7 +144,7 @@ public class EpgManager {
                 }
             }
 
-            // 节目结束，存入缓存
+            // 单条节目解析结束，存入缓存
             if (xml.getEventType() == XmlPullParser.END_TAG && "programme".equals(xml.getName())) {
                 if (currentChannelName != null && !tempPrograms.isEmpty()) {
                     tempPrograms.sort(Comparator.comparing(item -> item.time));
@@ -157,7 +157,7 @@ public class EpgManager {
     }
 
     /**
-     * 根据频道名获取节目单（兼容HD、高清、4K等后缀）
+     * 根据频道名模糊匹配节目单（兼容HD、高清、4K等后缀）
      */
     public List<Channel.EpgItem> getEpg(String channelName) {
         if (channelName == null || channelName.isEmpty()) {
@@ -177,10 +177,10 @@ public class EpgManager {
 
     /**
      * 计算日期标签：今天/明天/后天/周X
-     * 用毫秒差计算天数，彻底解决跨年、跨月计算错误
+     * 核心修复：用毫秒差计算天数，彻底解决跨年、跨月计算错误
      */
     public String getDayName(Calendar itemCal, Calendar todayCal) {
-        // 清零时分秒，仅按日期计算天数差
+        // 清零时分秒，仅按自然日计算天数差
         Calendar itemDay = Calendar.getInstance();
         itemDay.setTime(itemCal.getTime());
         itemDay.set(Calendar.HOUR_OF_DAY, 0);

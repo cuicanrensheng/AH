@@ -95,59 +95,49 @@ public class EpgManagerWrapper {
             if (epgList != null && !epgList.isEmpty()) {
                 // ✅ 计算目标日期 + 对应的周几（全部双重兼容）
                 String targetDay;
-                String targetWeekDay = null; // 目标日期对应的周几，兼容EPG直接用周几标记的情况
+                String targetWeekDay = null;
+
+                Calendar cal = Calendar.getInstance();
+                cal.add(Calendar.DAY_OF_YEAR, dateIndex);
+                int w = cal.get(Calendar.DAY_OF_WEEK);
+                String[] weekMap = {"周日", "周一", "周二", "周三", "周四", "周五", "周六"};
+                String weekDay = weekMap[w - 1];
 
                 if (dateIndex == 0) {
                     targetDay = "今天";
-                    // 同时计算今天对应的周几
-                    Calendar cal = Calendar.getInstance();
-                    int w = cal.get(Calendar.DAY_OF_WEEK);
-                    String[] weekMap = {"周日", "周一", "周二", "周三", "周四", "周五", "周六"};
-                    targetWeekDay = weekMap[w - 1];
+                    targetWeekDay = weekDay;
                 } else if (dateIndex == 1) {
                     targetDay = "明天";
-                    // 同时计算明天对应的周几
-                    Calendar cal = Calendar.getInstance();
-                    cal.add(Calendar.DAY_OF_YEAR, 1);
-                    int w = cal.get(Calendar.DAY_OF_WEEK);
-                    String[] weekMap = {"周日", "周一", "周二", "周三", "周四", "周五", "周六"};
-                    targetWeekDay = weekMap[w - 1];
+                    targetWeekDay = weekDay;
                 } else if (dateIndex == 2) {
                     targetDay = "后天";
-                    // 同时计算后天对应的周几
-                    Calendar cal = Calendar.getInstance();
-                    cal.add(Calendar.DAY_OF_YEAR, 2);
-                    int w = cal.get(Calendar.DAY_OF_WEEK);
-                    String[] weekMap = {"周日", "周一", "周二", "周三", "周四", "周五", "周六"};
-                    targetWeekDay = weekMap[w - 1];
+                    targetWeekDay = weekDay;
                 } else {
-                    Calendar cal = Calendar.getInstance();
-                    cal.add(Calendar.DAY_OF_YEAR, dateIndex);
-                    int w = cal.get(Calendar.DAY_OF_WEEK);
-                    String[] weekMap = {"周日", "周一", "周二", "周三", "周四", "周五", "周六"};
-                    targetDay = weekMap[w - 1];
+                    targetDay = weekDay;
                 }
 
                 SettingsActivity.log("【EPG包装】🎯 目标日期：" + targetDay
-                        + (targetWeekDay != null ? "（兼容：" + targetWeekDay + "）" : ""));
+                        + "，对应周几：" + weekDay
+                        + (targetWeekDay != null ? "，兼容匹配：" + targetDay + " 或 " + targetWeekDay : ""));
 
                 // ✅ 双重兼容筛选：匹配目标日期 或 对应的周几
+                int matchCount = 0;
                 for (Channel.EpgItem item : epgList) {
                     if (item.dayName == null) continue;
                     String dayName = item.dayName.trim();
 
                     boolean match = targetDay.equals(dayName);
-                    // 如果有兼容的周几，也匹配
                     if (!match && targetWeekDay != null) {
                         match = targetWeekDay.equals(dayName);
                     }
 
                     if (match) {
                         data.add(item);
+                        matchCount++;
                     }
                 }
 
-                SettingsActivity.log("【EPG包装】✅ 筛选后节目数：" + data.size());
+                SettingsActivity.log("【EPG包装】✅ 筛选后节目数：" + matchCount);
 
                 // 按时间排序
                 Collections.sort(data, Comparator.comparing(o -> o.time));

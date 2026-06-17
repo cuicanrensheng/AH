@@ -15,7 +15,6 @@ import com.google.android.exoplayer2.MediaItem;
 import com.google.android.exoplayer2.PlaybackException;
 import com.google.android.exoplayer2.Player;
 import com.google.android.exoplayer2.source.ProgressiveMediaSource;
-import com.google.android.exoplayer2.source.hls.DefaultHlsExtractorFactory;
 import com.google.android.exoplayer2.source.hls.HlsMediaSource;
 import com.google.android.exoplayer2.ui.PlayerView;
 import com.google.android.exoplayer2.upstream.DefaultHttpDataSource;
@@ -46,11 +45,6 @@ public class TVPlayerManager {
     private static final long CHANNEL_SHOW_DURATION = 3000L;
     private final SimpleDateFormat logSdf = new SimpleDateFormat("HH:mm:ss", Locale.getDefault());
     private OnLiveInfoUpdateListener infoUpdateListener;
-
-    // ====================== 虎牙自动刷新 ======================
-    private final Handler refreshHandler = new Handler(Looper.getMainLooper());
-    private Runnable refreshRunnable;
-    private static final long REFRESH_INTERVAL = 25000;  // 25秒刷新一次
 
     public static class LiveInfo {
         public String quality;
@@ -121,7 +115,7 @@ public class TVPlayerManager {
         renderersFactory.setEnableDecoderFallback(true);
 
         DefaultLoadControl loadControl = new DefaultLoadControl.Builder()
-                .setBufferDurationsMs(1000, 60000, 500, 1000)
+                .setBufferDurationsMs(3000, 30000, 1500, 3000)
                 .build();
 
         player = new ExoPlayer.Builder(context)
@@ -132,30 +126,11 @@ public class TVPlayerManager {
         CookieSyncManager.createInstance(context);
         CookieManager.getInstance().setAcceptCookie(true);
         
+        // ✅ 全部改成 SettingsActivity.log()
         SettingsActivity.log(getLogTime() + " 播放器初始化完成");
     }
 
-    // ====================== 自动刷新鉴权 ======================
-    private void startAutoRefresh() {
-        stopAutoRefresh();
-        refreshRunnable = () -> {
-            if (MainActivity.mInstance != null) {
-                SettingsActivity.log(getLogTime() + " 🔄 自动刷新虎牙鉴权");
-                MainActivity.mInstance.refreshCurrentChannel();
-            }
-        };
-        refreshHandler.postDelayed(refreshRunnable, REFRESH_INTERVAL);
-    }
-
-    private void stopAutoRefresh() {
-        if (refreshRunnable != null) {
-            refreshHandler.removeCallbacks(refreshRunnable);
-            refreshRunnable = null;
-        }
-    }
-
     public void onBackground() {
-        stopAutoRefresh();
         try {
             if (player != null) {
                 player.pause();
@@ -178,7 +153,6 @@ public class TVPlayerManager {
                 playUrl(currentPlayUrl);
             }
         }
-        startAutoRefresh();
         SettingsActivity.log(getLogTime() + " 切换到前台");
     }
 
@@ -219,7 +193,6 @@ public class TVPlayerManager {
     }
 
     public void playUrl(String url) {
-        stopAutoRefresh();
         try {
             if (player == null || url == null || url.trim().isEmpty()) return;
             currentUrl = url.trim();
@@ -233,19 +206,15 @@ public class TVPlayerManager {
 
             DefaultHttpDataSource.Factory httpFactory = new DefaultHttpDataSource.Factory()
                     .setDefaultRequestProperties(getHeaders(currentUrl))
-                    .setConnectTimeoutMs(15000)
-                    .setReadTimeoutMs(30000)
+                    .setConnectTimeoutMs(5000)
+                    .setReadTimeoutMs(10000)
                     .setAllowCrossProtocolRedirects(true);
-                   
 
             MediaItem mediaItem = MediaItem.fromUri(currentUrl);
             com.google.android.exoplayer2.source.MediaSource mediaSource;
 
             if (currentUrl.toLowerCase().contains("m3u8")) {
-                mediaSource = new HlsMediaSource.Factory(httpFactory)
-                        .setAllowChunklessPreparation(true)
-                        .setExtractorFactory(new DefaultHlsExtractorFactory())
-                        .createMediaSource(mediaItem);
+                mediaSource = new HlsMediaSource.Factory(httpFactory).createMediaSource(mediaItem);
             } else {
                 mediaSource = new ProgressiveMediaSource.Factory(httpFactory).createMediaSource(mediaItem);
             }
@@ -260,6 +229,10 @@ public class TVPlayerManager {
                     Log.e(TAG, "播放异常: " + error.getMessage());
                     SettingsActivity.log(getLogTime() + " ❌ 播放错误：" + error.getMessage());
                     if (listener != null) listener.onPlayError(error.getMessage());
+
+                    new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                        playUrl(currentUrl);
+                    }, 1000);
                 }
 
                 @Override
@@ -269,7 +242,6 @@ public class TVPlayerManager {
                         notifyLiveInfoUpdate();
                         showChannelAndAutoHide();
                         SettingsActivity.log(getLogTime() + " ✅ 播放成功");
-                        startAutoRefresh();  // ✅ 播放成功后开始自动刷新
                         if (listener != null) listener.onPlayReady();
                     } else if (state == Player.STATE_BUFFERING) {
                         SettingsActivity.log(getLogTime() + " ⏳ 缓冲中...");
@@ -329,7 +301,6 @@ public class TVPlayerManager {
     }
 
     public void release() {
-        stopAutoRefresh();
         try {
             mHandler.removeCallbacks(hideChannelRunnable);
             updateWakeLock(false);

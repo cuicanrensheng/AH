@@ -192,13 +192,6 @@ public class MainActivity extends AppCompatActivity {
                     }
                 }
                 channelListManager.setChannelsByGroup(channelSourceList, groupName, currentPlayIndex);
-                if (!currentGroupChannelList.isEmpty()) {
-                    Channel firstChannel = currentGroupChannelList.get(0);
-                    int globalIndex = channelSourceList.indexOf(firstChannel);
-                    if (globalIndex != -1) {
-                        playChannel(globalIndex);
-                    }
-                }
             }
         });
 

@@ -2,6 +2,7 @@ package com.tv.live.widget;
 
 import android.content.Context;
 import android.graphics.Color;
+import android.util.Log;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ArrayAdapter;
@@ -12,11 +13,8 @@ import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.List;
 
-/**
- * 日期列表管理类
- * 命名规则与 EpgManager 完全一致，确保节目单能正确匹配
- */
 public class DateListManager {
+    private static final String TAG = "DateList";
     private final ListView lvDate;
     private final Context context;
     private int selectedPosition = 0;
@@ -36,10 +34,6 @@ public class DateListManager {
         this.lvDate = lvDate;
     }
 
-    /**
-     * 初始化日期列表
-     * 命名规则：0=今天、1=明天、2=后天、3+=周几，与EPG数据源完全统一
-     */
     public void initDate() {
         List<String> dates = new ArrayList<>();
         Calendar cal = Calendar.getInstance();
@@ -54,13 +48,14 @@ public class DateListManager {
             } else if (i == 2) {
                 display = "后天";
             } else {
-                // 修复索引：Calendar.DAY_OF_WEEK 周日=1，减1对应数组下标0
                 int dayOfWeek = cal.get(Calendar.DAY_OF_WEEK);
                 display = week[dayOfWeek - 1];
             }
             dates.add(display);
             cal.add(Calendar.DAY_OF_YEAR, 1);
         }
+
+        Log.d(TAG, "📅 初始化日期列表：" + dates);
 
         adapter = new ArrayAdapter<String>(context, R.layout.item_date, dates) {
             @Override
@@ -75,15 +70,18 @@ public class DateListManager {
         lvDate.setOnItemClickListener((parent, view, position, id) -> {
             selectedPosition = position;
             adapter.notifyDataSetChanged();
+            Log.d(TAG, "👆 点击了日期：位置" + position + "，" + dates.get(position));
             if (listener != null) {
+                Log.d(TAG, "✅ 触发回调");
                 listener.onDateSelected(position);
+            } else {
+                Log.w(TAG, "❌ listener为空，未触发回调");
             }
         });
     }
 
     public void setSelectedPosition(int position) {
         selectedPosition = position;
-        // 同步刷新UI，保证选中状态一致
         if (adapter != null) {
             adapter.notifyDataSetChanged();
         }

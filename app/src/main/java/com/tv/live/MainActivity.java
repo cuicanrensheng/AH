@@ -82,11 +82,22 @@ public class MainActivity extends AppCompatActivity {
     // ================================================
     // ✅ 重定向解析相关配置
     // ================================================
-    private static final int MAX_REDIRECT_COUNT = 10;    // 最大重定向次数
-    private static final int CONNECT_TIMEOUT = 8000;     // 连接超时（8秒）
-    private static final int READ_TIMEOUT = 8000;        // 读取超时（8秒）
+    private static final int MAX_REDIRECT_COUNT = 10;
+    private static final int CONNECT_TIMEOUT = 8000;
+    private static final int READ_TIMEOUT = 8000;
     private static final String DEF_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
+
+    // ✅ 虎牙专属配置
     private static final String HUYA_REFERER = "https://www.huya.com/";
+    private static final String HUYA_ORIGIN = "https://www.huya.com";
+
+    // ✅ 斗鱼专属配置
+    private static final String DOUYU_REFERER = "https://www.douyu.com/";
+    private static final String DOUYU_ORIGIN = "https://www.douyu.com";
+
+    // 通用Header
+    private static final String DEF_ACCEPT = "*/*";
+    private static final String DEF_ACCEPT_LANG = "zh-CN,zh;q=0.9,en;q=0.8";
 
     // 本地日志：最新在前，最多100条
     public static List<String> logList = new ArrayList<>();
@@ -191,9 +202,7 @@ public class MainActivity extends AppCompatActivity {
         lvGroup.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
-                // 点击时同步更新分组管理器的选中位置，确保高亮跟着变
                 groupListManager.setSelectedPosition(position);
-
                 lvGroup.setItemChecked(position, true);
                 lvGroup.setSelection(position);
                 String groupName = groupListManager.getCurrentGroup(position);
@@ -204,7 +213,6 @@ public class MainActivity extends AppCompatActivity {
                     }
                 }
                 channelListManager.setChannelsByGroup(channelSourceList, groupName, currentPlayIndex);
-                // 已去掉：点击分组后自动播放第一个频道
             }
         });
 
@@ -214,16 +222,11 @@ public class MainActivity extends AppCompatActivity {
         epgManagerWrapper = new EpgManagerWrapper(this, lvEpg);
         dateListManager.initDate();
 
-        // 先创建 PanelManager 实例，再注册回调，避免空指针
         panelManager = new PanelManager(panel_layout, channelListManager, epgManagerWrapper);
 
-        // 注册日期选中回调，点击日期刷新EPG节目单
         dateListManager.setOnDateSelectedListener(pos -> {
             currentSelectedDateIndex = pos;
-            // 同步日期状态到面板管理器，下次打开面板保留选中日期
             panelManager.setCurrentDateIndex(pos);
-
-            // 补全完整索引合法性校验，避免极端场景数组越界崩溃
             if (channelSourceList != null
                     && !channelSourceList.isEmpty()
                     && currentPlayIndex >= 0
@@ -344,9 +347,6 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    /**
-     * 上一台：在当前频道所属分组内循环切换
-     */
     public void playPrev() {
         long now = System.currentTimeMillis();
         if (now - lastChannelChangeTime < CHANNEL_COOLDOWN) return;
@@ -387,9 +387,6 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    /**
-     * 下一台：在当前频道所属分组内循环切换
-     */
     public void playNext() {
         long now = System.currentTimeMillis();
         if (now - lastChannelChangeTime < CHANNEL_COOLDOWN) return;
@@ -431,8 +428,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // ================================================
-    // ✅ 重定向解析核心方法
-    // 支持301/302，最多跟随10次，自动处理虎牙等特殊站点
+    // ✅ 重定向解析核心方法（虎牙+斗鱼双平台适配）
     // ================================================
     private String resolveRedirectUrl(String originalUrl) {
         if (TextUtils.isEmpty(originalUrl)) {
@@ -442,29 +438,80 @@ public class MainActivity extends AppCompatActivity {
 
         log("【重定向】开始解析，原始地址：" + originalUrl);
 
+        // ✅ 判断平台类型
+        boolean isHuya = originalUrl.contains("huya.com") || originalUrl.contains("huya.cn");
+        boolean isDouyu = originalUrl.contains("douyu.com") || originalUrl.contains("douyucdn.cn");
+        String platform = "通用";
+        if (isHuya) platform = "虎牙";
+        else if (isDouyu) platform = "斗鱼";
+
+        log("【重定向】✅ 检测到平台：" + platform + "直播，启用专属适配");
+
         HttpURLConnection conn = null;
         String currentUrl = originalUrl;
         int redirectCount = 0;
+        int retry403Count = 0;
+        int retry500Count = 0;
+        int totalSteps = 0;
+        int maxTotalSteps = MAX_REDIRECT_COUNT + 5;
 
         try {
-            for (int step = 0; step < MAX_REDIRECT_COUNT; step++) {
+            while (totalSteps < maxTotalSteps) {
+                totalSteps++;
                 URL urlObj = new URL(currentUrl);
                 conn = (HttpURLConnection) urlObj.openConnection();
                 conn.setConnectTimeout(CONNECT_TIMEOUT);
                 conn.setReadTimeout(READ_TIMEOUT);
                 conn.setRequestMethod("GET");
                 conn.setRequestProperty("User-Agent", DEF_UA);
-                conn.setInstanceFollowRedirects(false); // 手动处理重定向
+                conn.setInstanceFollowRedirects(false);
 
-                // ✅ 虎牙特殊处理：加上虎牙Referer
-                if (currentUrl.contains("huya.com") || currentUrl.contains("huya.cn")) {
+                String host = urlObj.getHost();
+
+                // ✅ 虎牙专属Header
+                if (host.contains("huya.com") || host.contains("huya.cn")) {
                     conn.setRequestProperty("Referer", HUYA_REFERER);
-                    log("【重定向】检测到虎牙地址，已添加Referer：" + HUYA_REFERER);
+                    conn.setRequestProperty("Origin", HUYA_ORIGIN);
+                    conn.setRequestProperty("Accept", DEF_ACCEPT);
+                    conn.setRequestProperty("Accept-Language", DEF_ACCEPT_LANG);
+                    conn.setRequestProperty("Connection", "keep-alive");
+                    log("【重定向】虎牙专属Header已添加");
+                }
+                // ✅ 斗鱼专属Header
+                else if (host.contains("douyu.com") || host.contains("douyucdn.cn")) {
+                    conn.setRequestProperty("Referer", DOUYU_REFERER);
+                    conn.setRequestProperty("Origin", DOUYU_ORIGIN);
+                    conn.setRequestProperty("Accept", DEF_ACCEPT);
+                    conn.setRequestProperty("Accept-Language", DEF_ACCEPT_LANG);
+                    conn.setRequestProperty("Connection", "keep-alive");
+                    log("【重定向】斗鱼专属Header已添加");
+                }
+
+                // ✅ 403重试模式：再加一层完整Header
+                if (retry403Count > 0) {
+                    conn.setRequestProperty("Accept", "*/*");
+                    conn.setRequestProperty("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8");
+                    conn.setRequestProperty("Accept-Encoding", "gzip, deflate, br");
+                    conn.setRequestProperty("Connection", "keep-alive");
+
+                    // 按平台匹配Referer/Origin
+                    if (host.contains("huya.com") || host.contains("huya.cn")) {
+                        conn.setRequestProperty("Referer", HUYA_REFERER);
+                        conn.setRequestProperty("Origin", HUYA_ORIGIN);
+                    } else if (host.contains("douyu.com") || host.contains("douyucdn.cn")) {
+                        conn.setRequestProperty("Referer", DOUYU_REFERER);
+                        conn.setRequestProperty("Origin", DOUYU_ORIGIN);
+                    } else {
+                        conn.setRequestProperty("Referer", urlObj.getProtocol() + "://" + host + "/");
+                        conn.setRequestProperty("Origin", urlObj.getProtocol() + "://" + host);
+                    }
+                    log("【重定向】403重试模式，已添加完整Header");
                 }
 
                 int code = conn.getResponseCode();
-                log("【重定向】第" + (step + 1) + "次请求，状态码：" + code + "，地址：" + currentUrl);
+                log("【重定向】第" + totalSteps + "次请求，状态码：" + code + "，地址：" + currentUrl);
 
+                // ✅ 处理重定向（301/302/303/307/308）
                 if (code == 301 || code == 302 || code == 303 || code == 307 || code == 308) {
                     String location = conn.getHeaderField("Location");
                     if (TextUtils.isEmpty(location)) {
@@ -474,7 +521,7 @@ public class MainActivity extends AppCompatActivity {
 
                     // 处理相对路径
                     if (location.startsWith("/")) {
-                        String baseUrl = urlObj.getProtocol() + "://" + urlObj.getHost();
+                        String baseUrl = urlObj.getProtocol() + "://" + host;
                         location = baseUrl + location;
                     }
 
@@ -483,10 +530,39 @@ public class MainActivity extends AppCompatActivity {
                     currentUrl = location;
                     conn.disconnect();
                     conn = null;
-                } else {
-                    log("【重定向】非重定向状态码，解析完成，最终地址：" + currentUrl);
+                    retry403Count = 0;
+                    retry500Count = 0;
+                    continue;
+                }
+
+                // ✅ 处理403禁止访问
+                if (code == 403 && retry403Count == 0) {
+                    retry403Count++;
+                    log("【重定向】⚠️ 403禁止访问，尝试添加完整Header重试");
+                    conn.disconnect();
+                    conn = null;
+                    continue;
+                }
+
+                // ✅ 处理500服务器错误
+                if (code == 500 && retry500Count < 2) {
+                    retry500Count++;
+                    log("【重定向】⚠️ 500服务器内部错误，第" + retry500Count + "次重试");
+                    conn.disconnect();
+                    conn = null;
+                    try { Thread.sleep(300 + retry500Count * 200); } catch (InterruptedException ignored) {}
+                    continue;
+                }
+
+                // 正常状态码（200等），解析完成
+                if (code >= 200 && code < 300) {
+                    log("【重定向】✅ 解析成功，最终地址：" + currentUrl);
                     break;
                 }
+
+                // 其他错误状态码，记录日志但继续用当前地址
+                log("【重定向】⚠️ 状态码：" + code + "，继续使用当前地址交给播放器");
+                break;
             }
 
             if (redirectCount >= MAX_REDIRECT_COUNT) {
@@ -502,7 +578,8 @@ public class MainActivity extends AppCompatActivity {
             }
         }
 
-        log("【重定向】解析结束，共重定向" + redirectCount + "次，最终地址：" + currentUrl);
+        log("【重定向】解析结束：重定向" + redirectCount + "次，403重试" + retry403Count + "次，500重试" + retry500Count + "次");
+        log("【重定向】最终地址：" + currentUrl);
         return currentUrl;
     }
 
@@ -550,7 +627,6 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void run() {
                 final String realUrl = resolveRedirectUrl(originalUrl);
-                // 切回主线程播放
                 new Handler(Looper.getMainLooper()).post(new Runnable() {
                     @Override
                     public void run() {
@@ -595,7 +671,6 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public void togglePanel() {
-        // 传入日期列表管理器，用于面板打开时同步高亮
         panelManager.toggle(channelSourceList, currentPlayIndex, dateListManager);
     }
 

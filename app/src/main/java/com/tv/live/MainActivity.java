@@ -204,6 +204,14 @@ public class MainActivity extends AppCompatActivity {
         dateListManager = new DateListManager(this, lvDate);
         epgManagerWrapper = new EpgManagerWrapper(this, lvEpg);
         dateListManager.initDate();
+        // 注册日期选中回调，点击日期刷新EPG节目单
+        dateListManager.setOnDateSelectedListener(pos -> {
+            currentSelectedDateIndex = pos;
+            if (!channelSourceList.isEmpty()) {
+                Channel curr = channelSourceList.get(currentPlayIndex);
+                epgManagerWrapper.refresh(curr, channelSourceList, currentSelectedDateIndex);
+            }
+        });
         panelManager = new PanelManager(panel_layout, channelListManager, epgManagerWrapper);
 
         mPlayerManager = TVPlayerManager.getInstance(this);

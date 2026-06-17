@@ -176,17 +176,6 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        lvDate.setOnItemClickListener(new AdapterView.OnItemClickListener() {
-            @Override
-            public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
-                currentSelectedDateIndex = position;
-                if (!channelSourceList.isEmpty()) {
-                    Channel curr = channelSourceList.get(currentPlayIndex);
-                    epgManagerWrapper.refresh(curr, channelSourceList, currentSelectedDateIndex);
-                }
-            }
-        });
-
         lvGroup.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {

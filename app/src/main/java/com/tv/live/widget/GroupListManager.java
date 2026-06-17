@@ -1,6 +1,7 @@
 package com.tv.live.widget;
 import android.content.Context;
 import android.graphics.Color;
+import android.graphics.Typeface;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.AdapterView;
@@ -15,15 +16,39 @@ import java.util.Set;
 
 public class GroupListManager {
     private final ListView lvGroup;
+    private final Context context;
     private List<String> groupList;
     private int selectedPosition = 0;
-    // ✅ 把adapter提为成员变量，方便手动刷新
     private ArrayAdapter<String> adapter;
+    // 分组点击回调，通知外部更新频道列表
+    private OnGroupClickListener listener;
+
+    public interface OnGroupClickListener {
+        void onGroupClick(String groupName, int position);
+    }
+
+    public void setOnGroupClickListener(OnGroupClickListener listener) {
+        this.listener = listener;
+    }
 
     public GroupListManager(Context context, ListView lvGroup) {
+        this.context = context;
         this.lvGroup = lvGroup;
         lvGroup.setItemsCanFocus(true);
+        lvGroup.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
 
+        // ✅ 内部处理点击事件，自己更新选中状态，确保高亮一定跟着变
+        lvGroup.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+            @Override
+            public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
+                setSelectedPosition(position);
+                if (listener != null && groupList != null && position >= 0 && position < groupList.size()) {
+                    listener.onGroupClick(groupList.get(position), position);
+                }
+            }
+        });
+
+        // 遥控器选择时也同步更新
         lvGroup.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int pos, long id) {
@@ -48,26 +73,39 @@ public class GroupListManager {
             public View getView(int position, View convertView, ViewGroup parent) {
                 View view = super.getView(position, convertView, parent);
                 TextView tv = view.findViewById(android.R.id.text1);
+                tv.setTextSize(16);
+                tv.setPadding(20, 15, 20, 15);
+
                 if (position == selectedPosition) {
+                    // 选中状态：蓝色 + 加粗
                     tv.setTextColor(Color.parseColor("#40A9FF"));
+                    tv.setTypeface(null, Typeface.BOLD);
+                    tv.setBackgroundColor(0x3340A9FF);
                 } else {
+                    // 未选中状态：白色 + 常规
                     tv.setTextColor(Color.WHITE);
+                    tv.setTypeface(null, Typeface.NORMAL);
+                    tv.setBackgroundColor(Color.TRANSPARENT);
                 }
                 return view;
             }
         };
         lvGroup.setAdapter(adapter);
+        // 默认选中第一个
+        if (groupList.size() > 0) {
+            setSelectedPosition(0);
+        }
     }
 
     /**
-     * ✅ 修复：设置选中位置后立即刷新adapter，确保高亮更新
-     * 支持触摸点击和遥控器选择两种场景
+     * 设置选中位置，立即刷新高亮
      */
     public void setSelectedPosition(int position) {
-        if (position < 0 || (groupList != null && position >= groupList.size())) {
+        if (groupList == null || position < 0 || position >= groupList.size()) {
             return;
         }
         selectedPosition = position;
+        lvGroup.setItemChecked(position, true);
         lvGroup.setSelection(position);
         if (adapter != null) {
             adapter.notifyDataSetChanged();

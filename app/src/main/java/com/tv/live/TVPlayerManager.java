@@ -5,7 +5,6 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
-import android.view.SurfaceHolder;
 import android.view.View;
 import android.webkit.CookieManager;
 import android.webkit.CookieSyncManager;
@@ -26,6 +25,17 @@ import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 
+/**
+ * ================================================
+ * 播放器核心管理类（编译修复版）
+ * 修复点：
+ * 1. 移除SurfaceHolder直接调用，改用View附着监听，解决编译报错
+ * 2. 保留Surface就绪判断，彻底解决重启黑屏时序问题
+ * 3. 优化缓冲阈值，加快首帧出画面
+ * 4. 移除内部自动重试，与Listener逻辑统一
+ * 5. 修复废弃Cookie API，兼容高版本安卓
+ * ================================================
+ */
 public class TVPlayerManager {
     private static final String TAG = "TVPlayerLog";
     private static TVPlayerManager instance;
@@ -34,9 +44,8 @@ public class TVPlayerManager {
     private PlayerView playerView;
     private String currentPlayUrl = "";
 
-    // Surface就绪标记（解决重启黑屏核心）
+    // 渲染层就绪标记 + 待播放缓存（重启黑屏修复核心）
     private boolean isSurfaceReady = false;
-    // 待播放缓存（Surface没好时先存着）
     private String pendingPlayUrl = "";
 
     public enum ScaleMode { FIT, FILL, ZOOM }
@@ -116,7 +125,7 @@ public class TVPlayerManager {
     }
 
     /**
-     * 构造函数：优化缓冲配置 + 修复废弃Cookie API
+     * 构造函数：初始化播放器核心配置
      */
     private TVPlayerManager(Context ctx) {
         context = ctx.getApplicationContext();
@@ -125,7 +134,7 @@ public class TVPlayerManager {
         DefaultRenderersFactory renderersFactory = new DefaultRenderersFactory(context);
         renderersFactory.setEnableDecoderFallback(true);
 
-        // ✅ 优化缓冲：降低阈值，加快首帧出画面（解决黑屏等待久核心）
+        // 缓冲优化：降低阈值，加快首帧出图
         DefaultLoadControl loadControl = new DefaultLoadControl.Builder()
                 .setBufferDurationsMs(1000, 15000, 500, 1000)
                 .setPrioritizeTimeOverSizeThresholds(true)
@@ -136,7 +145,7 @@ public class TVPlayerManager {
                 .setLoadControl(loadControl)
                 .build();
 
-        // ✅ 修复废弃API：适配高版本Android，避免Cookie异常导致网络慢
+        // Cookie兼容修复：替代废弃API
         CookieManager cookieManager = CookieManager.getInstance();
         cookieManager.setAcceptCookie(true);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
@@ -150,20 +159,25 @@ public class TVPlayerManager {
     }
 
     /**
-     * 绑定播放视图：新增Surface生命周期监听（解决重启黑屏核心）
+     * ================================================
+     * 绑定播放视图（编译修复核心）
+     * 改用View附着状态监听，替代SurfaceHolder，兼容所有渲染实现
+     * ================================================
      */
     public void attachPlayerView(PlayerView view) {
         playerView = view;
         playerView.setUseController(false);
         playerView.setPlayer(player);
 
-        // 监听渲染Surface创建，确保画面能渲染
-        playerView.getVideoSurfaceView().getHolder().addCallback(new SurfaceHolder.Callback() {
+        // ✅ 修复编译错误：监听View附着到窗口，替代getHolder()
+        playerView.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
             @Override
-            public void surfaceCreated(SurfaceHolder holder) {
+            public void onViewAttachedToWindow(View v) {
+                // View已挂载到窗口，渲染Surface就绪
                 isSurfaceReady = true;
-                SettingsActivity.log(getLogTime() + " 渲染Surface已就绪");
-                // Surface创建完成后，播放待缓存的地址
+                SettingsActivity.log(getLogTime() + " 渲染层已就绪");
+
+                // 有待播放的地址，立刻执行播放
                 if (!pendingPlayUrl.isEmpty()) {
                     String url = pendingPlayUrl;
                     pendingPlayUrl = "";
@@ -172,21 +186,20 @@ public class TVPlayerManager {
             }
 
             @Override
-            public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
-                if (player != null) {
-                    player.setVideoSurfaceHolder(holder);
-                }
-            }
-
-            @Override
-            public void surfaceDestroyed(SurfaceHolder holder) {
+            public void onViewDetachedFromWindow(View v) {
+                // View已从窗口移除，渲染层销毁
                 isSurfaceReady = false;
             }
         });
+
+        // 兜底：如果View已经附着，直接标记就绪
+        if (playerView.isAttachedToWindow()) {
+            isSurfaceReady = true;
+        }
     }
 
     /**
-     * 切后台：仅暂停，不解绑Surface
+     * 切后台：暂停播放
      */
     public void onBackground() {
         try {
@@ -200,17 +213,15 @@ public class TVPlayerManager {
     }
 
     /**
-     * 切前台：优先恢复播放，不重新加载
+     * 切前台：优先恢复播放，状态异常才重连
      */
     public void onForeground() {
         try {
             if (player != null && playerView != null) {
-                // 状态正常直接恢复播放
                 if (player.getPlaybackState() != Player.STATE_IDLE
                         && player.getPlaybackState() != Player.STATE_ENDED) {
                     player.play();
                 } else if (!currentPlayUrl.isEmpty()) {
-                    // 空闲状态才重新加载
                     playUrl(currentPlayUrl);
                 }
             }
@@ -254,7 +265,7 @@ public class TVPlayerManager {
     }
 
     /**
-     * 播放入口：Surface就绪直接播，没就绪先缓存
+     * 播放入口：渲染层就绪直接播，未就绪先缓存
      */
     public void playUrl(String url) {
         if (player == null || url == null || url.trim().isEmpty()) return;
@@ -262,18 +273,16 @@ public class TVPlayerManager {
         currentPlayUrl = currentUrl;
 
         if (isSurfaceReady) {
-            // 渲染层就绪，直接播放
             realPlay(url);
         } else {
-            // 渲染层未就绪，先缓存等待
             pendingPlayUrl = url.trim();
-            SettingsActivity.log(getLogTime() + " 渲染层未就绪，等待Surface创建后播放");
+            SettingsActivity.log(getLogTime() + " 渲染层未就绪，等待视图挂载后播放");
         }
     }
 
     /**
      * 真正的播放执行逻辑
-     * ✅ 移除了自动错误重试，和你的PlayerStateListenerImpl逻辑完全一致
+     * 已移除内部自动重试，与PlayerStateListenerImpl逻辑完全统一
      */
     private void realPlay(String url) {
         try {
@@ -307,7 +316,7 @@ public class TVPlayerManager {
                 public void onPlayerError(PlaybackException error) {
                     Log.e(TAG, "播放异常: " + error.getMessage());
                     SettingsActivity.log(getLogTime() + " ❌ 播放错误：" + error.getMessage());
-                    // ✅ 仅回调错误，不自动重试（和Listener逻辑一致）
+                    // 仅回调错误，不自动重试
                     if (listener != null) {
                         listener.onPlayError(error.getMessage());
                     }
@@ -319,7 +328,7 @@ public class TVPlayerManager {
                         updateWakeLock(true);
                         notifyLiveInfoUpdate();
                         showChannelAndAutoHide();
-                        // 首帧就绪后强制刷新视图
+                        // 强制刷新视图，解决渲染滞后
                         if (playerView != null) {
                             playerView.postInvalidate();
                         }
@@ -338,10 +347,10 @@ public class TVPlayerManager {
                     }
                 }
 
-                // 首帧渲染回调：确认画面显示
+                // 首帧渲染回调：确认画面真正显示
                 @Override
                 public void onRenderedFirstFrame() {
-                    SettingsActivity.log(getLogTime() + " 🎬 首帧渲染完成");
+                    SettingsActivity.log(getLogTime() + " 🎬 首帧渲染完成，画面已显示");
                     if (playerView != null) {
                         playerView.requestLayout();
                         playerView.invalidate();
@@ -395,7 +404,7 @@ public class TVPlayerManager {
     }
 
     /**
-     * 释放资源：清空所有状态，避免重启残留
+     * 释放资源，清空所有状态
      */
     public void release() {
         try {

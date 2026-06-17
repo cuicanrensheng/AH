@@ -235,7 +235,7 @@ public class TVPlayerManager {
                     .setDefaultRequestProperties(getHeaders(currentUrl))
                     .setConnectTimeoutMs(15000)
                     .setReadTimeoutMs(30000)
-                    .setAllowCrossProtocolRedirects(true)
+                    .setAllowCrossProtocolRedirects(true);
                    
 
             MediaItem mediaItem = MediaItem.fromUri(currentUrl);

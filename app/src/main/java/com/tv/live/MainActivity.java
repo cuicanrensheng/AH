@@ -38,16 +38,26 @@ import java.util.List;
  * 【播放说明】
  * 直接交给ExoPlayer播放，由ExoPlayer自动跟随重定向
  * TVPlayerManager内部已设置增强版Header（虎牙/斗鱼专属Referer等）
+ *
+ * 【本次修改】
+ * 1. 添加 currentGroupName 成员变量，保存当前选中的分组名称
+ * 2. 点击分组时保存分组名称，记住用户的筛选状态
+ * 3. playChannel 方法中保持分组筛选，不会因为播放而重置为全部频道
+ * 4. togglePanel 方法中打开面板前先恢复分组筛选状态
+ * 5. 修复：点击分组频道播放后，再次打开频道列表分组丢失的问题
  */
 public class MainActivity extends AppCompatActivity {
     // Activity单例，供其他类访问
     public static MainActivity mInstance;
-    // 所有频道数据源列表
+    // 所有频道数据源列表（全部频道）
     public List<Channel> channelSourceList = new ArrayList<>();
-    // 当前选中分组下的频道列表
+    // 当前选中分组下的频道列表（筛选后的）
     public List<Channel> currentGroupChannelList = new ArrayList<>();
-    // 当前正在播放的频道索引
+    // 当前正在播放的频道索引（全局索引）
     public int currentPlayIndex = 0;
+    // ✅ 当前选中的分组名称（空字符串表示显示全部频道）
+    // 用于记住用户的分组筛选状态，避免播放后重置
+    private String currentGroupName = "";
     // 面板布局（频道列表+EPG面板）
     private View panel_layout;
     // 播放器管理器
@@ -246,7 +256,9 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        // 分组列表点击事件
+        // ================================================
+        // ✅ 分组列表点击事件（已修改：保存当前分组名称）
+        // ================================================
         lvGroup.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
@@ -257,6 +269,10 @@ public class MainActivity extends AppCompatActivity {
 
                 // 获取选中的分组名称
                 String groupName = groupListManager.getCurrentGroup(position);
+                // ✅ 保存当前分组名称，记住用户的筛选状态
+                // 这样播放频道后，再次打开频道列表还能保持分组筛选
+                currentGroupName = groupName;
+
                 // 筛选该分组下的频道
                 currentGroupChannelList.clear();
                 for (Channel c : channelSourceList) {
@@ -264,8 +280,10 @@ public class MainActivity extends AppCompatActivity {
                         currentGroupChannelList.add(c);
                     }
                 }
-                // 更新频道列表显示
+                // 更新频道列表显示（只显示当前分组的频道）
                 channelListManager.setChannelsByGroup(channelSourceList, groupName, currentPlayIndex);
+
+                log("【分组】选中分组：" + groupName + "，频道数：" + currentGroupChannelList.size());
             }
         });
 
@@ -402,7 +420,7 @@ public class MainActivity extends AppCompatActivity {
                 switchManager.setCurrentIndex(currentPlayIndex);
                 // 更新分组列表
                 groupListManager.setGroups(channelSourceList);
-                // 更新频道列表
+                // 更新频道列表（默认显示全部频道）
                 channelListManager.setChannels(channelSourceList, currentPlayIndex);
                 // 播放当前频道
                 playChannel(currentPlayIndex);
@@ -539,6 +557,10 @@ public class MainActivity extends AppCompatActivity {
      * 播放指定索引的频道
      * 直接交给ExoPlayer播放，由ExoPlayer自动跟随重定向
      *
+     * 【已修改】保持分组筛选状态
+     * 之前的问题：播放频道时调用 setChannels(全部频道)，导致分组筛选丢失
+     * 现在的修复：判断当前是否有分组筛选，有就保持分组筛选状态
+     *
      * @param index 频道在全局列表中的索引
      */
     public void playChannel(int index) {
@@ -573,8 +595,19 @@ public class MainActivity extends AppCompatActivity {
         showChannelNum(index + 1);
         // 保存上次播放的频道索引
         appConfig.setLastPlayIndex(index);
-        // 更新频道列表选中状态
-        channelListManager.setChannels(channelSourceList, index);
+
+        // ================================================
+        // ✅ 更新频道列表选中状态（已修改：保持分组筛选）
+        // ================================================
+        if (!TextUtils.isEmpty(currentGroupName) && !currentGroupChannelList.isEmpty()) {
+            // 分组筛选模式下：保持分组筛选，只显示当前分组的频道
+            // 避免播放频道后，频道列表被重置为全部频道
+            channelListManager.setChannelsByGroup(channelSourceList, currentGroupName, index);
+        } else {
+            // 非分组模式：显示全部频道
+            channelListManager.setChannels(channelSourceList, index);
+        }
+
         // 刷新EPG节目单
         epgManagerWrapper.refresh(ch, channelSourceList, currentSelectedDateIndex);
 
@@ -641,8 +674,23 @@ public class MainActivity extends AppCompatActivity {
 
     /**
      * 切换面板显示/隐藏
+     *
+     * 【已修改】打开面板前先恢复分组筛选状态
+     * 之前的问题：每次打开面板都传全部频道，导致分组筛选丢失
+     * 现在的修复：打开面板前先根据当前分组设置频道列表
      */
     public void togglePanel() {
+        // ✅ 打开面板前，先根据当前分组设置频道列表
+        // 确保面板打开后显示的是用户之前选中的分组，而不是全部频道
+        if (!TextUtils.isEmpty(currentGroupName) && !currentGroupChannelList.isEmpty()) {
+            // 分组筛选模式下：保持分组筛选
+            channelListManager.setChannelsByGroup(channelSourceList, currentGroupName, currentPlayIndex);
+        } else {
+            // 非分组模式：显示全部频道
+            channelListManager.setChannels(channelSourceList, currentPlayIndex);
+        }
+
+        // 切换面板显示/隐藏
         panelManager.toggle(channelSourceList, currentPlayIndex, dateListManager);
     }
 

@@ -64,6 +64,14 @@ public class MainActivity extends AppCompatActivity {
     private TextView tv_next_program_name, tv_next_time_range;
     private android.widget.ProgressBar progress_program;
     private TextView tv_channel_num;
+    
+    // 网络请求常量配置
+    private static final int MAX_REDIRECT_COUNT = 10;  // 最大重定向次数
+    private static final int CONNECT_TIMEOUT = 8000;   // 网络连接超时（8秒）
+    private static final int READ_TIMEOUT = 8000;      // 网络读取超时（8秒）
+    private static final String DEF_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";  // 默认请求UA
+    private static final String DEF_REFER = "https://www.huya.com/"; // 默认请求Referer
+    private static final long CHANNEL_COOLDOWN = 300;   // 频道切换冷却时间（300ms，防止快速切换）
     private final Runnable hideInfoBar = new Runnable() {
         @Override
         public void run() {
@@ -234,6 +242,47 @@ mPlayerManager.setOnLiveInfoUpdateListener(new TVPlayerManager.OnLiveInfoUpdateL
         tv_bitrate.setText(info.bitrate);
     }
 });
+        
+        // 获取原始播放地址
+        final String originalUrl = ch.getPlayUrl();
+        // 异步处理播放地址重定向（避免主线程阻塞）
+        new Thread(() -> {
+            java.net.HttpURLConnection conn = null;
+            String finalUrl = originalUrl;
+            try {
+                // 处理URL重定向（最多MAX_REDIRECT_COUNT次）
+                for (int step = 0; step < MAX_REDIRECT_COUNT; step++) {
+                    java.net.URL urlObj = new java.net.URL(finalUrl);
+                    conn = (java.net.HttpURLConnection) urlObj.openConnection();
+                    conn.setConnectTimeout(CONNECT_TIMEOUT);
+                    conn.setReadTimeout(READ_TIMEOUT);
+                    conn.setRequestMethod("GET");
+                    conn.setRequestProperty("User-Agent", DEF_UA);
+                    conn.setRequestProperty("Refer", DEF_REFER);
+                    conn.setInstanceFollowRedirects(false); // 手动处理重定向
+                    int code = conn.getResponseCode();
+                    if (code == 301 || code == 302) { // 301/302重定向
+                        String loc = conn.getHeaderField("Location");
+                        if (loc != null) finalUrl = loc;
+                        conn.disconnect();
+                        conn = null;
+                    } else break; // 非重定向状态码，终止循环
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            } finally {
+                if (conn != null) conn.disconnect(); // 关闭连接
+            }
+
+            // 修复lambda变量必须final的问题
+            final String realPlayUrl = TextUtils.isEmpty(finalUrl) ? originalUrl : finalUrl;
+            // 主线程播放最终的播放地址
+            new Handler(Looper.getMainLooper()).post(() -> {
+                mPlayerManager.playUrl(realPlayUrl);
+            });
+        }).start();
+    }
+
 
         screenRatioManager = new ScreenRatioManager(mPlayerManager, appConfig);
         screenRatioManager.apply();

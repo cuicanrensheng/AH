@@ -333,24 +333,102 @@ mPlayerManager.setOnLiveInfoUpdateListener(new TVPlayerManager.OnLiveInfoUpdateL
         });
     }
 
+    /**
+     * ✅ 上一台：在当前频道所属分组内循环切换
+     * 到第一个频道时，再往上切回到分组最后一个
+     */
     public void playPrev() {
         long now = System.currentTimeMillis();
         if (now - lastChannelChangeTime < CHANNEL_COOLDOWN) return;
         lastChannelChangeTime = now;
 
         log("【切台】上一台");
-        int idx = channel_reverse ? switchManager.next() : switchManager.prev();
-        playChannel(idx);
+
+        if (channelSourceList == null || channelSourceList.isEmpty()) return;
+
+        // 1. 获取当前频道及其所属分组
+        Channel currentChannel = channelSourceList.get(currentPlayIndex);
+        String currentGroup = currentChannel.getGroup();
+
+        // 2. 收集当前分组的所有频道
+        List<Channel> groupChannels = new ArrayList<>();
+        for (Channel c : channelSourceList) {
+            if (currentGroup.equals(c.getGroup())) {
+                groupChannels.add(c);
+            }
+        }
+
+        if (groupChannels.size() <= 1) return; // 分组里只有1个频道，不用切
+
+        // 3. 找到当前频道在分组内的位置
+        int groupIndex = -1;
+        for (int i = 0; i < groupChannels.size(); i++) {
+            if (groupChannels.get(i).getName().equals(currentChannel.getName())) {
+                groupIndex = i;
+                break;
+            }
+        }
+
+        if (groupIndex == -1) return;
+
+        // 4. 计算上一个频道（循环：第一个的上一个是最后一个）
+        int prevGroupIndex = (groupIndex - 1 + groupChannels.size()) % groupChannels.size();
+        Channel prevChannel = groupChannels.get(prevGroupIndex);
+
+        // 5. 找到全局索引并播放
+        int globalIndex = channelSourceList.indexOf(prevChannel);
+        if (globalIndex != -1) {
+            playChannel(globalIndex);
+        }
     }
 
+    /**
+     * ✅ 下一台：在当前频道所属分组内循环切换
+     * 到最后一个频道时，再往下切回到分组第一个
+     */
     public void playNext() {
         long now = System.currentTimeMillis();
         if (now - lastChannelChangeTime < CHANNEL_COOLDOWN) return;
         lastChannelChangeTime = now;
 
         log("【切台】下一台");
-        int idx = channel_reverse ? switchManager.prev() : switchManager.next();
-        playChannel(idx);
+
+        if (channelSourceList == null || channelSourceList.isEmpty()) return;
+
+        // 1. 获取当前频道及其所属分组
+        Channel currentChannel = channelSourceList.get(currentPlayIndex);
+        String currentGroup = currentChannel.getGroup();
+
+        // 2. 收集当前分组的所有频道
+        List<Channel> groupChannels = new ArrayList<>();
+        for (Channel c : channelSourceList) {
+            if (currentGroup.equals(c.getGroup())) {
+                groupChannels.add(c);
+            }
+        }
+
+        if (groupChannels.size() <= 1) return; // 分组里只有1个频道，不用切
+
+        // 3. 找到当前频道在分组内的位置
+        int groupIndex = -1;
+        for (int i = 0; i < groupChannels.size(); i++) {
+            if (groupChannels.get(i).getName().equals(currentChannel.getName())) {
+                groupIndex = i;
+                break;
+            }
+        }
+
+        if (groupIndex == -1) return;
+
+        // 4. 计算下一个频道（循环：最后一个的下一个是第一个）
+        int nextGroupIndex = (groupIndex + 1) % groupChannels.size();
+        Channel nextChannel = groupChannels.get(nextGroupIndex);
+
+        // 5. 找到全局索引并播放
+        int globalIndex = channelSourceList.indexOf(nextChannel);
+        if (globalIndex != -1) {
+            playChannel(globalIndex);
+        }
     }
 
     public void playChannel(int index) {

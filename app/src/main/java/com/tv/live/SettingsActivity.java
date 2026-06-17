@@ -47,19 +47,33 @@ public class SettingsActivity extends AppCompatActivity {
     private static final int PORT = 10481;
     private SettingsAdapter adapter;
 
-    // ====================== 全局日志系统 ======================
-    public static volatile StringBuilder PLAY_LOG = new StringBuilder();
+// ====================== 全局日志系统 ======================
+public static volatile StringBuilder PLAY_LOG = new StringBuilder();
+private static final int MAX_LOG_LINES = 300;  // ✅ 最多300条
 
-    public static void log(String msg) {
-        if (PLAY_LOG == null) {
-            PLAY_LOG = new StringBuilder();
-        }
-        String time = android.text.format.DateFormat.format("HH:mm:ss", new java.util.Date()).toString();
-        PLAY_LOG.append("[").append(time).append("] ").append(msg).append("\n");
-        if (PLAY_LOG.length() > 20000) {
-            PLAY_LOG.delete(0, PLAY_LOG.length() - 15000);
+public static void log(String msg) {
+    if (PLAY_LOG == null) {
+        PLAY_LOG = new StringBuilder();
+    }
+    String time = android.text.format.DateFormat.format("HH:mm:ss", new java.util.Date()).toString();
+    PLAY_LOG.append("[").append(time).append("] ").append(msg).append("\n");
+    
+    // ✅ 超过300条，删除最旧的
+    int lineCount = 0;
+    int deleteTo = 0;
+    for (int i = 0; i < PLAY_LOG.length(); i++) {
+        if (PLAY_LOG.charAt(i) == '\n') {
+            lineCount++;
+            if (lineCount > MAX_LOG_LINES) {
+                deleteTo = i + 1;
+                break;
+            }
         }
     }
+    if (deleteTo > 0) {
+        PLAY_LOG.delete(0, deleteTo);
+    }
+}
     
 private void showLogDialog() {
     ScrollView scrollView = new ScrollView(this);

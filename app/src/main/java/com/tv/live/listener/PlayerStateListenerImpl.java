@@ -1,9 +1,6 @@
 package com.tv.live.listener;
 
 import android.content.Context;
-import android.os.Handler;
-import android.os.Looper;
-import com.tv.live.MainActivity;
 import com.tv.live.TVPlayerManager;
 
 public class PlayerStateListenerImpl implements TVPlayerManager.OnPlayStateListener {
@@ -22,30 +19,19 @@ public class PlayerStateListenerImpl implements TVPlayerManager.OnPlayStateListe
     public void onIdle() {}
 
     @Override
-    public void onBuffering() {
-        // ✅ 彻底删除所有Toast
-    }
+    public void onBuffering() {}
 
     @Override
     public void onPlayReady() {}
 
     @Override
     public void onPlayEnd() {
-        // ✅ 静默自动重试，不弹Toast
-        new Handler(Looper.getMainLooper()).postDelayed(() -> {
-            if (MainActivity.mInstance != null) {
-                MainActivity.mInstance.playChannel(MainActivity.mInstance.currentPlayIndex);
-            }
-        }, 500);
+        // ✅ 什么都不做！不要自动重试！
+        // 源有问题用户会手动切台
     }
 
     @Override
     public void onPlayError(String msg) {
-        // ✅ 播放错误也静默重试
-        new Handler(Looper.getMainLooper()).postDelayed(() -> {
-            if (MainActivity.mInstance != null) {
-                MainActivity.mInstance.playChannel(MainActivity.mInstance.currentPlayIndex);
-            }
-        }, 1000);
+        // ✅ 错误也不重试，用户手动切台
     }
 }

@@ -964,3 +964,4 @@ public class MainActivity extends AppCompatActivity {
         mPlayerManager.release();
         mInstance = null;
     }
+}

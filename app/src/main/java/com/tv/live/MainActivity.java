@@ -13,6 +13,7 @@ import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
 import android.os.Bundle;
 import android.os.Handler;
+import android.os.Looper;
 import android.text.TextUtils;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
@@ -28,6 +29,8 @@ import com.tv.live.config.AppConfig;
 import com.tv.live.listener.PlayerStateListenerImpl;
 import com.tv.live.loader.LiveSourceLoader;
 import com.tv.live.manager.*;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -64,14 +67,6 @@ public class MainActivity extends AppCompatActivity {
     private TextView tv_next_program_name, tv_next_time_range;
     private android.widget.ProgressBar progress_program;
     private TextView tv_channel_num;
-    
-    // 网络请求常量配置
-    private static final int MAX_REDIRECT_COUNT = 10;  // 最大重定向次数
-    private static final int CONNECT_TIMEOUT = 8000;   // 网络连接超时（8秒）
-    private static final int READ_TIMEOUT = 8000;      // 网络读取超时（8秒）
-    private static final String DEF_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";  // 默认请求UA
-    private static final String DEF_REFER = "https://www.huya.com/"; // 默认请求Referer
-    private static final long CHANNEL_COOLDOWN = 300;   // 频道切换冷却时间（300ms，防止快速切换）
     private final Runnable hideInfoBar = new Runnable() {
         @Override
         public void run() {
@@ -83,6 +78,15 @@ public class MainActivity extends AppCompatActivity {
     private static final long CHANNEL_COOLDOWN = 300;
     private float touchStartY = 0;
     private static final float SLIDE_THRESHOLD = 80;
+
+    // ================================================
+    // ✅ 重定向解析相关配置
+    // ================================================
+    private static final int MAX_REDIRECT_COUNT = 10;    // 最大重定向次数
+    private static final int CONNECT_TIMEOUT = 8000;     // 连接超时（8秒）
+    private static final int READ_TIMEOUT = 8000;        // 读取超时（8秒）
+    private static final String DEF_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
+    private static final String HUYA_REFERER = "https://www.huya.com/";
 
     // 本地日志：最新在前，最多100条
     public static List<String> logList = new ArrayList<>();
@@ -187,9 +191,9 @@ public class MainActivity extends AppCompatActivity {
         lvGroup.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
-                 // ✅ 新增：点击时同步更新分组管理器的选中位置，确保高亮跟着变
+                // 点击时同步更新分组管理器的选中位置，确保高亮跟着变
                 groupListManager.setSelectedPosition(position);
-                
+
                 lvGroup.setItemChecked(position, true);
                 lvGroup.setSelection(position);
                 String groupName = groupListManager.getCurrentGroup(position);
@@ -200,6 +204,7 @@ public class MainActivity extends AppCompatActivity {
                     }
                 }
                 channelListManager.setChannelsByGroup(channelSourceList, groupName, currentPlayIndex);
+                // 已去掉：点击分组后自动播放第一个频道
             }
         });
 
@@ -208,81 +213,38 @@ public class MainActivity extends AppCompatActivity {
         dateListManager = new DateListManager(this, lvDate);
         epgManagerWrapper = new EpgManagerWrapper(this, lvEpg);
         dateListManager.initDate();
-  
 
-// 先创建 PanelManager 实例，再注册回调，避免空指针
-panelManager = new PanelManager(panel_layout, channelListManager, epgManagerWrapper);
-        
-// 注册日期选中回调，点击日期刷新EPG节目单
-dateListManager.setOnDateSelectedListener(pos -> {
-    currentSelectedDateIndex = pos;
-    // 同步日期状态到面板管理器，下次打开面板保留选中日期
-    panelManager.setCurrentDateIndex(pos);
-    
-    // 补全完整索引合法性校验，避免极端场景数组越界崩溃
-    if (channelSourceList != null 
-        && !channelSourceList.isEmpty() 
-        && currentPlayIndex >= 0 
-        && currentPlayIndex < channelSourceList.size()) {
-        Channel curr = channelSourceList.get(currentPlayIndex);
-        epgManagerWrapper.refresh(curr, channelSourceList, currentSelectedDateIndex);
-    }
-});
+        // 先创建 PanelManager 实例，再注册回调，避免空指针
+        panelManager = new PanelManager(panel_layout, channelListManager, epgManagerWrapper);
 
+        // 注册日期选中回调，点击日期刷新EPG节目单
+        dateListManager.setOnDateSelectedListener(pos -> {
+            currentSelectedDateIndex = pos;
+            // 同步日期状态到面板管理器，下次打开面板保留选中日期
+            panelManager.setCurrentDateIndex(pos);
 
-mPlayerManager = TVPlayerManager.getInstance(this);
-mPlayerManager.attachPlayerView(playerView);
-playerStateListener = new PlayerStateListenerImpl(this);
-mPlayerManager.setOnPlayStateListener(playerStateListener);
-mPlayerManager.setOnLiveInfoUpdateListener(new TVPlayerManager.OnLiveInfoUpdateListener() {
-    @Override
-    public void onLiveInfoUpdate(TVPlayerManager.LiveInfo info) {
-        tv_tag_fhd.setText(info.quality);
-        tv_tag_audio.setText(info.audio);
-        tv_bitrate.setText(info.bitrate);
-    }
-});
-        
-        // 获取原始播放地址
-        final String originalUrl = ch.getPlayUrl();
-        // 异步处理播放地址重定向（避免主线程阻塞）
-        new Thread(() -> {
-            java.net.HttpURLConnection conn = null;
-            String finalUrl = originalUrl;
-            try {
-                // 处理URL重定向（最多MAX_REDIRECT_COUNT次）
-                for (int step = 0; step < MAX_REDIRECT_COUNT; step++) {
-                    java.net.URL urlObj = new java.net.URL(finalUrl);
-                    conn = (java.net.HttpURLConnection) urlObj.openConnection();
-                    conn.setConnectTimeout(CONNECT_TIMEOUT);
-                    conn.setReadTimeout(READ_TIMEOUT);
-                    conn.setRequestMethod("GET");
-                    conn.setRequestProperty("User-Agent", DEF_UA);
-                    conn.setRequestProperty("Refer", DEF_REFER);
-                    conn.setInstanceFollowRedirects(false); // 手动处理重定向
-                    int code = conn.getResponseCode();
-                    if (code == 301 || code == 302) { // 301/302重定向
-                        String loc = conn.getHeaderField("Location");
-                        if (loc != null) finalUrl = loc;
-                        conn.disconnect();
-                        conn = null;
-                    } else break; // 非重定向状态码，终止循环
-                }
-            } catch (Exception e) {
-                e.printStackTrace();
-            } finally {
-                if (conn != null) conn.disconnect(); // 关闭连接
+            // 补全完整索引合法性校验，避免极端场景数组越界崩溃
+            if (channelSourceList != null
+                    && !channelSourceList.isEmpty()
+                    && currentPlayIndex >= 0
+                    && currentPlayIndex < channelSourceList.size()) {
+                Channel curr = channelSourceList.get(currentPlayIndex);
+                epgManagerWrapper.refresh(curr, channelSourceList, currentSelectedDateIndex);
             }
+        });
 
-            // 修复lambda变量必须final的问题
-            final String realPlayUrl = TextUtils.isEmpty(finalUrl) ? originalUrl : finalUrl;
-            // 主线程播放最终的播放地址
-            new Handler(Looper.getMainLooper()).post(() -> {
-                mPlayerManager.playUrl(realPlayUrl);
-            });
-        }).start();
-    }
-
+        mPlayerManager = TVPlayerManager.getInstance(this);
+        mPlayerManager.attachPlayerView(playerView);
+        playerStateListener = new PlayerStateListenerImpl(this);
+        mPlayerManager.setOnPlayStateListener(playerStateListener);
+        mPlayerManager.setOnLiveInfoUpdateListener(new TVPlayerManager.OnLiveInfoUpdateListener() {
+            @Override
+            public void onLiveInfoUpdate(TVPlayerManager.LiveInfo info) {
+                tv_tag_fhd.setText(info.quality);
+                tv_tag_audio.setText(info.audio);
+                tv_bitrate.setText(info.bitrate);
+            }
+        });
 
         screenRatioManager = new ScreenRatioManager(mPlayerManager, appConfig);
         screenRatioManager.apply();
@@ -383,8 +345,7 @@ mPlayerManager.setOnLiveInfoUpdateListener(new TVPlayerManager.OnLiveInfoUpdateL
     }
 
     /**
-     * ✅ 上一台：在当前频道所属分组内循环切换
-     * 到第一个频道时，再往上切回到分组最后一个
+     * 上一台：在当前频道所属分组内循环切换
      */
     public void playPrev() {
         long now = System.currentTimeMillis();
@@ -395,11 +356,9 @@ mPlayerManager.setOnLiveInfoUpdateListener(new TVPlayerManager.OnLiveInfoUpdateL
 
         if (channelSourceList == null || channelSourceList.isEmpty()) return;
 
-        // 1. 获取当前频道及其所属分组
         Channel currentChannel = channelSourceList.get(currentPlayIndex);
         String currentGroup = currentChannel.getGroup();
 
-        // 2. 收集当前分组的所有频道
         List<Channel> groupChannels = new ArrayList<>();
         for (Channel c : channelSourceList) {
             if (currentGroup.equals(c.getGroup())) {
@@ -407,9 +366,8 @@ mPlayerManager.setOnLiveInfoUpdateListener(new TVPlayerManager.OnLiveInfoUpdateL
             }
         }
 
-        if (groupChannels.size() <= 1) return; // 分组里只有1个频道，不用切
+        if (groupChannels.size() <= 1) return;
 
-        // 3. 找到当前频道在分组内的位置
         int groupIndex = -1;
         for (int i = 0; i < groupChannels.size(); i++) {
             if (groupChannels.get(i).getName().equals(currentChannel.getName())) {
@@ -420,11 +378,9 @@ mPlayerManager.setOnLiveInfoUpdateListener(new TVPlayerManager.OnLiveInfoUpdateL
 
         if (groupIndex == -1) return;
 
-        // 4. 计算上一个频道（循环：第一个的上一个是最后一个）
         int prevGroupIndex = (groupIndex - 1 + groupChannels.size()) % groupChannels.size();
         Channel prevChannel = groupChannels.get(prevGroupIndex);
 
-        // 5. 找到全局索引并播放
         int globalIndex = channelSourceList.indexOf(prevChannel);
         if (globalIndex != -1) {
             playChannel(globalIndex);
@@ -432,8 +388,7 @@ mPlayerManager.setOnLiveInfoUpdateListener(new TVPlayerManager.OnLiveInfoUpdateL
     }
 
     /**
-     * ✅ 下一台：在当前频道所属分组内循环切换
-     * 到最后一个频道时，再往下切回到分组第一个
+     * 下一台：在当前频道所属分组内循环切换
      */
     public void playNext() {
         long now = System.currentTimeMillis();
@@ -444,11 +399,9 @@ mPlayerManager.setOnLiveInfoUpdateListener(new TVPlayerManager.OnLiveInfoUpdateL
 
         if (channelSourceList == null || channelSourceList.isEmpty()) return;
 
-        // 1. 获取当前频道及其所属分组
         Channel currentChannel = channelSourceList.get(currentPlayIndex);
         String currentGroup = currentChannel.getGroup();
 
-        // 2. 收集当前分组的所有频道
         List<Channel> groupChannels = new ArrayList<>();
         for (Channel c : channelSourceList) {
             if (currentGroup.equals(c.getGroup())) {
@@ -456,9 +409,8 @@ mPlayerManager.setOnLiveInfoUpdateListener(new TVPlayerManager.OnLiveInfoUpdateL
             }
         }
 
-        if (groupChannels.size() <= 1) return; // 分组里只有1个频道，不用切
+        if (groupChannels.size() <= 1) return;
 
-        // 3. 找到当前频道在分组内的位置
         int groupIndex = -1;
         for (int i = 0; i < groupChannels.size(); i++) {
             if (groupChannels.get(i).getName().equals(currentChannel.getName())) {
@@ -469,15 +421,89 @@ mPlayerManager.setOnLiveInfoUpdateListener(new TVPlayerManager.OnLiveInfoUpdateL
 
         if (groupIndex == -1) return;
 
-        // 4. 计算下一个频道（循环：最后一个的下一个是第一个）
         int nextGroupIndex = (groupIndex + 1) % groupChannels.size();
         Channel nextChannel = groupChannels.get(nextGroupIndex);
 
-        // 5. 找到全局索引并播放
         int globalIndex = channelSourceList.indexOf(nextChannel);
         if (globalIndex != -1) {
             playChannel(globalIndex);
         }
+    }
+
+    // ================================================
+    // ✅ 重定向解析核心方法
+    // 支持301/302，最多跟随10次，自动处理虎牙等特殊站点
+    // ================================================
+    private String resolveRedirectUrl(String originalUrl) {
+        if (TextUtils.isEmpty(originalUrl)) {
+            log("【重定向】原始地址为空，跳过解析");
+            return originalUrl;
+        }
+
+        log("【重定向】开始解析，原始地址：" + originalUrl);
+
+        HttpURLConnection conn = null;
+        String currentUrl = originalUrl;
+        int redirectCount = 0;
+
+        try {
+            for (int step = 0; step < MAX_REDIRECT_COUNT; step++) {
+                URL urlObj = new URL(currentUrl);
+                conn = (HttpURLConnection) urlObj.openConnection();
+                conn.setConnectTimeout(CONNECT_TIMEOUT);
+                conn.setReadTimeout(READ_TIMEOUT);
+                conn.setRequestMethod("GET");
+                conn.setRequestProperty("User-Agent", DEF_UA);
+                conn.setInstanceFollowRedirects(false); // 手动处理重定向
+
+                // ✅ 虎牙特殊处理：加上虎牙Referer
+                if (currentUrl.contains("huya.com") || currentUrl.contains("huya.cn")) {
+                    conn.setRequestProperty("Referer", HUYA_REFERER);
+                    log("【重定向】检测到虎牙地址，已添加Referer：" + HUYA_REFERER);
+                }
+
+                int code = conn.getResponseCode();
+                log("【重定向】第" + (step + 1) + "次请求，状态码：" + code + "，地址：" + currentUrl);
+
+                if (code == 301 || code == 302 || code == 303 || code == 307 || code == 308) {
+                    String location = conn.getHeaderField("Location");
+                    if (TextUtils.isEmpty(location)) {
+                        log("【重定向】Location为空，终止重定向");
+                        break;
+                    }
+
+                    // 处理相对路径
+                    if (location.startsWith("/")) {
+                        String baseUrl = urlObj.getProtocol() + "://" + urlObj.getHost();
+                        location = baseUrl + location;
+                    }
+
+                    redirectCount++;
+                    log("【重定向】第" + redirectCount + "次重定向：" + location);
+                    currentUrl = location;
+                    conn.disconnect();
+                    conn = null;
+                } else {
+                    log("【重定向】非重定向状态码，解析完成，最终地址：" + currentUrl);
+                    break;
+                }
+            }
+
+            if (redirectCount >= MAX_REDIRECT_COUNT) {
+                log("【重定向】⚠️ 达到最大重定向次数(" + MAX_REDIRECT_COUNT + "次)，停止跟随");
+            }
+
+        } catch (Exception e) {
+            log("【重定向】❌ 解析异常：" + e.getMessage());
+            e.printStackTrace();
+        } finally {
+            if (conn != null) {
+                try { conn.disconnect(); } catch (Exception ignored) {}
+            }
+        }
+
+        log("【重定向】解析结束，共重定向" + redirectCount + "次，最终地址：" + currentUrl);
+        return currentUrl;
     }
 
     public void playChannel(int index) {
@@ -495,15 +521,14 @@ mPlayerManager.setOnLiveInfoUpdateListener(new TVPlayerManager.OnLiveInfoUpdateL
             return;
         }
 
-        String url = ch.getPlayUrl();
+        final String originalUrl = ch.getPlayUrl();
         log("========================================");
         log("【播放】频道名称：" + ch.getName());
-        log("【播放】频道地址：" + url);
+        log("【播放】原始地址：" + originalUrl);
         log("【播放】当前索引：" + index);
         log("========================================");
 
         playerStateListener.setCurrentChannelName(ch.getName());
-        mPlayerManager.playUrl(url);
         showChannelNum(index + 1);
         appConfig.setLastPlayIndex(index);
         channelListManager.setChannels(channelSourceList, index);
@@ -519,6 +544,22 @@ mPlayerManager.setOnLiveInfoUpdateListener(new TVPlayerManager.OnLiveInfoUpdateL
             tv_tag_audio.setText(live.audio);
             tv_bitrate.setText(live.bitrate);
         }
+
+        // ✅ 异步解析重定向，拿到真实地址后再播放
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                final String realUrl = resolveRedirectUrl(originalUrl);
+                // 切回主线程播放
+                new Handler(Looper.getMainLooper()).post(new Runnable() {
+                    @Override
+                    public void run() {
+                        log("【播放】开始播放真实地址：" + realUrl);
+                        mPlayerManager.playUrl(realUrl);
+                    }
+                });
+            }
+        }).start();
     }
 
     public void showChannelNum(int num) {
@@ -552,11 +593,11 @@ mPlayerManager.setOnLiveInfoUpdateListener(new TVPlayerManager.OnLiveInfoUpdateL
             }
         });
     }
-    
+
     public void togglePanel() {
-    // 传入日期列表管理器，用于面板打开时同步高亮
-    panelManager.toggle(channelSourceList, currentPlayIndex, dateListManager);
-}
+        // 传入日期列表管理器，用于面板打开时同步高亮
+        panelManager.toggle(channelSourceList, currentPlayIndex, dateListManager);
+    }
 
     public void openSettings() {
         startActivity(new Intent(this, SettingsActivity.class));

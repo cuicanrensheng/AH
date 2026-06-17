@@ -25,9 +25,6 @@ import java.util.Map;
  * 4. 支持跨协议重定向（http→https）
  * 5. 保留DefaultHttpDataSource的所有核心功能
  * 6. 日志同步输出到Logcat和SettingsActivity
- *
- * 【使用场景】
- * 调试虎牙、斗鱼等有多级重定向的直播流时，查看完整的重定向链路
  */
 public class RedirectLoggingHttpDataSource extends BaseDataSource implements HttpDataSource {
     private static final String TAG = "RedirectLog";
@@ -54,13 +51,11 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
     private Uri uri;
     // 响应Header
     private Map<String, List<String>> responseHeaders;
+    // 响应状态码
+    private int responseCode = 0;
 
     /**
      * 构造函数
-     * @param userAgent User-Agent字符串
-     * @param connectTimeoutMs 连接超时（毫秒）
-     * @param readTimeoutMs 读取超时（毫秒）
-     * @param defaultRequestProperties 默认请求Header
      */
     protected RedirectLoggingHttpDataSource(
             String userAgent,
@@ -79,10 +74,6 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
     /**
      * 打开数据源
      * 核心方法：手动处理重定向，每一次重定向都打日志
-     *
-     * @param dataSpec 数据规格
-     * @return 内容长度
-     * @throws HttpDataSourceException 打开失败时抛出
      */
     @Override
     public long open(DataSpec dataSpec) throws HttpDataSourceException {
@@ -106,7 +97,7 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
                 connection.setConnectTimeout(connectTimeoutMs);
                 connection.setReadTimeout(readTimeoutMs);
                 connection.setRequestMethod("GET");
-                connection.setInstanceFollowRedirects(false); // 关键：手动处理重定向
+                connection.setInstanceFollowRedirects(false); // 手动处理重定向
                 connection.setDoOutput(false);
 
                 // 设置默认Header
@@ -114,7 +105,7 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
                     connection.setRequestProperty(entry.getKey(), entry.getValue());
                 }
 
-                // 设置User-Agent（如果没在Header里设置的话）
+                // 设置User-Agent
                 if (userAgent != null && !defaultRequestProperties.containsKey("User-Agent")) {
                     connection.setRequestProperty("User-Agent", userAgent);
                 }
@@ -125,7 +116,7 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
                 }
 
                 // 发送请求，获取响应码
-                int responseCode = connection.getResponseCode();
+                responseCode = connection.getResponseCode();
                 log("【HTTP】第" + (redirectCount + 1) + "次请求  状态码：" + responseCode);
                 log("【HTTP】地址：" + currentUrl);
 
@@ -173,10 +164,8 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
                 // ===== 错误响应 =====
                 log("【HTTP】❌ 请求失败，状态码：" + responseCode);
                 throw new HttpDataSourceException(
-                        "HTTP " + responseCode + " " + connection.getResponseMessage(),
+                        "HTTP " + responseCode,
                         dataSpec,
-                        responseCode,
-                        null,
                         HttpDataSourceException.TYPE_OPEN);
             }
 
@@ -265,7 +254,6 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
         if (bytesRead == -1) {
             // 读取结束
             if (bytesRemaining != C.LENGTH_UNSET && bytesRemaining != 0) {
-                // 声明的长度和实际不符
                 throw new HttpDataSourceException(
                         new EOFException(),
                         new DataSpec(uri),
@@ -288,6 +276,14 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
     @Override
     public Uri getUri() {
         return uri;
+    }
+
+    /**
+     * ✅ 获取响应状态码（修复：添加缺失的抽象方法实现）
+     */
+    @Override
+    public int getResponseCode() {
+        return responseCode;
     }
 
     /**
@@ -350,7 +346,6 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
 
     /**
      * 打印日志
-     * 同时输出到Logcat和SettingsActivity的日志系统
      */
     private void log(String msg) {
         Log.d(TAG, msg);
@@ -360,7 +355,7 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
             java.lang.reflect.Method logMethod = settingsClass.getMethod("log", String.class);
             logMethod.invoke(null, msg);
         } catch (Exception e) {
-            // SettingsActivity不存在或log方法找不到时忽略
+            // 忽略
         }
     }
 
@@ -370,8 +365,6 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
 
     /**
      * Factory for RedirectLoggingHttpDataSource
-     *
-     * 接口和 DefaultHttpDataSource.Factory 保持一致，方便直接替换
      */
     public static final class Factory implements HttpDataSource.Factory {
         private String userAgent;
@@ -382,42 +375,26 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
         public Factory() {
         }
 
-        /**
-         * 设置User-Agent
-         */
         public Factory setUserAgent(String userAgent) {
             this.userAgent = userAgent;
             return this;
         }
 
-        /**
-         * 设置连接超时
-         */
         public Factory setConnectTimeoutMs(int connectTimeoutMs) {
             this.connectTimeoutMs = connectTimeoutMs;
             return this;
         }
 
-        /**
-         * 设置读取超时
-         */
         public Factory setReadTimeoutMs(int readTimeoutMs) {
             this.readTimeoutMs = readTimeoutMs;
             return this;
         }
 
-        /**
-         * 设置默认请求Header
-         */
         public Factory setDefaultRequestProperties(Map<String, String> defaultRequestProperties) {
             this.defaultRequestProperties = defaultRequestProperties;
             return this;
         }
 
-        /**
-         * 设置是否允许跨协议重定向
-         * （本实现默认支持，保留此方法是为了接口兼容）
-         */
         public Factory setAllowCrossProtocolRedirects(boolean allow) {
             // 本实现默认就支持跨协议重定向
             return this;

@@ -179,6 +179,9 @@ public class MainActivity extends AppCompatActivity {
         lvGroup.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
+                 // ✅ 新增：点击时同步更新分组管理器的选中位置，确保高亮跟着变
+                groupListManager.setSelectedPosition(position);
+                
                 lvGroup.setItemChecked(position, true);
                 lvGroup.setSelection(position);
                 String groupName = groupListManager.getCurrentGroup(position);

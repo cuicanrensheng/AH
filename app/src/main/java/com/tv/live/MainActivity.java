@@ -421,87 +421,86 @@ public class MainActivity extends AppCompatActivity {
         playChannel(idx);
     }
 
-    public void playChannel(int index) {
-        if (channelSourceList == null || channelSourceList.isEmpty()) return;
-        index = Math.max(0, Math.min(index, channelSourceList.size() - 1));
-        currentPlayIndex = index;
-        Channel ch = channelSourceList.get(index);
-        if (ch == null || TextUtils.isEmpty(ch.getPlayUrl())) return;
+public void playChannel(int index) {
+    if (channelSourceList == null || channelSourceList.isEmpty()) return;
+    index = Math.max(0, Math.min(index, channelSourceList.size() - 1));
+    currentPlayIndex = index;
+    Channel ch = channelSourceList.get(index);
+    if (ch == null || TextUtils.isEmpty(ch.getPlayUrl())) return;
 
-        playerStateListener.setCurrentChannelName(ch.getName());
-        showChannelNum(index + 1);
-        appConfig.setLastPlayIndex(index);
+    playerStateListener.setCurrentChannelName(ch.getName());
+    showChannelNum(index + 1);
+    appConfig.setLastPlayIndex(index);
 
-        if (!TextUtils.isEmpty(nowSelectGroup)) {
-            channelListManager.setChannelsByGroup(channelSourceList, nowSelectGroup, index);
-        } else {
-            channelListManager.setChannels(channelSourceList, index);
-        }
-
-        epgManagerWrapper.refresh(ch, channelSourceList, currentSelectedDateIndex);
-
-        if (info_bar != null) {
-            info_bar.setVisibility(View.VISIBLE);
-            info_bar.removeCallbacks(hideInfoBar);
-            info_bar.postDelayed(hideInfoBar, 2000);
-            tv_channel_name.setText(ch.getName());
-            TVPlayerManager.LiveInfo live = mPlayerManager.getLiveInfo();
-            tv_tag_fhd.setText(live.quality);
-            tv_tag_audio.setText(live.audio);
-            tv_bitrate.setText(live.bitrate);
-        }
-
-        final String originalUrl = ch.getPlayUrl();
-        new Thread(() -> {
-            java.net.HttpURLConnection conn = null;
-            String finalUrl = originalUrl;
-            
-            // ✅ 日志：开始URL解析
-            MainActivity.log("🔗 开始解析：" + ch.getName());
-            MainActivity.log("   原始URL：" + (originalUrl.length() > 60 ? originalUrl.substring(0, 60) + "..." : originalUrl));
-            
-            try {
-                for (int step = 0; step < MAX_REDIRECT_COUNT; step++) {
-                    java.net.URL urlObj = new java.net.URL(finalUrl);
-                    conn = (java.net.HttpURLConnection) urlObj.openConnection();
-                    conn.setConnectTimeout(CONNECT_TIMEOUT);
-                    conn.setReadTimeout(READ_TIMEOUT);
-                    conn.setRequestMethod("GET");
-                    conn.setRequestProperty("User-Agent", DEF_UA);
-                    conn.setRequestProperty("Refer", DEF_REFER);
-                    conn.setInstanceFollowRedirects(false);
-                    int code = conn.getResponseCode();
-                    
-                    // ✅ 日志：每一步重定向
-                    String shortUrl = finalUrl.length() > 60 ? finalUrl.substring(0, 60) + "..." : finalUrl;
-                    MainActivity.log("   第" + (step + 1) + "次：HTTP " + code + " → " + shortUrl);
-                    
-                    if (code == 301 || code == 302) {
-                        String loc = conn.getHeaderField("Location");
-                        if (loc != null) {
-                            finalUrl = loc;
-                            MainActivity.log("        重定向到：" + (loc.length() > 60 ? loc.substring(0, 60) + "..." : loc));
-                        }
-                        conn.disconnect();
-                        conn = null;
-                    } else {
-                        MainActivity.log("   ✅ 解析完成，共" + (step + 1) + "次跳转");
-                        break;
-                    }
-                }
-            } catch (Exception e) {
-                e.printStackTrace();
-                MainActivity.log("   ❌ 解析异常：" + e.getMessage());
-            } finally {
-                if (conn != null) conn.disconnect();
-            }
-
-            final String realPlayUrl = TextUtils.isEmpty(finalUrl) ? originalUrl : finalUrl;
-            new Handler(Looper.getMainLooper()).post(() -> {
-                mPlayerManager.playUrl(realPlayUrl);
-            });
-        }).start();
+    if (!TextUtils.isEmpty(nowSelectGroup)) {
+        channelListManager.setChannelsByGroup(channelSourceList, nowSelectGroup, index);
+    } else {
+        channelListManager.setChannels(channelSourceList, index);
     }
+
+    epgManagerWrapper.refresh(ch, channelSourceList, currentSelectedDateIndex);
+
+    if (info_bar != null) {
+        info_bar.setVisibility(View.VISIBLE);
+        info_bar.removeCallbacks(hideInfoBar);
+        info_bar.postDelayed(hideInfoBar, 2000);
+        tv_channel_name.setText(ch.getName());
+        TVPlayerManager.LiveInfo live = mPlayerManager.getLiveInfo();
+        tv_tag_fhd.setText(live.quality);
+        tv_tag_audio.setText(live.audio);
+        tv_bitrate.setText(live.bitrate);
+    }
+
+    final String originalUrl = ch.getPlayUrl();
+    new Thread(() -> {
+        java.net.HttpURLConnection conn = null;
+        String finalUrl = originalUrl;
+        
+        // ✅ 全部改成 SettingsActivity.log()
+        SettingsActivity.log("🔗 开始解析：" + ch.getName());
+        SettingsActivity.log("   原始URL：" + (originalUrl.length() > 60 ? originalUrl.substring(0, 60) + "..." : originalUrl));
+        
+        try {
+            for (int step = 0; step < MAX_REDIRECT_COUNT; step++) {
+                java.net.URL urlObj = new java.net.URL(finalUrl);
+                conn = (java.net.HttpURLConnection) urlObj.openConnection();
+                conn.setConnectTimeout(CONNECT_TIMEOUT);
+                conn.setReadTimeout(READ_TIMEOUT);
+                conn.setRequestMethod("GET");
+                conn.setRequestProperty("User-Agent", DEF_UA);
+                conn.setRequestProperty("Refer", DEF_REFER);
+                conn.setInstanceFollowRedirects(false);
+                int code = conn.getResponseCode();
+                
+                String shortUrl = finalUrl.length() > 60 ? finalUrl.substring(0, 60) + "..." : finalUrl;
+                SettingsActivity.log("   第" + (step + 1) + "次：HTTP " + code + " → " + shortUrl);
+                
+                if (code == 301 || code == 302) {
+                    String loc = conn.getHeaderField("Location");
+                    if (loc != null) {
+                        finalUrl = loc;
+                        SettingsActivity.log("        重定向到：" + (loc.length() > 60 ? loc.substring(0, 60) + "..." : loc));
+                    }
+                    conn.disconnect();
+                    conn = null;
+                } else {
+                    SettingsActivity.log("   ✅ 解析完成，共" + (step + 1) + "次跳转");
+                    break;
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            SettingsActivity.log("   ❌ 解析异常：" + e.getMessage());
+        } finally {
+            if (conn != null) conn.disconnect();
+        }
+
+        final String realPlayUrl = TextUtils.isEmpty(finalUrl) ? originalUrl : finalUrl;
+        new Handler(Looper.getMainLooper()).post(() -> {
+            mPlayerManager.playUrl(realPlayUrl);
+        });
+    }).start();
+}
 
     public void showChannelNum(int num) {
         if (!number_channel_enable) return;

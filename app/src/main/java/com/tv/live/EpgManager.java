@@ -15,6 +15,7 @@ public class EpgManager {
     private static EpgManager instance;
     private final Map<String, List<Channel.EpgItem>> channelEpgMap = new HashMap<>();
     private String epgUrl = UrlConfig.EPG_URL;
+    private boolean hasPrintedSample = false; // 只打印前5个节目样本，避免日志太多
 
     public static EpgManager getInstance() {
         if (instance == null) {
@@ -43,6 +44,7 @@ public class EpgManager {
                     in = new GZIPInputStream(in);
                 }
 
+                hasPrintedSample = false;
                 parseXml(in);
                 SettingsActivity.log("【EPG】✅ 加载完成，共" + channelEpgMap.size() + "个频道");
             } catch (Exception e) {
@@ -60,9 +62,6 @@ public class EpgManager {
         }).start();
     }
 
-    /**
-     * ✅ 全能解析：自动兼容标准XMLTV格式 和 channel内嵌programme格式
-     */
     private void parseXml(InputStream is) throws Exception {
         XmlPullParserFactory factory = XmlPullParserFactory.newInstance();
         XmlPullParser xml = factory.newPullParser();
@@ -71,55 +70,37 @@ public class EpgManager {
         SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMddHHmmss");
         sdf.setLenient(true);
 
-        // ========== 标准XMLTV格式用 ==========
-        // 频道ID -> 频道名称
-        Map<String, String> channelIdToName = new HashMap<>();
-        // 频道ID -> 节目列表
-        Map<String, List<Channel.EpgItem>> idToPrograms = new HashMap<>();
-        String currentChannelId = null;
-        String currentProgramChannelId = null;
-        Channel.EpgItem currentProgram = null;
+        // 打印今天的日期，确认基准是否正确
+        Calendar todayCheck = Calendar.getInstance();
+        SettingsActivity.log("【EPG】📅 今天日期：" + todayCheck.get(Calendar.YEAR) + "-"
+                + (todayCheck.get(Calendar.MONTH) + 1) + "-" + todayCheck.get(Calendar.DAY_OF_MONTH)
+                + "（一年中的第" + todayCheck.get(Calendar.DAY_OF_YEAR) + "天）");
 
-        // ========== channel内嵌格式用 ==========
         String currentChannelName = null;
         List<Channel.EpgItem> tempPrograms = new ArrayList<>();
+        int programCount = 0;
 
         while (xml.getEventType() != XmlPullParser.END_DOCUMENT) {
             if (xml.getEventType() == XmlPullParser.START_TAG) {
                 String tag = xml.getName();
 
-                // ==================== 处理频道 ====================
                 if ("channel".equals(tag)) {
-                    // 标准格式：记录channel id
-                    currentChannelId = xml.getAttributeValue(null, "id");
-                    // 内嵌格式：重置当前频道名和节目列表
                     currentChannelName = null;
                     tempPrograms.clear();
                 }
 
                 if ("display-name".equals(tag)) {
-                    String name = xml.nextText().trim();
-                    // 标准格式：id -> name 映射
-                    if (currentChannelId != null) {
-                        channelIdToName.put(currentChannelId, name);
-                        if (!idToPrograms.containsKey(currentChannelId)) {
-                            idToPrograms.put(currentChannelId, new ArrayList<>());
-                        }
-                    }
-                    // 内嵌格式：直接记录频道名
-                    currentChannelName = name;
+                    currentChannelName = xml.nextText().trim();
                 }
 
-                // ==================== 处理节目 ====================
                 if ("programme".equals(tag)) {
                     String start = xml.getAttributeValue(null, "start");
                     String stop = xml.getAttributeValue(null, "stop");
                     if (start == null || stop == null) continue;
 
-                    // 检查有没有channel属性，判断是不是标准格式
-                    String programChannelId = xml.getAttributeValue(null, "channel");
-
                     try {
+                        String originalStart = start; // 保存原始字符串
+
                         // 去掉时区后缀，只取前14位
                         if (start.length() > 14) start = start.substring(0, 14);
                         if (stop.length() > 14) stop = stop.substring(0, 14);
@@ -127,102 +108,47 @@ public class EpgManager {
                         Calendar startCal = Calendar.getInstance();
                         startCal.setTime(sdf.parse(start));
 
-                        // 每次取最新今天，避免隔夜基准过期
                         Calendar today = Calendar.getInstance();
                         String dayName = getDayName(startCal, today);
+
+                        // 只打印前5个节目样本，方便排查
+                        if (!hasPrintedSample && programCount < 5) {
+                            SettingsActivity.log("【EPG】🔍 样本" + (programCount + 1)
+                                    + "：原始时间=" + originalStart
+                                    + "，截取后=" + start
+                                    + "，解析日期=" + (startCal.get(Calendar.MONTH) + 1) + "月" + startCal.get(Calendar.DAY_OF_MONTH) + "日"
+                                    + "，dayName=" + dayName);
+                            programCount++;
+                            if (programCount >= 5) hasPrintedSample = true;
+                        }
 
                         String timeStr = start.substring(8, 10) + ":" + start.substring(10, 12)
                                 + " - " + stop.substring(8, 10) + ":" + stop.substring(10, 12);
 
                         Channel.EpgItem item = new Channel.EpgItem(dayName, timeStr, "", false);
-
-                        if (programChannelId != null && !programChannelId.isEmpty()) {
-                            // ✅ 标准XMLTV格式：通过channel属性关联
-                            currentProgramChannelId = programChannelId;
-                            currentProgram = item;
-                        } else {
-                            // ✅ channel内嵌格式：直接加到当前频道的列表
-                            tempPrograms.add(item);
-                            currentProgram = null;
-                        }
+                        tempPrograms.add(item);
                     } catch (Exception e) {
-                        SettingsActivity.log("【EPG】跳过异常时间：" + start);
-                        currentProgram = null;
+                        SettingsActivity.log("【EPG】跳过异常时间：" + start + "，错误：" + e.getMessage());
                     }
                 }
 
-                if ("title".equals(tag)) {
+                if ("title".equals(tag) && !tempPrograms.isEmpty()) {
                     String title = xml.nextText().trim();
-                    // 标准格式：给当前program设置标题
-                    if (currentProgram != null) {
-                        currentProgram.title = title;
-                    }
-                    // 内嵌格式：给最后一个program设置标题
-                    if (!tempPrograms.isEmpty()) {
-                        tempPrograms.get(tempPrograms.size() - 1).title = title;
-                    }
+                    tempPrograms.get(tempPrograms.size() - 1).title = title;
                 }
             }
 
-            // ==================== 结束标签处理 ====================
-            if (xml.getEventType() == XmlPullParser.END_TAG) {
-                String tag = xml.getName();
-
-                if ("channel".equals(tag)) {
-                    currentChannelId = null;
-                }
-
-                if ("programme".equals(tag)) {
-                    // 标准格式：节目结束，加入对应频道的列表
-                    if (currentProgram != null && currentProgramChannelId != null) {
-                        List<Channel.EpgItem> list = idToPrograms.get(currentProgramChannelId);
-                        if (list != null) {
-                            list.add(currentProgram);
-                        }
-                        currentProgram = null;
-                        currentProgramChannelId = null;
-                    }
-
-                    // 内嵌格式：节目结束，保存当前频道所有节目
-                    if (currentChannelName != null && !tempPrograms.isEmpty()) {
-                        tempPrograms.sort(Comparator.comparing(item -> item.time));
-                        channelEpgMap.put(currentChannelName, new ArrayList<>(tempPrograms));
-                    }
+            if (xml.getEventType() == XmlPullParser.END_TAG && "programme".equals(xml.getName())) {
+                if (currentChannelName != null && !tempPrograms.isEmpty()) {
+                    tempPrograms.sort(Comparator.comparing(item -> item.time));
+                    channelEpgMap.put(currentChannelName, new ArrayList<>(tempPrograms));
                 }
             }
 
             xml.next();
         }
 
-        // ==================== 最后：合并两种格式的结果 ====================
-        // 标准格式结果转存：id -> name
-        for (Map.Entry<String, List<Channel.EpgItem>> entry : idToPrograms.entrySet()) {
-            String channelId = entry.getKey();
-            String channelName = channelIdToName.get(channelId);
-            if (channelName != null && !entry.getValue().isEmpty()) {
-                List<Channel.EpgItem> programs = entry.getValue();
-                programs.sort(Comparator.comparing(item -> item.time));
-                // 如果内嵌格式已经有这个频道，合并节目（去重）
-                if (channelEpgMap.containsKey(channelName)) {
-                    List<Channel.EpgItem> exist = channelEpgMap.get(channelName);
-                    Set<String> existTimes = new HashSet<>();
-                    for (Channel.EpgItem item : exist) {
-                        existTimes.add(item.time + "|" + item.title);
-                    }
-                    for (Channel.EpgItem item : programs) {
-                        String key = item.time + "|" + item.title;
-                        if (!existTimes.contains(key)) {
-                            exist.add(item);
-                        }
-                    }
-                    Collections.sort(exist, Comparator.comparing(item -> item.time));
-                } else {
-                    channelEpgMap.put(channelName, programs);
-                }
-            }
-        }
-
-        // 打印前3个频道的日期分布，方便排查
+        // 打印前3个频道的日期分布
         int count = 0;
         for (Map.Entry<String, List<Channel.EpgItem>> entry : channelEpgMap.entrySet()) {
             if (count >= 3) break;

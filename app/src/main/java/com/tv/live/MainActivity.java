@@ -204,28 +204,35 @@ public class MainActivity extends AppCompatActivity {
         dateListManager = new DateListManager(this, lvDate);
         epgManagerWrapper = new EpgManagerWrapper(this, lvEpg);
         dateListManager.initDate();
-        // 注册日期选中回调，点击日期刷新EPG节目单
-        dateListManager.setOnDateSelectedListener(pos -> {
-            currentSelectedDateIndex = pos;
-            if (!channelSourceList.isEmpty()) {
-                Channel curr = channelSourceList.get(currentPlayIndex);
-                epgManagerWrapper.refresh(curr, channelSourceList, currentSelectedDateIndex);
-            }
-        });
-        panelManager = new PanelManager(panel_layout, channelListManager, epgManagerWrapper);
+        dateListManager.initDate();
 
-        mPlayerManager = TVPlayerManager.getInstance(this);
-        mPlayerManager.attachPlayerView(playerView);
-        playerStateListener = new PlayerStateListenerImpl(this);
-        mPlayerManager.setOnPlayStateListener(playerStateListener);
-        mPlayerManager.setOnLiveInfoUpdateListener(new TVPlayerManager.OnLiveInfoUpdateListener() {
-            @Override
-            public void onLiveInfoUpdate(TVPlayerManager.LiveInfo info) {
-                tv_tag_fhd.setText(info.quality);
-                tv_tag_audio.setText(info.audio);
-                tv_bitrate.setText(info.bitrate);
-            }
-        });
+// 先创建 PanelManager 实例，再注册回调，避免空指针
+panelManager = new PanelManager(panel_layout, channelListManager, epgManagerWrapper);
+
+// 注册日期选中回调，点击日期刷新EPG节目单
+dateListManager.setOnDateSelectedListener(pos -> {
+    currentSelectedDateIndex = pos;
+    // 同步日期状态到面板管理器，下次打开面板保留选中日期
+    panelManager.setCurrentDateIndex(pos);
+    
+    if (!channelSourceList.isEmpty()) {
+        Channel curr = channelSourceList.get(currentPlayIndex);
+        epgManagerWrapper.refresh(curr, channelSourceList, currentSelectedDateIndex);
+    }
+});
+
+mPlayerManager = TVPlayerManager.getInstance(this);
+mPlayerManager.attachPlayerView(playerView);
+playerStateListener = new PlayerStateListenerImpl(this);
+mPlayerManager.setOnPlayStateListener(playerStateListener);
+mPlayerManager.setOnLiveInfoUpdateListener(new TVPlayerManager.OnLiveInfoUpdateListener() {
+    @Override
+    public void onLiveInfoUpdate(TVPlayerManager.LiveInfo info) {
+        tv_tag_fhd.setText(info.quality);
+        tv_tag_audio.setText(info.audio);
+        tv_bitrate.setText(info.bitrate);
+    }
+});
 
         screenRatioManager = new ScreenRatioManager(mPlayerManager, appConfig);
         screenRatioManager.apply();

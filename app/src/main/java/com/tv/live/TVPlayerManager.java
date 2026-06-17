@@ -236,7 +236,7 @@ public class TVPlayerManager {
                     .setConnectTimeoutMs(15000)
                     .setReadTimeoutMs(30000)
                     .setAllowCrossProtocolRedirects(true)
-                    .setFollowRedirects(true);
+                   
 
             MediaItem mediaItem = MediaItem.fromUri(currentUrl);
             com.google.android.exoplayer2.source.MediaSource mediaSource;

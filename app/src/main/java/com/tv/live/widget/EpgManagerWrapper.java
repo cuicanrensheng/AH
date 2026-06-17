@@ -6,7 +6,6 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.graphics.Color;
 import android.text.TextUtils;
-import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -19,6 +18,7 @@ import com.tv.live.Channel;
 import com.tv.live.EpgManager;
 import com.tv.live.MainActivity;
 import com.tv.live.R;
+import com.tv.live.SettingsActivity;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
@@ -32,7 +32,6 @@ import java.util.Map;
 import java.util.Set;
 
 public class EpgManagerWrapper {
-    private static final String TAG = "EPG_Wrapper";
     private final ListView lvEpg;
     private final Context context;
     private EpgAdapter adapter;
@@ -66,10 +65,10 @@ public class EpgManagerWrapper {
      */
     public void refresh(Channel currentChannel, List<Channel> channelSourceList, int dateIndex) {
         if (currentChannel == null) {
-            Log.w(TAG, "❌ refresh被调用，但currentChannel为空");
+            SettingsActivity.log("【EPG包装】❌ refresh被调用，但currentChannel为空");
             return;
         }
-        Log.d(TAG, "🔄 开始刷新，频道：" + currentChannel.getName() + "，日期索引：" + dateIndex);
+        SettingsActivity.log("【EPG包装】🔄 开始刷新，频道：" + currentChannel.getName() + "，日期索引：" + dateIndex);
         playingIndex = -1;
         selectDayIndex = dateIndex;
         epgEndTimeMap.clear();
@@ -79,22 +78,22 @@ public class EpgManagerWrapper {
             try {
                 epgList = new ArrayList<>(EpgManager.getInstance().getEpg(currentChannel.getName()));
             } catch (Exception e) {
-                Log.e(TAG, "获取EPG异常", e);
+                SettingsActivity.log("【EPG包装】获取EPG异常：" + e.getMessage());
                 epgList = new ArrayList<>();
             }
 
-            Log.d(TAG, "📋 EPG原始节目数：" + epgList.size());
+            SettingsActivity.log("【EPG包装】📋 原始节目数：" + epgList.size());
             if (epgList.size() > 0) {
                 Set<String> dayNames = new HashSet<>();
                 for (Channel.EpgItem item : epgList) {
                     dayNames.add(item.dayName);
                 }
-                Log.d(TAG, "📅 EPG包含的日期：" + dayNames);
+                SettingsActivity.log("【EPG包装】📅 EPG包含日期：" + dayNames);
             }
 
             List<Channel.EpgItem> data = new ArrayList<>();
             if (epgList != null && !epgList.isEmpty()) {
-                // 计算目标日期，与DateListManager、EpgManager完全一致
+                // 计算目标日期，与全局完全一致
                 String targetDay;
                 if (dateIndex == 0) {
                     targetDay = "今天";
@@ -110,21 +109,21 @@ public class EpgManagerWrapper {
                     targetDay = weekMap[w - 1];
                 }
 
-                Log.d(TAG, "🎯 目标日期：" + targetDay);
+                SettingsActivity.log("【EPG包装】🎯 目标日期：" + targetDay);
 
-                // 精准筛选，去掉首尾空格防止匹配失败
+                // 精准筛选，去掉空格防止匹配失败
                 for (Channel.EpgItem item : epgList) {
                     if (item.dayName != null && targetDay.equals(item.dayName.trim())) {
                         data.add(item);
                     }
                 }
 
-                Log.d(TAG, "✅ 筛选后节目数：" + data.size());
+                SettingsActivity.log("【EPG包装】✅ 筛选后节目数：" + data.size());
 
                 // 按时间排序
                 Collections.sort(data, Comparator.comparing(o -> o.time));
 
-                // 计算结束时间 + 标记正在播放的节目
+                // 计算结束时间 + 标记播放中
                 String now = getNow();
                 Channel.EpgItem playing = null;
                 for (int i = 0; i < data.size(); i++) {
@@ -162,7 +161,7 @@ public class EpgManagerWrapper {
             final List<Channel.EpgItem> finalData = data;
             final Channel finalChannel = currentChannel;
             ((MainActivity) context).runOnUiThread(() -> {
-                Log.d(TAG, "📱 主线程更新UI，节目数：" + finalData.size());
+                SettingsActivity.log("【EPG包装】📱 主线程更新UI，节目数：" + finalData.size());
                 if (adapter == null) {
                     adapter = new EpgAdapter(context, finalChannel, finalData, selectDayIndex);
                     lvEpg.setAdapter(adapter);
@@ -177,7 +176,7 @@ public class EpgManagerWrapper {
                     selectedPosition = 0;
                 }
                 adapter.notifyDataSetChanged();
-                Log.d(TAG, "✅ UI更新完成");
+                SettingsActivity.log("【EPG包装】✅ UI更新完成");
             });
         }).start();
     }

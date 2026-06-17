@@ -13,7 +13,6 @@ import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
 import android.os.Bundle;
 import android.os.Handler;
-import android.os.Looper;
 import android.text.TextUtils;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
@@ -29,8 +28,6 @@ import com.tv.live.config.AppConfig;
 import com.tv.live.listener.PlayerStateListenerImpl;
 import com.tv.live.loader.LiveSourceLoader;
 import com.tv.live.manager.*;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -38,14 +35,9 @@ import java.util.List;
  * 直播主页面Activity
  * 核心功能：直播源加载、频道切换、EPG节目单、播放器控制、手势/按键处理
  *
- * 【手动重定向解析说明】
- * 保留手动重定向解析功能，用于处理一些ExoPlayer自动重定向搞不定的场景
- * 同时TVPlayerManager内部也已设置正确的Header（虎牙/斗鱼专属Referer）
- *
- * 【为什么保留手动重定向】
- * 1. 部分直播源地址有多层重定向，需要手动跟随才能拿到真实地址
- * 2. 部分地址有特殊的跳转逻辑（如鉴权跳转），ExoPlayer可能处理不了
- * 3. 保留详细日志，方便排查播放问题
+ * 【播放说明】
+ * 直接交给ExoPlayer播放，由ExoPlayer自动跟随重定向
+ * TVPlayerManager内部已设置增强版Header（虎牙/斗鱼专属Referer等）
  */
 public class MainActivity extends AppCompatActivity {
     // Activity单例，供其他类访问
@@ -125,30 +117,6 @@ public class MainActivity extends AppCompatActivity {
     private float touchStartY = 0;
     // 滑动阈值（超过此值才触发切台）
     private static final float SLIDE_THRESHOLD = 80;
-
-    // ================================================
-    // ✅ 重定向解析相关配置
-    // ================================================
-    // 最大重定向跟随次数（防止死循环）
-    private static final int MAX_REDIRECT_COUNT = 10;
-    // 连接超时时间（毫秒）
-    private static final int CONNECT_TIMEOUT = 8000;
-    // 读取超时时间（毫秒）
-    private static final int READ_TIMEOUT = 8000;
-    // 默认User-Agent（浏览器UA，避免被识别为爬虫）
-    private static final String DEF_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
-
-    // ✅ 虎牙专属配置
-    private static final String HUYA_REFERER = "https://www.huya.com/";
-    private static final String HUYA_ORIGIN = "https://www.huya.com";
-
-    // ✅ 斗鱼专属配置
-    private static final String DOUYU_REFERER = "https://www.douyu.com/";
-    private static final String DOUYU_ORIGIN = "https://www.douyu.com";
-
-    // 通用Header配置
-    private static final String DEF_ACCEPT = "*/*";
-    private static final String DEF_ACCEPT_LANG = "zh-CN,zh;q=0.9,en;q=0.8";
 
     // 本地日志列表（最新在前，最多100条）
     public static List<String> logList = new ArrayList<>();
@@ -567,207 +535,9 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // ================================================
-    // ✅ 重定向解析核心方法（虎牙+斗鱼双平台适配）
-    // ================================================
-
-    /**
-     * 手动解析URL重定向
-     * 跟随HTTP重定向（301/302/303/307/308），获取最终的真实播放地址
-     *
-     * 【功能特点】
-     * 1. 最多跟随10次重定向，防止死循环
-     * 2. 支持301/302/303/307/308等所有重定向状态码
-     * 3. 自动处理相对路径的Location
-     * 4. 智能识别虎牙/斗鱼，添加专属Header（Referer、Origin等）
-     * 5. 403错误时自动切换Header重试
-     * 6. 500错误时自动重试2次
-     * 7. 详细的全过程日志，方便排查问题
-     *
-     * 【为什么保留手动重定向】
-     * 虽然ExoPlayer本身支持自动重定向，但部分场景下手动解析更可靠：
-     * 1. 部分直播源有多层重定向，需要手动跟随才能拿到真实地址
-     * 2. 部分地址有特殊的鉴权跳转逻辑
-     * 3. 可以记录详细的重定向过程日志
-     *
-     * @param originalUrl 原始地址
-     * @return 解析后的最终地址
-     */
-    private String resolveRedirectUrl(String originalUrl) {
-        // 参数校验
-        if (TextUtils.isEmpty(originalUrl)) {
-            log("【重定向】原始地址为空，跳过解析");
-            return originalUrl;
-        }
-
-        log("【重定向】开始解析，原始地址：" + originalUrl);
-
-        // ✅ 判断平台类型
-        boolean isHuya = originalUrl.contains("huya.com") || originalUrl.contains("huya.cn");
-        boolean isDouyu = originalUrl.contains("douyu.com") || originalUrl.contains("douyucdn.cn");
-        String platform = "通用";
-        if (isHuya) platform = "虎牙";
-        else if (isDouyu) platform = "斗鱼";
-
-        log("【重定向】✅ 检测到平台：" + platform + "直播，启用专属适配");
-
-        HttpURLConnection conn = null;
-        String currentUrl = originalUrl;
-        int redirectCount = 0;     // 重定向次数
-        int retry403Count = 0;     // 403重试次数
-        int retry500Count = 0;     // 500重试次数
-        int totalSteps = 0;        // 总请求步数
-        int maxTotalSteps = MAX_REDIRECT_COUNT + 5; // 总步数上限（防止死循环）
-
-        try {
-            while (totalSteps < maxTotalSteps) {
-                totalSteps++;
-                URL urlObj = new URL(currentUrl);
-                conn = (HttpURLConnection) urlObj.openConnection();
-
-                // 设置基础参数
-                conn.setConnectTimeout(CONNECT_TIMEOUT);
-                conn.setReadTimeout(READ_TIMEOUT);
-                conn.setRequestMethod("GET");
-                conn.setRequestProperty("User-Agent", DEF_UA);
-                conn.setInstanceFollowRedirects(false); // 手动处理重定向，不自动跟随
-
-                String host = urlObj.getHost();
-
-                // ✅ 虎牙专属Header
-                if (host.contains("huya.com") || host.contains("huya.cn")) {
-                    conn.setRequestProperty("Referer", HUYA_REFERER);
-                    conn.setRequestProperty("Origin", HUYA_ORIGIN);
-                    conn.setRequestProperty("Accept", DEF_ACCEPT);
-                    conn.setRequestProperty("Accept-Language", DEF_ACCEPT_LANG);
-                    conn.setRequestProperty("Connection", "keep-alive");
-                    log("【重定向】虎牙专属Header已添加");
-                }
-                // ✅ 斗鱼专属Header
-                else if (host.contains("douyu.com") || host.contains("douyucdn.cn")) {
-                    conn.setRequestProperty("Referer", DOUYU_REFERER);
-                    conn.setRequestProperty("Origin", DOUYU_ORIGIN);
-                    conn.setRequestProperty("Accept", DEF_ACCEPT);
-                    conn.setRequestProperty("Accept-Language", DEF_ACCEPT_LANG);
-                    conn.setRequestProperty("Connection", "keep-alive");
-                    log("【重定向】斗鱼专属Header已添加");
-                }
-
-                // ✅ 403重试模式：添加更完整的Header
-                if (retry403Count > 0) {
-                    conn.setRequestProperty("Accept", "*/*");
-                    conn.setRequestProperty("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8");
-                    conn.setRequestProperty("Accept-Encoding", "gzip, deflate, br");
-                    conn.setRequestProperty("Connection", "keep-alive");
-
-                    // 按平台匹配Referer/Origin
-                    if (host.contains("huya.com") || host.contains("huya.cn")) {
-                        conn.setRequestProperty("Referer", HUYA_REFERER);
-                        conn.setRequestProperty("Origin", HUYA_ORIGIN);
-                    } else if (host.contains("douyu.com") || host.contains("douyucdn.cn")) {
-                        conn.setRequestProperty("Referer", DOUYU_REFERER);
-                        conn.setRequestProperty("Origin", DOUYU_ORIGIN);
-                    } else {
-                        conn.setRequestProperty("Referer", urlObj.getProtocol() + "://" + host + "/");
-                        conn.setRequestProperty("Origin", urlObj.getProtocol() + "://" + host);
-                    }
-                    log("【重定向】403重试模式，已添加完整Header");
-                }
-
-                // 获取响应状态码
-                int code = conn.getResponseCode();
-                log("【重定向】第" + totalSteps + "次请求，状态码：" + code + "，地址：" + currentUrl);
-
-                // ✅ 处理重定向（301/302/303/307/308）
-                if (code == 301 || code == 302 || code == 303 || code == 307 || code == 308) {
-                    String location = conn.getHeaderField("Location");
-                    if (TextUtils.isEmpty(location)) {
-                        log("【重定向】Location为空，终止重定向");
-                        break;
-                    }
-
-                    // 处理相对路径（以/开头的地址）
-                    if (location.startsWith("/")) {
-                        String baseUrl = urlObj.getProtocol() + "://" + host;
-                        location = baseUrl + location;
-                    }
-
-                    redirectCount++;
-                    log("【重定向】第" + redirectCount + "次重定向：" + location);
-                    currentUrl = location;
-                    // 关闭连接，准备下一次请求
-                    conn.disconnect();
-                    conn = null;
-                    // 重置重试计数
-                    retry403Count = 0;
-                    retry500Count = 0;
-                    continue;
-                }
-
-                // ✅ 处理403禁止访问
-                if (code == 403 && retry403Count == 0) {
-                    retry403Count++;
-                    log("【重定向】⚠️ 403禁止访问，尝试添加完整Header重试");
-                    conn.disconnect();
-                    conn = null;
-                    continue;
-                }
-
-                // ✅ 处理500服务器内部错误
-                if (code == 500 && retry500Count < 2) {
-                    retry500Count++;
-                    log("【重定向】⚠️ 500服务器内部错误，第" + retry500Count + "次重试");
-                    conn.disconnect();
-                    conn = null;
-                    // 等待一段时间再重试（间隔递增：300ms → 500ms）
-                    try { Thread.sleep(300 + retry500Count * 200); } catch (InterruptedException ignored) {}
-                    continue;
-                }
-
-                // 正常状态码（200-299），解析完成
-                if (code >= 200 && code < 300) {
-                    log("【重定向】✅ 解析成功，最终地址：" + currentUrl);
-                    break;
-                }
-
-                // 其他错误状态码，记录日志但继续用当前地址交给播放器
-                log("【重定向】⚠️ 状态码：" + code + "，继续使用当前地址交给播放器");
-                break;
-            }
-
-            // 达到最大重定向次数
-            if (redirectCount >= MAX_REDIRECT_COUNT) {
-                log("【重定向】⚠️ 达到最大重定向次数(" + MAX_REDIRECT_COUNT + "次)，停止跟随");
-            }
-
-        } catch (Exception e) {
-            log("【重定向】❌ 解析异常：" + e.getMessage());
-            e.printStackTrace();
-        } finally {
-            // 确保连接关闭
-            if (conn != null) {
-                try { conn.disconnect(); } catch (Exception ignored) {}
-            }
-        }
-
-        // 输出解析结果汇总
-        log("【重定向】解析结束：重定向" + redirectCount + "次，403重试" + retry403Count + "次，500重试" + retry500Count + "次");
-        log("【重定向】最终地址：" + currentUrl);
-        return currentUrl;
-    }
-
     /**
      * 播放指定索引的频道
-     *
-     * 【流程】
-     * 1. 参数校验和边界处理
-     * 2. 更新UI状态（频道号、信息栏、列表选中、EPG等）
-     * 3. 异步解析重定向地址
-     * 4. 拿到真实地址后交给播放器播放
-     *
-     * 【关于手动重定向】
-     * 保留手动重定向解析，用于处理复杂的跳转场景
-     * 同时TVPlayerManager内部也已设置正确的Header，确保播放稳定
+     * 直接交给ExoPlayer播放，由ExoPlayer自动跟随重定向
      *
      * @param index 频道在全局列表中的索引
      */
@@ -789,11 +559,12 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
-        final String originalUrl = ch.getPlayUrl();
+        final String playUrl = ch.getPlayUrl();
         log("========================================");
         log("【播放】频道名称：" + ch.getName());
-        log("【播放】原始地址：" + originalUrl);
+        log("【播放】播放地址：" + playUrl);
         log("【播放】当前索引：" + index);
+        log("【播放】交给ExoPlayer自动跟随重定向");
         log("========================================");
 
         // 更新播放器状态监听器的当前频道名
@@ -820,25 +591,10 @@ public class MainActivity extends AppCompatActivity {
             tv_bitrate.setText(live.bitrate);
         }
 
-        // ✅ 异步解析重定向，拿到真实地址后再播放
-        // 在子线程中执行网络请求，避免阻塞主线程
-        new Thread(new Runnable() {
-            @Override
-            public void run() {
-                // 解析重定向，获取最终的真实播放地址
-                final String realUrl = resolveRedirectUrl(originalUrl);
-                // 切回主线程播放
-                new Handler(Looper.getMainLooper()).post(new Runnable() {
-                    @Override
-                    public void run() {
-                        log("【播放】开始播放真实地址：" + realUrl);
-                        // 交给播放器播放
-                        // 注意：TVPlayerManager内部会自动设置正确的Header（虎牙/斗鱼专属Referer）
-                        mPlayerManager.playUrl(realUrl);
-                    }
-                });
-            }
-        }).start();
+        // ✅ 直接交给播放器播放
+        // ExoPlayer内部已设置setAllowCrossProtocolRedirects(true)，会自动跟随重定向
+        // TVPlayerManager的getHeaders方法会自动设置增强版Header（虎牙/斗鱼专属Referer等）
+        mPlayerManager.playUrl(playUrl);
     }
 
     /**

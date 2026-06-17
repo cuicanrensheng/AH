@@ -78,11 +78,20 @@ public class EpgManagerWrapper {
             List<Channel.EpgItem> data = new ArrayList<>();
 
             if (epgList != null && !epgList.isEmpty()) {
-                Calendar cal = Calendar.getInstance();
-                cal.add(Calendar.DAY_OF_YEAR, dateIndex);
-                int w = cal.get(Calendar.DAY_OF_WEEK);
-                String[] weekMap = {"周日", "周一", "周二", "周三", "周四", "周五", "周六"};
-                String targetDay = dateIndex == 0 ? "今天" : weekMap[w % 7];
+                            String targetDay;
+                if (dateIndex == 0) {
+                    targetDay = "今天";
+                } else if (dateIndex == 1) {
+                    targetDay = "明天";
+                } else if (dateIndex == 2) {
+                    targetDay = "后天";
+                } else {
+                    Calendar cal = Calendar.getInstance();
+                    cal.add(Calendar.DAY_OF_YEAR, dateIndex);
+                    int w = cal.get(Calendar.DAY_OF_WEEK);
+                    String[] weekMap = {"周日", "周一", "周二", "周三", "周四", "周五", "周六"};
+                    targetDay = weekMap[w % 7];
+                }
 
                 for (Channel.EpgItem item : epgList) {
                     if (targetDay.equals(item.dayName)) {

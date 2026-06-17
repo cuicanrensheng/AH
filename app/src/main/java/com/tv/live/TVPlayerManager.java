@@ -45,6 +45,9 @@ public class TVPlayerManager {
     private final SimpleDateFormat logSdf = new SimpleDateFormat("HH:mm:ss", Locale.getDefault());
     private OnLiveInfoUpdateListener infoUpdateListener;
 
+    // ✅ 播放状态监听器（成员变量，只添加一次，避免重复回调）
+    private Player.Listener playerListener;
+
     public static class LiveInfo {
         public String quality;
         public String audio;
@@ -122,8 +125,48 @@ public class TVPlayerManager {
                 .setLoadControl(loadControl)
                 .build();
 
+        // ✅ 初始化播放监听器（只创建一次）
+        initPlayerListener();
+
         CookieSyncManager.createInstance(context);
         CookieManager.getInstance().setAcceptCookie(true);
+    }
+
+    /**
+     * ✅ 初始化播放状态监听器
+     * 只创建一次，避免每次playUrl都addListener导致重复回调
+     */
+    private void initPlayerListener() {
+        playerListener = new Player.Listener() {
+            @Override
+            public void onPlayerError(PlaybackException error) {
+                Log.e(TAG, "播放异常: " + error.getMessage());
+                if (listener != null) {
+                    listener.onPlayError(error.getMessage());
+                }
+                // ✅ 已去掉自动重试逻辑，出错就停住，由用户手动切台
+                // 避免无限重试导致反复弹错误、消耗资源
+            }
+
+            @Override
+            public void onPlaybackStateChanged(int state) {
+                if (state == Player.STATE_READY) {
+                    updateWakeLock(true);
+                    notifyLiveInfoUpdate();
+                    showChannelAndAutoHide();
+                    if (listener != null) listener.onPlayReady();
+                } else if (state == Player.STATE_BUFFERING) {
+                    if (listener != null) listener.onBuffering();
+                } else if (state == Player.STATE_ENDED) {
+                    if (listener != null) listener.onPlayEnd();
+                } else if (state == Player.STATE_IDLE) {
+                    if (listener != null) listener.onIdle();
+                } else {
+                    updateWakeLock(false);
+                }
+            }
+        };
+        player.addListener(playerListener);
     }
 
     public void onForeground() {
@@ -146,6 +189,21 @@ public class TVPlayerManager {
     public void attachPlayerView(PlayerView view) {
         playerView = view;
         playerView.setPlayer(player);
+        // ✅ 屏蔽播放器自带的错误提示文字
+        // 方法1：隐藏控制器（如果不需要控制栏的话）
+        // playerView.setUseController(false);
+        // 方法2：设置空的错误信息提供者，不显示任何错误文字
+        try {
+            playerView.setErrorMessageProvider(new com.google.android.exoplayer2.ui.PlayerErrorMessageProvider() {
+                @Override
+                public CharSequence getErrorMessageFor(PlaybackException error) {
+                    // 返回空字符串，不显示错误文字
+                    return "";
+                }
+            });
+        } catch (Exception e) {
+            // 低版本不支持的话忽略
+        }
     }
 
     private void updateWakeLock(boolean enable) {
@@ -211,35 +269,8 @@ public class TVPlayerManager {
             player.prepare();
             player.play();
 
-            player.addListener(new Player.Listener() {
-                @Override
-                public void onPlayerError(PlaybackException error) {
-                    Log.e(TAG, "播放异常: " + error.getMessage());
-                    if (listener != null) listener.onPlayError(error.getMessage());
-
-                    new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                        playUrl(currentUrl);
-                    }, 1000);
-                }
-
-                @Override
-                public void onPlaybackStateChanged(int state) {
-                    if (state == Player.STATE_READY) {
-                        updateWakeLock(true);
-                        notifyLiveInfoUpdate();
-                        showChannelAndAutoHide();
-                        if (listener != null) listener.onPlayReady();
-                    } else if (state == Player.STATE_BUFFERING) {
-                        if (listener != null) listener.onBuffering();
-                    } else if (state == Player.STATE_ENDED) {
-                        if (listener != null) listener.onPlayEnd();
-                    } else if (state == Player.STATE_IDLE) {
-                        if (listener != null) listener.onIdle();
-                    } else {
-                        updateWakeLock(false);
-                    }
-                }
-            });
+            // ✅ 监听器已移到构造函数里只添加一次，这里不再重复add
+            // 避免每次播放都累加监听器，导致出错时回调多次
 
         } catch (Exception e) {
             Log.e(TAG, "全局异常", e);
@@ -288,6 +319,9 @@ public class TVPlayerManager {
             mHandler.removeCallbacks(hideChannelRunnable);
             updateWakeLock(false);
             if (player != null) {
+                if (playerListener != null) {
+                    player.removeListener(playerListener);
+                }
                 player.release();
                 player = null;
             }

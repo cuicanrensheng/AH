@@ -15,7 +15,6 @@ import com.google.android.exoplayer2.MediaItem;
 import com.google.android.exoplayer2.PlaybackException;
 import com.google.android.exoplayer2.Player;
 import com.google.android.exoplayer2.source.ProgressiveMediaSource;
-import com.google.android.exoplayer2.source.hls.DefaultHlsExtractorFactory;
 import com.google.android.exoplayer2.source.hls.HlsMediaSource;
 import com.google.android.exoplayer2.ui.PlayerView;
 import com.google.android.exoplayer2.upstream.DefaultHttpDataSource;
@@ -110,14 +109,13 @@ public class TVPlayerManager {
         return instance;
     }
 
-    // ====================== ✅ 优化1：缓冲配置 ======================
     private TVPlayerManager(Context ctx) {
         context = ctx.getApplicationContext();
         DefaultRenderersFactory renderersFactory = new DefaultRenderersFactory(context);
         renderersFactory.setEnableDecoderFallback(true);
 
         DefaultLoadControl loadControl = new DefaultLoadControl.Builder()
-                .setBufferDurationsMs(1000, 60000, 500, 1000)
+                .setBufferDurationsMs(3000, 30000, 1500, 3000)
                 .build();
 
         player = new ExoPlayer.Builder(context)
@@ -128,6 +126,7 @@ public class TVPlayerManager {
         CookieSyncManager.createInstance(context);
         CookieManager.getInstance().setAcceptCookie(true);
         
+        // ✅ 全部改成 SettingsActivity.log()
         SettingsActivity.log(getLogTime() + " 播放器初始化完成");
     }
 
@@ -205,22 +204,17 @@ public class TVPlayerManager {
             player.stop();
             player.clearMediaItems();
 
-            // ====================== ✅ 优化2：超时配置 ======================
             DefaultHttpDataSource.Factory httpFactory = new DefaultHttpDataSource.Factory()
                     .setDefaultRequestProperties(getHeaders(currentUrl))
-                    .setConnectTimeoutMs(15000)
-                    .setReadTimeoutMs(30000)
+                    .setConnectTimeoutMs(5000)
+                    .setReadTimeoutMs(10000)
                     .setAllowCrossProtocolRedirects(true);
 
             MediaItem mediaItem = MediaItem.fromUri(currentUrl);
             com.google.android.exoplayer2.source.MediaSource mediaSource;
 
-            // ====================== ✅ 优化3：HLS兼容配置 ======================
             if (currentUrl.toLowerCase().contains("m3u8")) {
-                mediaSource = new HlsMediaSource.Factory(httpFactory)
-                        .setAllowChunklessPreparation(true)
-                        .setExtractorFactory(new DefaultHlsExtractorFactory())
-                        .createMediaSource(mediaItem);
+                mediaSource = new HlsMediaSource.Factory(httpFactory).createMediaSource(mediaItem);
             } else {
                 mediaSource = new ProgressiveMediaSource.Factory(httpFactory).createMediaSource(mediaItem);
             }
@@ -235,6 +229,10 @@ public class TVPlayerManager {
                     Log.e(TAG, "播放异常: " + error.getMessage());
                     SettingsActivity.log(getLogTime() + " ❌ 播放错误：" + error.getMessage());
                     if (listener != null) listener.onPlayError(error.getMessage());
+
+                    new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                        playUrl(currentUrl);
+                    }, 1000);
                 }
 
                 @Override

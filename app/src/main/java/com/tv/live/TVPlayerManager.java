@@ -198,7 +198,7 @@ public class TVPlayerManager {
             currentUrl = url.trim();
             currentPlayUrl = currentUrl;
 
-            String shortUrl = currentUrl.length() > 50 ? currentUrl.substring(0, 50) + "..." : currentUrl;
+            String shortUrl = currentUrl.length() > 200 ? currentUrl.substring(0, 200) + "..." : currentUrl;
             SettingsActivity.log(getLogTime() + " 开始播放：" + shortUrl);
 
             player.stop();

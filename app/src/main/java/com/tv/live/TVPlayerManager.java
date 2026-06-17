@@ -1,4 +1,4 @@
-package com.tv.live.manager;
+package com.tv.live;
 
 import android.content.Context;
 import android.os.Handler;

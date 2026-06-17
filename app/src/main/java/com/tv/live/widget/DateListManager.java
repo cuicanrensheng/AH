@@ -2,19 +2,18 @@ package com.tv.live.widget;
 
 import android.content.Context;
 import android.graphics.Color;
-import android.util.Log;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ArrayAdapter;
 import android.widget.ListView;
 import android.widget.TextView;
 import com.tv.live.R;
+import com.tv.live.SettingsActivity;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.List;
 
 public class DateListManager {
-    private static final String TAG = "DateList";
     private final ListView lvDate;
     private final Context context;
     private int selectedPosition = 0;
@@ -55,7 +54,7 @@ public class DateListManager {
             cal.add(Calendar.DAY_OF_YEAR, 1);
         }
 
-        Log.d(TAG, "📅 初始化日期列表：" + dates);
+        SettingsActivity.log("【日期列表】初始化：" + dates);
 
         adapter = new ArrayAdapter<String>(context, R.layout.item_date, dates) {
             @Override
@@ -70,12 +69,12 @@ public class DateListManager {
         lvDate.setOnItemClickListener((parent, view, position, id) -> {
             selectedPosition = position;
             adapter.notifyDataSetChanged();
-            Log.d(TAG, "👆 点击了日期：位置" + position + "，" + dates.get(position));
+            SettingsActivity.log("【日期列表】👆 点击：位置" + position + "，" + dates.get(position));
             if (listener != null) {
-                Log.d(TAG, "✅ 触发回调");
+                SettingsActivity.log("【日期列表】✅ 触发回调");
                 listener.onDateSelected(position);
             } else {
-                Log.w(TAG, "❌ listener为空，未触发回调");
+                SettingsActivity.log("【日期列表】❌ listener为空，未触发回调");
             }
         });
     }

@@ -90,7 +90,7 @@ public class EpgManagerWrapper {
                     cal.add(Calendar.DAY_OF_YEAR, dateIndex);
                     int w = cal.get(Calendar.DAY_OF_WEEK);
                     String[] weekMap = {"周日", "周一", "周二", "周三", "周四", "周五", "周六"};
-                    targetDay = weekMap[w % 7];
+                    targetDay = weekMap[w - 1];
                 }
 
                 for (Channel.EpgItem item : epgList) {

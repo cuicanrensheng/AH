@@ -33,7 +33,6 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
-import java.io.Serializable;
 
 public class MainActivity extends AppCompatActivity {
     public static MainActivity mInstance;
@@ -67,7 +66,7 @@ public class MainActivity extends AppCompatActivity {
     private int currentSelectedDateIndex = 0;
     private SharedPreferences sp;
 
-    // ====================== 本地缓存配置（关APP不清空） ======================
+    // 本地缓存配置（关闭APP不清空数据）
     private static final String SP_CACHE = "live_cache";
     private static final String KEY_CHANNEL_LIST = "channel_list";
     private static final String KEY_LAST_GROUP = "last_group";
@@ -128,7 +127,6 @@ public class MainActivity extends AppCompatActivity {
                     String customEpg = appConfig.getCustomEpgUrl();
                     if (customLive != null) UrlConfig.LIVE_URL = customLive;
                     if (customEpg != null) UrlConfig.EPG_URL = customEpg;
-                    // 手动刷新时才重新加载网络
                     loadLiveAndEpgFromNetwork();
                     Toast.makeText(MainActivity.this, "已刷新直播源/EPG", Toast.LENGTH_SHORT).show();
                 });
@@ -160,7 +158,7 @@ public class MainActivity extends AppCompatActivity {
         loadSettings();
         sp = getSharedPreferences("app_settings", Context.MODE_PRIVATE);
 
-        // ====================== 核心：优先加载本地缓存，关APP不清空 ======================
+        // 优先加载本地缓存
         loadCacheChannelList();
 
         String customLive = appConfig.getCustomLiveUrl();
@@ -240,7 +238,6 @@ public class MainActivity extends AppCompatActivity {
             lvGroup.setItemChecked(position, true);
             lvGroup.setSelection(position);
             nowSelectGroup = groupName;
-            // 保存最后选择的分组
             saveLastGroup(groupName);
             currentGroupChannelList.clear();
             for (Channel c : channelSourceList) {
@@ -280,25 +277,36 @@ public class MainActivity extends AppCompatActivity {
 
         keyEventManager = new KeyEventManager(this);
         switchManager = ChannelSwitchManager.getInstance();
-        // 加载缓存的最后播放频道
         currentPlayIndex = getLastPlayIndex();
-        // ====================== 有缓存直接播放，不加载网络 ======================
         if(!channelSourceList.isEmpty()){
             switchManager.setChannelList(channelSourceList);
             switchManager.setCurrentIndex(currentPlayIndex);
             groupListManager.setGroups(channelSourceList);
             restoreGroupChannels();
             playChannel(currentPlayIndex);
-            // 加载缓存EPG
             loadEpgFromCache();
         }else{
-            // 无缓存才加载网络
             loadLiveAndEpgFromNetwork();
         }
     }
 
-    // ====================== 本地缓存工具方法 ======================
-    // 保存频道列表到本地
+    // 初始化信息栏
+    private void initInfoBar() {
+        info_bar = findViewById(R.id.info_bar);
+        tv_channel_name = findViewById(R.id.tv_channel_name);
+        tv_tag_fhd = findViewById(R.id.tv_tag_fhd);
+        tv_tag_audio = findViewById(R.id.tv_tag_audio);
+        tv_bitrate = findViewById(R.id.tv_bitrate);
+        tv_current_program_name = findViewById(R.id.tv_current_program_name);
+        tv_current_time_range = findViewById(R.id.tv_current_time_range);
+        progress_program = findViewById(R.id.progress_program);
+        // ✅ 修复编译错误：正确的布局ID
+        tv_remaining_time = findViewById(R.id.tv_remaining_time);
+        tv_next_program_name = findViewById(R.id.tv_next_program_name);
+        tv_next_time_range = findViewById(R.id.tv_next_time_range);
+    }
+
+    // 保存频道列表缓存
     private void saveChannelList(List<Channel> list) {
         try {
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
@@ -311,7 +319,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // 读取本地缓存频道列表
+    // 读取频道列表缓存
     private void loadCacheChannelList() {
         try {
             String cache = getSharedPreferences(SP_CACHE, Context.MODE_PRIVATE).getString(KEY_CHANNEL_LIST, null);
@@ -329,22 +337,18 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // 保存最后选择的分组
     private void saveLastGroup(String group) {
         getSharedPreferences(SP_CACHE, Context.MODE_PRIVATE).edit().putString(KEY_LAST_GROUP, group).apply();
     }
 
-    // 保存最后播放的频道下标
     private void saveLastPlayIndex(int index) {
         getSharedPreferences(SP_CACHE, Context.MODE_PRIVATE).edit().putInt(KEY_LAST_INDEX, index).apply();
     }
 
-    // 获取最后播放的频道下标
     private int getLastPlayIndex() {
         return getSharedPreferences(SP_CACHE, Context.MODE_PRIVATE).getInt(KEY_LAST_INDEX, 0);
     }
 
-    // 恢复分组频道
     private void restoreGroupChannels() {
         String lastGroup = getSharedPreferences(SP_CACHE, Context.MODE_PRIVATE).getString(KEY_LAST_GROUP, "");
         if (!TextUtils.isEmpty(lastGroup)) {
@@ -357,20 +361,6 @@ public class MainActivity extends AppCompatActivity {
             }
             channelListManager.setChannelsByGroup(channelSourceList, nowSelectGroup, currentPlayIndex);
         }
-    }
-
-    private void initInfoBar() {
-        info_bar = findViewById(R.id.info_bar);
-        tv_channel_name = findViewById(R.id.tv_channel_name);
-        tv_tag_fhd = findViewById(R.id.tv_tag_fhd);
-        tv_tag_audio = findViewById(R.id.tv_tag_audio);
-        tv_bitrate = findViewById(R.id.tv_bitrate);
-        tv_current_program_name = findViewById(R.id.tv_current_program_name);
-        tv_current_time_range = findViewById(R.id.tv_current_time_range);
-        progress_program = findViewById(R.id.progress_program);
-        tv_remaining_time = findViewById(R.id.remaining_time);
-        tv_next_program_name = findViewById(R.id.next_program_name);
-        tv_next_time_range = findViewById(R.id.next_time_range);
     }
 
     private void loadSettings() {
@@ -398,7 +388,6 @@ public class MainActivity extends AppCompatActivity {
             public void onSuccess(List<Channel> channels) {
                 channelSourceList.clear();
                 channelSourceList.addAll(channels);
-                // 保存到本地缓存
                 saveChannelList(channels);
                 switchManager.setChannelList(channelSourceList);
                 switchManager.setCurrentIndex(currentPlayIndex);
@@ -420,7 +409,7 @@ public class MainActivity extends AppCompatActivity {
         }));
     }
 
-    // 从缓存加载EPG
+    // 缓存加载EPG
     private void loadEpgFromCache() {
         runOnUiThread(() -> {
             if (!channelSourceList.isEmpty()) {
@@ -502,7 +491,6 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public void playChannel(int index) {
-        // 保存最后播放的频道
         saveLastPlayIndex(index);
         if (channelSourceList == null || channelSourceList.isEmpty()) return;
         index = Math.max(0, Math.min(index, channelSourceList.size() - 1));

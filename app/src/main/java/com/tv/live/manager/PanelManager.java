@@ -42,24 +42,28 @@ public class PanelManager {
     public void setCurrentDateIndex(int dateIndex) {
         this.currentDateIndex = dateIndex;
     }
+    
+     /**
+ * 开关面板：显示 / 隐藏
+ * @param channelList 频道列表
+ * @param currentIndex 当前播放的频道下标
+ * @param dateListManager 日期列表管理器，用于同步选中高亮
+ */
+public void toggle(List<Channel> channelList, int currentIndex, DateListManager dateListManager) {
+    if (panelLayout.getVisibility() == View.VISIBLE) {
+        // 已经显示则隐藏
+        panelLayout.setVisibility(View.GONE);
+    } else {
+        // 隐藏则显示，先同步日期列表UI高亮，再刷新节目单
+        panelLayout.setVisibility(View.VISIBLE);
+        // 补全：打开面板时同步日期列表的选中高亮，解决视觉与数据不一致
+        dateListManager.setSelectedPosition(currentDateIndex);
 
-    /**
-     * 开关面板：显示 / 隐藏
-     * @param channelList 频道列表
-     * @param currentIndex 当前播放的频道下标
-     */
-    public void toggle(List<Channel> channelList, int currentIndex) {
-        if (panelLayout.getVisibility() == View.VISIBLE) {
-            // 已经显示则隐藏
-            panelLayout.setVisibility(View.GONE);
-        } else {
-            // 隐藏则显示，使用当前保存的日期索引刷新节目单
-            panelLayout.setVisibility(View.VISIBLE);
+        // 自动刷新当前频道的节目单，保留上次选中的日期
+        if (channelList != null && currentIndex >= 0 && currentIndex < channelList.size()) {
+            Channel currentChannel = channelList.get(currentIndex);
+            epgManagerWrapper.refresh(currentChannel, channelList, currentDateIndex);
 
-            // 自动刷新当前频道的节目单，保留上次选中的日期
-            if (channelList != null && currentIndex >= 0 && currentIndex < channelList.size()) {
-                Channel currentChannel = channelList.get(currentIndex);
-                epgManagerWrapper.refresh(currentChannel, channelList, currentDateIndex);
             }
         }
     }

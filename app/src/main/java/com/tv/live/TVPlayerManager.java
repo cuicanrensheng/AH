@@ -126,11 +126,10 @@ public class TVPlayerManager {
         CookieSyncManager.createInstance(context);
         CookieManager.getInstance().setAcceptCookie(true);
         
-        // ✅ 日志：播放器初始化
-        MainActivity.log(getLogTime() + " 播放器初始化完成");
+        // ✅ 全部改成 SettingsActivity.log()
+        SettingsActivity.log(getLogTime() + " 播放器初始化完成");
     }
 
-    // 切后台：暂停播放 + 解绑View（满足你的需求）
     public void onBackground() {
         try {
             if (player != null) {
@@ -140,11 +139,9 @@ public class TVPlayerManager {
                 playerView.setPlayer(null);
             }
         } catch (Exception e) {}
-        // ✅ 日志：切后台
-        MainActivity.log(getLogTime() + " 切换到后台");
+        SettingsActivity.log(getLogTime() + " 切换到后台");
     }
 
-    // 切前台：重新绑定 + 恢复播放（修复黑屏）
     public void onForeground() {
         try {
             if (player != null && playerView != null) {
@@ -156,15 +153,13 @@ public class TVPlayerManager {
                 playUrl(currentPlayUrl);
             }
         }
-        // ✅ 日志：切前台
-        MainActivity.log(getLogTime() + " 切换到前台");
+        SettingsActivity.log(getLogTime() + " 切换到前台");
     }
 
-    // 绑定View时 强制关闭控制器
     public void attachPlayerView(PlayerView view) {
         playerView = view;
         playerView.setPlayer(player);
-        playerView.setUseController(false); // 彻底隐藏系统控制器
+        playerView.setUseController(false);
     }
 
     private void updateWakeLock(boolean enable) {
@@ -178,7 +173,6 @@ public class TVPlayerManager {
         return "[" + logSdf.format(new Date()) + "]";
     }
 
-    // 请求头保持 ExoPlayer
     private Map<String, String> getHeaders(String url) {
         Map<String, String> headers = new HashMap<>();
         headers.put("User-Agent", "ExoPlayer");
@@ -204,9 +198,8 @@ public class TVPlayerManager {
             currentUrl = url.trim();
             currentPlayUrl = currentUrl;
 
-            // ✅ 日志：开始播放
             String shortUrl = currentUrl.length() > 50 ? currentUrl.substring(0, 50) + "..." : currentUrl;
-            MainActivity.log(getLogTime() + " 开始播放：" + shortUrl);
+            SettingsActivity.log(getLogTime() + " 开始播放：" + shortUrl);
 
             player.stop();
             player.clearMediaItems();
@@ -234,8 +227,7 @@ public class TVPlayerManager {
                 @Override
                 public void onPlayerError(PlaybackException error) {
                     Log.e(TAG, "播放异常: " + error.getMessage());
-                    // ✅ 日志：播放错误
-                    MainActivity.log(getLogTime() + " ❌ 播放错误：" + error.getMessage());
+                    SettingsActivity.log(getLogTime() + " ❌ 播放错误：" + error.getMessage());
                     if (listener != null) listener.onPlayError(error.getMessage());
 
                     new Handler(Looper.getMainLooper()).postDelayed(() -> {
@@ -249,16 +241,13 @@ public class TVPlayerManager {
                         updateWakeLock(true);
                         notifyLiveInfoUpdate();
                         showChannelAndAutoHide();
-                        // ✅ 日志：播放成功
-                        MainActivity.log(getLogTime() + " ✅ 播放成功");
+                        SettingsActivity.log(getLogTime() + " ✅ 播放成功");
                         if (listener != null) listener.onPlayReady();
                     } else if (state == Player.STATE_BUFFERING) {
-                        // ✅ 日志：缓冲中
-                        MainActivity.log(getLogTime() + " ⏳ 缓冲中...");
+                        SettingsActivity.log(getLogTime() + " ⏳ 缓冲中...");
                         if (listener != null) listener.onBuffering();
                     } else if (state == Player.STATE_ENDED) {
-                        // ✅ 日志：播放结束
-                        MainActivity.log(getLogTime() + " 播放结束");
+                        SettingsActivity.log(getLogTime() + " 播放结束");
                         if (listener != null) listener.onPlayEnd();
                     } else if (state == Player.STATE_IDLE) {
                         if (listener != null) listener.onIdle();
@@ -270,8 +259,7 @@ public class TVPlayerManager {
 
         } catch (Exception e) {
             Log.e(TAG, "全局异常", e);
-            // ✅ 日志：全局异常
-            MainActivity.log(getLogTime() + " ❌ 异常：" + e.getMessage());
+            SettingsActivity.log(getLogTime() + " ❌ 异常：" + e.getMessage());
         }
     }
 
@@ -321,8 +309,7 @@ public class TVPlayerManager {
                 player = null;
             }
             instance = null;
-            // ✅ 日志：播放器释放
-            MainActivity.log(getLogTime() + " 播放器释放");
+            SettingsActivity.log(getLogTime() + " 播放器释放");
         } catch (Exception e) {}
     }
 }

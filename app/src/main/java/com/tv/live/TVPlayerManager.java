@@ -189,21 +189,6 @@ public class TVPlayerManager {
     public void attachPlayerView(PlayerView view) {
         playerView = view;
         playerView.setPlayer(player);
-        // ✅ 屏蔽播放器自带的错误提示文字
-        // 方法1：隐藏控制器（如果不需要控制栏的话）
-        // playerView.setUseController(false);
-        // 方法2：设置空的错误信息提供者，不显示任何错误文字
-        try {
-            playerView.setErrorMessageProvider(new com.google.android.exoplayer2.ui.PlayerErrorMessageProvider() {
-                @Override
-                public CharSequence getErrorMessageFor(PlaybackException error) {
-                    // 返回空字符串，不显示错误文字
-                    return "";
-                }
-            });
-        } catch (Exception e) {
-            // 低版本不支持的话忽略
-        }
     }
 
     private void updateWakeLock(boolean enable) {

@@ -23,11 +23,8 @@ import java.util.Map;
  * 2. 支持301/302/303/307/308等所有重定向状态码
  * 3. 自动处理相对路径的Location
  * 4. 支持跨协议重定向（http→https）
- * 5. Header全程生效，每一层重定向都带上
+ * 5. 保留DefaultHttpDataSource的所有核心功能
  * 6. 日志同步输出到Logcat和SettingsActivity
- *
- * 【稳定版说明】
- * Header保持简洁（和DefaultHttpDataSource版本一致），保证播放稳定
  */
 public class RedirectLoggingHttpDataSource extends BaseDataSource implements HttpDataSource {
     private static final String TAG = "RedirectLog";
@@ -108,7 +105,7 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
                     connection.setRequestProperty(entry.getKey(), entry.getValue());
                 }
 
-                // 设置User-Agent（如果Header里没有的话）
+                // 设置User-Agent
                 if (userAgent != null && !defaultRequestProperties.containsKey("User-Agent")) {
                     connection.setRequestProperty("User-Agent", userAgent);
                 }
@@ -282,7 +279,7 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
     }
 
     /**
-     * ✅ 获取响应状态码（实现抽象方法）
+     * ✅ 获取响应状态码（修复：添加缺失的抽象方法实现）
      */
     @Override
     public int getResponseCode() {
@@ -349,7 +346,6 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
 
     /**
      * 打印日志
-     * 同时输出到Logcat和SettingsActivity的日志系统
      */
     private void log(String msg) {
         Log.d(TAG, msg);
@@ -359,7 +355,7 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
             java.lang.reflect.Method logMethod = settingsClass.getMethod("log", String.class);
             logMethod.invoke(null, msg);
         } catch (Exception e) {
-            // 忽略反射失败
+            // 忽略
         }
     }
 

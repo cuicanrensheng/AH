@@ -208,19 +208,23 @@ public class MainActivity extends AppCompatActivity {
 
 // 先创建 PanelManager 实例，再注册回调，避免空指针
 panelManager = new PanelManager(panel_layout, channelListManager, epgManagerWrapper);
-
+        
 // 注册日期选中回调，点击日期刷新EPG节目单
 dateListManager.setOnDateSelectedListener(pos -> {
     currentSelectedDateIndex = pos;
     // 同步日期状态到面板管理器，下次打开面板保留选中日期
     panelManager.setCurrentDateIndex(pos);
-        if (!channelSourceList.isEmpty() 
+    
+    // 补全完整索引合法性校验，避免极端场景数组越界崩溃
+    if (channelSourceList != null 
+        && !channelSourceList.isEmpty() 
         && currentPlayIndex >= 0 
         && currentPlayIndex < channelSourceList.size()) {
         Channel curr = channelSourceList.get(currentPlayIndex);
         epgManagerWrapper.refresh(curr, channelSourceList, currentSelectedDateIndex);
     }
 });
+
 
 mPlayerManager = TVPlayerManager.getInstance(this);
 mPlayerManager.attachPlayerView(playerView);
@@ -425,10 +429,11 @@ mPlayerManager.setOnLiveInfoUpdateListener(new TVPlayerManager.OnLiveInfoUpdateL
             }
         });
     }
-
+    
     public void togglePanel() {
-        panelManager.toggle(channelSourceList, currentPlayIndex);
-    }
+    // 传入日期列表管理器，用于面板打开时同步高亮
+    panelManager.toggle(channelSourceList, currentPlayIndex, dateListManager);
+}
 
     public void openSettings() {
         startActivity(new Intent(this, SettingsActivity.class));

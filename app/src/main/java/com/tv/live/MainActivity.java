@@ -204,7 +204,7 @@ public class MainActivity extends AppCompatActivity {
         dateListManager = new DateListManager(this, lvDate);
         epgManagerWrapper = new EpgManagerWrapper(this, lvEpg);
         dateListManager.initDate();
-        dateListManager.initDate();
+  
 
 // 先创建 PanelManager 实例，再注册回调，避免空指针
 panelManager = new PanelManager(panel_layout, channelListManager, epgManagerWrapper);
@@ -214,8 +214,9 @@ dateListManager.setOnDateSelectedListener(pos -> {
     currentSelectedDateIndex = pos;
     // 同步日期状态到面板管理器，下次打开面板保留选中日期
     panelManager.setCurrentDateIndex(pos);
-    
-    if (!channelSourceList.isEmpty()) {
+        if (!channelSourceList.isEmpty() 
+        && currentPlayIndex >= 0 
+        && currentPlayIndex < channelSourceList.size()) {
         Channel curr = channelSourceList.get(currentPlayIndex);
         epgManagerWrapper.refresh(curr, channelSourceList, currentSelectedDateIndex);
     }

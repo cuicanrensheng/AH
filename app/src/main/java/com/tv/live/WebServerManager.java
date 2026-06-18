@@ -690,7 +690,7 @@ public class WebServerManager {
                 "            });\n" +
                 "            document.getElementById('panel-' + tabName).classList.add('active');\n" +
                 "        }\n" +
-                "        setTimeout(function() { location.reload(); }, 5000);\n" +
+                "        setTimeout(function() { location.reload(); }, 60000);\n" +
                 "    </script>\n" +
                 "\n" +
                 "</body>\n" +

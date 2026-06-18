@@ -5,6 +5,7 @@ import com.tv.live.widget.GroupListManager;
 import com.tv.live.widget.DateListManager;
 import com.tv.live.widget.EpgManagerWrapper;
 import com.tv.live.SettingsActivity;
+import com.tv.live.util.CacheManager;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -14,12 +15,16 @@ import android.content.pm.ActivityInfo;
 import android.os.Bundle;
 import android.os.Handler;
 import android.text.TextUtils;
+import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.AdapterView;
+import android.widget.FrameLayout;
+import android.widget.LinearLayout;
 import android.widget.ListView;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
@@ -39,12 +44,16 @@ import java.util.List;
  * 直接交给ExoPlayer播放，由ExoPlayer自动跟随重定向
  * TVPlayerManager内部已设置增强版Header（虎牙/斗鱼专属Referer等）
  *
- * 【本次修改】
- * 1. 添加 currentGroupName 成员变量，保存当前选中的分组名称
- * 2. 点击分组时保存分组名称，记住用户的筛选状态
- * 3. playChannel 方法中保持分组筛选，不会因为播放而重置为全部频道
- * 4. togglePanel 方法中打开面板前先恢复分组筛选状态
- * 5. 修复：点击分组频道播放后，再次打开频道列表分组丢失的问题
+ * 【缓存机制说明】
+ * 1. 进入APP时先读缓存，快速显示列表和画面（秒开）
+ * 2. 后台同时从网络加载最新数据
+ * 3. 网络加载完成后更新列表和缓存
+ * 4. 缓存有效期24小时，过期自动失效
+ * 5. 直播源和EPG都有缓存
+ *
+ * 【加载动画说明】
+ * 进入APP时显示加载动画，避免黑屏
+ * 有缓存时加载动画一闪而过，没有缓存时显示"正在加载..."
  */
 public class MainActivity extends AppCompatActivity {
     // Activity单例，供其他类访问
@@ -55,7 +64,7 @@ public class MainActivity extends AppCompatActivity {
     public List<Channel> currentGroupChannelList = new ArrayList<>();
     // 当前正在播放的频道索引（全局索引）
     public int currentPlayIndex = 0;
-    // ✅ 当前选中的分组名称（空字符串表示显示全部频道）
+    // 当前选中的分组名称（空字符串表示显示全部频道）
     // 用于记住用户的分组筛选状态，避免播放后重置
     private String currentGroupName = "";
     // 面板布局（频道列表+EPG面板）
@@ -110,6 +119,22 @@ public class MainActivity extends AppCompatActivity {
     private android.widget.ProgressBar progress_program;
     // 频道号显示
     private TextView tv_channel_num;
+
+    // ================================================
+    // ✅ 缓存相关成员变量
+    // ================================================
+    // 缓存管理器
+    private CacheManager cacheManager;
+    // 是否已用缓存播放过（避免缓存和网络都触发播放，重复播放）
+    private boolean hasPlayedWithCache = false;
+
+    // ================================================
+    // ✅ 加载动画相关成员变量
+    // ================================================
+    // 加载视图（加载时显示，避免黑屏）
+    private View loadingView;
+    // 加载提示文字
+    private TextView tv_loading_text;
 
     // 隐藏信息栏的Runnable
     private final Runnable hideInfoBar = new Runnable() {
@@ -169,7 +194,8 @@ public class MainActivity extends AppCompatActivity {
                         String customEpg = appConfig.getCustomEpgUrl();
                         if (customLive != null) UrlConfig.LIVE_URL = customLive;
                         if (customEpg != null) UrlConfig.EPG_URL = customEpg;
-                        // 重新加载
+                        // 重新加载（重置缓存标记，强制从网络加载）
+                        hasPlayedWithCache = false;
                         loadLiveAndEpg();
                         Toast.makeText(MainActivity.this, "已刷新直播源/EPG", Toast.LENGTH_SHORT).show();
                     }
@@ -256,9 +282,7 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        // ================================================
-        // ✅ 分组列表点击事件（已修改：保存当前分组名称）
-        // ================================================
+        // 分组列表点击事件
         lvGroup.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
@@ -269,8 +293,7 @@ public class MainActivity extends AppCompatActivity {
 
                 // 获取选中的分组名称
                 String groupName = groupListManager.getCurrentGroup(position);
-                // ✅ 保存当前分组名称，记住用户的筛选状态
-                // 这样播放频道后，再次打开频道列表还能保持分组筛选
+                // 保存当前分组名称，记住用户的筛选状态
                 currentGroupName = groupName;
 
                 // 筛选该分组下的频道
@@ -349,7 +372,15 @@ public class MainActivity extends AppCompatActivity {
         currentPlayIndex = appConfig.getLastPlayIndex();
 
         log("【播放】记录上次播放索引：" + currentPlayIndex);
-        // 加载直播源和EPG
+
+        // ================================================
+        // ✅ 初始化缓存管理器和加载视图
+        // ================================================
+        cacheManager = CacheManager.getInstance(this);
+        initLoadingView();
+        showLoading("正在加载直播源...");
+
+        // 加载直播源和EPG（带缓存机制）
         loadLiveAndEpg();
         // 初始化列表点击事件
         initListViewClick();
@@ -370,6 +401,81 @@ public class MainActivity extends AppCompatActivity {
         tv_remaining_time = findViewById(R.id.tv_remaining_time);
         tv_next_program_name = findViewById(R.id.tv_next_program_name);
         tv_next_time_range = findViewById(R.id.tv_next_time_range);
+    }
+
+    // ================================================
+    // ✅ 加载视图相关方法
+    // ================================================
+
+    /**
+     * 初始化加载视图
+     * 动态添加到根布局，不需要改XML
+     * 作用：进入APP加载时显示，避免黑屏
+     */
+    private void initLoadingView() {
+        FrameLayout rootLayout = findViewById(android.R.id.content);
+
+        // 创建加载容器（黑色半透明背景）
+        FrameLayout loadingLayout = new FrameLayout(this);
+        loadingLayout.setBackgroundColor(0xEE000000); // 黑色半透明
+        loadingLayout.setLayoutParams(new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT));
+
+        // 创建垂直布局（进度条 + 文字）
+        LinearLayout linearLayout = new LinearLayout(this);
+        linearLayout.setOrientation(LinearLayout.VERTICAL);
+        linearLayout.setGravity(Gravity.CENTER);
+        FrameLayout.LayoutParams llParams = new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT);
+        llParams.gravity = Gravity.CENTER;
+        linearLayout.setLayoutParams(llParams);
+
+        // 进度条
+        ProgressBar progressBar = new ProgressBar(this);
+        linearLayout.addView(progressBar);
+
+        // 加载文字
+        tv_loading_text = new TextView(this);
+        tv_loading_text.setText("加载中...");
+        tv_loading_text.setTextColor(0xFFFFFFFF); // 白色
+        tv_loading_text.setTextSize(16);
+        LinearLayout.LayoutParams textParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        textParams.setMargins(0, 20, 0, 0);
+        tv_loading_text.setLayoutParams(textParams);
+        linearLayout.addView(tv_loading_text);
+
+        loadingLayout.addView(linearLayout);
+        rootLayout.addView(loadingLayout);
+
+        loadingView = loadingLayout;
+
+        log("【加载】加载视图初始化完成");
+    }
+
+    /**
+     * 显示加载视图
+     * @param text 加载提示文字
+     */
+    private void showLoading(String text) {
+        if (loadingView != null) {
+            loadingView.setVisibility(View.VISIBLE);
+        }
+        if (tv_loading_text != null && text != null) {
+            tv_loading_text.setText(text);
+        }
+    }
+
+    /**
+     * 隐藏加载视图
+     */
+    private void hideLoading() {
+        if (loadingView != null) {
+            loadingView.setVisibility(View.GONE);
+        }
     }
 
     /**
@@ -401,40 +507,132 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    // ================================================
+    // ✅ 加载直播源和EPG（带缓存机制 - 核心方法）
+    // ================================================
+
     /**
-     * 加载直播源和EPG数据
+     * 加载直播源和EPG数据（带缓存）
+     *
+     * 【缓存策略 - 先缓存后网络】
+     * 1. 先读本地缓存，如果有就直接用缓存的数据快速显示（秒开）
+     * 2. 同时后台从网络加载最新数据
+     * 3. 网络加载成功后，更新列表和缓存
+     * 4. EPG不阻塞播放，直播源加载完就开始播放
+     *
+     * 【避免重复播放】
+     * 用 hasPlayedWithCache 标记，缓存播放过了，网络加载完就不再重复播放
+     * 只更新列表，不重新播放
      */
     public void loadLiveAndEpg() {
         log("【直播源】开始加载直播源...");
 
-        // 加载直播源
+        // ================================================
+        // 第一步：先读缓存，快速显示
+        // ================================================
+        String cacheContent = cacheManager.getFileCache("live_source");
+        if (cacheContent != null && !cacheContent.isEmpty()) {
+            log("【缓存】找到直播源缓存，快速显示");
+
+            // 用缓存解析并显示
+            List<Channel> cacheChannels = parseLiveSource(cacheContent);
+            if (cacheChannels != null && !cacheChannels.isEmpty()) {
+                channelSourceList.clear();
+                channelSourceList.addAll(cacheChannels);
+                switchManager.setChannelList(channelSourceList);
+                switchManager.setCurrentIndex(currentPlayIndex);
+                groupListManager.setGroups(channelSourceList);
+                channelListManager.setChannels(channelSourceList, currentPlayIndex);
+
+                // 有缓存就先播放（秒出画面）
+                if (!hasPlayedWithCache) {
+                    playChannel(currentPlayIndex);
+                    hasPlayedWithCache = true;
+                }
+
+                hideLoading();
+                log("【缓存】直播源缓存加载完成，频道数：" + cacheChannels.size());
+
+                // 同时尝试加载EPG缓存
+                loadEpgCache();
+            }
+        }
+
+        // ================================================
+        // 第二步：后台从网络加载最新数据
+        // ================================================
+        log("【网络】后台加载最新直播源...");
         LiveSourceLoader.getInstance(this).load(new LiveSourceLoader.LoadCallback() {
             @Override
             public void onSuccess(List<Channel> channels) {
-                log("【直播源】加载成功，频道总数：" + channels.size());
+                log("【网络】直播源加载成功，频道总数：" + channels.size());
 
+                // 更新列表（用最新数据替换缓存数据）
                 channelSourceList.clear();
                 channelSourceList.addAll(channels);
-                // 更新频道切换管理器
                 switchManager.setChannelList(channelSourceList);
                 switchManager.setCurrentIndex(currentPlayIndex);
-                // 更新分组列表
                 groupListManager.setGroups(channelSourceList);
-                // 更新频道列表（默认显示全部频道）
                 channelListManager.setChannels(channelSourceList, currentPlayIndex);
-                // 播放当前频道
-                playChannel(currentPlayIndex);
+
+                // 如果之前没播放过（没有缓存），现在播放
+                if (!hasPlayedWithCache) {
+                    playChannel(currentPlayIndex);
+                    hasPlayedWithCache = true;
+                }
+
+                hideLoading();
+                log("【网络】直播源列表已更新");
+
+                // ================================================
+                // 第三步：后台加载EPG（不阻塞播放）
+                // ================================================
+                loadEpg();
             }
 
             @Override
             public void onError(String errorMsg) {
-                log("【直播源】加载失败：" + errorMsg);
-                Toast.makeText(MainActivity.this, "加载失败：" + errorMsg, Toast.LENGTH_SHORT).show();
+                log("【网络】直播源加载失败：" + errorMsg);
+
+                // 如果有缓存，就用缓存，不提示错误
+                if (channelSourceList.isEmpty()) {
+                    hideLoading();
+                    Toast.makeText(MainActivity.this, "加载失败：" + errorMsg, Toast.LENGTH_SHORT).show();
+                } else {
+                    log("【缓存】使用缓存数据继续播放");
+                    hideLoading();
+                }
+
+                // 即使直播源加载失败，也试试加载EPG缓存
+                loadEpgCache();
             }
         });
+    }
 
-        // 加载EPG节目单
-        log("【EPG】加载节目单：" + UrlConfig.EPG_URL);
+    /**
+     * 从缓存加载EPG（快速显示）
+     */
+    private void loadEpgCache() {
+        if (!epg_enable) return;
+
+        log("【EPG】尝试从缓存加载...");
+        // EPG的缓存加载在 EpgManager 里实现
+        // 这里只触发刷新UI
+        if (!channelSourceList.isEmpty()) {
+            epgManagerWrapper.refresh(
+                    channelSourceList.get(currentPlayIndex),
+                    channelSourceList,
+                    currentSelectedDateIndex);
+        }
+    }
+
+    /**
+     * 从网络加载EPG（后台刷新）
+     */
+    private void loadEpg() {
+        if (!epg_enable) return;
+
+        log("【EPG】开始加载节目单...");
         EpgManager.getInstance().setEpgUrl(UrlConfig.EPG_URL);
         EpgManager.getInstance().loadEpg(new Runnable() {
             @Override
@@ -442,13 +640,83 @@ public class MainActivity extends AppCompatActivity {
                 runOnUiThread(new Runnable() {
                     @Override
                     public void run() {
+                        log("【EPG】最新节目单加载完成");
                         if (!channelSourceList.isEmpty()) {
-                            epgManagerWrapper.refresh(channelSourceList.get(currentPlayIndex), channelSourceList, currentSelectedDateIndex);
+                            epgManagerWrapper.refresh(
+                                    channelSourceList.get(currentPlayIndex),
+                                    channelSourceList,
+                                    currentSelectedDateIndex);
                         }
                     }
                 });
             }
         });
+    }
+
+    /**
+     * 解析M3U直播源文本
+     *
+     * 【注意】
+     * 这里是一个通用的M3U解析实现，用于快速解析缓存
+     * 网络加载时还是用 PlaylistParser.parse 做正式解析
+     * 如果你的M3U格式特殊，可以根据实际情况调整
+     *
+     * @param content M3U文本内容
+     * @return 频道列表
+     */
+    private List<Channel> parseLiveSource(String content) {
+        List<Channel> channels = new ArrayList<>();
+        if (TextUtils.isEmpty(content)) {
+            return channels;
+        }
+
+        String[] lines = content.split("\n");
+        String currentName = "";
+        String currentGroup = "";
+        String currentLogo = "";
+        String currentTvgId = "";
+
+        for (String line : lines) {
+            line = line.trim();
+            if (line.startsWith("#EXTINF:")) {
+                // 解析频道信息
+                // 格式示例：#EXTINF:-1 tvg-id="xxx" tvg-logo="xxx" group-title="xxx",频道名称
+                int commaIndex = line.indexOf(",");
+                if (commaIndex > 0 && commaIndex < line.length() - 1) {
+                    currentName = line.substring(commaIndex + 1).trim();
+                }
+                // 解析group-title（分组名称）
+                int groupIndex = line.indexOf("group-title=\"");
+                if (groupIndex > 0) {
+                    int groupEnd = line.indexOf("\"", groupIndex + 13);
+                    if (groupEnd > groupIndex) {
+                        currentGroup = line.substring(groupIndex + 13, groupEnd);
+                    }
+                }
+                // 解析tvg-id（EPG频道ID）
+                int tvgIndex = line.indexOf("tvg-id=\"");
+                if (tvgIndex > 0) {
+                    int tvgEnd = line.indexOf("\"", tvgIndex + 8);
+                    if (tvgEnd > tvgIndex) {
+                        currentTvgId = line.substring(tvgIndex + 8, tvgEnd);
+                    }
+                }
+            } else if (!line.startsWith("#") && !line.isEmpty()) {
+                // 播放地址
+                String playUrl = line;
+                if (!TextUtils.isEmpty(currentName) && !TextUtils.isEmpty(playUrl)) {
+                    channels.add(new Channel(currentName, playUrl, currentGroup, currentTvgId));
+                }
+                // 重置，准备下一个频道
+                currentName = "";
+                currentGroup = "";
+                currentLogo = "";
+                currentTvgId = "";
+            }
+        }
+
+        log("【缓存】解析完成，共 " + channels.size() + " 个频道");
+        return channels;
     }
 
     /**
@@ -596,12 +864,9 @@ public class MainActivity extends AppCompatActivity {
         // 保存上次播放的频道索引
         appConfig.setLastPlayIndex(index);
 
-        // ================================================
-        // ✅ 更新频道列表选中状态（已修改：保持分组筛选）
-        // ================================================
+        // 更新频道列表选中状态（保持分组筛选）
         if (!TextUtils.isEmpty(currentGroupName) && !currentGroupChannelList.isEmpty()) {
             // 分组筛选模式下：保持分组筛选，只显示当前分组的频道
-            // 避免播放频道后，频道列表被重置为全部频道
             channelListManager.setChannelsByGroup(channelSourceList, currentGroupName, index);
         } else {
             // 非分组模式：显示全部频道
@@ -624,9 +889,7 @@ public class MainActivity extends AppCompatActivity {
             tv_bitrate.setText(live.bitrate);
         }
 
-        // ✅ 直接交给播放器播放
-        // ExoPlayer内部已设置setAllowCrossProtocolRedirects(true)，会自动跟随重定向
-        // TVPlayerManager的getHeaders方法会自动设置增强版Header（虎牙/斗鱼专属Referer等）
+        // 直接交给播放器播放
         mPlayerManager.playUrl(playUrl);
     }
 
@@ -634,138 +897,3 @@ public class MainActivity extends AppCompatActivity {
      * 显示频道号（延迟3秒自动隐藏）
      * @param num 频道号
      */
-    public void showChannelNum(int num) {
-        tv_channel_num.setText(String.valueOf(num));
-        tv_channel_num.setVisibility(View.VISIBLE);
-        new Handler().postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                tv_channel_num.setVisibility(View.GONE);
-            }
-        }, 3000);
-    }
-
-    /**
-     * 初始化频道列表点击事件
-     * 点击频道列表项时播放对应频道并关闭面板
-     */
-    private void initListViewClick() {
-        ListView lvChannelList = findViewById(R.id.lv_channel_list);
-        lvChannelList.setOnItemClickListener(new AdapterView.OnItemClickListener() {
-            @Override
-            public void onItemClick(AdapterView<?> p, View v, int pos, long id) {
-                if (!currentGroupChannelList.isEmpty() && pos < currentGroupChannelList.size()) {
-                    // 分组模式下：从分组频道列表中找到对应频道
-                    Channel selectedChannel = currentGroupChannelList.get(pos);
-                    int globalIndex = channelSourceList.indexOf(selectedChannel);
-                    if (globalIndex != -1) {
-                        log("【列表点击】切换到全局索引：" + globalIndex);
-                        playChannel(globalIndex);
-                        togglePanel();
-                    }
-                } else {
-                    // 非分组模式下：直接按索引播放
-                    playChannel(pos);
-                    togglePanel();
-                }
-            }
-        });
-    }
-
-    /**
-     * 切换面板显示/隐藏
-     *
-     * 【已修改】打开面板前先恢复分组筛选状态
-     * 之前的问题：每次打开面板都传全部频道，导致分组筛选丢失
-     * 现在的修复：打开面板前先根据当前分组设置频道列表
-     */
-    public void togglePanel() {
-        // ✅ 打开面板前，先根据当前分组设置频道列表
-        // 确保面板打开后显示的是用户之前选中的分组，而不是全部频道
-        if (!TextUtils.isEmpty(currentGroupName) && !currentGroupChannelList.isEmpty()) {
-            // 分组筛选模式下：保持分组筛选
-            channelListManager.setChannelsByGroup(channelSourceList, currentGroupName, currentPlayIndex);
-        } else {
-            // 非分组模式：显示全部频道
-            channelListManager.setChannels(channelSourceList, currentPlayIndex);
-        }
-
-        // 切换面板显示/隐藏
-        panelManager.toggle(channelSourceList, currentPlayIndex, dateListManager);
-    }
-
-    /**
-     * 打开设置页面
-     */
-    public void openSettings() {
-        startActivity(new Intent(this, SettingsActivity.class));
-    }
-
-    /**
-     * 接收远程配置更新（自定义直播源/EPG地址）
-     * @param liveUrl 自定义直播源地址
-     * @param epgUrl 自定义EPG地址
-     */
-    public void onReceiveConfig(final String liveUrl, final String epgUrl) {
-        AppConfig config = AppConfig.getInstance(this);
-        config.setCustomUrls(liveUrl, epgUrl);
-        if (liveUrl != null) UrlConfig.LIVE_URL = liveUrl;
-        if (epgUrl != null) UrlConfig.EPG_URL = epgUrl;
-
-        log("【远程配置】更新直播源：" + liveUrl);
-        log("【远程配置】更新EPG：" + epgUrl);
-        runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-                loadLiveAndEpg();
-            }
-        });
-    }
-
-    /**
-     * 按键事件处理
-     * 优先交给按键事件管理器处理
-     */
-    @Override
-    public boolean onKeyDown(int keyCode, KeyEvent event) {
-        if (keyEventManager.dispatchKey(keyCode)) return true;
-        return super.onKeyDown(keyCode, event);
-    }
-
-    /**
-     * Activity暂停：播放器切后台
-     */
-    @Override
-    protected void onPause() {
-        super.onPause();
-        log("【主页】onPause -> 切到后台");
-        if (mPlayerManager != null)
-            mPlayerManager.onBackground();
-    }
-
-    /**
-     * Activity恢复：播放器切前台，重新加载设置
-     */
-    @Override
-    protected void onResume() {
-        super.onResume();
-        log("【主页】onResume -> 回到前台");
-        loadSettings();
-        screenRatioManager.apply();
-        if (mPlayerManager != null)
-            mPlayerManager.onForeground();
-    }
-
-    /**
-     * Activity销毁：释放资源，注销广播
-     */
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        log("【主页】onDestroy -> 页面销毁");
-        try { unregisterReceiver(toggleControllerReceiver); } catch (Exception ignored) {}
-        try { unregisterReceiver(refreshReceiver); } catch (Exception ignored) {}
-        mPlayerManager.release();
-        mInstance = null;
-    }
-}

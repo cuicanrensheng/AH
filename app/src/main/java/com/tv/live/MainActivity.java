@@ -230,28 +230,53 @@ public class MainActivity extends AppCompatActivity {
             }
         }
     };
+    
+        @Override
+protected void onCreate(Bundle savedInstanceState) {
+    super.onCreate(savedInstanceState);
+    log("【主页】onCreate -> 页面创建");
+    SettingsActivity.logOperation("【系统】APP启动");
 
-    @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        log("【主页】onCreate -> 页面创建");
-        SettingsActivity.logOperation("【系统】APP启动");
+    mInstance = this;
+    // 设置横屏
+    setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
 
-        mInstance = this;
-        // 设置横屏
-        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
-        // 全屏（隐藏状态栏）
-        getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
-        // 沉浸式导航栏
-        getWindow().getDecorView().setSystemUiVisibility(
-                View.SYSTEM_UI_FLAG_FULLSCREEN
-                        | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                        | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-        );
-        // 加载布局
-        setContentView(R.layout.activity_main);
-        // 保持屏幕常亮
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+    // ================================================
+    // ✅ 全面屏全屏适配（刘海屏/挖孔屏）
+    // ================================================
+
+    // 1. 让内容延伸到状态栏和导航栏后面（真正的全屏）
+    getWindow().getDecorView().setSystemUiVisibility(
+            View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN    // 布局延伸到状态栏后面
+                    | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION // 布局延伸到导航栏后面
+                    | View.SYSTEM_UI_FLAG_LAYOUT_STABLE         // 保持布局稳定
+                    | View.SYSTEM_UI_FLAG_FULLSCREEN             // 隐藏状态栏
+                    | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION        // 隐藏导航栏
+                    | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY       // 沉浸式粘性模式
+    );
+
+    // 2. 刘海屏适配：让内容延伸到刘海区域（Android 9.0+）
+    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+        WindowManager.LayoutParams lp = getWindow().getAttributes();
+        // LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+        // 意思是：在短边（横屏时的左右两边）的刘海区域，允许内容延伸进去
+        lp.layoutInDisplayCutoutMode =
+                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+        getWindow().setAttributes(lp);
+    }
+
+    // 3. 全屏标志（兼容旧版本）
+    getWindow().setFlags(
+            WindowManager.LayoutParams.FLAG_FULLSCREEN,
+            WindowManager.LayoutParams.FLAG_FULLSCREEN
+    );
+
+    // 加载布局
+    setContentView(R.layout.activity_main);
+    // 保持屏幕常亮
+    getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+    
+    // ... 后面的代码不变
 
         // 绑定频道号显示
         tv_channel_num = findViewById(R.id.tv_channel_num);

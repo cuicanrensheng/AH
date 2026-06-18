@@ -11,8 +11,6 @@
         android:orientation="vertical"
         android:padding="16dp"
         android:background="#B3000000">
-
-        <!-- 开机自启 -->
         <LinearLayout
             android:id="@+id/item_boot"
             android:layout_width="match_parent"
@@ -37,8 +35,6 @@
                 android:focusable="false"
                 android:clickable="false" />
         </LinearLayout>
-
-        <!-- 节目单开关 -->
         <LinearLayout
             android:id="@+id/item_epg"
             android:layout_width="match_parent"
@@ -63,8 +59,6 @@
                 android:focusable="false"
                 android:clickable="false" />
         </LinearLayout>
-
-        <!-- 自动更新源 -->
         <LinearLayout
             android:id="@+id/item_auto_update"
             android:layout_width="match_parent"
@@ -89,8 +83,6 @@
                 android:focusable="false"
                 android:clickable="false" />
         </LinearLayout>
-
-        <!-- 换台反转 -->
         <LinearLayout
             android:id="@+id/item_reverse"
             android:layout_width="match_parent"
@@ -115,8 +107,6 @@
                 android:focusable="false"
                 android:clickable="false" />
         </LinearLayout>
-
-        <!-- 数字选台 -->
         <LinearLayout
             android:id="@+id/item_num_channel"
             android:layout_width="match_parent"
@@ -141,8 +131,6 @@
                 android:focusable="false"
                 android:clickable="false" />
         </LinearLayout>
-
-        <!-- 屏幕比例 -->
         <TextView
             android:id="@+id/tv_screen_ratio"
             android:layout_width="match_parent"
@@ -156,8 +144,6 @@
             android:background="@drawable/setting_item_bg"
             android:focusable="true"
             android:clickable="true" />
-
-        <!-- 自定义订阅源 -->
         <TextView
             android:id="@+id/tv_custom_source"
             android:layout_width="match_parent"
@@ -171,8 +157,6 @@
             android:background="@drawable/setting_item_bg"
             android:focusable="true"
             android:clickable="true" />
-
-        <!-- 自定义节目单 -->
         <TextView
             android:id="@+id/tv_custom_epg"
             android:layout_width="match_parent"
@@ -186,8 +170,6 @@
             android:background="@drawable/setting_item_bg"
             android:focusable="true"
             android:clickable="true" />
-
-        <!-- 多订阅源 -->
         <TextView
             android:id="@+id/tv_multi_source"
             android:layout_width="match_parent"
@@ -201,8 +183,6 @@
             android:background="@drawable/setting_item_bg"
             android:focusable="true"
             android:clickable="true" />
-
-        <!-- 多节目单 -->
         <TextView
             android:id="@+id/tv_multi_epg"
             android:layout_width="match_parent"
@@ -216,8 +196,6 @@
             android:background="@drawable/setting_item_bg"
             android:focusable="true"
             android:clickable="true" />
-
-        <!-- 扫码添加直播源/节目单 -->
         <TextView
             android:id="@+id/tv_qr_code"
             android:layout_width="match_parent"
@@ -231,8 +209,6 @@
             android:background="@drawable/setting_item_bg"
             android:focusable="true"
             android:clickable="true" />
-
-        <!-- 查看解析日志 -->
         <TextView
             android:id="@+id/log_viewer"
             android:layout_width="match_parent"
@@ -246,8 +222,6 @@
             android:background="@drawable/setting_item_bg"
             android:focusable="true"
             android:clickable="true" />
-
-        <!-- 操作日志 -->
         <TextView
             android:id="@+id/log_operation"
             android:layout_width="match_parent"
@@ -261,8 +235,6 @@
             android:background="@drawable/setting_item_bg"
             android:focusable="true"
             android:clickable="true" />
-
-        <!-- 检查更新 -->
         <LinearLayout
             android:id="@+id/item_check_update"
             android:layout_width="match_parent"
@@ -288,8 +260,6 @@
                 android:focusable="false"
                 android:clickable="false" />
         </LinearLayout>
-
-        <!-- 网页提示 -->
         <TextView
             android:layout_width="match_parent"
             android:layout_height="60dp"

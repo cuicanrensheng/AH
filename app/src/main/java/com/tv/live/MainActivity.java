@@ -12,6 +12,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -56,10 +57,19 @@ import java.util.List;
  * 进入APP时显示加载动画，避免黑屏
  * 有缓存时加载动画一闪而过，没有缓存时显示"正在加载..."
  *
+ * 【全面屏适配说明 - 增强版】
+ * 1. 支持刘海屏/挖孔屏全屏显示，内容延伸到摄像头区域
+ * 2. Android 12+ 使用 ALWAYS 模式，允许内容延伸到所有边的刘海
+ * 3. Android 11+ 使用 WindowInsetsController（官方推荐方式）
+ * 4. Android 10 及以下 使用 setSystemUiVisibility 兼容方式
+ * 5. onWindowFocusChanged 确保沉浸式不失效
+ * 6. onResume 切后台回来后恢复全屏
+ *
  * 【新增功能】
  * 1. ✅ 换台反转：上下键切台方向可反转
  * 2. ✅ 数字选台：按数字键直接跳转到对应频道
  * 3. ✅ 操作日志：所有操作记录到SettingsActivity
+ * 4. ✅ 全面屏适配：刘海屏/挖孔屏全屏覆盖（增强版）
  */
 public class MainActivity extends AppCompatActivity {
     // Activity单例，供其他类访问
@@ -230,53 +240,92 @@ public class MainActivity extends AppCompatActivity {
             }
         }
     };
-    
-        @Override
-protected void onCreate(Bundle savedInstanceState) {
-    super.onCreate(savedInstanceState);
-    log("【主页】onCreate -> 页面创建");
-    SettingsActivity.logOperation("【系统】APP启动");
 
-    mInstance = this;
-    // 设置横屏
-    setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        log("【主页】onCreate -> 页面创建");
+        SettingsActivity.logOperation("【系统】APP启动");
 
-    // ================================================
-    // ✅ 全面屏全屏适配（刘海屏/挖孔屏）
-    // ================================================
+        mInstance = this;
+        // 设置横屏
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
 
-    // 1. 让内容延伸到状态栏和导航栏后面（真正的全屏）
-    getWindow().getDecorView().setSystemUiVisibility(
-            View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN    // 布局延伸到状态栏后面
-                    | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION // 布局延伸到导航栏后面
-                    | View.SYSTEM_UI_FLAG_LAYOUT_STABLE         // 保持布局稳定
-                    | View.SYSTEM_UI_FLAG_FULLSCREEN             // 隐藏状态栏
-                    | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION        // 隐藏导航栏
-                    | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY       // 沉浸式粘性模式
-    );
+        // ================================================
+        // ✅ 全面屏全屏适配（刘海屏/挖孔屏）- 增强版
+        // ================================================
+        //
+        // 【为什么之前的 SHORT_EDGES 没生效？】
+        // SHORT_EDGES 模式只允许内容延伸到"物理短边"的刘海区域。
+        // 大多数手机的摄像头在顶部（物理长边的一端），横屏时摄像头就到了长边位置，
+        // 所以 SHORT_EDGES 模式不会让内容延伸到挖孔区域。
+        //
+        // 【增强版方案】
+        // 1. Android 12+（API 31+）：使用 ALWAYS 模式，允许内容延伸到所有边的刘海
+        // 2. Android 11+（API 30+）：使用 WindowInsetsController（官方推荐方式）
+        // 3. Android 10 及以下：使用旧的 setSystemUiVisibility 方式
+        // 4. 添加 onWindowFocusChanged 确保沉浸式不失效
+        // 5. onResume 中重新设置，切后台回来后保持全屏
+        // ================================================
 
-    // 2. 刘海屏适配：让内容延伸到刘海区域（Android 9.0+）
-    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
-        WindowManager.LayoutParams lp = getWindow().getAttributes();
-        // LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
-        // 意思是：在短边（横屏时的左右两边）的刘海区域，允许内容延伸进去
-        lp.layoutInDisplayCutoutMode =
-                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
-        getWindow().setAttributes(lp);
-    }
+        // 第一步：刘海屏适配（让内容延伸到刘海/挖孔区域）
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            WindowManager.LayoutParams lp = getWindow().getAttributes();
 
-    // 3. 全屏标志（兼容旧版本）
-    getWindow().setFlags(
-            WindowManager.LayoutParams.FLAG_FULLSCREEN,
-            WindowManager.LayoutParams.FLAG_FULLSCREEN
-    );
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                // ✅ Android 12+（API 31+）：使用 ALWAYS 模式
+                // 允许内容延伸到所有边的刘海区域，横屏时摄像头区域也能显示内容
+                lp.layoutInDisplayCutoutMode =
+                        WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS;
+            } else {
+                // Android 9-11（API 28-30）：使用 SHORT_EDGES 模式
+                // 虽然横屏时效果有限，但这是官方推荐的安全模式
+                // 配合下面的 WindowInsetsController 使用效果更好
+                lp.layoutInDisplayCutoutMode =
+                        WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+            }
 
-    // 加载布局
-    setContentView(R.layout.activity_main);
-    // 保持屏幕常亮
-    getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-    
-    // ... 后面的代码不变
+            getWindow().setAttributes(lp);
+        }
+
+        // 第二步：沉浸式全屏（隐藏状态栏和导航栏，让内容全屏显示）
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            // ✅ Android 11+（API 30+）：使用 WindowInsetsController（官方推荐方式）
+            // 这是 Android 11 以后推荐的沉浸式控制方式，效果更稳定
+            android.view.WindowInsetsController controller = getWindow().getInsetsController();
+            if (controller != null) {
+                // 隐藏状态栏和导航栏
+                controller.hide(android.view.WindowInsets.Type.systemBars());
+                // 设置沉浸式粘性模式：从边缘滑动时临时显示系统栏
+                controller.setSystemBarsBehavior(
+                        android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                );
+            }
+            // 让布局不考虑系统栏，真正延伸到系统栏后面
+            // 这个很重要！没有这个的话，布局还是会避开系统栏
+            getWindow().setDecorFitsSystemWindows(false);
+        } else {
+            // Android 10 及以下：使用旧的 setSystemUiVisibility 方式
+            getWindow().getDecorView().setSystemUiVisibility(
+                    View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN       // 布局延伸到状态栏后面
+                            | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION  // 布局延伸到导航栏后面
+                            | View.SYSTEM_UI_FLAG_LAYOUT_STABLE          // 保持布局稳定
+                            | View.SYSTEM_UI_FLAG_FULLSCREEN              // 隐藏状态栏
+                            | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION         // 隐藏导航栏
+                            | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY        // 沉浸式粘性模式
+            );
+        }
+
+        // 第三步：全屏标志（兼容旧版本 Android）
+        getWindow().setFlags(
+                WindowManager.LayoutParams.FLAG_FULLSCREEN,
+                WindowManager.LayoutParams.FLAG_FULLSCREEN
+        );
+
+        // 加载布局
+        setContentView(R.layout.activity_main);
+        // 保持屏幕常亮
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
         // 绑定频道号显示
         tv_channel_num = findViewById(R.id.tv_channel_num);
@@ -1092,6 +1141,7 @@ protected void onCreate(Bundle savedInstanceState) {
         }
 
         final String playUrl = ch.getPlayUrl();
+
         log("========================================");
         log("【播放】频道名称：" + ch.getName());
         log("【播放】播放地址：" + playUrl);
@@ -1251,7 +1301,11 @@ protected void onCreate(Bundle savedInstanceState) {
     }
 
     /**
-     * Activity恢复：播放器切前台，重新加载设置
+     * ✅ Activity恢复：播放器切前台，重新加载设置，恢复沉浸式全屏
+     *
+     * 【为什么要在 onResume 里重新设置？】
+     * 切后台再回来，系统可能会重置沉浸式状态，
+     * 所以需要在 onResume 里重新设置一遍，确保全屏不失效。
      */
     @Override
     protected void onResume() {
@@ -1260,8 +1314,72 @@ protected void onCreate(Bundle savedInstanceState) {
         SettingsActivity.logOperation("【系统】APP回到前台");
         loadSettings(); // 重新加载设置（可能在设置页面改了）
         screenRatioManager.apply();
+
+        // ✅ 恢复时重新设置沉浸式全屏（防止切后台后失效）
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            // Android 11+：WindowInsetsController 方式
+            android.view.WindowInsetsController controller = getWindow().getInsetsController();
+            if (controller != null) {
+                controller.hide(android.view.WindowInsets.Type.systemBars());
+                controller.setSystemBarsBehavior(
+                        android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                );
+            }
+        } else {
+            // Android 10 及以下：旧方式
+            getWindow().getDecorView().setSystemUiVisibility(
+                    View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                            | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                            | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                            | View.SYSTEM_UI_FLAG_FULLSCREEN
+                            | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                            | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+            );
+        }
+
         if (mPlayerManager != null)
             mPlayerManager.onForeground();
+    }
+
+    /**
+     * ✅ 窗口焦点变化时，重新设置沉浸式全屏
+     *
+     * 【为什么要加这个方法？】
+     * 页面加载完成后、软键盘弹出后、对话框关闭后，
+     * 系统可能会重置沉浸式状态，导致全屏失效。
+     * 在 onWindowFocusChanged 里重新设置一遍，确保始终全屏。
+     *
+     * 这是 Android 官方推荐的做法，能最大程度保证沉浸式不失效。
+     *
+     * @param hasFocus 当前窗口是否获得焦点
+     */
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+
+        if (hasFocus) {
+            // ✅ 获得焦点时，重新设置沉浸式全屏
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                // Android 11+：WindowInsetsController 方式
+                android.view.WindowInsetsController controller = getWindow().getInsetsController();
+                if (controller != null) {
+                    controller.hide(android.view.WindowInsets.Type.systemBars());
+                    controller.setSystemBarsBehavior(
+                            android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                    );
+                }
+            } else {
+                // Android 10 及以下：旧方式
+                getWindow().getDecorView().setSystemUiVisibility(
+                        View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                                | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                                | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                                | View.SYSTEM_UI_FLAG_FULLSCREEN
+                                | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                                | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                );
+            }
+        }
     }
 
     /**

@@ -4,7 +4,6 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#000000">
-    <!-- 底层播放器 -->
     <com.google.android.exoplayer2.ui.PlayerView
         android:id="@+id/player_view"
         android:layout_width="match_parent"
@@ -12,8 +11,6 @@
         android:layout_gravity="center"
         app:use_controller="false"
         app:resize_mode="fit"/>
-
-    <!-- 右上角切台数字弹窗 -->
     <TextView
         android:id="@+id/tv_channel_num"
         android:layout_width="wrap_content"
@@ -26,15 +23,12 @@
         android:textColor="#FFF"
         android:alpha="0.8"
         android:visibility="gone"/>
-
-    <!-- 侧边控制面板总布局 -->
     <LinearLayout
         android:id="@+id/panel_layout"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:orientation="horizontal"
         android:visibility="gone">
-        <!-- 左侧分组列表 -->
         <ListView
             android:id="@+id/lv_group"
             android:layout_width="130dp"
@@ -43,7 +37,6 @@
             android:listSelector="@drawable/list_item_bg"
             android:choiceMode="singleChoice"
             android:drawSelectorOnTop="false"/>
-        <!-- 中间频道列表 -->
         <ListView
             android:id="@+id/lv_channel_list"
             android:layout_width="200dp"
@@ -52,7 +45,6 @@
             android:listSelector="@drawable/list_item_bg"
             android:choiceMode="singleChoice"
             android:drawSelectorOnTop="false"/>
-        <!-- 竖向节目单按钮（居中竖排文字，原id btn_show_epg不变） -->
         <TextView
             android:id="@+id/btn_show_epg"
             android:layout_width="50dp"
@@ -64,7 +56,6 @@
             android:textSize="14sp"
             android:focusable="true"
             android:clickable="true"/>
-        <!-- 日期列表 默认隐藏 -->
         <ListView
             android:id="@+id/lv_date"
             android:layout_width="60dp"
@@ -74,7 +65,6 @@
             android:listSelector="@drawable/list_item_bg"
             android:choiceMode="singleChoice"
             android:drawSelectorOnTop="false"/>
-        <!-- EPG节目列表 默认隐藏 -->
         <ListView
             android:id="@+id/lv_epg"
             android:layout_width="360dp"
@@ -85,8 +75,6 @@
             android:choiceMode="singleChoice"
             android:drawSelectorOnTop="false"/>
     </LinearLayout>
-
-    <!-- 底部信息栏 原样保留 -->
     <LinearLayout
         android:id="@+id/info_bar"
         android:layout_width="match_parent"

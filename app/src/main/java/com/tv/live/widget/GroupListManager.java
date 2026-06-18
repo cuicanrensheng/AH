@@ -1,4 +1,5 @@
 package com.tv.live.widget;
+
 import android.content.Context;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -24,7 +25,8 @@ public class GroupListManager {
     public GroupListManager(Context context, ListView lvGroup) {
         this.context = context;
         this.lvGroup = lvGroup;
-        lvGroup.setItemsCanFocus(true);
+        // ✅ 改成 false，item 不需要获取焦点
+        lvGroup.setItemsCanFocus(false);
         lvGroup.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
 
         // 遥控器选择时同步更新选中状态
@@ -60,6 +62,11 @@ public class GroupListManager {
                     tv.setTextColor(Color.parseColor("#40A9FF"));
                     tv.setTypeface(null, Typeface.BOLD);
                     tv.setBackgroundColor(0x3340A9FF);
+                } else if (view.isFocused()) {
+                    // ✅ 焦点状态：蓝色文字 + 稍深一点的蓝色背景
+                    tv.setTextColor(Color.parseColor("#40A9FF"));
+                    tv.setTypeface(null, Typeface.NORMAL);
+                    tv.setBackgroundColor(0x4440A9FF);
                 } else {
                     // ✅ 未选中状态：白色文字 + 常规 + 透明背景
                     tv.setTextColor(Color.WHITE);

@@ -14,6 +14,7 @@ import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
 import android.os.Bundle;
 import android.os.Handler;
+import android.os.Looper;
 import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.KeyEvent;
@@ -54,6 +55,11 @@ import java.util.List;
  * 【加载动画说明】
  * 进入APP时显示加载动画，避免黑屏
  * 有缓存时加载动画一闪而过，没有缓存时显示"正在加载..."
+ *
+ * 【新增功能】
+ * 1. ✅ 换台反转：上下键切台方向可反转
+ * 2. ✅ 数字选台：按数字键直接跳转到对应频道
+ * 3. ✅ 操作日志：所有操作记录到SettingsActivity
  */
 public class MainActivity extends AppCompatActivity {
     // Activity单例，供其他类访问
@@ -136,11 +142,31 @@ public class MainActivity extends AppCompatActivity {
     // 加载提示文字
     private TextView tv_loading_text;
 
+    // ================================================
+    // ✅ 数字选台相关成员变量（新增）
+    // ================================================
+    // 数字输入缓冲区（记录用户输入的频道号数字）
+    private StringBuilder channelNumInput = new StringBuilder();
+    // 数字选台超时确认的Handler
+    private Handler channelNumHandler = new Handler(Looper.getMainLooper());
+    // 数字选台超时时间（2秒没输入就自动确认）
+    private static final long CHANNEL_NUM_TIMEOUT = 2000;
+
     // 隐藏信息栏的Runnable
     private final Runnable hideInfoBar = new Runnable() {
         @Override
         public void run() {
             info_bar.setVisibility(View.GONE);
+        }
+    };
+
+    // ================================================
+    // ✅ 数字选台超时自动确认的Runnable（新增）
+    // ================================================
+    private final Runnable channelNumConfirmRunnable = new Runnable() {
+        @Override
+        public void run() {
+            confirmChannelNum();
         }
     };
 
@@ -197,6 +223,7 @@ public class MainActivity extends AppCompatActivity {
                         // 重新加载（重置缓存标记，强制从网络加载）
                         hasPlayedWithCache = false;
                         loadLiveAndEpg();
+                        SettingsActivity.logOperation("【系统】自动刷新直播源/EPG");
                         Toast.makeText(MainActivity.this, "已刷新直播源/EPG", Toast.LENGTH_SHORT).show();
                     }
                 });
@@ -208,6 +235,7 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         log("【主页】onCreate -> 页面创建");
+        SettingsActivity.logOperation("【系统】APP启动");
 
         mInstance = this;
         // 设置横屏
@@ -274,6 +302,10 @@ public class MainActivity extends AppCompatActivity {
                 epgPanelOpen = !epgPanelOpen;
                 lvDate.setVisibility(epgPanelOpen ? View.VISIBLE : View.GONE);
                 lvEpg.setVisibility(epgPanelOpen ? View.VISIBLE : View.GONE);
+
+                // 记录操作日志
+                SettingsActivity.logOperation("【EPG】" + (epgPanelOpen ? "展开" : "收起") + "节目单");
+
                 // 展开时刷新当前频道的节目单
                 if (epgPanelOpen && !channelSourceList.isEmpty()) {
                     Channel curr = channelSourceList.get(currentPlayIndex);
@@ -306,6 +338,8 @@ public class MainActivity extends AppCompatActivity {
                 // 更新频道列表显示（只显示当前分组的频道）
                 channelListManager.setChannelsByGroup(channelSourceList, groupName, currentPlayIndex);
 
+                // 记录操作日志
+                SettingsActivity.logOperation("【分组】选中分组：" + groupName + "，频道数：" + currentGroupChannelList.size());
                 log("【分组】选中分组：" + groupName + "，频道数：" + currentGroupChannelList.size());
             }
         });
@@ -491,6 +525,8 @@ public class MainActivity extends AppCompatActivity {
 
         log("【设置】EPG开关：" + epg_enable);
         log("【设置】切台反转：" + channel_reverse);
+        log("【设置】数字选台：" + number_channel_enable);
+        log("【设置】自动更新源：" + auto_update_source);
     }
 
     /**
@@ -499,12 +535,192 @@ public class MainActivity extends AppCompatActivity {
      */
     @Override
     public void onBackPressed() {
+        // 如果正在输入数字选台，按返回键取消输入
+        if (channelNumInput.length() > 0) {
+            channelNumInput.setLength(0);
+            channelNumHandler.removeCallbacks(channelNumConfirmRunnable);
+            tv_channel_num.setVisibility(View.GONE);
+            SettingsActivity.logOperation("【数字选台】取消输入");
+            return;
+        }
+
         if (panel_layout.getVisibility() == View.VISIBLE) {
             panel_layout.setVisibility(View.GONE);
             playerView.requestFocus();
+            SettingsActivity.logOperation("【面板】关闭频道面板");
         } else {
             super.onBackPressed();
         }
+    }
+
+    // ================================================
+    // ✅ 数字选台相关方法（新增）
+    // ================================================
+
+    /**
+     * ✅ 处理数字键（数字选台）
+     *
+     * 【使用方法】
+     * 按数字键 0-9 输入频道号，2秒后自动确认并切换
+     * 例如：按 1 → 按 2 → 等待2秒 → 切换到第12频道
+     *
+     * @param keyCode 按键码
+     * @return 是否处理了该按键
+     */
+    private boolean handleNumberKey(int keyCode) {
+        // 如果数字选台功能关闭，不处理
+        if (!number_channel_enable) return false;
+
+        // 转换按键码为数字
+        int num = -1;
+        switch (keyCode) {
+            case KeyEvent.KEYCODE_0: num = 0; break;
+            case KeyEvent.KEYCODE_1: num = 1; break;
+            case KeyEvent.KEYCODE_2: num = 2; break;
+            case KeyEvent.KEYCODE_3: num = 3; break;
+            case KeyEvent.KEYCODE_4: num = 4; break;
+            case KeyEvent.KEYCODE_5: num = 5; break;
+            case KeyEvent.KEYCODE_6: num = 6; break;
+            case KeyEvent.KEYCODE_7: num = 7; break;
+            case KeyEvent.KEYCODE_8: num = 8; break;
+            case KeyEvent.KEYCODE_9: num = 9; break;
+            default: return false; // 不是数字键，不处理
+        }
+
+        // 追加数字到输入缓冲区
+        channelNumInput.append(num);
+
+        // 显示当前输入的频道号
+        tv_channel_num.setText(channelNumInput.toString());
+        tv_channel_num.setVisibility(View.VISIBLE);
+
+        // 重置超时计时器
+        channelNumHandler.removeCallbacks(channelNumConfirmRunnable);
+        channelNumHandler.postDelayed(channelNumConfirmRunnable, CHANNEL_NUM_TIMEOUT);
+
+        // 记录操作日志
+        SettingsActivity.logOperation("【数字选台】输入：" + channelNumInput);
+
+        return true;
+    }
+
+    /**
+     * ✅ 确认频道号并切换
+     * 数字输入超时后自动调用，或者按确定键调用
+     */
+    private void confirmChannelNum() {
+        if (channelNumInput.length() == 0) return;
+
+        try {
+            int channelNum = Integer.parseInt(channelNumInput.toString());
+
+            // 检查频道号是否有效
+            if (channelNum >= 1 && channelNum <= channelSourceList.size()) {
+                // 频道号转索引（频道号从1开始，索引从0开始）
+                int index = channelNum - 1;
+                SettingsActivity.logOperation("【数字选台】切换到第 " + channelNum + " 频道");
+                playChannel(index);
+            } else {
+                SettingsActivity.logOperation("【数字选台】频道号不存在：" + channelNum);
+                Toast.makeText(this, "频道号不存在", Toast.LENGTH_SHORT).show();
+            }
+        } catch (NumberFormatException e) {
+            // 忽略解析错误
+        }
+
+        // 清空输入缓冲区
+        channelNumInput.setLength(0);
+
+        // 延迟1秒后隐藏频道号显示
+        new Handler().postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                tv_channel_num.setVisibility(View.GONE);
+            }
+        }, 1000);
+    }
+
+    // ================================================
+    // ✅ 方向键处理（支持换台反转 - 新增）
+    // ================================================
+
+    /**
+     * ✅ 处理方向键（支持换台反转）
+     *
+     * 【反转逻辑】
+     * - 正常模式：上键 = 上一台，下键 = 下一台
+     * - 反转模式：上键 = 下一台，下键 = 上一台
+     *
+     * @param keyCode 按键码
+     * @return 是否处理了该按键
+     */
+    private boolean handleDirectionKey(int keyCode) {
+        switch (keyCode) {
+            case KeyEvent.KEYCODE_DPAD_UP:
+                if (channel_reverse) {
+                    // 反转模式：上键 = 下一台
+                    playNext();
+                } else {
+                    // 正常模式：上键 = 上一台
+                    playPrev();
+                }
+                SettingsActivity.logOperation("【切台】上键 → " + (channel_reverse ? "下一台" : "上一台"));
+                return true;
+
+            case KeyEvent.KEYCODE_DPAD_DOWN:
+                if (channel_reverse) {
+                    // 反转模式：下键 = 上一台
+                    playPrev();
+                } else {
+                    // 正常模式：下键 = 下一台
+                    playNext();
+                }
+                SettingsActivity.logOperation("【切台】下键 → " + (channel_reverse ? "上一台" : "下一台"));
+                return true;
+
+            case KeyEvent.KEYCODE_DPAD_CENTER:
+            case KeyEvent.KEYCODE_ENTER:
+                // 确定键：如果正在输入数字选台，就确认
+                if (channelNumInput.length() > 0) {
+                    channelNumHandler.removeCallbacks(channelNumConfirmRunnable);
+                    confirmChannelNum();
+                    return true;
+                }
+                // 否则打开/关闭面板
+                togglePanel();
+                return true;
+
+            case KeyEvent.KEYCODE_DPAD_LEFT:
+            case KeyEvent.KEYCODE_DPAD_RIGHT:
+                // 左右键：打开/关闭面板
+                togglePanel();
+                return true;
+
+            default:
+                return false;
+        }
+    }
+
+    /**
+     * ✅ 按键事件处理
+     *
+     * 【处理顺序】
+     * 1. 数字选台（数字键 0-9）
+     * 2. 方向键（支持换台反转）
+     * 3. 其他按键交给 KeyEventManager
+     */
+    @Override
+    public boolean onKeyDown(int keyCode, KeyEvent event) {
+        // 第一步：先处理数字选台
+        if (handleNumberKey(keyCode)) return true;
+
+        // 第二步：处理方向键（支持换台反转）
+        if (handleDirectionKey(keyCode)) return true;
+
+        // 第三步：其他按键交给按键事件管理器
+        if (keyEventManager.dispatchKey(keyCode)) return true;
+
+        return super.onKeyDown(keyCode, event);
     }
 
     // ================================================
@@ -627,16 +843,13 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * ✅ 从网络加载EPG（后台刷新）
-     *
-     * 【注意】这里用 EpgManager.getInstance(this) 传入 Context
-     * 第一次调用时会初始化 EpgManager 和 CacheManager
+     * 从网络加载EPG（后台刷新）
      */
     private void loadEpg() {
         if (!epg_enable) return;
 
         log("【EPG】开始加载节目单...");
-        // ✅ 改成带 this 的版本，传入 Context 初始化
+        // 传入 Context 初始化 EpgManager
         EpgManager.getInstance(this).setEpgUrl(UrlConfig.EPG_URL);
         EpgManager.getInstance(this).loadEpg(new Runnable() {
             @Override
@@ -927,11 +1140,14 @@ public class MainActivity extends AppCompatActivity {
                     int globalIndex = channelSourceList.indexOf(selectedChannel);
                     if (globalIndex != -1) {
                         log("【列表点击】切换到全局索引：" + globalIndex);
+                        SettingsActivity.logOperation("【列表】点击频道：" + selectedChannel.getName());
                         playChannel(globalIndex);
                         togglePanel();
                     }
                 } else {
                     // 非分组模式下：直接按索引播放
+                    Channel ch = channelSourceList.get(pos);
+                    SettingsActivity.logOperation("【列表】点击频道：" + ch.getName());
                     playChannel(pos);
                     togglePanel();
                 }
@@ -958,7 +1174,11 @@ public class MainActivity extends AppCompatActivity {
         }
 
         // 切换面板显示/隐藏
+        boolean isOpen = panel_layout.getVisibility() == View.VISIBLE;
         panelManager.toggle(channelSourceList, currentPlayIndex, dateListManager);
+
+        // 记录操作日志
+        SettingsActivity.logOperation("【面板】" + (isOpen ? "关闭" : "打开") + "频道面板");
     }
 
     /**
@@ -966,6 +1186,7 @@ public class MainActivity extends AppCompatActivity {
      */
     public void openSettings() {
         startActivity(new Intent(this, SettingsActivity.class));
+        SettingsActivity.logOperation("【系统】打开设置页面");
     }
 
     /**
@@ -981,6 +1202,8 @@ public class MainActivity extends AppCompatActivity {
 
         log("【远程配置】更新直播源：" + liveUrl);
         log("【远程配置】更新EPG：" + epgUrl);
+        SettingsActivity.logOperation("【远程配置】更新直播源/EPG地址");
+
         runOnUiThread(new Runnable() {
             @Override
             public void run() {
@@ -991,22 +1214,13 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * 按键事件处理
-     * 优先交给按键事件管理器处理
-     */
-    @Override
-    public boolean onKeyDown(int keyCode, KeyEvent event) {
-        if (keyEventManager.dispatchKey(keyCode)) return true;
-        return super.onKeyDown(keyCode, event);
-    }
-
-    /**
      * Activity暂停：播放器切后台
      */
     @Override
     protected void onPause() {
         super.onPause();
         log("【主页】onPause -> 切到后台");
+        SettingsActivity.logOperation("【系统】APP切到后台");
         if (mPlayerManager != null)
             mPlayerManager.onBackground();
     }
@@ -1018,7 +1232,8 @@ public class MainActivity extends AppCompatActivity {
     protected void onResume() {
         super.onResume();
         log("【主页】onResume -> 回到前台");
-        loadSettings();
+        SettingsActivity.logOperation("【系统】APP回到前台");
+        loadSettings(); // 重新加载设置（可能在设置页面改了）
         screenRatioManager.apply();
         if (mPlayerManager != null)
             mPlayerManager.onForeground();
@@ -1031,6 +1246,13 @@ public class MainActivity extends AppCompatActivity {
     protected void onDestroy() {
         super.onDestroy();
         log("【主页】onDestroy -> 页面销毁");
+        SettingsActivity.logOperation("【系统】APP退出");
+
+        // 取消数字选台的超时任务
+        if (channelNumHandler != null) {
+            channelNumHandler.removeCallbacks(channelNumConfirmRunnable);
+        }
+
         try { unregisterReceiver(toggleControllerReceiver); } catch (Exception ignored) {}
         try { unregisterReceiver(refreshReceiver); } catch (Exception ignored) {}
         mPlayerManager.release();

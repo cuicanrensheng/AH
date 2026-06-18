@@ -475,15 +475,14 @@ public class TVPlayerManager {
             // 停止当前播放
             player.stop();
             player.clearMediaItems();
-
-            // ✅ 使用官方 DefaultHttpDataSource（稳定可靠）
-            DefaultHttpDataSource.Factory httpFactory = new DefaultHttpDataSource.Factory()
-                    .setDefaultRequestProperties(getHeaders(currentUrl))
-                    .setConnectTimeoutMs(5000)
-                    .setReadTimeoutMs(15000) // 读取超时从10秒改到15秒
-                    .setAllowCrossProtocolRedirects(true)
-                    .setUserAgent("ExoPlayer");
-
+            
+                    // ===== 创建数据源（带重定向日志版） =====
+        // 每一重定向都会打印详细日志，方便调试直播源
+        RedirectLoggingHttpDataSource.Factory httpFactory =
+                new RedirectLoggingHttpDataSource.Factory();
+        httpFactory.setDefaultRequestProperties(getHeaders(currentUrl));
+        httpFactory.setAllowCrossProtocolRedirects(true);
+            
             MediaItem mediaItem = MediaItem.fromUri(currentUrl);
             com.google.android.exoplayer2.source.MediaSource mediaSource;
 

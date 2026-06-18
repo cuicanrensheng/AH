@@ -29,11 +29,6 @@ import java.util.zip.GZIPInputStream;
  * 4. 支持相对路径的 Location
  * 5. 日志同时输出到 Logcat 和 SettingsActivity.PLAY_LOG
  *
- * 【为什么不用 DefaultHttpDataSource？】
- * DefaultHttpDataSource 虽然也能自动跟随重定向，
- * 但是不会打印每一次重定向的详细信息，不利于调试直播源。
- * 这个类手动处理重定向，每一重都打日志，方便排查问题。
- *
  * 【最大重定向次数】
  * 默认 20 次，防止无限重定向死循环。
  */
@@ -64,6 +59,10 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
     /** 已读取的字节数 */
     private long bytesRead;
 
+    // ===== 新增：保存 HTTP 响应状态码 =====
+    /** HTTP 响应状态码（用于 getResponseCode()） */
+    private int responseCode = -1;
+
     /**
      * 构造函数
      *
@@ -87,21 +86,21 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
 
             // ===== 打开连接（手动处理重定向） =====
             connection = openConnection(dataSpec);
-            int responseCode = connection.getResponseCode();
+            responseCode = connection.getResponseCode();  // 保存状态码
 
             // ===== 获取响应头 =====
             Map<String, List<String>> headers = connection.getHeaderFields();
 
             // ===== 处理错误响应 =====
             if (responseCode < 200 || responseCode > 299) {
-                // 读取错误信息
                 String responseMessage = connection.getResponseMessage();
                 SettingsActivity.log("❌ HTTP 请求失败：" + responseCode + " " + responseMessage);
                 SettingsActivity.log("   URL：" + dataSpec.uri);
+                // ===== 修复：TYPE_RESPONSE_CODE_UNSUPPORTED 换成 TYPE_OPEN =====
                 throw new HttpDataSourceException(
                         "HTTP " + responseCode + " " + responseMessage,
                         dataSpec,
-                        HttpDataSourceException.TYPE_RESPONSE_CODE_UNSUPPORTED);
+                        HttpDataSourceException.TYPE_OPEN);
             }
 
             // ===== 获取输入流 =====
@@ -205,12 +204,12 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
             }
 
             // ===== 发起请求 =====
-            int responseCode = conn.getResponseCode();
+            int respCode = conn.getResponseCode();
             String responseMessage = conn.getResponseMessage();
 
             // ===== 判断是否是重定向 =====
-            boolean isRedirect = (responseCode == 301 || responseCode == 302
-                    || responseCode == 303 || responseCode == 307 || responseCode == 308);
+            boolean isRedirect = (respCode == 301 || respCode == 302
+                    || respCode == 303 || respCode == 307 || respCode == 308);
 
             if (!isRedirect) {
                 // 不是重定向，返回这个连接
@@ -225,7 +224,7 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
             String location = conn.getHeaderField("Location");
 
             if (TextUtils.isEmpty(location)) {
-                SettingsActivity.log("❌ 第 " + redirectCount + " 重：HTTP " + responseCode
+                SettingsActivity.log("❌ 第 " + redirectCount + " 重：HTTP " + respCode
                         + "，但没有 Location 头");
                 conn.disconnect();
                 throw new IOException("Redirect with no Location header");
@@ -246,7 +245,7 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
 
             // ===== 打印这一重的日志 =====
             String crossProtocolTag = isCrossProtocol ? "  [跨协议]" : "";
-            SettingsActivity.log("🔄 第 " + redirectCount + " 重：HTTP " + responseCode
+            SettingsActivity.log("🔄 第 " + redirectCount + " 重：HTTP " + respCode
                     + " " + responseMessage + crossProtocolTag);
             SettingsActivity.log("   从：" + currentUrl);
             SettingsActivity.log("   到：" + redirectUrl);
@@ -393,6 +392,17 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
     @Override
     public Uri getUri() {
         return connection == null ? null : Uri.parse(connection.getURL().toString());
+    }
+
+    // ===== 新增：实现 getResponseCode() 抽象方法 =====
+    /**
+     * 获取 HTTP 响应状态码
+     *
+     * @return HTTP 状态码，如果还没建立连接返回 -1
+     */
+    @Override
+    public int getResponseCode() {
+        return responseCode;
     }
 
     @Override

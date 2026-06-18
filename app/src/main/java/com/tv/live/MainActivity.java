@@ -511,6 +511,8 @@ public class MainActivity extends AppCompatActivity {
         channelListManager = new ChannelListManager(this, lvChannelList);
         groupListManager = new GroupListManager(this, lvGroup);
         dateListManager = new DateListManager(this, lvDate);
+         // ✅ 先初始化 EpgManager（必须在 EpgManagerWrapper 之前）
+        EpgManager.getInstance(this);
         epgManagerWrapper = new EpgManagerWrapper(this, lvEpg);
         dateListManager.initDate();
         panelManager = new PanelManager(panel_layout, channelListManager, epgManagerWrapper);

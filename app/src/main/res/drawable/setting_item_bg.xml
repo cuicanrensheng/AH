@@ -1,22 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?>
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 焦点状态：浅蓝色背景（和分组列表选中状态一样） -->
     <item android:state_focused="true">
         <shape android:shape="rectangle">
             <solid android:color="#3340A9FF" />
             <corners android:radius="8dp" />
         </shape>
     </item>
+    <!-- 选中状态：浅蓝色背景 -->
     <item android:state_selected="true">
         <shape android:shape="rectangle">
             <solid android:color="#3340A9FF" />
             <corners android:radius="8dp" />
         </shape>
     </item>
+    <!-- 按下状态：稍深一点的蓝色背景 -->
     <item android:state_pressed="true">
         <shape android:shape="rectangle">
             <solid android:color="#4440A9FF" />
             <corners android:radius="8dp" />
         </shape>
     </item>
+    <!-- 默认状态：透明 -->
     <item android:drawable="@android:color/transparent" />
 </selector>

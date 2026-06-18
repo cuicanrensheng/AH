@@ -35,7 +35,11 @@ import java.util.Map;
  *
  * 【端口策略】
  * 从默认端口开始尝试，最多试 10 个端口，找到可用的就用。
- * 这样即使默认端口被占用，也能自动换一个端口启动。
+ * 整个扫描过程都会输出详细日志到操作日志，方便排查问题。
+ *
+ * 【日志接入】
+ * 所有日志都通过 SettingsActivity.logOperation() 输出，
+ * 用户点击「操作日志」按钮就能看到完整的启动过程和端口扫描信息。
  *
  * 【使用方式】
  * WebServerManager manager = new WebServerManager(context, port);
@@ -100,7 +104,7 @@ public class WebServerManager {
     // ====================== 公共方法 ======================
 
     // ====================================================================
-    // ✅ 修改：start() 方法 - 加上自动找可用端口
+    // ✅ 修改：start() 方法 - 加上详细启动日志 + 端口扫描
     // ====================================================================
     /**
      * 启动 HTTP 服务器
@@ -109,18 +113,29 @@ public class WebServerManager {
      * 【完整启动流程】
      * 1. 检查是否已经在运行 → 是则直接返回
      * 2. 自动找可用端口（从默认端口开始，最多试 10 个）
+     *    ├─ 扫描过程输出详细日志
+     *    └─ 每个被占用的端口都会分析可能的原因
      * 3. 在子线程中创建 ServerSocket，开始监听
      * 4. 保存当前实例到静态变量 runningInstance
      * 5. 循环接受连接，每个请求开一个线程处理
+     *
+     * 【端口扫描日志】
+     * 整个端口扫描过程都会输出到操作日志，包括：
+     * - 开始扫描的提示
+     * - 扫描范围（共多少个端口）
+     * - 每个端口的检测结果（✅可用 / ❌被占用）
+     * - 被占用端口的原因分析
+     * - 扫描统计（总共多少、被占用多少、找到哪个）
+     * - 最终选择的端口
      *
      * 【为什么要自动找端口？】
      * 默认端口 10481 可能被其他应用占用，或者 APP 异常退出后
      * 端口处于 TIME_WAIT 状态暂时无法绑定。自动找可用端口能保证
      * 服务器总能启动成功，用户不需要手动改端口。
      *
-     * 【二维码地址会变吗？】
-     * 会变。如果换了端口，二维码里的地址端口号也会跟着变，
-     * 但 currentWebUrl 会自动更新，所以扫码还是能正常打开。
+     * 【日志接入】
+     * 所有启动日志都通过 SettingsActivity.logOperation() 输出，
+     * 用户点击「操作日志」按钮就能看到完整的启动过程。
      */
     public void start() {
         // ===== 1. 检查是否已经在运行 =====
@@ -129,20 +144,34 @@ public class WebServerManager {
             return;
         }
 
+        logOperation("【网页后台】========== 开始启动 ==========");
+        logOperation("【网页后台】默认端口：" + port);
+
         // ===== 2. 自动找可用端口 =====
+        logOperation("【网页后台】开始扫描可用端口...");
         int actualPort = findAvailablePort(port);
+
         if (actualPort == -1) {
             // 试了 10 个端口都不行，启动失败
-            logOperation("【网页后台】❌ 找不到可用端口，启动失败");
+            logOperation("【网页后台】❌ 扫描完成，所有端口都被占用");
+            logOperation("【网页后台】❌ 启动失败，找不到可用端口");
+            logOperation("【网页后台】💡 可能原因：");
+            logOperation("【网页后台】   1. 设备上有大量应用占用了端口");
+            logOperation("【网页后台】   2. 网络异常，无法创建 Socket");
+            logOperation("【网页后台】   3. 系统权限限制");
             logOperation("【网页后台】💡 建议：重启设备或检查网络设置");
+            logOperation("【网页后台】================================");
             isRunning = false;
             return;
         }
 
         // 如果换了端口，打个日志说明一下
         if (actualPort != port) {
+            logOperation("【网页后台】✅ 扫描完成，找到可用端口：" + actualPort);
             logOperation("【网页后台】端口 " + port + " 被占用，自动改用端口 " + actualPort);
             this.port = actualPort;
+        } else {
+            logOperation("【网页后台】✅ 扫描完成，默认端口 " + port + " 可用");
         }
 
         final int finalPort = actualPort;
@@ -150,7 +179,7 @@ public class WebServerManager {
         // ===== 3. 在子线程中启动服务器 =====
         new Thread(() -> {
             try {
-                logOperation("【网页后台】正在启动服务器，端口：" + finalPort);
+                logOperation("【网页后台】正在创建 ServerSocket...");
 
                 // ====================================================================
                 // ✅ 修改：创建 ServerSocket 的方式
@@ -176,15 +205,20 @@ public class WebServerManager {
                  */
                 serverSocket = new ServerSocket();
                 serverSocket.setReuseAddress(true);
+                logOperation("【网页后台】SO_REUSEADDR 已设置为 true");
+
                 serverSocket.bind(new java.net.InetSocketAddress(finalPort));
+                logOperation("【网页后台】端口绑定成功");
 
                 isRunning = true;
 
                 // ===== 4. 保存当前运行的实例（用于后续端口检测） =====
                 runningInstance = this;
 
-                logOperation("【网页后台】✅ 启动成功，监听端口：" + finalPort);
+                logOperation("【网页后台】✅ 启动成功！");
+                logOperation("【网页后台】监听端口：" + finalPort);
                 logOperation("【网页后台】访问地址：http://" + getDeviceIPAddress() + ":" + finalPort);
+                logOperation("【网页后台】========== 启动完成 ==========");
 
                 // ===== 5. 循环接受连接 =====
                 while (!serverSocket.isClosed()) {
@@ -211,6 +245,7 @@ public class WebServerManager {
             } catch (Exception e) {
                 e.printStackTrace();
                 logOperation("【网页后台】❌ 启动失败：" + e.getClass().getSimpleName() + " - " + e.getMessage());
+                logOperation("【网页后台】❌ 错误详情：" + e.toString());
                 isRunning = false;
                 runningInstance = null;
             }
@@ -254,16 +289,23 @@ public class WebServerManager {
     }
 
     // ====================================================================
-    // ✅ 新增：findAvailablePort() 方法 - 自动找可用端口
+    // ✅ 修改：findAvailablePort() 方法 - 加上详细扫描日志
     // ====================================================================
     /**
      * 自动找可用端口
      *
      * 从 startPort 开始尝试，最多试 10 个端口，找到第一个可用的就返回。
+     * 整个扫描过程都会输出详细日志到操作日志。
      *
      * 【为什么需要这个方法？】
      * 默认端口可能被其他应用占用，或者处于 TIME_WAIT 状态。
      * 自动找可用端口能保证服务器总能启动成功。
+     *
+     * 【日志输出】
+     * - 扫描范围（共多少个端口）
+     * - 每个端口的检测结果（✅可用 / ❌被占用）
+     * - 被占用端口的可能原因分析
+     * - 扫描统计（总共多少、被占用多少、找到哪个）
      *
      * 【尝试范围】
      * startPort ~ startPort + 9（共 10 个端口）
@@ -274,15 +316,106 @@ public class WebServerManager {
      */
     private int findAvailablePort(int startPort) {
         int maxTry = 10;  // 最多试 10 个端口
+        int occupiedCount = 0;  // 被占用的端口数
+
+        logOperation("【网页后台】扫描范围：" + startPort + " ~ " + (startPort + maxTry - 1)
+                + "（共 " + maxTry + " 个端口）");
+
         for (int i = 0; i < maxTry; i++) {
             int tryPort = startPort + i;
+
             if (!isPortInUse(tryPort)) {
-                // 找到可用端口，直接返回
+                // 找到可用端口
+                logOperation("【网页后台】  端口 " + tryPort + " → ✅ 可用");
+                logOperation("【网页后台】扫描统计：共 " + maxTry + " 个端口，"
+                        + "被占用 " + occupiedCount + " 个，找到可用端口 " + tryPort);
                 return tryPort;
             }
+
+            // 端口被占用，计数 +1
+            occupiedCount++;
+
+            // ====================================================================
+            // ✅ 新增：分析端口被占用的可能原因
+            // ====================================================================
+            /**
+             * 【端口被占用的可能原因】
+             *
+             * 1. TIME_WAIT 状态（最常见）
+             *    - 现象：APP 刚退出，端口还在等待回收
+             *    - 持续时间：通常 1-2 分钟
+             *    - 特点：只有最近用过的端口才会出现
+             *
+             * 2. 其他应用/进程占用
+             *    - 现象：其他应用也在用这个端口
+             *    - 特点：一直被占用，不会自动释放
+             *
+             * 3. 系统服务占用
+             *    - 现象：系统级服务占用了该端口
+             *    - 特点：一直被占用，且端口号通常比较特殊
+             *
+             * 【怎么判断？】
+             * 虽然在 Android 上没法直接拿到占用端口的进程名，
+             * 但可以通过一些特征做推测：
+             * - 如果是第一个端口（默认端口）被占，可能是之前的实例没关掉
+             * - 如果连续多个端口都被占，可能是其他应用在用
+             * - 如果低端口被占，可能是系统服务
+             */
+            String reason = analyzePortOccupiedReason(tryPort, i);
+            logOperation("【网页后台】  端口 " + tryPort + " → ❌ 被占用（" + reason + "）");
         }
+
         // 试了 10 个都不行，返回 -1 表示失败
+        logOperation("【网页后台】扫描统计：共 " + maxTry + " 个端口，全部被占用");
         return -1;
+    }
+
+    // ====================================================================
+    // ✅ 新增：analyzePortOccupiedReason() 方法 - 分析端口被占用的原因
+    // ====================================================================
+    /**
+     * 分析端口被占用的可能原因
+     *
+     * 【说明】
+     * 在 Android 上，由于权限限制，没法直接获取占用端口的进程名。
+     * 这里只能通过一些特征做推测，给用户一个参考。
+     *
+     * 【推测逻辑】
+     * 1. 如果是第一个端口（默认端口）被占，且之前有运行的实例
+     *    → 很可能是之前的实例没关掉，或者处于 TIME_WAIT 状态
+     * 2. 如果是低端口（< 1024）被占
+     *    → 可能是系统服务
+     * 3. 如果连续多个端口都被占（第 4 个及以后）
+     *    → 可能是其他应用在用
+     * 4. 其他情况
+     *    → 可能是其他应用占用，或者 TIME_WAIT 状态
+     *
+     * @param port 端口号
+     * @param index 第几个端口（0 表示第一个，即默认端口）
+     * @return 原因描述
+     */
+    private String analyzePortOccupiedReason(int port, int index) {
+        // 情况 1：第一个端口（默认端口）被占
+        if (index == 0) {
+            if (runningInstance != null) {
+                return "之前的实例未关闭";
+            } else {
+                return "可能是 TIME_WAIT 状态或其他应用占用";
+            }
+        }
+
+        // 情况 2：低端口（< 1024）被占，可能是系统服务
+        if (port < 1024) {
+            return "可能是系统服务占用";
+        }
+
+        // 情况 3：连续多个端口被占（第 4 个及以后），可能是其他应用在用
+        if (index >= 3) {
+            return "可能是其他应用占用";
+        }
+
+        // 情况 4：其他情况，默认推测
+        return "可能是其他应用或 TIME_WAIT 状态";
     }
 
     // ====================================================================
@@ -307,6 +440,9 @@ public class WebServerManager {
      * setReuseAddress(true) 必须在 bind() 之前设置才有效。
      * 所以要先创建空的 ServerSocket，设置完再绑定。
      *
+     * 【错误日志】
+     * 如果检测失败，会输出异常类型和详细信息，方便排查问题。
+     *
      * @param port 端口号
      * @return true=被占用，false=空闲
      */
@@ -322,6 +458,10 @@ public class WebServerManager {
             testSocket.close();
             return false;  // 能绑定成功，说明端口空闲
         } catch (Exception e) {
+            // 绑定失败，记录一下异常类型（方便排查）
+            String exceptionType = e.getClass().getSimpleName();
+            logOperation("【网页后台】    检测端口 " + port + " 异常："
+                    + exceptionType + " - " + e.getMessage());
             return true;   // 绑定失败（抛 BindException），说明端口被占用
         }
     }
@@ -494,13 +634,15 @@ public class WebServerManager {
             }
 
             // ===== 6. 发送响应 =====
-            logOperation("【网页后台】准备发送响应，内容长度：" + responseBody.getBytes("UTF-8").length + " 字节");
+            logOperation("【网页后台】准备发送响应，内容长度："
+                    + responseBody.getBytes("UTF-8").length + " 字节");
             sendResponse(socket, "200 OK", contentType, responseBody);
             logOperation("【网页后台】✅ 响应发送完成");
 
         } catch (Exception e) {
             e.printStackTrace();
-            logOperation("【网页后台】❌ 处理请求异常：" + e.getClass().getSimpleName() + " - " + e.getMessage());
+            logOperation("【网页后台】❌ 处理请求异常："
+                    + e.getClass().getSimpleName() + " - " + e.getMessage());
             try {
                 socket.close();
             } catch (Exception ignored) {}
@@ -939,6 +1081,15 @@ public class WebServerManager {
     /**
      * 输出操作日志
      * 直接调用 SettingsActivity 的静态方法
+     *
+     * 【日志接入说明】
+     * 所有网页后台的日志都通过这个方法输出，
+     * 用户点击「操作日志」按钮就能看到完整的日志信息。
+     * 包括：
+     * - 启动/停止日志
+     * - 端口扫描日志
+     * - 连接处理日志
+     * - 错误日志
      */
     private void logOperation(String msg) {
         SettingsActivity.logOperation(msg);

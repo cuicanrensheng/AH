@@ -185,7 +185,7 @@ public class TVPlayerManager {
         // 初始化缓冲区配置
         // 最小缓冲3秒，最大30秒，开始播放缓冲1.5秒，缓冲后重试3秒
         DefaultLoadControl loadControl = new DefaultLoadControl.Builder()
-                .setBufferDurationsMs(2000, 1500, 500, 2000)
+                .setBufferDurationsMs(3000, 15000, 500, 2000)
                 .build();
 
         // 创建ExoPlayer实例

@@ -533,7 +533,7 @@ public class SettingsActivity extends AppCompatActivity {
         } catch (Exception ignored) {}
     }
 
-    private static class SettingsAdapter extends ArrayAdapter<String> {
+       private static class SettingsAdapter extends ArrayAdapter<String> {
         private final Context context;
         private final List<String> items;
         private int selectedPosition = -1;
@@ -556,12 +556,20 @@ public class SettingsActivity extends AppCompatActivity {
             }
             TextView tv = convertView.findViewById(R.id.tv_setting_item);
             tv.setText(items.get(position));
+
             if (position == selectedPosition) {
+                // ✅ 选中状态：蓝色文字 + 浅蓝色背景（和分组列表一样）
                 tv.setTextColor(Color.parseColor("#40A9FF"));
+                convertView.setBackgroundColor(0x3340A9FF);
+            } else if (convertView.isFocused()) {
+                // ✅ 焦点状态：蓝色文字 + 稍深一点的蓝色背景
+                tv.setTextColor(Color.parseColor("#40A9FF"));
+                convertView.setBackgroundColor(0x4440A9FF);
             } else {
+                // ✅ 未选中状态：白色文字 + 透明背景
                 tv.setTextColor(Color.WHITE);
+                convertView.setBackgroundColor(Color.TRANSPARENT);
             }
             return convertView;
         }
     }
-}

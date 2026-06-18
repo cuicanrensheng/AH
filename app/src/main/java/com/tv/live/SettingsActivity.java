@@ -66,11 +66,10 @@ import java.util.Map;
  *
  * 【网页后台说明】
  * 自己实现简易 HTTP 服务器，不依赖外部库。
- * 支持：GET / 配置页、GET /log 日志页、POST /submit 提交配置
- *
- * 为什么不用项目里的 NanoHTTPD？
- * - 项目里的 NanoHTTPD 是极度简化版，只支持 GET，页面样式很丑
- * - 自己写可以完全控制功能和样式，支持配置页+日志页+POST提交
+ * 支持：
+ * - GET /        → 配置页（直播源+节目单+播放器+调试）
+ * - GET /log     → 日志页（操作日志/解析日志切换）
+ * - POST /submit → 提交配置
  */
 public class SettingsActivity extends AppCompatActivity {
 
@@ -96,6 +95,15 @@ public class SettingsActivity extends AppCompatActivity {
     private Handler handler = new Handler(Looper.getMainLooper());
     /** 网页后台端口号 */
     private static final int PORT = 10481;
+
+    // ====================== SP Key 常量 ======================
+
+    /** 自定义直播源地址 */
+    private static final String KEY_CUSTOM_LIVE = "custom_live_url";
+    /** 自定义节目单地址 */
+    private static final String KEY_CUSTOM_EPG = "custom_epg_url";
+    /** 自定义 User-Agent */
+    private static final String KEY_CUSTOM_UA = "custom_user_agent";
 
     // ====================== 历史记录列表适配器 ======================
 
@@ -154,9 +162,6 @@ public class SettingsActivity extends AppCompatActivity {
     /**
      * 显示操作日志对话框
      * 最新的日志显示在最上面（倒序）
-     *
-     * 【用途】
-     * 查看网页后台的启动、请求、响应等详细日志，排查"进不去后台"的问题
      */
     private void showOperationLogDialog() {
         ScrollView scrollView = new ScrollView(this);
@@ -447,13 +452,13 @@ public class SettingsActivity extends AppCompatActivity {
 
         // 自定义订阅源
         tv_custom_source.setOnClickListener(v -> {
-            showInputDialog("自定义订阅源", "请输入直播源地址", "custom_live_url");
+            showInputDialog("自定义订阅源", "请输入直播源地址", KEY_CUSTOM_LIVE);
             logOperation("【设置】打开自定义订阅源");
         });
 
         // 自定义节目单
         tv_custom_epg.setOnClickListener(v -> {
-            showInputDialog("自定义节目单", "请输入EPG地址", "custom_epg_url");
+            showInputDialog("自定义节目单", "请输入EPG地址", KEY_CUSTOM_EPG);
             logOperation("【设置】打开自定义节目单");
         });
 
@@ -549,7 +554,7 @@ public class SettingsActivity extends AppCompatActivity {
                 .setAdapter(adapter, (d, w) -> {
                     String url = list[w];
                     // 切换到选中的源
-                    sp.edit().putString(key.contains("live") ? "custom_live_url" : "custom_epg_url", url).apply();
+                    sp.edit().putString(key.contains("live") ? KEY_CUSTOM_LIVE : KEY_CUSTOM_EPG, url).apply();
                     // 也添加到历史（移到最前面）
                     addHistory(key.contains("live") ? "live_history" : "epg_history", url);
                     // 发送广播刷新
@@ -814,8 +819,9 @@ public class SettingsActivity extends AppCompatActivity {
 
                 final String liveUrl = params.get("live_url");
                 final String epgUrl = params.get("epg_url");
+                final String customUa = params.get("custom_ua");
 
-                logOperation("【网页后台】提交参数 - live: " + liveUrl + ", epg: " + epgUrl);
+                logOperation("【网页后台】提交参数 - live: " + liveUrl + ", epg: " + epgUrl + ", ua: " + customUa);
 
                 // 切到主线程保存配置（因为 SP 和广播都要在主线程）
                 handler.post(() -> {
@@ -823,15 +829,21 @@ public class SettingsActivity extends AppCompatActivity {
 
                     // 更新直播源
                     if (liveUrl != null && !liveUrl.trim().isEmpty()) {
-                        sp.edit().putString("custom_live_url", liveUrl.trim()).apply();
+                        sp.edit().putString(KEY_CUSTOM_LIVE, liveUrl.trim()).apply();
                         addHistory("live_history", liveUrl.trim());
                         hasUpdate = true;
                     }
 
                     // 更新节目单
                     if (epgUrl != null && !epgUrl.trim().isEmpty()) {
-                        sp.edit().putString("custom_epg_url", epgUrl.trim()).apply();
+                        sp.edit().putString(KEY_CUSTOM_EPG, epgUrl.trim()).apply();
                         addHistory("epg_history", epgUrl.trim());
+                        hasUpdate = true;
+                    }
+
+                    // 更新自定义 UA
+                    if (customUa != null && !customUa.trim().isEmpty()) {
+                        sp.edit().putString(KEY_CUSTOM_UA, customUa.trim()).apply();
                         hasUpdate = true;
                     }
 
@@ -932,19 +944,21 @@ public class SettingsActivity extends AppCompatActivity {
     // ====================== ✅ HTML 页面构建 ======================
 
     /**
-     * 构建配置页面 HTML（APP 风格）
+     * 构建配置页面 HTML（APP 风格，4个分组）
      *
-     * 模仿 APP 里的设置页面样式：
-     * - 浅灰背景 + 白色卡片
-     * - 分组标题灰色小字
-     * - 左标签 + 右输入框
-     * - 蓝色圆角按钮
-     * - 底部导航（配置/日志）
+     * 分组：
+     * 1. 直播源 - 自定义直播源链接 + 推送按钮
+     * 2. 节目单 - 自定义节目单链接 + 推送按钮
+     * 3. 播放器 - 自定义UA + 推送按钮
+     * 4. 调试 - 上传apk
+     *
+     * 样式完全模仿 APP 里的设置页面
      */
     private String buildConfigPage() {
         // 读取当前配置，回显到输入框
-        String currentLive = sp.getString("custom_live_url", "");
-        String currentEpg = sp.getString("custom_epg_url", "");
+        String currentLive = sp.getString(KEY_CUSTOM_LIVE, "");
+        String currentEpg = sp.getString(KEY_CUSTOM_EPG, "");
+        String currentUa = sp.getString(KEY_CUSTOM_UA, "");
 
         return "<!DOCTYPE html>\n" +
                 "<html lang=\"zh-CN\">\n" +
@@ -978,9 +992,14 @@ public class SettingsActivity extends AppCompatActivity {
                 "        .header-desc { font-size: 13px; color: #999; }\n" +
                 "\n" +
                 "        /* ===== 蓝色按钮 ===== */\n" +
-                "        .btn-blue { display: block; margin: 12px 12px 0; padding: 12px 24px; background: #40A9FF; color: white; border: none; border-radius: 6px; font-size: 15px; font-weight: 500; cursor: pointer; float: right; }\n" +
+                "        .btn-blue { display: block; margin: 12px 12px 0; padding: 8px 20px; background: #40A9FF; color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer; float: right; }\n" +
                 "        .btn-blue:active { background: #1890FF; }\n" +
                 "        .btn-wrap { overflow: hidden; padding: 0 0 12px; }\n" +
+                "\n" +
+                "        /* ===== 上传区域 ===== */\n" +
+                "        .upload-box { width: 80px; height: 80px; border: 1px solid #eee; border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #ccc; cursor: pointer; margin-left: auto; }\n" +
+                "        .upload-icon { font-size: 24px; }\n" +
+                "        .upload-text { font-size: 11px; }\n" +
                 "\n" +
                 "        /* ===== 底部导航 ===== */\n" +
                 "        .bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; background: #fff; display: flex; border-top: 1px solid #eee; padding: 8px 0 calc(8px + env(safe-area-inset-bottom)); }\n" +
@@ -991,7 +1010,7 @@ public class SettingsActivity extends AppCompatActivity {
                 "</head>\n" +
                 "<body>\n" +
                 "\n" +
-                "    <!-- ===== 直播源分组 ===== -->\n" +
+                "    <!-- ===== 1. 直播源分组 ===== -->\n" +
                 "    <div class=\"section-title\">直播源</div>\n" +
                 "    <div class=\"card\">\n" +
                 "        <div class=\"item header-item\">\n" +
@@ -1009,7 +1028,7 @@ public class SettingsActivity extends AppCompatActivity {
                 "        </form>\n" +
                 "    </div>\n" +
                 "\n" +
-                "    <!-- ===== 节目单分组 ===== -->\n" +
+                "    <!-- ===== 2. 节目单分组 ===== -->\n" +
                 "    <div class=\"section-title\">节目单</div>\n" +
                 "    <div class=\"card\">\n" +
                 "        <div class=\"item header-item\">\n" +
@@ -1025,6 +1044,36 @@ public class SettingsActivity extends AppCompatActivity {
                 "                <button type=\"submit\" class=\"btn-blue\">推送节目单</button>\n" +
                 "            </div>\n" +
                 "        </form>\n" +
+                "    </div>\n" +
+                "\n" +
+                "    <!-- ===== 3. 播放器分组（新增） ===== -->\n" +
+                "    <div class=\"section-title\">播放器</div>\n" +
+                "    <div class=\"card\">\n" +
+                "        <div class=\"item header-item\">\n" +
+                "            <div class=\"header-title\">自定义UA</div>\n" +
+                "            <div class=\"header-desc\">播放器自定义UA</div>\n" +
+                "        </div>\n" +
+                "        <form method=\"post\" action=\"/submit\">\n" +
+                "            <div class=\"item\">\n" +
+                "                <div class=\"item-label\"></div>\n" +
+                "                <input type=\"text\" name=\"custom_ua\" placeholder=\"自定义 User-Agent\" value=\"" + currentUa + "\">\n" +
+                "            </div>\n" +
+                "            <div class=\"btn-wrap\">\n" +
+                "                <button type=\"submit\" class=\"btn-blue\">推送</button>\n" +
+                "            </div>\n" +
+                "        </form>\n" +
+                "    </div>\n" +
+                "\n" +
+                "    <!-- ===== 4. 调试分组（新增） ===== -->\n" +
+                "    <div class=\"section-title\">调试</div>\n" +
+                "    <div class=\"card\">\n" +
+                "        <div class=\"item\">\n" +
+                "            <div class=\"item-label\">上传apk</div>\n" +
+                "            <div class=\"upload-box\" onclick=\"alert('功能开发中，敬请期待~')\">\n" +
+                "                <div class=\"upload-icon\">📷</div>\n" +
+                "                <div class=\"upload-text\">上传</div>\n" +
+                "            </div>\n" +
+                "        </div>\n" +
                 "    </div>\n" +
                 "\n" +
                 "    <!-- ===== 底部导航 ===== -->\n" +
@@ -1044,29 +1093,29 @@ public class SettingsActivity extends AppCompatActivity {
     }
 
     /**
-     * 构建日志页面 HTML（APP 风格）
+     * 构建日志页面 HTML（APP 风格，支持 tab 切换）
      *
-     * 模仿 APP 里的日志页面样式：
-     * - 顶部大标题"我的电视"
-     * - 每条日志左侧彩色图标（ERROR红色，INFO蓝色）
-     * - 日志级别 + 内容
-     * - 右侧时间
-     * - 底部导航
+     * 【新增功能】
+     * - 顶部 tab 切换：操作日志 / 解析日志
+     * - 操作日志：显示 OPERATION_LOG（用户操作 + 网页后台日志）
+     * - 解析日志：显示 PLAY_LOG（EPG解析 + 播放器日志）
+     * - 默认显示操作日志
      * - 每5秒自动刷新
+     *
+     * 【为什么用 tab 切换？】
+     * 两种日志用途不同，分开显示更清晰，不会混在一起难找
      */
     private String buildLogPage() {
-        // 读取日志内容
-        String logContent = PLAY_LOG != null ? PLAY_LOG.toString() : "";
-        String[] lines = logContent.split("\n");
+        // ===== 1. 构建操作日志 HTML =====
+        String operationLogContent = OPERATION_LOG != null ? OPERATION_LOG.toString() : "";
+        String[] opLines = operationLogContent.split("\n");
+        StringBuilder opLogHtml = new StringBuilder();
 
-        // 构建日志列表 HTML（倒序，最新的在最上面）
-        StringBuilder logHtml = new StringBuilder();
-        for (int i = lines.length - 1; i >= 0; i--) {
-            String line = lines[i];
+        for (int i = opLines.length - 1; i >= 0; i--) {
+            String line = opLines[i];
             if (line.trim().isEmpty()) continue;
 
-            // ===== 提取时间和内容 =====
-            // 日志格式：[HH:mm:ss] 日志内容
+            // 提取时间和内容
             String time = "";
             String content = line;
             if (line.startsWith("[") && line.contains("]")) {
@@ -1074,31 +1123,65 @@ public class SettingsActivity extends AppCompatActivity {
                 content = line.substring(line.indexOf("]") + 1).trim();
             }
 
-            // ===== 判断日志级别 =====
-            // 包含"错误/失败/异常/ERROR/❌"的算 ERROR，其他算 INFO
+            // 判断级别（操作日志一般都是 INFO 级别，除了错误）
+            boolean isError = content.contains("失败") || content.contains("异常") || content.contains("❌");
+            String level = isError ? "ERROR" : "INFO";
+            String levelColor = isError ? "#F5222D" : "#1890FF";
+            String icon = isError ? "✕" : "⚙";  // 操作日志用齿轮图标
+
+            opLogHtml.append("        <div class=\"log-item\">\n");
+            opLogHtml.append("            <div class=\"log-icon\" style=\"background: ").append(levelColor).append(";\">").append(icon).append("</div>\n");
+            opLogHtml.append("            <div class=\"log-content\">\n");
+            opLogHtml.append("                <div class=\"log-level\" style=\"color: ").append(levelColor).append(";\">").append(level).append("</div>\n");
+            opLogHtml.append("                <div class=\"log-text\">").append(content).append("</div>\n");
+            opLogHtml.append("            </div>\n");
+            opLogHtml.append("            <div class=\"log-time\">").append(time).append("</div>\n");
+            opLogHtml.append("        </div>\n");
+        }
+
+        if (opLogHtml.length() == 0) {
+            opLogHtml.append("        <div style=\"padding: 40px 20px; text-align: center; color: #999; font-size: 14px;\">暂无操作日志</div>\n");
+        }
+
+        // ===== 2. 构建解析日志 HTML =====
+        String playLogContent = PLAY_LOG != null ? PLAY_LOG.toString() : "";
+        String[] playLines = playLogContent.split("\n");
+        StringBuilder playLogHtml = new StringBuilder();
+
+        for (int i = playLines.length - 1; i >= 0; i--) {
+            String line = playLines[i];
+            if (line.trim().isEmpty()) continue;
+
+            // 提取时间和内容
+            String time = "";
+            String content = line;
+            if (line.startsWith("[") && line.contains("]")) {
+                time = line.substring(1, line.indexOf("]"));
+                content = line.substring(line.indexOf("]") + 1).trim();
+            }
+
+            // 判断级别
             boolean isError = content.contains("错误") || content.contains("失败")
                     || content.contains("异常") || content.contains("ERROR") || content.contains("❌");
             String level = isError ? "ERROR" : "INFO";
-            String levelColor = isError ? "#F5222D" : "#1890FF";  // ERROR 红色，INFO 蓝色
-            String icon = isError ? "✕" : "i";  // 图标字母
+            String levelColor = isError ? "#F5222D" : "#1890FF";
+            String icon = isError ? "✕" : "i";  // 解析日志用 i 图标
 
-            // ===== 拼接单条日志 HTML =====
-            logHtml.append("        <div class=\"log-item\">\n");
-            logHtml.append("            <div class=\"log-icon\" style=\"background: ").append(levelColor).append(";\">").append(icon).append("</div>\n");
-            logHtml.append("            <div class=\"log-content\">\n");
-            logHtml.append("                <div class=\"log-level\" style=\"color: ").append(levelColor).append(";\">").append(level).append("</div>\n");
-            logHtml.append("                <div class=\"log-text\">").append(content).append("</div>\n");
-            logHtml.append("            </div>\n");
-            logHtml.append("            <div class=\"log-time\">").append(time).append("</div>\n");
-            logHtml.append("        </div>\n");
+            playLogHtml.append("        <div class=\"log-item\">\n");
+            playLogHtml.append("            <div class=\"log-icon\" style=\"background: ").append(levelColor).append(";\">").append(icon).append("</div>\n");
+            playLogHtml.append("            <div class=\"log-content\">\n");
+            playLogHtml.append("                <div class=\"log-level\" style=\"color: ").append(levelColor).append(";\">").append(level).append("</div>\n");
+            playLogHtml.append("                <div class=\"log-text\">").append(content).append("</div>\n");
+            playLogHtml.append("            </div>\n");
+            playLogHtml.append("            <div class=\"log-time\">").append(time).append("</div>\n");
+            playLogHtml.append("        </div>\n");
         }
 
-        // 空日志提示
-        if (logHtml.length() == 0) {
-            logHtml.append("        <div style=\"padding: 40px 20px; text-align: center; color: #999; font-size: 14px;\">暂无日志</div>\n");
+        if (playLogHtml.length() == 0) {
+            playLogHtml.append("        <div style=\"padding: 40px 20px; text-align: center; color: #999; font-size: 14px;\">暂无解析日志</div>\n");
         }
 
-        // ===== 完整页面 =====
+        // ===== 3. 完整页面（带 tab 切换） =====
         return "<!DOCTYPE html>\n" +
                 "<html lang=\"zh-CN\">\n" +
                 "<head>\n" +
@@ -1111,9 +1194,18 @@ public class SettingsActivity extends AppCompatActivity {
                 "        body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Helvetica Neue', sans-serif; background: #fff; color: #333; font-size: 14px; line-height: 1.5; padding-bottom: 60px; }\n" +
                 "\n" +
                 "        /* ===== 头部 ===== */\n" +
-                "        .header { padding: 20px 16px 16px; }\n" +
+                "        .header { padding: 20px 16px 12px; }\n" +
                 "        .header-title { font-size: 32px; font-weight: 500; color: #000; margin-bottom: 8px; }\n" +
                 "        .header-sub { font-size: 14px; color: #999; }\n" +
+                "\n" +
+                "        /* ===== Tab 切换 ===== */\n" +
+                "        .tab-bar { display: flex; border-bottom: 1px solid #f0f0f0; padding: 0 16px; }\n" +
+                "        .tab-item { padding: 12px 20px; font-size: 15px; color: #666; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }\n" +
+                "        .tab-item.active { color: #40A9FF; border-bottom-color: #40A9FF; font-weight: 500; }\n" +
+                "\n" +
+                "        /* ===== 日志内容区 ===== */\n" +
+                "        .log-panel { display: none; }\n" +
+                "        .log-panel.active { display: block; }\n" +
                 "\n" +
                 "        /* ===== 日志列表 ===== */\n" +
                 "        .log-list { padding: 0 16px; }\n" +
@@ -1136,137 +1228,4 @@ public class SettingsActivity extends AppCompatActivity {
                 "    <!-- ===== 头部 ===== -->\n" +
                 "    <div class=\"header\">\n" +
                 "        <div class=\"header-title\">我的电视</div>\n" +
-                "        <div class=\"header-sub\">http://" + getDeviceIPAddress() + ":" + PORT + "</div>\n" +
-                "    </div>\n" +
-                "\n" +
-                "    <!-- ===== 日志列表 ===== -->\n" +
-                "    <div class=\"log-list\">\n" +
-                logHtml.toString() +
-                "    </div>\n" +
-                "\n" +
-                "    <!-- ===== 底部导航 ===== -->\n" +
-                "    <div class=\"bottom-nav\">\n" +
-                "        <a href=\"/\" class=\"nav-item\">\n" +
-                "            <div class=\"nav-icon\">🖥️</div>\n" +
-                "            <div>配置</div>\n" +
-                "        </a>\n" +
-                "        <a href=\"/log\" class=\"nav-item active\">\n" +
-                "            <div class=\"nav-icon\">📋</div>\n" +
-                "            <div>日志</div>\n" +
-                "        </a>\n" +
-                "    </div>\n" +
-                "\n" +
-                "    <!-- ===== 自动刷新（每5秒） ===== -->\n" +
-                "    <script>\n" +
-                "        setTimeout(function() { location.reload(); }, 5000);\n" +
-                "    </script>\n" +
-                "\n" +
-                "</body>\n" +
-                "</html>";
-    }
-
-    /**
-     * 构建提交成功页面
-     * 用户提交配置后显示的成功提示页
-     */
-    private String buildSuccessPage() {
-        return "<!DOCTYPE html>\n" +
-                "<html lang=\"zh-CN\">\n" +
-                "<head>\n" +
-                "    <meta charset=\"UTF-8\">\n" +
-                "    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n" +
-                "    <title>保存成功</title>\n" +
-                "    <style>\n" +
-                "        * { margin: 0; padding: 0; box-sizing: border-box; }\n" +
-                "        body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif; background: #f5f5f5; padding: 20px; display: flex; justify-content: center; align-items: center; min-height: 100vh; }\n" +
-                "        .container { max-width: 400px; background: white; border-radius: 12px; padding: 32px 24px; text-align: center; box-shadow: 0 2px 12px rgba(0,0,0,0.1); }\n" +
-                "        .icon { font-size: 48px; margin-bottom: 16px; }\n" +
-                "        h2 { font-size: 20px; color: #333; margin-bottom: 12px; }\n" +
-                "        p { font-size: 14px; color: #666; margin-bottom: 24px; }\n" +
-                "        a { display: inline-block; padding: 10px 24px; background: #40A9FF; color: white; text-decoration: none; border-radius: 8px; font-size: 14px; }\n" +
-                "    </style>\n" +
-                "</head>\n" +
-                "<body>\n" +
-                "    <div class=\"container\">\n" +
-                "        <div class=\"icon\">✅</div>\n" +
-                "        <h2>配置保存成功！</h2>\n" +
-                "        <p>直播源和节目单已更新，电视端正在刷新...</p>\n" +
-                "        <a href=\"/\">返回继续修改</a>\n" +
-                "    </div>\n" +
-                "</body>\n" +
-                "</html>";
-    }
-
-    // ====================== onDestroy 生命周期 ======================
-
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        logOperation("【设置】关闭设置页面");
-        // 关闭 HTTP 服务器，释放端口
-        try {
-            if (serverSocket != null) {
-                serverSocket.close();
-                logOperation("【网页后台】服务器已关闭");
-            }
-        } catch (Exception ignored) {}
-    }
-
-    // ====================== 历史记录列表适配器 ======================
-
-    /**
-     * 历史记录列表的适配器
-     * 用于"多订阅源"和"多节目单"的列表对话框
-     *
-     * 三种状态（和分组列表一致）：
-     * 1. 选中状态：蓝色文字 + 浅蓝色背景 + 加粗
-     * 2. 焦点状态：蓝色文字 + 稍深一点的蓝色背景
-     * 3. 未选中状态：白色文字 + 透明背景
-     */
-    private static class SettingsAdapter extends ArrayAdapter<String> {
-        private final Context context;
-        private final List<String> items;
-        /** 当前选中的位置 */
-        private int selectedPosition = -1;
-
-        public SettingsAdapter(Context context, List<String> items) {
-            super(context, R.layout.item_settings, items);
-            this.context = context;
-            this.items = items;
-        }
-
-        /**
-         * 设置选中位置并刷新列表
-         */
-        public void setSelectedPosition(int position) {
-            selectedPosition = position;
-            notifyDataSetChanged();
-        }
-
-        @Override
-        public View getView(int position, View convertView, ViewGroup parent) {
-            if (convertView == null) {
-                convertView = LayoutInflater.from(context).inflate(R.layout.item_settings, parent, false);
-            }
-
-            TextView tv = convertView.findViewById(R.id.tv_setting_item);
-            tv.setText(items.get(position));
-
-            if (position == selectedPosition) {
-                // ✅ 选中状态：蓝色文字 + 浅蓝色背景（和分组列表一样）
-                tv.setTextColor(Color.parseColor("#40A9FF"));
-                convertView.setBackgroundColor(0x3340A9FF);
-            } else if (convertView.isFocused()) {
-                // ✅ 焦点状态：蓝色文字 + 稍深一点的蓝色背景
-                tv.setTextColor(Color.parseColor("#40A9FF"));
-                convertView.setBackgroundColor(0x4440A9FF);
-            } else {
-                // ✅ 未选中状态：白色文字 + 透明背景
-                tv.setTextColor(Color.WHITE);
-                convertView.setBackgroundColor(Color.TRANSPARENT);
-            }
-
-            return convertView;
-        }
-    }
-}
+                "        <div class=\"header

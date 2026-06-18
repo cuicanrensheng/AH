@@ -5,6 +5,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.graphics.Color;
+import android.graphics.Typeface;
 import android.text.TextUtils;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -45,7 +46,10 @@ public class EpgManagerWrapper {
     public EpgManagerWrapper(Context context, ListView lvEpg) {
         this.context = context;
         this.lvEpg = lvEpg;
-        lvEpg.setItemsCanFocus(true);
+        // ✅ 改成 false，item 不需要获取焦点
+        lvEpg.setItemsCanFocus(false);
+        lvEpg.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
+
         lvEpg.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int pos, long id) {
@@ -57,6 +61,7 @@ public class EpgManagerWrapper {
             @Override
             public void onNothingSelected(AdapterView<?> parent) {}
         });
+
         registerReminderReceiver();
     }
 
@@ -81,7 +86,6 @@ public class EpgManagerWrapper {
                 SettingsActivity.log("【EPG包装】获取EPG异常：" + e.getMessage());
                 epgList = new ArrayList<>();
             }
-
             SettingsActivity.log("【EPG包装】📋 原始节目数：" + epgList.size());
             if (epgList.size() > 0) {
                 Set<String> dayNames = new HashSet<>();
@@ -96,13 +100,11 @@ public class EpgManagerWrapper {
                 // ✅ 计算目标日期 + 对应的周几（全部双重兼容）
                 String targetDay;
                 String targetWeekDay = null;
-
                 Calendar cal = Calendar.getInstance();
                 cal.add(Calendar.DAY_OF_YEAR, dateIndex);
                 int w = cal.get(Calendar.DAY_OF_WEEK);
                 String[] weekMap = {"周日", "周一", "周二", "周三", "周四", "周五", "周六"};
                 String weekDay = weekMap[w - 1];
-
                 if (dateIndex == 0) {
                     targetDay = "今天";
                     targetWeekDay = weekDay;
@@ -115,7 +117,6 @@ public class EpgManagerWrapper {
                 } else {
                     targetDay = weekDay;
                 }
-
                 SettingsActivity.log("【EPG包装】🎯 目标日期：" + targetDay
                         + "，对应周几：" + weekDay
                         + (targetWeekDay != null ? "，兼容匹配：" + targetDay + " 或 " + targetWeekDay : ""));
@@ -125,18 +126,15 @@ public class EpgManagerWrapper {
                 for (Channel.EpgItem item : epgList) {
                     if (item.dayName == null) continue;
                     String dayName = item.dayName.trim();
-
                     boolean match = targetDay.equals(dayName);
                     if (!match && targetWeekDay != null) {
                         match = targetWeekDay.equals(dayName);
                     }
-
                     if (match) {
                         data.add(item);
                         matchCount++;
                     }
                 }
-
                 SettingsActivity.log("【EPG包装】✅ 筛选后节目数：" + matchCount);
 
                 // 按时间排序
@@ -150,7 +148,6 @@ public class EpgManagerWrapper {
                     if (!TextUtils.isEmpty(curr.time) && curr.time.contains("-")) {
                         curr.time = curr.time.split("-")[0].trim();
                     }
-
                     if (TextUtils.isEmpty(epgEndTimeMap.get(curr))) {
                         if (i + 1 < data.size()) {
                             Channel.EpgItem next = data.get(i + 1);
@@ -159,7 +156,6 @@ public class EpgManagerWrapper {
                             epgEndTimeMap.put(curr, addOneHour(curr.time));
                         }
                     }
-
                     curr.isPlaying = false;
                     String currEnd = epgEndTimeMap.get(curr);
                     if (isTimeBetween(now, curr.time, currEnd)) {
@@ -168,7 +164,6 @@ public class EpgManagerWrapper {
                         playingIndex = i;
                     }
                 }
-
                 if (playing != null && playingIndex > 0) {
                     data.remove(playing);
                     data.add(0, playing);
@@ -293,14 +288,29 @@ public class EpgManagerWrapper {
             holder.tv_time.setText(item.time + "-" + endTime);
             holder.tv_title.setText(item.title);
 
-            if (position == selectedPosition || item.isPlaying) {
+            boolean isSelected = (position == selectedPosition || item.isPlaying);
+
+            if (isSelected) {
+                // ✅ 选中状态：蓝色文字 + 标题加粗 + 浅蓝色背景
                 holder.tv_dayName.setTextColor(Color.parseColor("#40A9FF"));
                 holder.tv_time.setTextColor(Color.parseColor("#40A9FF"));
                 holder.tv_title.setTextColor(Color.parseColor("#40A9FF"));
+                holder.tv_title.setTypeface(null, Typeface.BOLD);
+                convertView.setBackgroundColor(0x3340A9FF);
+            } else if (convertView.isFocused()) {
+                // ✅ 焦点状态：蓝色文字 + 稍深一点的蓝色背景
+                holder.tv_dayName.setTextColor(Color.parseColor("#40A9FF"));
+                holder.tv_time.setTextColor(Color.parseColor("#40A9FF"));
+                holder.tv_title.setTextColor(Color.parseColor("#40A9FF"));
+                holder.tv_title.setTypeface(null, Typeface.NORMAL);
+                convertView.setBackgroundColor(0x4440A9FF);
             } else {
+                // ✅ 未选中状态：原来的颜色 + 透明背景
                 holder.tv_dayName.setTextColor(Color.WHITE);
                 holder.tv_time.setTextColor(Color.LTGRAY);
                 holder.tv_title.setTextColor(Color.WHITE);
+                holder.tv_title.setTypeface(null, Typeface.NORMAL);
+                convertView.setBackgroundColor(Color.TRANSPARENT);
             }
 
             String key = currentChannel.getName() + "_" + position;
@@ -329,18 +339,15 @@ public class EpgManagerWrapper {
                         startCal.set(Calendar.HOUR_OF_DAY, Integer.parseInt(startHm[0].trim()));
                         startCal.set(Calendar.MINUTE, Integer.parseInt(startHm[1].trim()));
                         startCal.set(Calendar.SECOND, 0);
-
                         String[] endHm = endTime.split(":");
                         Calendar endCal = (Calendar) playDay.clone();
                         endCal.set(Calendar.HOUR_OF_DAY, Integer.parseInt(endHm[0].trim()));
                         endCal.set(Calendar.MINUTE, Integer.parseInt(endHm[1].trim()));
                         endCal.set(Calendar.SECOND, 0);
-
                         String startStr = sdfFull.format(startCal.getTime());
                         String endStr = sdfFull.format(endCal.getTime());
                         String catchUrl = liveUrl.contains("PLTV") ? liveUrl.replace("PLTV", "TVOD") : liveUrl;
                         catchUrl += catchUrl.contains("?") ? "&playseek=" + startStr + "-" + endStr : "?playseek=" + startStr + "-" + endStr;
-
                         ((MainActivity) ctx).mPlayerManager.playUrl(catchUrl);
                         Toast.makeText(ctx, "回看：" + item.title, Toast.LENGTH_SHORT).show();
                     } catch (Exception e) {

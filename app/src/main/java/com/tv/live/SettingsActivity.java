@@ -198,25 +198,34 @@ public class SettingsActivity extends AppCompatActivity {
         // ✅ 操作日志（新增）
         findViewById(R.id.log_operation).setOnClickListener(v -> showOperationLogDialog());
 
-        // ====================== 开机自启 ======================
+        // ====================== ✅ 开机自启（点击整个item切换） ======================
         sw_boot.setChecked(sp.getBoolean("boot_auto_start", false));
-        sw_boot.setOnCheckedChangeListener((buttonView, isChecked) -> {
+        // 点击整个 item 切换开关
+        findViewById(R.id.item_boot).setOnClickListener(v -> {
+            boolean isChecked = !sw_boot.isChecked();
+            sw_boot.setChecked(isChecked);
             sp.edit().putBoolean("boot_auto_start", isChecked).apply();
             logOperation("【设置】开机自启" + (isChecked ? "已开启" : "已关闭"));
             Toast.makeText(this, "开机自启" + (isChecked ? "已开启" : "已关闭"), Toast.LENGTH_SHORT).show();
         });
 
-        // ====================== EPG开关 ======================
+        // ====================== ✅ 节目单开关（点击整个item切换） ======================
         sw_epg.setChecked(sp.getBoolean("epg_enable", true));
-        sw_epg.setOnCheckedChangeListener((buttonView, isChecked) -> {
+        // 点击整个 item 切换开关
+        findViewById(R.id.item_epg).setOnClickListener(v -> {
+            boolean isChecked = !sw_epg.isChecked();
+            sw_epg.setChecked(isChecked);
             sp.edit().putBoolean("epg_enable", isChecked).apply();
             logOperation("【设置】节目单" + (isChecked ? "已开启" : "已关闭"));
             Toast.makeText(this, "节目单" + (isChecked ? "已开启" : "已关闭"), Toast.LENGTH_SHORT).show();
         });
 
-        // ====================== ✅ 自动更新源（修复：添加AlarmManager定时任务） ======================
+        // ====================== ✅ 自动更新源（点击整个item切换） ======================
         sw_auto_update.setChecked(sp.getBoolean("auto_update_source", true));
-        sw_auto_update.setOnCheckedChangeListener((buttonView, isChecked) -> {
+        // 点击整个 item 切换开关
+        findViewById(R.id.item_auto_update).setOnClickListener(v -> {
+            boolean isChecked = !sw_auto_update.isChecked();
+            sw_auto_update.setChecked(isChecked);
             sp.edit().putBoolean("auto_update_source", isChecked).apply();
 
             if (isChecked) {
@@ -236,24 +245,30 @@ public class SettingsActivity extends AppCompatActivity {
             setAutoUpdateAlarm();
         }
 
-        // ====================== 换台反转 ======================
+        // ====================== ✅ 换台反转（点击整个item切换） ======================
         sw_reverse.setChecked(sp.getBoolean("channel_reverse", false));
-        sw_reverse.setOnCheckedChangeListener((buttonView, isChecked) -> {
+        // 点击整个 item 切换开关
+        findViewById(R.id.item_reverse).setOnClickListener(v -> {
+            boolean isChecked = !sw_reverse.isChecked();
+            sw_reverse.setChecked(isChecked);
             sp.edit().putBoolean("channel_reverse", isChecked).apply();
             logOperation("【设置】换台反转" + (isChecked ? "已开启" : "已关闭"));
             Toast.makeText(this, "换台反转" + (isChecked ? "已开启" : "已关闭"), Toast.LENGTH_SHORT).show();
         });
 
-        // ====================== 数字选台 ======================
+        // ====================== ✅ 数字选台（点击整个item切换） ======================
         sw_num_channel.setChecked(sp.getBoolean("number_channel_enable", true));
-        sw_num_channel.setOnCheckedChangeListener((buttonView, isChecked) -> {
+        // 点击整个 item 切换开关
+        findViewById(R.id.item_num_channel).setOnClickListener(v -> {
+            boolean isChecked = !sw_num_channel.isChecked();
+            sw_num_channel.setChecked(isChecked);
             sp.edit().putBoolean("number_channel_enable", isChecked).apply();
             logOperation("【设置】数字选台" + (isChecked ? "已开启" : "已关闭"));
             Toast.makeText(this, "数字选台" + (isChecked ? "已开启" : "已关闭"), Toast.LENGTH_SHORT).show();
         });
 
-        // ====================== 检查更新 ======================
-        findViewById(R.id.btn_check_update).setOnClickListener(v -> {
+        // ====================== ✅ 检查更新（点击整个item） ======================
+        findViewById(R.id.item_check_update).setOnClickListener(v -> {
             Toast.makeText(this, "已是最新版本", Toast.LENGTH_SHORT).show();
         });
 

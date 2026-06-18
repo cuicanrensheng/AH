@@ -1229,3 +1229,61 @@ public class SettingsActivity extends AppCompatActivity {
                 "    <div class=\"header\">\n" +
                 "        <div class=\"header-title\">我的电视</div>\n" +
                 "        <div class=\"header
+                -sub\">http://" + getDeviceIPAddress() + ":" + PORT + "</div>\n" +
+                "    </div>\n" +
+                "\n" +
+                "    <!-- ===== Tab 切换 ===== -->\n" +
+                "    <div class=\"tab-bar\">\n" +
+                "        <div class=\"tab-item active\" onclick=\"switchTab('operation')\">操作日志</div>\n" +
+                "        <div class=\"tab-item\" onclick=\"switchTab('play')\">解析日志</div>\n" +
+                "    </div>\n" +
+                "\n" +
+                "    <!-- ===== 操作日志面板 ===== -->\n" +
+                "    <div id=\"panel-operation\" class=\"log-panel active\">\n" +
+                "        <div class=\"log-list\">\n" +
+                opLogHtml.toString() +
+                "        </div>\n" +
+                "    </div>\n" +
+                "\n" +
+                "    <!-- ===== 解析日志面板 ===== -->\n" +
+                "    <div id=\"panel-play\" class=\"log-panel\">\n" +
+                "        <div class=\"log-list\">\n" +
+                playLogHtml.toString() +
+                "        </div>\n" +
+                "    </div>\n" +
+                "\n" +
+                "    <!-- ===== 底部导航 ===== -->\n" +
+                "    <div class=\"bottom-nav\">\n" +
+                "        <a href=\"/\" class=\"nav-item\">\n" +
+                "            <div class=\"nav-icon\">🖥️</div>\n" +
+                "            <div>配置</div>\n" +
+                "        </a>\n" +
+                "        <a href=\"/log\" class=\"nav-item active\">\n" +
+                "            <div class=\"nav-icon\">📋</div>\n" +
+                "            <div>日志</div>\n" +
+                "        </a>\n" +
+                "    </div>\n" +
+                "\n" +
+                "    <!-- ===== Tab 切换脚本 ===== -->\n" +
+                "    <script>\n" +
+                "        function switchTab(tabName) {\n" +
+                "            // 切换 tab 高亮\n" +
+                "            document.querySelectorAll('.tab-item').forEach(function(item) {\n" +
+                "                item.classList.remove('active');\n" +
+                "            });\n" +
+                "            event.target.classList.add('active');\n" +
+                "\n" +
+                "            // 切换面板显示\n" +
+                "            document.querySelectorAll('.log-panel').forEach(function(panel) {\n" +
+                "                panel.classList.remove('active');\n" +
+                "            });\n" +
+                "            document.getElementById('panel-' + tabName).classList.add('active');\n" +
+                "        }\n" +
+                "\n" +
+                "        // 每5秒自动刷新\n" +
+                "        setTimeout(function() { location.reload(); }, 5000);\n" +
+                "    </script>\n" +
+                "\n" +
+                "</body>\n" +
+                "</html>";
+    }

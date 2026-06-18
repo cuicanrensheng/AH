@@ -1,6 +1,8 @@
 package com.tv.live.widget;
+
 import android.content.Context;
 import android.graphics.Color;
+import android.graphics.Typeface;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.AdapterView;
@@ -15,7 +17,6 @@ public class ChannelListManager {
     private final ListView lvChannelList;
     private int selectedPosition = 0;
 
-    // 点击回调
     public interface OnChannelClickListener {
         void onChannelClick(int position);
     }
@@ -27,22 +28,23 @@ public class ChannelListManager {
 
     public ChannelListManager(Context context, ListView lvChannelList) {
         this.lvChannelList = lvChannelList;
-        lvChannelList.setItemsCanFocus(true);
+        // ✅ 改成 false，item 不需要获取焦点
+        lvChannelList.setItemsCanFocus(false);
 
         // 点击事件
         lvChannelList.setOnItemClickListener((parent, view, position, id) -> {
-            selectedPosition = position;          // 【修复】点击后更新选中位置
-            ((ArrayAdapter<?>)parent.getAdapter()).notifyDataSetChanged(); // 刷新颜色
+            selectedPosition = position;
+            ((ArrayAdapter<?>)parent.getAdapter()).notifyDataSetChanged();
             if (onChannelClickListener != null) {
                 onChannelClickListener.onChannelClick(position);
             }
         });
 
-        // 焦点选中
+        // ✅ 遥控器焦点选中时同步更新位置
         lvChannelList.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int pos, long id) {
-                selectedPosition = pos;            // 【修复】焦点选中同步更新位置
+                selectedPosition = pos;
                 ((ArrayAdapter<?>) parent.getAdapter()).notifyDataSetChanged();
             }
             @Override
@@ -55,16 +57,31 @@ public class ChannelListManager {
         if (channelSourceList == null || channelSourceList.isEmpty()) return;
         List<String> names = new ArrayList<>();
         for (Channel c : channelSourceList) names.add(c.getName());
-        selectedPosition = currentPlayIndex;      // 【修复】初始选中当前播放台
+        selectedPosition = currentPlayIndex;
 
         ArrayAdapter<String> adapter = new ArrayAdapter<String>(lvChannelList.getContext(), android.R.layout.simple_list_item_1, names) {
             @Override
             public View getView(int position, View convertView, ViewGroup parent) {
                 View view = super.getView(position, convertView, parent);
                 TextView tv = view.findViewById(android.R.id.text1);
-                tv.setTextColor(Color.WHITE);
+                tv.setTextSize(16);
+                tv.setPadding(20, 15, 20, 15);
+
                 if (position == selectedPosition) {
-                    tv.setTextColor(Color.parseColor("#40A9FF")); // 高亮选中项
+                    // ✅ 选中状态：蓝色文字 + 加粗 + 浅蓝色背景
+                    tv.setTextColor(Color.parseColor("#40A9FF"));
+                    tv.setTypeface(null, Typeface.BOLD);
+                    tv.setBackgroundColor(0x3340A9FF);
+                } else if (view.isFocused()) {
+                    // ✅ 焦点状态：蓝色文字 + 稍深一点的蓝色背景
+                    tv.setTextColor(Color.parseColor("#40A9FF"));
+                    tv.setTypeface(null, Typeface.NORMAL);
+                    tv.setBackgroundColor(0x4440A9FF);
+                } else {
+                    // ✅ 未选中状态：白色文字 + 常规 + 透明背景
+                    tv.setTextColor(Color.WHITE);
+                    tv.setTypeface(null, Typeface.NORMAL);
+                    tv.setBackgroundColor(Color.TRANSPARENT);
                 }
                 return view;
             }
@@ -78,7 +95,6 @@ public class ChannelListManager {
         if (channelSourceList == null || channelSourceList.isEmpty()) return;
         List<String> names = new ArrayList<>();
         int realIndex = 0;
-
         for (int i = 0; i < channelSourceList.size(); i++) {
             Channel c = channelSourceList.get(i);
             if (group == null || group.isEmpty() || group.equals(c.getGroup())) {
@@ -88,17 +104,31 @@ public class ChannelListManager {
                 }
             }
         }
-
-        selectedPosition = realIndex;              // 【修复】分组切换后正确高亮
+        selectedPosition = realIndex;
 
         ArrayAdapter<String> adapter = new ArrayAdapter<String>(lvChannelList.getContext(), android.R.layout.simple_list_item_1, names) {
             @Override
             public View getView(int position, View convertView, ViewGroup parent) {
                 View view = super.getView(position, convertView, parent);
                 TextView tv = view.findViewById(android.R.id.text1);
-                tv.setTextColor(Color.WHITE);
+                tv.setTextSize(16);
+                tv.setPadding(20, 15, 20, 15);
+
                 if (position == selectedPosition) {
+                    // ✅ 选中状态：蓝色文字 + 加粗 + 浅蓝色背景
                     tv.setTextColor(Color.parseColor("#40A9FF"));
+                    tv.setTypeface(null, Typeface.BOLD);
+                    tv.setBackgroundColor(0x3340A9FF);
+                } else if (view.isFocused()) {
+                    // ✅ 焦点状态：蓝色文字 + 稍深一点的蓝色背景
+                    tv.setTextColor(Color.parseColor("#40A9FF"));
+                    tv.setTypeface(null, Typeface.NORMAL);
+                    tv.setBackgroundColor(0x4440A9FF);
+                } else {
+                    // ✅ 未选中状态：白色文字 + 常规 + 透明背景
+                    tv.setTextColor(Color.WHITE);
+                    tv.setTypeface(null, Typeface.NORMAL);
+                    tv.setBackgroundColor(Color.TRANSPARENT);
                 }
                 return view;
             }

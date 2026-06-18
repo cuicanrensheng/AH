@@ -4,19 +4,15 @@
     android:layout_height="wrap_content"
     android:gravity="center_vertical"
     android:padding="8dp"
-    android:background="@drawable/item_settings_bg"
+    android:background="@drawable/setting_item_bg"
     android:focusable="true"
     android:clickable="true">
-
-    <!-- 条目序号 1.、2.、3. -->
     <TextView
         android:id="@+id/tv_index"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:textColor="@color/item_settings_text"
+        android:textColor="@color/setting_item_text"
         android:textSize="14sp"/>
-
-    <!-- 源链接文本 -->
     <TextView
         android:id="@+id/tv_setting_item"
         android:layout_width="0dp"
@@ -24,10 +20,8 @@
         android:layout_height="wrap_content"
         android:singleLine="true"
         android:ellipsize="middle"
-        android:textColor="@color/item_settings_text"
+        android:textColor="@color/setting_item_text"
         android:textSize="13sp"/>
-
-    <!-- 单行删除按钮 -->
     <Button
         android:id="@+id/btn_delete"
         android:layout_width="wrap_content"
@@ -36,5 +30,4 @@
         android:textSize="12sp"
         android:focusable="false"
         android:clickable="false"/>
-
 </LinearLayout>

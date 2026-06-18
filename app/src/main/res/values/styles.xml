@@ -1,12 +1,59 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- 你原来的全屏主题，保留不变 -->
+    <!-- 你原来的全屏主题，保留不变，新增全面屏适配 -->
     <!-- 必须继承 AppCompatActivity 的主题 -->
     <style name="Theme.TVLive.NoTitle" parent="Theme.AppCompat.Light.NoActionBar">
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
         <item name="android:windowFullscreen">true</item>
         <item name="android:windowContentOverlay">@null</item>
+
+        <!-- ================================================ -->
+        <!-- ✅ 全面屏适配（刘海屏/挖孔屏）- 主题级配置 -->
+        <!-- ================================================ -->
+
+        <!--
+            【windowLayoutInDisplayCutoutMode】
+            控制内容是否延伸到刘海/挖孔区域
+
+            可选值：
+            - default          : 默认模式，避开刘海区域
+            - shortEdges       : 短边的刘海区域允许内容延伸（Android 9+）
+            - always           : 所有边的刘海区域都允许内容延伸（Android 12+）
+
+            【为什么用 always？】
+            大多数手机的摄像头在顶部（物理长边的一端），横屏时摄像头就到了长边位置。
+            shortEdges 模式只允许内容延伸到"物理短边"的刘海，横屏时效果不好。
+            always 模式允许内容延伸到所有边的刘海，横屏时摄像头区域也能显示内容。
+
+            【兼容性】
+            always 是 Android 12（API 31）才有的，低版本会自动忽略，不影响运行。
+            代码里也做了版本判断，双保险。
+        -->
+        <item name="android:windowLayoutInDisplayCutoutMode">always</item>
+
+        <!--
+            【透明状态栏和导航栏】
+            让状态栏和导航栏变成透明，内容才能显示在它们后面
+        -->
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+
+        <!--
+            【半透明状态栏和导航栏】
+            兼容 Android 4.4+ 的半透明效果
+            虽然现在高版本用上面的透明方式更好，但加上这个更保险
+        -->
+        <item name="android:windowTranslucentStatus">true</item>
+        <item name="android:windowTranslucentNavigation">true</item>
+
+        <!--
+            【内容延伸到系统栏后面】
+            让布局不考虑系统栏的位置，真正实现全屏
+            配合代码里的 setDecorFitsSystemWindows(false) 使用
+        -->
+        <item name="android:fitsSystemWindows">false</item>
+
     </style>
 
     <!-- 【新增】SettingsActivity 用的透明主题 -->

@@ -627,14 +627,18 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * 从网络加载EPG（后台刷新）
+     * ✅ 从网络加载EPG（后台刷新）
+     *
+     * 【注意】这里用 EpgManager.getInstance(this) 传入 Context
+     * 第一次调用时会初始化 EpgManager 和 CacheManager
      */
     private void loadEpg() {
         if (!epg_enable) return;
 
         log("【EPG】开始加载节目单...");
-        EpgManager.getInstance().setEpgUrl(UrlConfig.EPG_URL);
-        EpgManager.getInstance().loadEpg(new Runnable() {
+        // ✅ 改成带 this 的版本，传入 Context 初始化
+        EpgManager.getInstance(this).setEpgUrl(UrlConfig.EPG_URL);
+        EpgManager.getInstance(this).loadEpg(new Runnable() {
             @Override
             public void run() {
                 runOnUiThread(new Runnable() {
@@ -892,8 +896,144 @@ public class MainActivity extends AppCompatActivity {
         // 直接交给播放器播放
         mPlayerManager.playUrl(playUrl);
     }
- }
+
     /**
      * 显示频道号（延迟3秒自动隐藏）
      * @param num 频道号
      */
+    public void showChannelNum(int num) {
+        tv_channel_num.setText(String.valueOf(num));
+        tv_channel_num.setVisibility(View.VISIBLE);
+        new Handler().postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                tv_channel_num.setVisibility(View.GONE);
+            }
+        }, 3000);
+    }
+
+    /**
+     * 初始化频道列表点击事件
+     * 点击频道列表项时播放对应频道并关闭面板
+     */
+    private void initListViewClick() {
+        ListView lvChannelList = findViewById(R.id.lv_channel_list);
+        lvChannelList.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+            @Override
+            public void onItemClick(AdapterView<?> p, View v, int pos, long id) {
+                if (!currentGroupChannelList.isEmpty() && pos < currentGroupChannelList.size()) {
+                    // 分组模式下：从分组频道列表中找到对应频道
+                    Channel selectedChannel = currentGroupChannelList.get(pos);
+                    int globalIndex = channelSourceList.indexOf(selectedChannel);
+                    if (globalIndex != -1) {
+                        log("【列表点击】切换到全局索引：" + globalIndex);
+                        playChannel(globalIndex);
+                        togglePanel();
+                    }
+                } else {
+                    // 非分组模式下：直接按索引播放
+                    playChannel(pos);
+                    togglePanel();
+                }
+            }
+        });
+    }
+
+    /**
+     * 切换面板显示/隐藏
+     *
+     * 【已修改】打开面板前先恢复分组筛选状态
+     * 之前的问题：每次打开面板都传全部频道，导致分组筛选丢失
+     * 现在的修复：打开面板前先根据当前分组设置频道列表
+     */
+    public void togglePanel() {
+        // 打开面板前，先根据当前分组设置频道列表
+        // 确保面板打开后显示的是用户之前选中的分组，而不是全部频道
+        if (!TextUtils.isEmpty(currentGroupName) && !currentGroupChannelList.isEmpty()) {
+            // 分组筛选模式下：保持分组筛选
+            channelListManager.setChannelsByGroup(channelSourceList, currentGroupName, currentPlayIndex);
+        } else {
+            // 非分组模式：显示全部频道
+            channelListManager.setChannels(channelSourceList, currentPlayIndex);
+        }
+
+        // 切换面板显示/隐藏
+        panelManager.toggle(channelSourceList, currentPlayIndex, dateListManager);
+    }
+
+    /**
+     * 打开设置页面
+     */
+    public void openSettings() {
+        startActivity(new Intent(this, SettingsActivity.class));
+    }
+
+    /**
+     * 接收远程配置更新（自定义直播源/EPG地址）
+     * @param liveUrl 自定义直播源地址
+     * @param epgUrl 自定义EPG地址
+     */
+    public void onReceiveConfig(final String liveUrl, final String epgUrl) {
+        AppConfig config = AppConfig.getInstance(this);
+        config.setCustomUrls(liveUrl, epgUrl);
+        if (liveUrl != null) UrlConfig.LIVE_URL = liveUrl;
+        if (epgUrl != null) UrlConfig.EPG_URL = epgUrl;
+
+        log("【远程配置】更新直播源：" + liveUrl);
+        log("【远程配置】更新EPG：" + epgUrl);
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                hasPlayedWithCache = false;
+                loadLiveAndEpg();
+            }
+        });
+    }
+
+    /**
+     * 按键事件处理
+     * 优先交给按键事件管理器处理
+     */
+    @Override
+    public boolean onKeyDown(int keyCode, KeyEvent event) {
+        if (keyEventManager.dispatchKey(keyCode)) return true;
+        return super.onKeyDown(keyCode, event);
+    }
+
+    /**
+     * Activity暂停：播放器切后台
+     */
+    @Override
+    protected void onPause() {
+        super.onPause();
+        log("【主页】onPause -> 切到后台");
+        if (mPlayerManager != null)
+            mPlayerManager.onBackground();
+    }
+
+    /**
+     * Activity恢复：播放器切前台，重新加载设置
+     */
+    @Override
+    protected void onResume() {
+        super.onResume();
+        log("【主页】onResume -> 回到前台");
+        loadSettings();
+        screenRatioManager.apply();
+        if (mPlayerManager != null)
+            mPlayerManager.onForeground();
+    }
+
+    /**
+     * Activity销毁：释放资源，注销广播
+     */
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        log("【主页】onDestroy -> 页面销毁");
+        try { unregisterReceiver(toggleControllerReceiver); } catch (Exception ignored) {}
+        try { unregisterReceiver(refreshReceiver); } catch (Exception ignored) {}
+        mPlayerManager.release();
+        mInstance = null;
+    }
+}

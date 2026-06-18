@@ -17,7 +17,6 @@ import com.google.android.exoplayer2.Player;
 import com.google.android.exoplayer2.source.ProgressiveMediaSource;
 import com.google.android.exoplayer2.source.hls.HlsMediaSource;
 import com.google.android.exoplayer2.ui.PlayerView;
-import com.google.android.exoplayer2.upstream.DefaultHttpDataSource;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.HashMap;
@@ -28,12 +27,15 @@ import java.util.Map;
  * 播放器管理类（单例模式）
  * 基于ExoPlayer封装，提供直播播放、状态监听、画质切换、Header设置等功能
  *
+ * 【重定向日志版】
+ * 使用 RedirectLoggingHttpDataSource 替代 DefaultHttpDataSource
+ * 每次HTTP请求和重定向都会打印详细日志，方便调试虎牙/斗鱼等直播源
+ *
  * 【稳定版 - 基于老版本优化】
- * 1. 用回 DefaultHttpDataSource，保证稳定性（老版本能正常播放虎牙）
- * 2. 简化Header，只保留必要的，避免触发防盗链
- * 3. 智能识别平台：虎牙用虎牙Referer，斗鱼用斗鱼Referer
- * 4. 修复监听器重复添加的bug（只添加一次）
- * 5. 保留自动重定向支持
+ * 1. 简化Header，只保留必要的，避免触发防盗链
+ * 2. 智能识别平台：虎牙用虎牙Referer，斗鱼用斗鱼Referer
+ * 3. 修复监听器重复添加的bug（只添加一次）
+ * 4. 保留自动重定向支持
  */
 public class TVPlayerManager {
     private static final String TAG = "TVPlayerLog";
@@ -183,7 +185,8 @@ public class TVPlayerManager {
         renderersFactory.setEnableDecoderFallback(true);
 
         // 初始化缓冲区配置
-        // 最小缓冲3秒，最大30秒，开始播放缓冲1.5秒，缓冲后重试3秒
+        // 最小缓冲3秒，最大15秒，开始播放缓冲0.5秒，缓冲后重试2秒
+        // 注意：minBufferMs 必须 >= bufferForPlaybackAfterRebufferMs，否则会崩溃
         DefaultLoadControl loadControl = new DefaultLoadControl.Builder()
                 .setBufferDurationsMs(3000, 15000, 500, 2000)
                 .build();
@@ -367,11 +370,15 @@ public class TVPlayerManager {
     }
 
     /**
-     * ✅ 播放指定URL（核心播放方法）
+     * ✅ 播放指定URL（核心播放方法 - 重定向日志版）
      *
      * 【说明】
-     * 用回系统自带的 DefaultHttpDataSource，稳定可靠
-     * 自动跟随重定向，Header全程生效
+     * 使用 RedirectLoggingHttpDataSource 替代 DefaultHttpDataSource
+     * 每次HTTP请求和重定向都会打印详细日志，方便调试
+     *
+     * 【日志输出位置】
+     * 1. Logcat（TAG: RedirectLog）
+     * 2. 设置页面的日志查看功能（SettingsActivity）
      *
      * @param url 播放地址
      */
@@ -387,10 +394,13 @@ public class TVPlayerManager {
             player.stop();
             player.clearMediaItems();
 
-            // ===== 用系统自带的 DefaultHttpDataSource =====
-            // 稳定可靠，老版本就是用的这个，能正常播放虎牙
-            // setAllowCrossProtocolRedirects：支持跨协议重定向（http→https）
-            DefaultHttpDataSource.Factory httpFactory = new DefaultHttpDataSource.Factory()
+            // ================================================
+            // ✅ 使用带重定向日志的数据源
+            // ================================================
+            // 替代原来的 DefaultHttpDataSource.Factory
+            // 接口完全兼容，直接替换即可
+            // 每次重定向都会打印详细日志到 SettingsActivity
+            RedirectLoggingHttpDataSource.Factory httpFactory = new RedirectLoggingHttpDataSource.Factory()
                     .setDefaultRequestProperties(getHeaders(currentUrl))
                     .setConnectTimeoutMs(5000)
                     .setReadTimeoutMs(10000)

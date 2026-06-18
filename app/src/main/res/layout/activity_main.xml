@@ -39,13 +39,19 @@
             android:id="@+id/lv_group"
             android:layout_width="130dp"
             android:layout_height="match_parent"
-            android:background="#CC000000"/>
+            android:background="#CC000000"
+            android:listSelector="@drawable/list_item_bg"
+            android:choiceMode="singleChoice"
+            android:drawSelectorOnTop="false"/>
         <!-- 中间频道列表 -->
         <ListView
             android:id="@+id/lv_channel_list"
             android:layout_width="200dp"
             android:layout_height="match_parent"
-            android:background="#CC000000"/>
+            android:background="#CC000000"
+            android:listSelector="@drawable/list_item_bg"
+            android:choiceMode="singleChoice"
+            android:drawSelectorOnTop="false"/>
         <!-- 竖向节目单按钮（居中竖排文字，原id btn_show_epg不变） -->
         <TextView
             android:id="@+id/btn_show_epg"
@@ -55,21 +61,29 @@
             android:gravity="center"
             android:text="节\n目\n单"
             android:textColor="#ffffff"
-            android:textSize="14sp" />
+            android:textSize="14sp"
+            android:focusable="true"
+            android:clickable="true"/>
         <!-- 日期列表 默认隐藏 -->
         <ListView
             android:id="@+id/lv_date"
             android:layout_width="60dp"
             android:layout_height="match_parent"
             android:background="#CC000000"
-            android:visibility="gone"/>
+            android:visibility="gone"
+            android:listSelector="@drawable/list_item_bg"
+            android:choiceMode="singleChoice"
+            android:drawSelectorOnTop="false"/>
         <!-- EPG节目列表 默认隐藏 -->
         <ListView
             android:id="@+id/lv_epg"
             android:layout_width="360dp"
             android:layout_height="match_parent"
             android:background="#CC000000"
-            android:visibility="gone"/>
+            android:visibility="gone"
+            android:listSelector="@drawable/list_item_bg"
+            android:choiceMode="singleChoice"
+            android:drawSelectorOnTop="false"/>
     </LinearLayout>
 
     <!-- 底部信息栏 原样保留 -->

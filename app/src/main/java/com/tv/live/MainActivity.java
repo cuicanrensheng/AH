@@ -892,7 +892,7 @@ public class MainActivity extends AppCompatActivity {
         // 直接交给播放器播放
         mPlayerManager.playUrl(playUrl);
     }
-
+ }
     /**
      * 显示频道号（延迟3秒自动隐藏）
      * @param num 频道号

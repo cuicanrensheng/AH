@@ -33,6 +33,11 @@ import java.util.Map;
  * SettingsActivity 里代码太多太杂，把网页后台独立成一个类，
  * 职责更清晰，代码更好维护。
  *
+ * 【端口占用处理机制】
+ * 启动前自动检测端口是否被占用：
+ * 1. 如果是之前的实例占用 → 自动关闭旧实例，重新启动
+ * 2. 如果是其他进程占用 → 提示错误，建议重启APP
+ *
  * 【使用方式】
  * WebServerManager manager = new WebServerManager(context, port);
  * manager.start();  // 启动
@@ -61,6 +66,26 @@ public class WebServerManager {
     /** 是否正在运行 */
     private boolean isRunning = false;
 
+    // ====================================================================
+    // ✅ 新增：当前运行的实例（静态变量）
+    // ====================================================================
+    /**
+     * 当前正在运行的 WebServerManager 实例（静态）
+     *
+     * 【作用】
+     * 用于端口占用检测时，找到并关闭之前的实例。
+     * 因为 SettingsActivity 每次打开都会 new 一个新的 WebServerManager，
+     * 如果旧的没关掉，就会端口冲突。
+     * 用静态变量保存当前运行的实例，就能在启动新的之前先关掉旧的。
+     *
+     * 【为什么用静态而不是单例？】
+     * 单例模式下全局只有一个实例，但 SettingsActivity 销毁重建时，
+     * 旧的 context 可能已经失效，会有内存泄漏风险。
+     * 用静态变量保存引用，每次启动新的之前检测并关闭旧的，
+     * 既能解决端口冲突，又能保证每次都是新的实例、新的 context。
+     */
+    private static WebServerManager runningInstance;
+
     // ====================== 构造函数 ======================
 
     /**
@@ -75,30 +100,83 @@ public class WebServerManager {
 
     // ====================== 公共方法 ======================
 
+    // ====================================================================
+    // ✅ 修改：start() 方法 - 添加端口占用检测 + 自动释放
+    // ====================================================================
     /**
      * 启动 HTTP 服务器
      * 在子线程中运行，不会阻塞主线程
+     *
+     * 【完整启动流程】
+     * 1. 检查是否已经在运行 → 是则直接返回
+     * 2. 检测端口是否被占用
+     *    ├─ 未占用 → 正常启动
+     *    └─ 已占用 → 尝试释放
+     *              ├─ 是旧实例占用 → stop() 旧实例 → 等 500ms → 重新启动
+     *              └─ 是其他进程占用 → 提示错误，启动失败
+     * 3. 创建 ServerSocket，开始监听
+     * 4. 保存当前实例到静态变量 runningInstance
+     * 5. 循环接受连接，每个请求开一个线程处理
+     *
+     * 【为什么要等 500ms？】
+     * 调用 serverSocket.close() 后，端口不会立即释放，
+     * 操作系统需要一点时间回收（TIME_WAIT 状态）。
+     * 等 500ms 让端口完全释放，再重新绑定成功率更高。
+     * 另外 setReuseAddress(true) 也能加快端口复用。
      */
     public void start() {
+        // ===== 1. 检查是否已经在运行 =====
         if (isRunning) {
             logOperation("【网页后台】已经在运行中，无需重复启动");
             return;
         }
 
+        // ===== 2. 端口占用检测 =====
+        if (isPortInUse(port)) {
+            logOperation("【网页后台】⚠️ 端口 " + port + " 被占用，尝试释放...");
+
+            // ===== 2.1 尝试 1：如果是之前的实例占用的，先关掉旧的 =====
+            if (runningInstance != null && runningInstance != this) {
+                logOperation("【网页后台】发现旧实例正在运行，正在关闭...");
+                runningInstance.stop();
+
+                // 等一下让端口释放（TIME_WAIT 状态需要时间回收）
+                try {
+                    Thread.sleep(500);
+                } catch (InterruptedException e) {
+                    // 忽略中断异常
+                }
+            }
+
+            // ===== 2.2 再次检测端口是否释放 =====
+            if (isPortInUse(port)) {
+                logOperation("【网页后台】❌ 端口释放失败，可能被其他进程占用");
+                logOperation("【网页后台】💡 建议：重启APP或更换端口号");
+                isRunning = false;
+                return;
+            }
+
+            logOperation("【网页后台】✅ 端口已释放，重新启动");
+        }
+
+        // ===== 3. 在子线程中启动服务器 =====
         new Thread(() -> {
             try {
                 logOperation("【网页后台】正在启动服务器，端口：" + port);
 
                 // 创建 ServerSocket，监听指定端口
                 serverSocket = new ServerSocket(port);
-                // 允许端口复用，避免重启时端口被占用
+                // 允许端口复用，避免重启时端口被占用（加快 TIME_WAIT 状态的回收）
                 serverSocket.setReuseAddress(true);
                 isRunning = true;
+
+                // ===== 4. 保存当前运行的实例（用于后续端口检测） =====
+                runningInstance = this;
 
                 logOperation("【网页后台】✅ 启动成功，监听端口：" + port);
                 logOperation("【网页后台】访问地址：http://" + getDeviceIPAddress() + ":" + port);
 
-                // 循环接受连接
+                // ===== 5. 循环接受连接 =====
                 while (!serverSocket.isClosed()) {
                     try {
                         // accept() 会阻塞，直到有新连接进来
@@ -108,7 +186,8 @@ public class WebServerManager {
                         // 每个请求开一个线程处理，避免阻塞其他请求
                         new Thread(() -> handleHttpRequest(socket)).start();
                     } catch (Exception e) {
-                        // 正常关闭时也会抛异常，这里判断一下
+                        // 正常关闭时也会抛异常（因为 serverSocket.close() 会中断 accept()）
+                        // 这里判断一下，只有非正常关闭才打错误日志
                         if (!serverSocket.isClosed()) {
                             logOperation("【网页后台】接受连接异常：" + e.getMessage());
                         }
@@ -117,27 +196,82 @@ public class WebServerManager {
 
                 logOperation("【网页后台】服务器已停止");
                 isRunning = false;
+                runningInstance = null;
+
             } catch (Exception e) {
                 e.printStackTrace();
                 logOperation("【网页后台】❌ 启动失败：" + e.getClass().getSimpleName() + " - " + e.getMessage());
                 isRunning = false;
+                runningInstance = null;
             }
         }).start();
     }
 
+    // ====================================================================
+    // ✅ 修改：stop() 方法 - 同步清空静态变量
+    // ====================================================================
     /**
      * 停止 HTTP 服务器
      * 释放端口资源
+     *
+     * 【停止流程】
+     * 1. 检查 serverSocket 是否存在且未关闭
+     * 2. 调用 serverSocket.close() 关闭连接
+     *    （这会中断 accept() 的阻塞，让循环退出）
+     * 3. 设置 isRunning = false
+     * 4. 如果当前实例就是 runningInstance，清空静态引用
+     *
+     * 【为什么要判断 runningInstance == this？】
+     * 可能存在多个实例的情况（比如旧的还没完全关掉，新的已经启动了），
+     * 只清空属于自己的引用，避免误清掉新实例的引用。
      */
     public void stop() {
         try {
             if (serverSocket != null && !serverSocket.isClosed()) {
                 serverSocket.close();
                 isRunning = false;
+
+                // 清空静态引用（只清空自己的，不误清新实例的）
+                if (runningInstance == this) {
+                    runningInstance = null;
+                }
+
                 logOperation("【网页后台】服务器已关闭");
             }
         } catch (Exception e) {
             e.printStackTrace();
+        }
+    }
+
+    // ====================================================================
+    // ✅ 新增：isPortInUse() 方法 - 检测端口是否被占用
+    // ====================================================================
+    /**
+     * 检测端口是否被占用
+     *
+     * 【检测原理】
+     * 尝试创建一个 ServerSocket 绑定到该端口：
+     * - 如果绑定成功 → 说明端口空闲 → 返回 false
+     * - 如果绑定失败（抛 BindException）→ 说明端口被占用 → 返回 true
+     *
+     * 检测完立即关闭，不影响后续正常启动。
+     *
+     * 【为什么不用 Socket 连接检测？】
+     * 用 Socket 连接目标端口也能检测，但会发送一个 SYN 包，
+     * 如果端口上有服务在运行，可能会触发一些异常行为。
+     * 用 ServerSocket 绑定检测更"干净"，不会干扰正在运行的服务。
+     *
+     * @param port 端口号
+     * @return true=被占用，false=空闲
+     */
+    private boolean isPortInUse(int port) {
+        try {
+            ServerSocket testSocket = new ServerSocket(port);
+            testSocket.setReuseAddress(true);
+            testSocket.close();
+            return false;  // 能绑定成功，说明端口空闲
+        } catch (Exception e) {
+            return true;   // 绑定失败（抛 BindException），说明端口被占用
         }
     }
 
@@ -176,11 +310,9 @@ public class WebServerManager {
             // ===== 1. 读取请求头（按行读，读到空行结束） =====
             BufferedReader reader = new BufferedReader(
                     new InputStreamReader(socket.getInputStream(), "UTF-8"));
-
             List<String> headerLines = new ArrayList<>();
             String line;
             int lineCount = 0;
-
             while ((line = reader.readLine()) != null) {
                 lineCount++;
                 // 空行表示请求头结束（HTTP 协议规定）
@@ -194,7 +326,6 @@ public class WebServerManager {
                     break;
                 }
             }
-
             logOperation("【网页后台】读取到 " + headerLines.size() + " 行请求头");
 
             // 请求为空，直接关闭连接
@@ -213,10 +344,8 @@ public class WebServerManager {
                 sendResponse(socket, "400 Bad Request", "text/plain", "Bad Request");
                 return;
             }
-
             String method = parts[0];  // GET / POST
             String path = parts[1];    // /  /log  /submit
-
             logOperation("【网页后台】请求：" + method + " " + path);
 
             // ===== 3. 解析 Content-Length（POST 请求用） =====
@@ -231,7 +360,6 @@ public class WebServerManager {
                     break;
                 }
             }
-
             logOperation("【网页后台】Content-Length: " + contentLength);
 
             // ===== 4. POST 请求：读取 body =====
@@ -270,11 +398,9 @@ public class WebServerManager {
             else if ("POST".equals(method) && "/submit".equals(purePath)) {
                 logOperation("【网页后台】→ 处理配置提交");
                 Map<String, String> params = parseFormData(body);
-
                 final String liveUrl = params.get("live_url");
                 final String epgUrl = params.get("epg_url");
                 final String customUa = params.get("custom_ua");
-
                 logOperation("【网页后台】提交参数 - live: " + liveUrl + ", epg: " + epgUrl + ", ua: " + customUa);
 
                 // 切到主线程保存配置（SP 和广播都要在主线程）
@@ -288,14 +414,12 @@ public class WebServerManager {
                         addHistory("live_history", liveUrl.trim());
                         hasUpdate = true;
                     }
-
                     // 更新节目单
                     if (epgUrl != null && !epgUrl.trim().isEmpty()) {
                         sp.edit().putString(KEY_CUSTOM_EPG, epgUrl.trim()).apply();
                         addHistory("epg_history", epgUrl.trim());
                         hasUpdate = true;
                     }
-
                     // 更新自定义 UA
                     if (customUa != null && !customUa.trim().isEmpty()) {
                         sp.edit().putString(KEY_CUSTOM_UA, customUa.trim()).apply();
@@ -357,7 +481,6 @@ public class WebServerManager {
         out.flush();
 
         logOperation("【网页后台】响应头+体已写入输出流");
-
         socket.close();
     }
 
@@ -368,7 +491,6 @@ public class WebServerManager {
     private Map<String, String> parseFormData(String body) {
         Map<String, String> params = new java.util.HashMap<>();
         if (body == null || body.isEmpty()) return params;
-
         try {
             String[] pairs = body.split("&");
             for (String pair : pairs) {
@@ -535,7 +657,6 @@ public class WebServerManager {
                 ? SettingsActivity.OPERATION_LOG.toString() : "";
         String[] opLines = operationLogContent.split("\n");
         StringBuilder opLogHtml = new StringBuilder();
-
         for (int i = opLines.length - 1; i >= 0; i--) {
             String line = opLines[i];
             if (line.trim().isEmpty()) continue;
@@ -563,7 +684,6 @@ public class WebServerManager {
             opLogHtml.append("            <div class=\"log-time\">").append(time).append("</div>\n");
             opLogHtml.append("        </div>\n");
         }
-
         if (opLogHtml.length() == 0) {
             opLogHtml.append("        <div style=\"padding: 40px 20px; text-align: center; color: #999; font-size: 14px;\">暂无操作日志</div>\n");
         }
@@ -573,7 +693,6 @@ public class WebServerManager {
                 ? SettingsActivity.PLAY_LOG.toString() : "";
         String[] playLines = playLogContent.split("\n");
         StringBuilder playLogHtml = new StringBuilder();
-
         for (int i = playLines.length - 1; i >= 0; i--) {
             String line = playLines[i];
             if (line.trim().isEmpty()) continue;
@@ -602,7 +721,6 @@ public class WebServerManager {
             playLogHtml.append("            <div class=\"log-time\">").append(time).append("</div>\n");
             playLogHtml.append("        </div>\n");
         }
-
         if (playLogHtml.length() == 0) {
             playLogHtml.append("        <div style=\"padding: 40px 20px; text-align: center; color: #999; font-size: 14px;\">暂无解析日志</div>\n");
         }

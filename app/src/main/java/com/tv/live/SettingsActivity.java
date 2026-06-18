@@ -19,6 +19,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.widget.ArrayAdapter;
+import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.ScrollView;
@@ -533,6 +534,27 @@ public class SettingsActivity extends AppCompatActivity {
 
         adapter = new SourceAdapter(this, displayItems);
 
+        // ===== 删除按钮点击事件 =====
+        adapter.setOnDeleteClickListener(position -> {
+            if (position < 0 || position >= displayItems.size()) return;
+
+            SourceManager.SourceItem item = displayItems.get(position);
+            int realPos = sourceManager.indexOfUrl(item.url);
+
+            new AlertDialog.Builder(this)
+                    .setTitle("确认删除")
+                    .setMessage("确定要删除「" + item.name + "」吗？")
+                    .setPositiveButton("删除", (d, w) -> {
+                        sourceManager.removeSource(realPos);
+                        refreshDisplayList(sourceManager, displayItems, adapter, "");
+                        adapter.setSelectedPosition(-1);
+                        logOperation("【设置】删除源：" + item.name);
+                        Toast.makeText(this, "已删除", Toast.LENGTH_SHORT).show();
+                    })
+                    .setNegativeButton("取消", null)
+                    .show();
+        });
+
         // 找到当前使用的源，设置为选中状态
         String currentUrl = sp.getString(key.contains("live") ? KEY_CUSTOM_LIVE : KEY_CUSTOM_EPG, "");
         int selectedIndex = sourceManager.indexOfUrl(currentUrl);
@@ -713,18 +735,40 @@ public class SettingsActivity extends AppCompatActivity {
     /**
      * 显示添加源的对话框
      * 可以输入名称和地址
+     *
+     * 【注意】
+     * 动态创建输入框，不用 dialog_edit.xml 布局，
+     * 避免布局文件 id 不匹配导致编译错误。
      */
     private void showAddSourceDialog(String title, final String key) {
-        View view = LayoutInflater.from(this).inflate(R.layout.dialog_edit, null);
-        final EditText nameEt = view.findViewById(R.id.et_name);
-        final EditText urlEt = view.findViewById(R.id.et_url);
+        // 动态创建布局：两个输入框（名称 + 地址）
+        android.widget.LinearLayout layout = new android.widget.LinearLayout(this);
+        layout.setOrientation(android.widget.LinearLayout.VERTICAL);
+        layout.setPadding(40, 20, 40, 20);
 
+        final EditText nameEt = new EditText(this);
         nameEt.setHint("源名称（如：主源、备用源）");
+        nameEt.setTextSize(14);
+        nameEt.setSingleLine(true);
+        layout.addView(nameEt);
+
+        // 加一点间距
+        android.widget.LinearLayout.LayoutParams params =
+                new android.widget.LinearLayout.LayoutParams(
+                        android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                        android.widget.LinearLayout.LayoutParams.WRAP_CONTENT);
+        params.setMargins(0, 20, 0, 0);
+
+        final EditText urlEt = new EditText(this);
         urlEt.setHint("源地址 URL");
+        urlEt.setTextSize(14);
+        urlEt.setSingleLine(true);
+        urlEt.setLayoutParams(params);
+        layout.addView(urlEt);
 
         new AlertDialog.Builder(this)
                 .setTitle("添加" + title.replace("历史", ""))
-                .setView(view)
+                .setView(layout)
                 .setPositiveButton("添加", (dialog, which) -> {
                     String name = nameEt.getText().toString().trim();
                     String url = urlEt.getText().toString().trim();
@@ -754,19 +798,39 @@ public class SettingsActivity extends AppCompatActivity {
     /**
      * 显示编辑源的对话框
      * 可以修改名称和地址
+     *
+     * 【注意】
+     * 动态创建输入框，不用 dialog_edit.xml 布局。
      */
     private void showEditSourceDialog(String title, final String key, final int position, SourceManager.SourceItem oldItem) {
-        View view = LayoutInflater.from(this).inflate(R.layout.dialog_edit, null);
-        final EditText nameEt = view.findViewById(R.id.et_name);
-        final EditText urlEt = view.findViewById(R.id.et_url);
+        // 动态创建布局：两个输入框（名称 + 地址）
+        android.widget.LinearLayout layout = new android.widget.LinearLayout(this);
+        layout.setOrientation(android.widget.LinearLayout.VERTICAL);
+        layout.setPadding(40, 20, 40, 20);
 
+        final EditText nameEt = new EditText(this);
         nameEt.setText(oldItem.name);
+        nameEt.setTextSize(14);
+        nameEt.setSingleLine(true);
+        layout.addView(nameEt);
+
+        android.widget.LinearLayout.LayoutParams params =
+                new android.widget.LinearLayout.LayoutParams(
+                        android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                        android.widget.LinearLayout.LayoutParams.WRAP_CONTENT);
+        params.setMargins(0, 20, 0, 0);
+
+        final EditText urlEt = new EditText(this);
         urlEt.setText(oldItem.url);
+        urlEt.setTextSize(14);
+        urlEt.setSingleLine(true);
         urlEt.setSelection(urlEt.getText().length());
+        urlEt.setLayoutParams(params);
+        layout.addView(urlEt);
 
         new AlertDialog.Builder(this)
                 .setTitle("编辑" + title.replace("历史", ""))
-                .setView(view)
+                .setView(layout)
                 .setPositiveButton("保存", (dialog, which) -> {
                     String name = nameEt.getText().toString().trim();
                     String url = urlEt.getText().toString().trim();
@@ -894,8 +958,9 @@ public class SettingsActivity extends AppCompatActivity {
      * 多源列表的适配器
      *
      * 【显示内容】
-     * - 第一行：源名称（大号粗体）+ ⭐默认标记
-     * - 第二行：源地址（小号灰色）+ 🔕自动更新关闭标记
+     * - 左侧：序号（tv_index）
+     * - 中间：源名称 + URL（tv_setting_item）
+     * - 右侧：删除按钮（btn_delete）
      *
      * 【三种状态】
      * 1. 选中状态：蓝色文字 + 浅蓝色背景
@@ -907,6 +972,22 @@ public class SettingsActivity extends AppCompatActivity {
         private final List<SourceManager.SourceItem> items;
         /** 当前选中的位置 */
         private int selectedPosition = -1;
+        /** 删除按钮点击回调 */
+        private OnDeleteClickListener onDeleteClickListener;
+
+        /**
+         * 删除按钮点击回调接口
+         */
+        public interface OnDeleteClickListener {
+            void onDelete(int position);
+        }
+
+        /**
+         * 设置删除按钮点击监听器
+         */
+        public void setOnDeleteClickListener(OnDeleteClickListener listener) {
+            this.onDeleteClickListener = listener;
+        }
 
         public SourceAdapter(Context context, List<SourceManager.SourceItem> items) {
             super(context, R.layout.item_settings, items);
@@ -931,8 +1012,14 @@ public class SettingsActivity extends AppCompatActivity {
 
             SourceManager.SourceItem item = items.get(position);
             TextView tv = convertView.findViewById(R.id.tv_setting_item);
+            TextView indexTv = convertView.findViewById(R.id.tv_index);
+            Button deleteBtn = convertView.findViewById(R.id.btn_delete);
 
-            // 构建显示文本：名称 + URL（两行）
+            // ===== 序号显示 =====
+            indexTv.setText((position + 1) + ". ");
+            indexTv.setTextSize(13);
+
+            // ===== 构建显示文本：名称 + URL（两行） =====
             StringBuilder displayText = new StringBuilder();
             displayText.append(item.name);
 
@@ -953,18 +1040,35 @@ public class SettingsActivity extends AppCompatActivity {
             tv.setText(displayText.toString());
             tv.setTextSize(14);
             tv.setLineSpacing(4, 1);
+            tv.setSingleLine(false);  // 允许两行显示
+            tv.setEllipsize(null);    // 去掉省略号，因为要显示两行
 
+            // ===== 删除按钮点击事件 =====
+            final int pos = position;
+            deleteBtn.setOnClickListener(v -> {
+                if (onDeleteClickListener != null) {
+                    onDeleteClickListener.onDelete(pos);
+                }
+            });
+            // 确保按钮可点击（防止布局里设为 false）
+            deleteBtn.setClickable(true);
+            deleteBtn.setFocusable(false);  // 不抢焦点，不影响列表项选中
+
+            // ===== 选中/焦点/未选中 三种状态 =====
             if (position == selectedPosition) {
                 // ✅ 选中状态：蓝色文字 + 浅蓝色背景
                 tv.setTextColor(Color.parseColor("#40A9FF"));
+                indexTv.setTextColor(Color.parseColor("#40A9FF"));
                 convertView.setBackgroundColor(0x3340A9FF);
             } else if (convertView.isFocused()) {
                 // ✅ 焦点状态：蓝色文字 + 稍深蓝色背景
                 tv.setTextColor(Color.parseColor("#40A9FF"));
+                indexTv.setTextColor(Color.parseColor("#40A9FF"));
                 convertView.setBackgroundColor(0x4440A9FF);
             } else {
                 // ✅ 未选中状态：白色文字 + 透明背景
                 tv.setTextColor(Color.WHITE);
+                indexTv.setTextColor(Color.WHITE);
                 convertView.setBackgroundColor(Color.TRANSPARENT);
             }
 

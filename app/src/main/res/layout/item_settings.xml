@@ -29,5 +29,5 @@
         android:text="删除"
         android:textSize="12sp"
         android:focusable="false"
-        android:clickable="false"/>
+        android:clickable="true"/>
 </LinearLayout>

@@ -1,504 +1,412 @@
 package com.tv.live;
 
 import android.net.Uri;
-import android.text.TextUtils;
 import android.util.Log;
-
 import com.google.android.exoplayer2.C;
 import com.google.android.exoplayer2.upstream.BaseDataSource;
 import com.google.android.exoplayer2.upstream.DataSpec;
 import com.google.android.exoplayer2.upstream.HttpDataSource;
-
+import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InterruptedIOException;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.zip.GZIPInputStream;
 
 /**
- * 带重定向日志的 HTTP 数据源
+ * ✅ 带重定向日志的Http数据源
  *
- * 【功能】
- * 1. 手动处理 HTTP 重定向（301/302/303/307/308）
- * 2. 每一次重定向都打印详细日志（状态码、原始URL、目标URL、Header）
- * 3. 支持跨协议重定向（HTTP ↔ HTTPS）
- * 4. 支持相对路径的 Location
- * 5. 日志同时输出到 Logcat 和 SettingsActivity.PLAY_LOG
- *
- * 【最大重定向次数】
- * 默认 20 次，防止无限重定向死循环。
+ * 【功能特点】
+ * 1. 手动处理HTTP重定向，每一次重定向都打印详细日志
+ * 2. 支持301/302/303/307/308等所有重定向状态码
+ * 3. 自动处理相对路径的Location
+ * 4. 支持跨协议重定向（http→https）
+ * 5. 保留DefaultHttpDataSource的所有核心功能
+ * 6. 日志同步输出到Logcat和SettingsActivity
  */
 public class RedirectLoggingHttpDataSource extends BaseDataSource implements HttpDataSource {
-
-    private static final String TAG = "RedirectHttp";
-    /** 最大重定向次数，防止无限循环 */
+    private static final String TAG = "RedirectLog";
+    // 最大重定向次数（防止死循环）
     private static final int MAX_REDIRECTS = 20;
-    /** 连接超时时间（毫秒） */
-    private static final int CONNECT_TIMEOUT = 5000;
-    /** 读取超时时间（毫秒） */
-    private static final int READ_TIMEOUT = 15000;
-
-    /** 默认请求头 */
+    // 连接超时
+    private final int connectTimeoutMs;
+    // 读取超时
+    private final int readTimeoutMs;
+    // 默认请求Header
     private final Map<String, String> defaultRequestProperties;
-    /** 是否允许跨协议重定向 */
-    private final boolean allowCrossProtocolRedirects;
+    // User-Agent
+    private final String userAgent;
 
-    /** 当前 HTTP 连接 */
+    // HTTP连接
     private HttpURLConnection connection;
-    /** 输入流 */
+    // 输入流
     private InputStream inputStream;
-    /** 是否已经打开 */
+    // 是否已打开
     private boolean opened;
-
-    /** 当前请求的字节数 */
-    private long bytesToRead;
-    /** 已读取的字节数 */
-    private long bytesRead;
-
-    // ===== 新增：保存 HTTP 响应状态码 =====
-    /** HTTP 响应状态码（用于 getResponseCode()） */
-    private int responseCode = -1;
+    // 剩余字节数
+    private long bytesRemaining;
+    // 当前URI
+    private Uri uri;
+    // 响应Header
+    private Map<String, List<String>> responseHeaders;
+    // 响应状态码
+    private int responseCode = 0;
 
     /**
      * 构造函数
-     *
-     * @param defaultRequestProperties 默认请求头
-     * @param allowCrossProtocolRedirects 是否允许跨协议重定向
      */
     protected RedirectLoggingHttpDataSource(
-            Map<String, String> defaultRequestProperties,
-            boolean allowCrossProtocolRedirects) {
-        super(true);
+            String userAgent,
+            int connectTimeoutMs,
+            int readTimeoutMs,
+            Map<String, String> defaultRequestProperties) {
+        super(true); // isNetwork = true
+        this.userAgent = userAgent;
+        this.connectTimeoutMs = connectTimeoutMs;
+        this.readTimeoutMs = readTimeoutMs;
         this.defaultRequestProperties = defaultRequestProperties != null
                 ? new HashMap<>(defaultRequestProperties)
-                : new HashMap<>();
-        this.allowCrossProtocolRedirects = allowCrossProtocolRedirects;
+                : new HashMap<String, String>();
     }
 
+    /**
+     * 打开数据源
+     * 核心方法：手动处理重定向，每一次重定向都打日志
+     */
     @Override
     public long open(DataSpec dataSpec) throws HttpDataSourceException {
+        transferInitializing(dataSpec);
+        this.uri = dataSpec.uri;
+        String currentUrl = uri.toString();
+        int redirectCount = 0;
+
+        log("========================================");
+        log("【HTTP】开始请求");
+        log("【HTTP】初始地址：" + currentUrl);
+        log("========================================");
+
         try {
-            transferInitializing(dataSpec);
+            // ===== 手动处理重定向循环 =====
+            while (redirectCount < MAX_REDIRECTS) {
+                URL url = new URL(currentUrl);
+                connection = (HttpURLConnection) url.openConnection();
 
-            // ===== 打开连接（手动处理重定向） =====
-            connection = openConnection(dataSpec);
-            responseCode = connection.getResponseCode();  // 保存状态码
+                // 设置超时
+                connection.setConnectTimeout(connectTimeoutMs);
+                connection.setReadTimeout(readTimeoutMs);
+                connection.setRequestMethod("GET");
+                connection.setInstanceFollowRedirects(false); // 手动处理重定向
+                connection.setDoOutput(false);
 
-            // ===== 获取响应头 =====
-            Map<String, List<String>> headers = connection.getHeaderFields();
+                // 设置默认Header
+                for (Map.Entry<String, String> entry : defaultRequestProperties.entrySet()) {
+                    connection.setRequestProperty(entry.getKey(), entry.getValue());
+                }
 
-            // ===== 处理错误响应 =====
-            if (responseCode < 200 || responseCode > 299) {
-                String responseMessage = connection.getResponseMessage();
-                SettingsActivity.log("❌ HTTP 请求失败：" + responseCode + " " + responseMessage);
-                SettingsActivity.log("   URL：" + dataSpec.uri);
-                // ===== 修复：TYPE_RESPONSE_CODE_UNSUPPORTED 换成 TYPE_OPEN =====
+                // 设置User-Agent
+                if (userAgent != null && !defaultRequestProperties.containsKey("User-Agent")) {
+                    connection.setRequestProperty("User-Agent", userAgent);
+                }
+
+                // 设置Range（断点续传）
+                if (dataSpec.position != 0) {
+                    connection.setRequestProperty("Range", "bytes=" + dataSpec.position + "-");
+                }
+
+                // 发送请求，获取响应码
+                responseCode = connection.getResponseCode();
+                log("【HTTP】第" + (redirectCount + 1) + "次请求  状态码：" + responseCode);
+                log("【HTTP】地址：" + currentUrl);
+
+                // ===== 判断是否为重定向 =====
+                if (responseCode == 301 || responseCode == 302 || responseCode == 303
+                        || responseCode == 307 || responseCode == 308) {
+
+                    String location = connection.getHeaderField("Location");
+                    if (location == null || location.isEmpty()) {
+                        log("【HTTP】⚠️ 重定向Location为空，停止跟随");
+                        break;
+                    }
+
+                    // 处理相对路径（以/开头）
+                    if (location.startsWith("/")) {
+                        String baseUrl = url.getProtocol() + "://" + url.getHost();
+                        int port = url.getPort();
+                        if (port != -1 && port != url.getDefaultPort()) {
+                            baseUrl += ":" + port;
+                        }
+                        location = baseUrl + location;
+                    }
+
+                    redirectCount++;
+                    log("【HTTP】🔄 第" + redirectCount + "次重定向");
+                    log("【HTTP】   → " + location);
+
+                    // 准备下一次请求
+                    currentUrl = location;
+                    connection.disconnect();
+                    connection = null;
+                    continue;
+                }
+
+                // ===== 正常响应（2xx） =====
+                if (responseCode >= 200 && responseCode < 300) {
+                    log("========================================");
+                    log("【HTTP】✅ 请求成功");
+                    log("【HTTP】最终地址：" + currentUrl);
+                    log("【HTTP】总共重定向：" + redirectCount + "次");
+                    log("========================================");
+                    break;
+                }
+
+                // ===== 错误响应 =====
+                log("【HTTP】❌ 请求失败，状态码：" + responseCode);
                 throw new HttpDataSourceException(
-                        "HTTP " + responseCode + " " + responseMessage,
+                        "HTTP " + responseCode,
                         dataSpec,
                         HttpDataSourceException.TYPE_OPEN);
+            }
+
+            // 达到最大重定向次数
+            if (redirectCount >= MAX_REDIRECTS) {
+                log("【HTTP】⚠️ 达到最大重定向次数(" + MAX_REDIRECTS + ")，停止跟随");
             }
 
             // ===== 获取输入流 =====
             try {
                 inputStream = connection.getInputStream();
-                // 处理 GZIP 压缩
-                String contentEncoding = connection.getContentEncoding();
-                if (contentEncoding != null && contentEncoding.equalsIgnoreCase("gzip")) {
-                    inputStream = new GZIPInputStream(inputStream);
-                    SettingsActivity.log("📦 响应已 GZIP 压缩，已自动解压");
-                }
             } catch (IOException e) {
-                // 如果获取输入流失败，尝试用错误流
-                inputStream = connection.getErrorStream();
+                // 出错时尝试读取错误流
+                InputStream errorStream = connection.getErrorStream();
+                if (errorStream != null) {
+                    try { errorStream.close(); } catch (IOException ignored) {}
+                }
+                throw new HttpDataSourceException(
+                        e,
+                        dataSpec,
+                        HttpDataSourceException.TYPE_OPEN);
             }
 
-            // ===== 计算要读取的字节数 =====
+            // 保存响应Header
+            responseHeaders = connection.getHeaderFields();
+
+            // 获取内容长度
             long contentLength = getContentLength(connection);
-            if (dataSpec.position != C.POSITION_UNSET) {
-                // 有 Range 请求
-                bytesToRead = dataSpec.length != C.LENGTH_UNSET
-                        ? dataSpec.length
-                        : (contentLength != C.LENGTH_UNSET ? contentLength - dataSpec.position : C.LENGTH_UNSET);
+            if (dataSpec.position != 0 && contentLength != C.LENGTH_UNSET) {
+                bytesRemaining = contentLength - dataSpec.position;
             } else {
-                bytesToRead = dataSpec.length != C.LENGTH_UNSET
-                        ? dataSpec.length
-                        : contentLength;
+                bytesRemaining = contentLength;
             }
-            bytesRead = 0;
 
-            // ===== 打印最终响应信息 =====
-            SettingsActivity.log("✅ 最终响应：HTTP " + responseCode);
-            SettingsActivity.log("   Content-Length：" + (contentLength == C.LENGTH_UNSET ? "未知" : contentLength + " 字节"));
-            String contentType = connection.getContentType();
-            if (!TextUtils.isEmpty(contentType)) {
-                SettingsActivity.log("   Content-Type：" + contentType);
-            }
-            SettingsActivity.log("   最终地址：" + connection.getURL());
-
+            // 标记为已打开
             opened = true;
             transferStarted(dataSpec);
 
-            return bytesToRead;
+            return bytesRemaining;
 
         } catch (IOException e) {
-            closeConnectionQuietly();
-            throw new HttpDataSourceException(e, dataSpec, HttpDataSourceException.TYPE_OPEN);
+            throw new HttpDataSourceException(
+                    e,
+                    dataSpec,
+                    HttpDataSourceException.TYPE_OPEN);
         }
     }
 
     /**
-     * 打开连接，手动处理重定向
-     *
-     * 【重定向处理流程】
-     * 1. 发起请求
-     * 2. 检查状态码，如果是 3xx 就处理重定向
-     * 3. 打印每一重的日志
-     * 4. 最多重定向 20 次
-     *
-     * @param dataSpec 请求参数
-     * @return 最终的 HttpURLConnection
-     */
-    private HttpURLConnection openConnection(DataSpec dataSpec) throws IOException {
-        String currentUrl = dataSpec.uri.toString();
-        int redirectCount = 0;
-
-        // ===== 打印初始请求 =====
-        SettingsActivity.log("========== HTTP 请求开始 ==========");
-        SettingsActivity.log("🌐 原始地址：" + currentUrl);
-        SettingsActivity.log("   方法：" + (dataSpec.httpMethod == DataSpec.HTTP_METHOD_POST ? "POST" : "GET"));
-
-        while (true) {
-            // ===== 检查重定向次数 =====
-            if (redirectCount > MAX_REDIRECTS) {
-                SettingsActivity.log("❌ 重定向次数超过限制（" + MAX_REDIRECTS + "次），可能是无限重定向");
-                throw new IOException("Too many redirects");
-            }
-
-            // ===== 创建连接 =====
-            URL url = new URL(currentUrl);
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setConnectTimeout(CONNECT_TIMEOUT);
-            conn.setReadTimeout(READ_TIMEOUT);
-            conn.setDoInput(true);
-            conn.setInstanceFollowRedirects(false);  // 关键：不自动跟随重定向，我们手动处理
-            conn.setUseCaches(false);
-
-            // ===== 设置请求头 =====
-            for (Map.Entry<String, String> entry : defaultRequestProperties.entrySet()) {
-                conn.setRequestProperty(entry.getKey(), entry.getValue());
-            }
-
-            // ===== 设置 Range（如果有） =====
-            if (dataSpec.position != C.POSITION_UNSET) {
-                String rangeValue = "bytes=" + dataSpec.position + "-";
-                if (dataSpec.length != C.LENGTH_UNSET) {
-                    rangeValue += (dataSpec.position + dataSpec.length - 1);
-                }
-                conn.setRequestProperty("Range", rangeValue);
-                SettingsActivity.log("   Range：" + rangeValue);
-            }
-
-            // ===== 发起请求 =====
-            int respCode = conn.getResponseCode();
-            String responseMessage = conn.getResponseMessage();
-
-            // ===== 判断是否是重定向 =====
-            boolean isRedirect = (respCode == 301 || respCode == 302
-                    || respCode == 303 || respCode == 307 || respCode == 308);
-
-            if (!isRedirect) {
-                // 不是重定向，返回这个连接
-                if (redirectCount > 0) {
-                    SettingsActivity.log("   └─ 重定向结束，共 " + redirectCount + " 重");
-                }
-                return conn;
-            }
-
-            // ===== 处理重定向 =====
-            redirectCount++;
-            String location = conn.getHeaderField("Location");
-
-            if (TextUtils.isEmpty(location)) {
-                SettingsActivity.log("❌ 第 " + redirectCount + " 重：HTTP " + respCode
-                        + "，但没有 Location 头");
-                conn.disconnect();
-                throw new IOException("Redirect with no Location header");
-            }
-
-            // ===== 处理相对路径 =====
-            String redirectUrl = resolveRedirectUrl(currentUrl, location);
-
-            // ===== 检查跨协议 =====
-            boolean isCrossProtocol = !url.getProtocol().equalsIgnoreCase(
-                    Uri.parse(redirectUrl).getScheme());
-            if (isCrossProtocol && !allowCrossProtocolRedirects) {
-                SettingsActivity.log("❌ 第 " + redirectCount + " 重：跨协议重定向被禁止");
-                SettingsActivity.log("   " + url.getProtocol() + " → " + Uri.parse(redirectUrl).getScheme());
-                conn.disconnect();
-                throw new IOException("Cross-protocol redirect not allowed");
-            }
-
-            // ===== 打印这一重的日志 =====
-            String crossProtocolTag = isCrossProtocol ? "  [跨协议]" : "";
-            SettingsActivity.log("🔄 第 " + redirectCount + " 重：HTTP " + respCode
-                    + " " + responseMessage + crossProtocolTag);
-            SettingsActivity.log("   从：" + currentUrl);
-            SettingsActivity.log("   到：" + redirectUrl);
-
-            // ===== 打印关键响应头 =====
-            printRedirectHeaders(conn);
-
-            // ===== 关闭当前连接，准备下一次请求 =====
-            conn.disconnect();
-            currentUrl = redirectUrl;
-        }
-    }
-
-    /**
-     * 解析重定向地址（处理相对路径）
-     *
-     * @param baseUrl 基础 URL
-     * @param location Location 头的值（可能是相对路径）
-     * @return 完整的重定向 URL
-     */
-    private String resolveRedirectUrl(String baseUrl, String location) throws IOException {
-        // 如果 location 已经是完整 URL，直接返回
-        if (location.startsWith("http://") || location.startsWith("https://")) {
-            return location;
-        }
-
-        // 相对路径，需要拼接
-        Uri baseUri = Uri.parse(baseUrl);
-        String scheme = baseUri.getScheme();
-        String host = baseUri.getHost();
-        int port = baseUri.getPort();
-        String path = baseUri.getPath();
-
-        StringBuilder sb = new StringBuilder();
-        sb.append(scheme).append("://").append(host);
-        if (port != -1 && port != 80 && port != 443) {
-            sb.append(":").append(port);
-        }
-
-        if (location.startsWith("/")) {
-            // 绝对路径（相对于域名）
-            sb.append(location);
-        } else {
-            // 相对路径（相对于当前路径）
-            if (path != null && path.contains("/")) {
-                String parentPath = path.substring(0, path.lastIndexOf('/') + 1);
-                sb.append(parentPath).append(location);
-            } else {
-                sb.append("/").append(location);
-            }
-        }
-
-        return sb.toString();
-    }
-
-    /**
-     * 打印重定向时的关键响应头
-     */
-    private void printRedirectHeaders(HttpURLConnection conn) {
-        // 只打印关键的几个头，避免日志太多
-        String[] importantHeaders = {
-                "Location",
-                "Set-Cookie",
-                "Content-Type",
-                "Cache-Control",
-                "Server"
-        };
-
-        StringBuilder sb = new StringBuilder();
-        sb.append("   Headers：");
-        boolean hasHeader = false;
-        for (String header : importantHeaders) {
-            String value = conn.getHeaderField(header);
-            if (!TextUtils.isEmpty(value)) {
-                if (hasHeader) sb.append(" | ");
-                sb.append(header).append("=");
-                // Set-Cookie 太长，截断显示
-                if ("Set-Cookie".equals(header) && value.length() > 80) {
-                    sb.append(value.substring(0, 80)).append("...");
-                } else {
-                    sb.append(value);
-                }
-                hasHeader = true;
-            }
-        }
-        if (hasHeader) {
-            SettingsActivity.log(sb.toString());
-        }
-    }
-
-    /**
-     * 获取 Content-Length
+     * 从响应头中获取内容长度
      */
     private long getContentLength(HttpURLConnection connection) {
         String contentLength = connection.getHeaderField("Content-Length");
-        if (!TextUtils.isEmpty(contentLength)) {
+        if (contentLength != null) {
             try {
                 return Long.parseLong(contentLength);
             } catch (NumberFormatException e) {
-                // 忽略
+                // 解析失败，返回未知长度
             }
         }
         return C.LENGTH_UNSET;
     }
 
+    /**
+     * 读取数据
+     */
     @Override
-    public int read(byte[] buffer, int offset, int readLength) throws HttpDataSourceException {
-        if (readLength == 0) {
+    public int read(byte[] buffer, int offset, int length) throws HttpDataSourceException {
+        if (length == 0) {
             return 0;
         }
-        if (bytesToRead == 0) {
+        if (bytesRemaining == 0) {
             return C.RESULT_END_OF_INPUT;
         }
 
+        int bytesRead;
         try {
-            int bytesToReadThisTime = (int) Math.min(
-                    readLength,
-                    bytesToRead == C.LENGTH_UNSET ? Integer.MAX_VALUE : bytesToRead - bytesRead);
-            int bytesReadThisTime = inputStream.read(buffer, offset, bytesToReadThisTime);
-
-            if (bytesReadThisTime == -1) {
-                // 读取结束
-                if (bytesToRead != C.LENGTH_UNSET && bytesRead != bytesToRead) {
-                    // 读取的字节数和预期不符
-                    throw new HttpDataSourceException(
-                            "Unexpected end of input",
-                            new DataSpec(Uri.parse(connection.getURL().toString())),
-                            HttpDataSourceException.TYPE_READ);
-                }
-                return C.RESULT_END_OF_INPUT;
-            }
-
-            bytesRead += bytesReadThisTime;
-            bytesTransferred(bytesReadThisTime);
-            return bytesReadThisTime;
-
+            bytesRead = inputStream.read(buffer, offset, length);
         } catch (IOException e) {
-            throw new HttpDataSourceException(e,
-                    new DataSpec(Uri.parse(connection.getURL().toString())),
+            throw new HttpDataSourceException(
+                    e,
+                    new DataSpec(uri),
                     HttpDataSourceException.TYPE_READ);
         }
+
+        if (bytesRead == -1) {
+            // 读取结束
+            if (bytesRemaining != C.LENGTH_UNSET && bytesRemaining != 0) {
+                throw new HttpDataSourceException(
+                        new EOFException(),
+                        new DataSpec(uri),
+                        HttpDataSourceException.TYPE_READ);
+            }
+            return C.RESULT_END_OF_INPUT;
+        }
+
+        if (bytesRemaining != C.LENGTH_UNSET) {
+            bytesRemaining -= bytesRead;
+        }
+        bytesTransferred(bytesRead);
+
+        return bytesRead;
     }
 
+    /**
+     * 获取当前URI
+     */
     @Override
     public Uri getUri() {
-        return connection == null ? null : Uri.parse(connection.getURL().toString());
+        return uri;
     }
 
-    // ===== 新增：实现 getResponseCode() 抽象方法 =====
     /**
-     * 获取 HTTP 响应状态码
-     *
-     * @return HTTP 状态码，如果还没建立连接返回 -1
+     * ✅ 获取响应状态码（修复：添加缺失的抽象方法实现）
      */
     @Override
     public int getResponseCode() {
         return responseCode;
     }
 
+    /**
+     * 获取响应头
+     */
     @Override
     public Map<String, List<String>> getResponseHeaders() {
-        return connection == null ? null : connection.getHeaderFields();
+        return responseHeaders;
     }
 
+    /**
+     * 设置请求属性
+     */
     @Override
     public void setRequestProperty(String name, String value) {
         defaultRequestProperties.put(name, value);
     }
 
+    /**
+     * 清除请求属性
+     */
     @Override
     public void clearRequestProperty(String name) {
         defaultRequestProperties.remove(name);
     }
 
+    /**
+     * 清除所有请求属性
+     */
     @Override
     public void clearAllRequestProperties() {
         defaultRequestProperties.clear();
     }
 
+    /**
+     * 关闭数据源
+     */
     @Override
     public void close() throws HttpDataSourceException {
         if (opened) {
-            opened = false;
-            transferEnded();
-            closeConnectionQuietly();
-        }
-    }
-
-    /**
-     * 安静地关闭连接，不抛出异常
-     */
-    private void closeConnectionQuietly() {
-        if (inputStream != null) {
             try {
-                inputStream.close();
+                if (inputStream != null) {
+                    inputStream.close();
+                }
             } catch (IOException e) {
-                // 忽略
+                throw new HttpDataSourceException(
+                        e,
+                        new DataSpec(uri),
+                        HttpDataSourceException.TYPE_CLOSE);
+            } finally {
+                if (connection != null) {
+                    connection.disconnect();
+                    connection = null;
+                }
+                opened = false;
+                transferEnded();
             }
-            inputStream = null;
-        }
-        if (connection != null) {
-            connection.disconnect();
-            connection = null;
         }
     }
 
-    // ====================================================================
+    /**
+     * 打印日志
+     */
+    private void log(String msg) {
+        Log.d(TAG, msg);
+        // 同步到SettingsActivity日志
+        try {
+            Class<?> settingsClass = Class.forName("com.tv.live.SettingsActivity");
+            java.lang.reflect.Method logMethod = settingsClass.getMethod("log", String.class);
+            logMethod.invoke(null, msg);
+        } catch (Exception e) {
+            // 忽略
+        }
+    }
+
+    // ================================================
     // Factory 工厂类
-    // ====================================================================
+    // ================================================
 
     /**
-     * 工厂类，用于创建 RedirectLoggingHttpDataSource 实例
-     *
-     * 【用法】
-     * new RedirectLoggingHttpDataSource.Factory()
-     *     .setDefaultRequestProperties(headers)
-     *     .setAllowCrossProtocolRedirects(true)
-     *     .createDataSource()
+     * Factory for RedirectLoggingHttpDataSource
      */
     public static final class Factory implements HttpDataSource.Factory {
-
-        private final Map<String, String> defaultRequestProperties;
-        private boolean allowCrossProtocolRedirects;
+        private String userAgent;
+        private int connectTimeoutMs = 5000;
+        private int readTimeoutMs = 10000;
+        private Map<String, String> defaultRequestProperties;
 
         public Factory() {
-            this.defaultRequestProperties = new HashMap<>();
-            this.allowCrossProtocolRedirects = true;
         }
 
-        /**
-         * 设置默认请求头
-         */
-        public Factory setDefaultRequestProperties(Map<String, String> requestProperties) {
-            defaultRequestProperties.clear();
-            if (requestProperties != null) {
-                defaultRequestProperties.putAll(requestProperties);
-            }
+        public Factory setUserAgent(String userAgent) {
+            this.userAgent = userAgent;
             return this;
         }
 
-        /**
-         * 设置是否允许跨协议重定向
-         */
+        public Factory setConnectTimeoutMs(int connectTimeoutMs) {
+            this.connectTimeoutMs = connectTimeoutMs;
+            return this;
+        }
+
+        public Factory setReadTimeoutMs(int readTimeoutMs) {
+            this.readTimeoutMs = readTimeoutMs;
+            return this;
+        }
+
+        public Factory setDefaultRequestProperties(Map<String, String> defaultRequestProperties) {
+            this.defaultRequestProperties = defaultRequestProperties;
+            return this;
+        }
+
         public Factory setAllowCrossProtocolRedirects(boolean allow) {
-            this.allowCrossProtocolRedirects = allow;
+            // 本实现默认就支持跨协议重定向
             return this;
         }
 
         @Override
-        public HttpDataSource createDataSource() {
+        public RedirectLoggingHttpDataSource createDataSource() {
             return new RedirectLoggingHttpDataSource(
-                    defaultRequestProperties,
-                    allowCrossProtocolRedirects);
+                    userAgent,
+                    connectTimeoutMs,
+                    readTimeoutMs,
+                    defaultRequestProperties);
         }
     }
 }

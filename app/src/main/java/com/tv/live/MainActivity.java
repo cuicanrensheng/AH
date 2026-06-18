@@ -966,11 +966,433 @@ public class MainActivity extends AppCompatActivity {
                     // 没有缓存，加载失败
                     hideLoading();
                     SettingsActivity.logOperation("【加载】直播源加载失败：" + errorMsg);
-                } else {
+                                      } else {
                     // 有缓存，继续用缓存
                     log("【缓存】使用缓存数据继续播放");
                     hideLoading();
                 }
-         }
-  }
-               
+                // 尝试加载 EPG 缓存
+                loadEpgCache();
+            }
+        });
+    }
+
+    /**
+     * 从缓存加载 EPG 节目单
+     */
+    private void loadEpgCache() {
+        if (!epg_enable) return;
+        log("【EPG】尝试从缓存加载...");
+        if (!channelSourceList.isEmpty()) {
+            epgManagerWrapper.refresh(
+                    channelSourceList.get(currentPlayIndex),
+                    channelSourceList,
+                    currentSelectedDateIndex);
+        }
+    }
+
+    /**
+     * 从网络加载 EPG 节目单
+     */
+    private void loadEpg() {
+        if (!epg_enable) return;
+        log("【EPG】开始加载节目单...");
+        EpgManager.getInstance(this).setEpgUrl(UrlConfig.EPG_URL);
+        EpgManager.getInstance(this).loadEpg(new Runnable() {
+            @Override
+            public void run() {
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        log("【EPG】最新节目单加载完成");
+                        if (!channelSourceList.isEmpty()) {
+                            epgManagerWrapper.refresh(
+                                    channelSourceList.get(currentPlayIndex),
+                                    channelSourceList,
+                                    currentSelectedDateIndex);
+                        }
+                    }
+                });
+            }
+        });
+    }
+
+    /**
+     * 解析直播源内容（M3U 格式）
+     *
+     * @param content M3U 文件内容
+     * @return 解析后的频道列表
+     */
+    private List<Channel> parseLiveSource(String content) {
+        List<Channel> channels = new ArrayList<>();
+        if (TextUtils.isEmpty(content)) {
+            return channels;
+        }
+        String[] lines = content.split("\n");
+        String currentName = "";
+        String currentGroup = "";
+        String currentLogo = "";
+        String currentTvgId = "";
+        for (String line : lines) {
+            line = line.trim();
+            if (line.startsWith("#EXTINF:")) {
+                // #EXTINF 行：包含频道名称、分组、logo 等信息
+                int commaIndex = line.indexOf(",");
+                if (commaIndex > 0 && commaIndex < line.length() - 1) {
+                    currentName = line.substring(commaIndex + 1).trim();
+                }
+                // 提取分组名称
+                int groupIndex = line.indexOf("group-title=\"");
+                if (groupIndex > 0) {
+                    int groupEnd = line.indexOf("\"", groupIndex + 13);
+                    if (groupEnd > groupIndex) {
+                        currentGroup = line.substring(groupIndex + 13, groupEnd);
+                    }
+                }
+                // 提取 tvg-id
+                int tvgIndex = line.indexOf("tvg-id=\"");
+                if (tvgIndex > 0) {
+                    int tvgEnd = line.indexOf("\"", tvgIndex + 8);
+                    if (tvgEnd > tvgIndex) {
+                        currentTvgId = line.substring(tvgIndex + 8, tvgEnd);
+                    }
+                }
+            } else if (!line.startsWith("#") && !line.isEmpty()) {
+                // 播放地址行
+                String playUrl = line;
+                if (!TextUtils.isEmpty(currentName) && !TextUtils.isEmpty(playUrl)) {
+                    channels.add(new Channel(currentName, playUrl, currentGroup, currentTvgId));
+                }
+                // 重置，准备下一个频道
+                currentName = "";
+                currentGroup = "";
+                currentLogo = "";
+                currentTvgId = "";
+            }
+        }
+        log("【缓存】解析完成，共 " + channels.size() + " 个频道");
+        return channels;
+    }
+
+    /**
+     * 播放上一个频道（分组内循环）
+     */
+    public void playPrev() {
+        long now = System.currentTimeMillis();
+        if (now - lastChannelChangeTime < CHANNEL_COOLDOWN) return;
+        lastChannelChangeTime = now;
+        log("【切台】上一台");
+        if (channelSourceList == null || channelSourceList.isEmpty()) return;
+        Channel currentChannel = channelSourceList.get(currentPlayIndex);
+        String currentGroup = currentChannel.getGroup();
+        List<Channel> groupChannels = new ArrayList<>();
+        for (Channel c : channelSourceList) {
+            if (currentGroup.equals(c.getGroup())) {
+                groupChannels.add(c);
+            }
+        }
+        if (groupChannels.size() <= 1) return;
+        int groupIndex = -1;
+        for (int i = 0; i < groupChannels.size(); i++) {
+            if (groupChannels.get(i).getName().equals(currentChannel.getName())) {
+                groupIndex = i;
+                break;
+            }
+        }
+        if (groupIndex == -1) return;
+        int prevGroupIndex = (groupIndex - 1 + groupChannels.size()) % groupChannels.size();
+        Channel prevChannel = groupChannels.get(prevGroupIndex);
+        int globalIndex = channelSourceList.indexOf(prevChannel);
+        if (globalIndex != -1) {
+            playChannel(globalIndex);
+        }
+    }
+
+    /**
+     * 播放下一个频道（分组内循环）
+     */
+    public void playNext() {
+        long now = System.currentTimeMillis();
+        if (now - lastChannelChangeTime < CHANNEL_COOLDOWN) return;
+        lastChannelChangeTime = now;
+        log("【切台】下一台");
+        if (channelSourceList == null || channelSourceList.isEmpty()) return;
+        Channel currentChannel = channelSourceList.get(currentPlayIndex);
+        String currentGroup = currentChannel.getGroup();
+        List<Channel> groupChannels = new ArrayList<>();
+        for (Channel c : channelSourceList) {
+            if (currentGroup.equals(c.getGroup())) {
+                groupChannels.add(c);
+            }
+        }
+        if (groupChannels.size() <= 1) return;
+        int groupIndex = -1;
+        for (int i = 0; i < groupChannels.size(); i++) {
+            if (groupChannels.get(i).getName().equals(currentChannel.getName())) {
+                groupIndex = i;
+                break;
+            }
+        }
+        if (groupIndex == -1) return;
+        int nextGroupIndex = (groupIndex + 1) % groupChannels.size();
+        Channel nextChannel = groupChannels.get(nextGroupIndex);
+        int globalIndex = channelSourceList.indexOf(nextChannel);
+        if (globalIndex != -1) {
+            playChannel(globalIndex);
+        }
+    }
+
+    /**
+     * 播放指定索引的频道
+     *
+     * @param index 频道在 channelSourceList 中的全局索引
+     */
+    public void playChannel(int index) {
+        if (channelSourceList == null || channelSourceList.isEmpty()) {
+            log("【播放】频道列表为空，无法播放");
+            return;
+        }
+        index = Math.max(0, Math.min(index, channelSourceList.size() - 1));
+        currentPlayIndex = index;
+        Channel ch = channelSourceList.get(index);
+        if (ch == null || TextUtils.isEmpty(ch.getPlayUrl())) {
+            log("【播放】频道地址为空");
+            return;
+        }
+        final String playUrl = ch.getPlayUrl();
+        log("========================================");
+        log("【播放】频道名称：" + ch.getName());
+        log("【播放】播放地址：" + playUrl);
+        log("【播放】当前索引：" + index);
+        log("========================================");
+        playerStateListener.setCurrentChannelName(ch.getName());
+        showChannelNum(index + 1);
+        appConfig.setLastPlayIndex(index);
+        if (!TextUtils.isEmpty(currentGroupName) && !currentGroupChannelList.isEmpty()) {
+            channelListManager.setChannelsByGroup(channelSourceList, currentGroupName, index);
+        } else {
+            channelListManager.setChannels(channelSourceList, index);
+        }
+        epgManagerWrapper.refresh(ch, channelSourceList, currentSelectedDateIndex);
+        if (info_bar != null) {
+            info_bar.setVisibility(View.VISIBLE);
+            info_bar.removeCallbacks(hideInfoBar);
+            info_bar.postDelayed(hideInfoBar, 2000);
+            tv_channel_name.setText(ch.getName());
+            TVPlayerManager.LiveInfo live = mPlayerManager.getLiveInfo();
+            tv_tag_fhd.setText(live.quality);
+            tv_tag_audio.setText(live.audio);
+            tv_bitrate.setText(live.bitrate);
+        }
+        mPlayerManager.playUrl(playUrl);
+    }
+
+    /**
+     * 显示频道号（右上角弹出）
+     *
+     * @param num 频道号
+     */
+    public void showChannelNum(int num) {
+        tv_channel_num.setText(String.valueOf(num));
+        tv_channel_num.setVisibility(View.VISIBLE);
+        new Handler().postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                tv_channel_num.setVisibility(View.GONE);
+            }
+        }, 3000);
+    }
+
+    /**
+     * 初始化频道列表的点击事件
+     */
+    private void initListViewClick() {
+        ListView lvChannelList = findViewById(R.id.lv_channel_list);
+        lvChannelList.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+            @Override
+            public void onItemClick(AdapterView<?> p, View v, int pos, long id) {
+                if (!currentGroupChannelList.isEmpty() && pos < currentGroupChannelList.size()) {
+                    Channel selectedChannel = currentGroupChannelList.get(pos);
+                    int globalIndex = channelSourceList.indexOf(selectedChannel);
+                    if (globalIndex != -1) {
+                        log("【列表点击】切换到全局索引：" + globalIndex);
+                        SettingsActivity.logOperation("【列表】点击频道：" + selectedChannel.getName());
+                        playChannel(globalIndex);
+                        togglePanel();
+                    }
+                } else {
+                    Channel ch = channelSourceList.get(pos);
+                    SettingsActivity.logOperation("【列表】点击频道：" + ch.getName());
+                    playChannel(pos);
+                    togglePanel();
+                }
+            }
+        });
+    }
+
+    /**
+     * 切换频道面板显示/隐藏
+     */
+    public void togglePanel() {
+        if (!TextUtils.isEmpty(currentGroupName) && !currentGroupChannelList.isEmpty()) {
+            channelListManager.setChannelsByGroup(channelSourceList, currentGroupName, currentPlayIndex);
+        } else {
+            channelListManager.setChannels(channelSourceList, currentPlayIndex);
+        }
+        boolean isOpen = panel_layout.getVisibility() == View.VISIBLE;
+        panelManager.toggle(channelSourceList, currentPlayIndex, dateListManager);
+        SettingsActivity.logOperation("【面板】" + (isOpen ? "关闭" : "打开") + "频道面板");
+    }
+
+    /**
+     * 打开设置页面
+     *
+     * 【进入设置不暂停】
+     * 打开设置前设置 isOpeningSettings = true，
+     * 这样 onPause 时就不会暂停播放器。
+     */
+    public void openSettings() {
+        isOpeningSettings = true;
+        startActivity(new Intent(this, SettingsActivity.class));
+        SettingsActivity.logOperation("【系统】打开设置页面");
+    }
+
+    /**
+     * 接收远程配置（网页后台下发）
+     *
+     * @param liveUrl 直播源地址
+     * @param epgUrl EPG 地址
+     */
+    public void onReceiveConfig(final String liveUrl, final String epgUrl) {
+        AppConfig config = AppConfig.getInstance(this);
+        config.setCustomUrls(liveUrl, epgUrl);
+        if (liveUrl != null) UrlConfig.LIVE_URL = liveUrl;
+        if (epgUrl != null) UrlConfig.EPG_URL = epgUrl;
+        log("【远程配置】更新直播源：" + liveUrl);
+        log("【远程配置】更新EPG：" + epgUrl);
+        SettingsActivity.logOperation("【远程配置】更新直播源/EPG地址");
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                hasPlayedWithCache = false;
+                loadLiveAndEpg();
+            }
+        });
+    }
+
+    /**
+     * onPause：页面暂停
+     *
+     * 【进入设置不暂停】
+     * 如果 isOpeningSettings 为 true，说明是打开设置页面，
+     * 不暂停播放器，直接返回。
+     */
+    @Override
+    protected void onPause() {
+        super.onPause();
+        if (isOpeningSettings) {
+            log("【主页】onPause -> 打开设置页面，继续播放");
+            return;
+        }
+        log("【主页】onPause -> 切到后台");
+        SettingsActivity.logOperation("【系统】APP切到后台");
+        if (mPlayerManager != null)
+            mPlayerManager.onBackground();
+    }
+
+    /**
+     * onResume：页面恢复
+     *
+     * 【进入设置不暂停】
+     * 如果 isOpeningSettings 为 true，说明是从设置页面回来，
+     * 重置标志位即可，不需要调用 onForeground。
+     */
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (isOpeningSettings) {
+            isOpeningSettings = false;
+            log("【主页】onResume -> 从设置页面回来");
+        } else {
+            log("【主页】onResume -> 回到前台");
+            SettingsActivity.logOperation("【系统】APP回到前台");
+            if (mPlayerManager != null)
+                mPlayerManager.onForeground();
+        }
+        loadSettings();
+        screenRatioManager.apply();
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                android.view.WindowInsetsController controller = getWindow().getInsetsController();
+                if (controller != null) {
+                    controller.hide(android.view.WindowInsets.Type.systemBars());
+                    controller.setSystemBarsBehavior(
+                            android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                    );
+                }
+            } else {
+                getWindow().getDecorView().setSystemUiVisibility(
+                        View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                                | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                                | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                                | View.SYSTEM_UI_FLAG_FULLSCREEN
+                                | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                                | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                );
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            log("【适配】onResume 恢复全屏失败：" + e.getMessage());
+        }
+    }
+
+    /**
+     * onWindowFocusChanged：窗口焦点变化
+     */
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus) {
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    android.view.WindowInsetsController controller = getWindow().getInsetsController();
+                    if (controller != null) {
+                        controller.hide(android.view.WindowInsets.Type.systemBars());
+                        controller.setSystemBarsBehavior(
+                                android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                        );
+                    }
+                } else {
+                    getWindow().getDecorView().setSystemUiVisibility(
+                            View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                                    | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                                    | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                                    | View.SYSTEM_UI_FLAG_FULLSCREEN
+                                    | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                                    | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                    );
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+                log("【适配】onWindowFocusChanged 恢复全屏失败：" + e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * onDestroy：页面销毁
+     */
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        log("【主页】onDestroy -> 页面销毁");
+        SettingsActivity.logOperation("【系统】APP退出");
+        if (channelNumHandler != null) {
+            channelNumHandler.removeCallbacks(channelNumConfirmRunnable);
+        }
+        try { unregisterReceiver(toggleControllerReceiver); } catch (Exception ignored) {}
+        try { unregisterReceiver(refreshReceiver); } catch (Exception ignored) {}
+        mPlayerManager.release();
+        mInstance = null;
+    }
+}     

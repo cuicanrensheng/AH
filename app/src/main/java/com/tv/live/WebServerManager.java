@@ -33,10 +33,9 @@ import java.util.Map;
  * SettingsActivity 里代码太多太杂，把网页后台独立成一个类，
  * 职责更清晰，代码更好维护。
  *
- * 【端口占用处理机制】
- * 启动前自动检测端口是否被占用：
- * 1. 如果是之前的实例占用 → 自动关闭旧实例，重新启动
- * 2. 如果是其他进程占用 → 提示错误，建议重启APP
+ * 【端口策略】
+ * 从默认端口开始尝试，最多试 10 个端口，找到可用的就用。
+ * 这样即使默认端口被占用，也能自动换一个端口启动。
  *
  * 【使用方式】
  * WebServerManager manager = new WebServerManager(context, port);
@@ -101,7 +100,7 @@ public class WebServerManager {
     // ====================== 公共方法 ======================
 
     // ====================================================================
-    // ✅ 修改：start() 方法 - 添加端口占用检测 + 自动释放
+    // ✅ 修改：start() 方法 - 加上自动找可用端口
     // ====================================================================
     /**
      * 启动 HTTP 服务器
@@ -109,20 +108,19 @@ public class WebServerManager {
      *
      * 【完整启动流程】
      * 1. 检查是否已经在运行 → 是则直接返回
-     * 2. 检测端口是否被占用
-     *    ├─ 未占用 → 正常启动
-     *    └─ 已占用 → 尝试释放
-     *              ├─ 是旧实例占用 → stop() 旧实例 → 等 500ms → 重新启动
-     *              └─ 是其他进程占用 → 提示错误，启动失败
-     * 3. 创建 ServerSocket，开始监听
+     * 2. 自动找可用端口（从默认端口开始，最多试 10 个）
+     * 3. 在子线程中创建 ServerSocket，开始监听
      * 4. 保存当前实例到静态变量 runningInstance
      * 5. 循环接受连接，每个请求开一个线程处理
      *
-     * 【为什么要等 500ms？】
-     * 调用 serverSocket.close() 后，端口不会立即释放，
-     * 操作系统需要一点时间回收（TIME_WAIT 状态）。
-     * 等 500ms 让端口完全释放，再重新绑定成功率更高。
-     * 另外 setReuseAddress(true) 也能加快端口复用。
+     * 【为什么要自动找端口？】
+     * 默认端口 10481 可能被其他应用占用，或者 APP 异常退出后
+     * 端口处于 TIME_WAIT 状态暂时无法绑定。自动找可用端口能保证
+     * 服务器总能启动成功，用户不需要手动改端口。
+     *
+     * 【二维码地址会变吗？】
+     * 会变。如果换了端口，二维码里的地址端口号也会跟着变，
+     * 但 currentWebUrl 会自动更新，所以扫码还是能正常打开。
      */
     public void start() {
         // ===== 1. 检查是否已经在运行 =====
@@ -131,50 +129,62 @@ public class WebServerManager {
             return;
         }
 
-        // ===== 2. 端口占用检测 =====
-        if (isPortInUse(port)) {
-            logOperation("【网页后台】⚠️ 端口 " + port + " 被占用，尝试释放...");
-
-            // ===== 2.1 尝试 1：如果是之前的实例占用的，先关掉旧的 =====
-            if (runningInstance != null && runningInstance != this) {
-                logOperation("【网页后台】发现旧实例正在运行，正在关闭...");
-                runningInstance.stop();
-
-                // 等一下让端口释放（TIME_WAIT 状态需要时间回收）
-                try {
-                    Thread.sleep(500);
-                } catch (InterruptedException e) {
-                    // 忽略中断异常
-                }
-            }
-
-            // ===== 2.2 再次检测端口是否释放 =====
-            if (isPortInUse(port)) {
-                logOperation("【网页后台】❌ 端口释放失败，可能被其他进程占用");
-                logOperation("【网页后台】💡 建议：重启APP或更换端口号");
-                isRunning = false;
-                return;
-            }
-
-            logOperation("【网页后台】✅ 端口已释放，重新启动");
+        // ===== 2. 自动找可用端口 =====
+        int actualPort = findAvailablePort(port);
+        if (actualPort == -1) {
+            // 试了 10 个端口都不行，启动失败
+            logOperation("【网页后台】❌ 找不到可用端口，启动失败");
+            logOperation("【网页后台】💡 建议：重启设备或检查网络设置");
+            isRunning = false;
+            return;
         }
+
+        // 如果换了端口，打个日志说明一下
+        if (actualPort != port) {
+            logOperation("【网页后台】端口 " + port + " 被占用，自动改用端口 " + actualPort);
+            this.port = actualPort;
+        }
+
+        final int finalPort = actualPort;
 
         // ===== 3. 在子线程中启动服务器 =====
         new Thread(() -> {
             try {
-                logOperation("【网页后台】正在启动服务器，端口：" + port);
+                logOperation("【网页后台】正在启动服务器，端口：" + finalPort);
 
-                // 创建 ServerSocket，监听指定端口
-                serverSocket = new ServerSocket(port);
-                // 允许端口复用，避免重启时端口被占用（加快 TIME_WAIT 状态的回收）
+                // ====================================================================
+                // ✅ 修改：创建 ServerSocket 的方式
+                // ====================================================================
+                /**
+                 * 【为什么要这样写？】
+                 * setReuseAddress(true) 必须在 bind() 之前设置才有效。
+                 *
+                 * 原来的写法（错误）：
+                 *   serverSocket = new ServerSocket(port);  // 构造函数里就绑定了
+                 *   serverSocket.setReuseAddress(true);     // 这时候再设置已经晚了
+                 *
+                 * 现在的写法（正确）：
+                 *   serverSocket = new ServerSocket();           // 先创建空的
+                 *   serverSocket.setReuseAddress(true);          // 再设置 SO_REUSEADDR
+                 *   serverSocket.bind(new InetSocketAddress(port));  // 最后绑定
+                 *
+                 * 【SO_REUSEADDR 的作用】
+                 * 允许端口处于 TIME_WAIT 状态时重新绑定。
+                 * APP 异常退出后，端口会进入 TIME_WAIT 状态（通常持续 1-2 分钟），
+                 * 这时候如果没有 SO_REUSEADDR，重新绑定会失败。
+                 * 有了 SO_REUSEADDR，就能立即复用这个端口。
+                 */
+                serverSocket = new ServerSocket();
                 serverSocket.setReuseAddress(true);
+                serverSocket.bind(new java.net.InetSocketAddress(finalPort));
+
                 isRunning = true;
 
                 // ===== 4. 保存当前运行的实例（用于后续端口检测） =====
                 runningInstance = this;
 
-                logOperation("【网页后台】✅ 启动成功，监听端口：" + port);
-                logOperation("【网页后台】访问地址：http://" + getDeviceIPAddress() + ":" + port);
+                logOperation("【网页后台】✅ 启动成功，监听端口：" + finalPort);
+                logOperation("【网页后台】访问地址：http://" + getDeviceIPAddress() + ":" + finalPort);
 
                 // ===== 5. 循环接受连接 =====
                 while (!serverSocket.isClosed()) {
@@ -244,7 +254,39 @@ public class WebServerManager {
     }
 
     // ====================================================================
-    // ✅ 新增：isPortInUse() 方法 - 检测端口是否被占用
+    // ✅ 新增：findAvailablePort() 方法 - 自动找可用端口
+    // ====================================================================
+    /**
+     * 自动找可用端口
+     *
+     * 从 startPort 开始尝试，最多试 10 个端口，找到第一个可用的就返回。
+     *
+     * 【为什么需要这个方法？】
+     * 默认端口可能被其他应用占用，或者处于 TIME_WAIT 状态。
+     * 自动找可用端口能保证服务器总能启动成功。
+     *
+     * 【尝试范围】
+     * startPort ~ startPort + 9（共 10 个端口）
+     * 比如默认 10481，就会试 10481、10482、...、10490
+     *
+     * @param startPort 起始端口号
+     * @return 可用的端口号，找不到返回 -1
+     */
+    private int findAvailablePort(int startPort) {
+        int maxTry = 10;  // 最多试 10 个端口
+        for (int i = 0; i < maxTry; i++) {
+            int tryPort = startPort + i;
+            if (!isPortInUse(tryPort)) {
+                // 找到可用端口，直接返回
+                return tryPort;
+            }
+        }
+        // 试了 10 个都不行，返回 -1 表示失败
+        return -1;
+    }
+
+    // ====================================================================
+    // ✅ 修改：isPortInUse() 方法 - 正确设置 SO_REUSEADDR
     // ====================================================================
     /**
      * 检测端口是否被占用
@@ -261,13 +303,22 @@ public class WebServerManager {
      * 如果端口上有服务在运行，可能会触发一些异常行为。
      * 用 ServerSocket 绑定检测更"干净"，不会干扰正在运行的服务。
      *
+     * 【重要：SO_REUSEADDR 的设置时机】
+     * setReuseAddress(true) 必须在 bind() 之前设置才有效。
+     * 所以要先创建空的 ServerSocket，设置完再绑定。
+     *
      * @param port 端口号
      * @return true=被占用，false=空闲
      */
     private boolean isPortInUse(int port) {
         try {
-            ServerSocket testSocket = new ServerSocket(port);
+            // 先创建空的 ServerSocket
+            ServerSocket testSocket = new ServerSocket();
+            // 再设置 SO_REUSEADDR（必须在 bind 之前）
             testSocket.setReuseAddress(true);
+            // 最后绑定端口
+            testSocket.bind(new java.net.InetSocketAddress(port));
+            // 用完关掉
             testSocket.close();
             return false;  // 能绑定成功，说明端口空闲
         } catch (Exception e) {

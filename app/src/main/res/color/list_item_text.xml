@@ -1,10 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- 选中状态：亮蓝色文字 -->
     <item android:color="#40A9FF" android:state_selected="true" />
     <item android:color="#40A9FF" android:state_activated="true" />
-    <!-- 焦点状态：亮蓝色文字 -->
     <item android:color="#40A9FF" android:state_focused="true" />
-    <!-- 默认状态：白色文字 -->
     <item android:color="#FFFFFF" />
 </selector>

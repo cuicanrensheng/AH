@@ -1,5 +1,4 @@
 package com.tv.live;
-
 import com.tv.live.widget.ChannelListManager;
 import com.tv.live.widget.GroupListManager;
 import com.tv.live.widget.DateListManager;
@@ -68,6 +67,10 @@ import java.util.List;
  * 【注意事项】
  * WindowInsetsController 必须在 setContentView 之后调用，
  * 因为 DecorView 在 setContentView 时才创建，之前调用会返回 null 导致崩溃。
+ *
+ * 【电视兼容说明】
+ * 所有全面屏适配代码都加了 try-catch，
+ * 即使电视不支持这些 API，也不会崩溃，只是不显示全屏效果而已。
  *
  * 【新增功能】
  * 1. ✅ 换台反转：上下键切台方向可反转
@@ -250,14 +253,18 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         log("【主页】onCreate -> 页面创建");
         SettingsActivity.logOperation("【系统】APP启动");
-
         mInstance = this;
+
         // 设置横屏
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
 
         // ================================================
-        // ✅ 全面屏全屏适配（刘海屏/挖孔屏）- 增强版
+        // ✅ 全面屏全屏适配（刘海屏/挖孔屏）- 增强版（电视兼容版）
         // ================================================
+        //
+        // 【电视兼容说明】
+        // 所有全面屏适配代码都加了 try-catch，
+        // 即使电视不支持这些 API，也不会崩溃，只是不显示全屏效果而已。
         //
         // 【为什么之前的 SHORT_EDGES 没生效？】
         // SHORT_EDGES 模式只允许内容延伸到"物理短边"的刘海区域。
@@ -281,81 +288,91 @@ public class MainActivity extends AppCompatActivity {
         // ────────────────────────────────────────────────
         // 第一部分：setContentView 之前可以设置的
         // ────────────────────────────────────────────────
-
-        // 1. 刘海屏适配（让内容延伸到刘海/挖孔区域）
-        //    这是 Window 的属性，不需要 DecorView，可以提前设置
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            WindowManager.LayoutParams lp = getWindow().getAttributes();
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                // ✅ Android 12+（API 31+）：使用 ALWAYS 模式
-                // 允许内容延伸到所有边的刘海区域，横屏时摄像头区域也能显示内容
-                lp.layoutInDisplayCutoutMode =
-                        WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS;
-            } else {
-                // Android 9-11（API 28-30）：使用 SHORT_EDGES 模式
-                // 虽然横屏时效果有限，但这是官方推荐的安全模式
-                lp.layoutInDisplayCutoutMode =
-                        WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+        try {
+            // 1. 刘海屏适配（让内容延伸到刘海/挖孔区域）
+            //    这是 Window 的属性，不需要 DecorView，可以提前设置
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                WindowManager.LayoutParams lp = getWindow().getAttributes();
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    // ✅ Android 12+（API 31+）：使用 ALWAYS 模式
+                    // 允许内容延伸到所有边的刘海区域，横屏时摄像头区域也能显示内容
+                    lp.layoutInDisplayCutoutMode =
+                            WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS;
+                } else {
+                    // Android 9-11（API 28-30）：使用 SHORT_EDGES 模式
+                    // 虽然横屏时效果有限，但这是官方推荐的安全模式
+                    lp.layoutInDisplayCutoutMode =
+                            WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+                }
+                getWindow().setAttributes(lp);
             }
 
-            getWindow().setAttributes(lp);
-        }
-
-        // 2. 全屏标志（兼容旧版本 Android）
-        getWindow().setFlags(
-                WindowManager.LayoutParams.FLAG_FULLSCREEN,
-                WindowManager.LayoutParams.FLAG_FULLSCREEN
-        );
-
-        // 3. Android 10 及以下的沉浸式（旧方式）
-        //    旧的 setSystemUiVisibility 方式可以在 setContentView 之前设置
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
-            getWindow().getDecorView().setSystemUiVisibility(
-                    View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN       // 布局延伸到状态栏后面
-                            | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION  // 布局延伸到导航栏后面
-                            | View.SYSTEM_UI_FLAG_LAYOUT_STABLE          // 保持布局稳定
-                            | View.SYSTEM_UI_FLAG_FULLSCREEN              // 隐藏状态栏
-                            | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION         // 隐藏导航栏
-                            | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY        // 沉浸式粘性模式
+            // 2. 全屏标志（兼容旧版本 Android）
+            getWindow().setFlags(
+                    WindowManager.LayoutParams.FLAG_FULLSCREEN,
+                    WindowManager.LayoutParams.FLAG_FULLSCREEN
             );
+
+            // 3. Android 10 及以下的沉浸式（旧方式）
+            //    旧的 setSystemUiVisibility 方式可以在 setContentView 之前设置
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+                getWindow().getDecorView().setSystemUiVisibility(
+                        View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN       // 布局延伸到状态栏后面
+                                | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION  // 布局延伸到导航栏后面
+                                | View.SYSTEM_UI_FLAG_LAYOUT_STABLE          // 保持布局稳定
+                                | View.SYSTEM_UI_FLAG_FULLSCREEN              // 隐藏状态栏
+                                | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION         // 隐藏导航栏
+                                | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY        // 沉浸式粘性模式
+                );
+            }
+        } catch (Exception e) {
+            // ✅ 全面屏适配失败不影响正常使用，忽略即可
+            // 某些电视的 ROM 对这些 API 支持不好，会抛出异常
+            e.printStackTrace();
+            log("【适配】全面屏适配（第一部分）失败：" + e.getMessage());
         }
 
         // 加载布局
         setContentView(R.layout.activity_main);
+
         // 保持屏幕常亮
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
         // ────────────────────────────────────────────────
         // 第二部分：setContentView 之后才能设置的
         // ────────────────────────────────────────────────
-
-        // 4. ✅ Android 11+ 的 WindowInsetsController（新方式）
-        //    重要：必须在 setContentView 之后调用！
-        //    因为 DecorView 在 setContentView 时才创建，之前调用 getInsetsController() 会返回 null
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            // 获取 WindowInsetsController（Android 11+ 官方推荐的沉浸式控制方式）
-            android.view.WindowInsetsController controller = getWindow().getInsetsController();
-
-            // 加上 null 检查，防止某些特殊情况返回 null
-            if (controller != null) {
-                // 隐藏状态栏和导航栏
-                controller.hide(android.view.WindowInsets.Type.systemBars());
-                // 设置沉浸式粘性模式：从边缘滑动时临时显示系统栏
-                controller.setSystemBarsBehavior(
-                        android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-                );
+        try {
+            // 4. ✅ Android 11+ 的 WindowInsetsController（新方式）
+            //    重要：必须在 setContentView 之后调用！
+            //    因为 DecorView 在 setContentView 时才创建，之前调用 getInsetsController() 会返回 null
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                // 获取 WindowInsetsController（Android 11+ 官方推荐的沉浸式控制方式）
+                android.view.WindowInsetsController controller = getWindow().getInsetsController();
+                // 加上 null 检查，防止某些特殊情况返回 null
+                if (controller != null) {
+                    // 隐藏状态栏和导航栏
+                    controller.hide(android.view.WindowInsets.Type.systemBars());
+                    // 设置沉浸式粘性模式：从边缘滑动时临时显示系统栏
+                    controller.setSystemBarsBehavior(
+                            android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                    );
+                }
+                // 让布局不考虑系统栏，真正延伸到系统栏后面
+                // 这个很重要！没有这个的话，布局还是会避开系统栏
+                getWindow().setDecorFitsSystemWindows(false);
             }
-
-            // 让布局不考虑系统栏，真正延伸到系统栏后面
-            // 这个很重要！没有这个的话，布局还是会避开系统栏
-            getWindow().setDecorFitsSystemWindows(false);
+        } catch (Exception e) {
+            // ✅ 全面屏适配失败不影响正常使用，忽略即可
+            e.printStackTrace();
+            log("【适配】全面屏适配（第二部分）失败：" + e.getMessage());
         }
 
         // 绑定频道号显示
         tv_channel_num = findViewById(R.id.tv_channel_num);
+
         // 初始化信息栏
         initInfoBar();
+
         // 初始化配置
         appConfig = AppConfig.getInstance(this);
         loadSettings();
@@ -401,10 +418,8 @@ public class MainActivity extends AppCompatActivity {
                 epgPanelOpen = !epgPanelOpen;
                 lvDate.setVisibility(epgPanelOpen ? View.VISIBLE : View.GONE);
                 lvEpg.setVisibility(epgPanelOpen ? View.VISIBLE : View.GONE);
-
                 // 记录操作日志
                 SettingsActivity.logOperation("【EPG】" + (epgPanelOpen ? "展开" : "收起") + "节目单");
-
                 // 展开时刷新当前频道的节目单
                 if (epgPanelOpen && !channelSourceList.isEmpty()) {
                     Channel curr = channelSourceList.get(currentPlayIndex);
@@ -421,12 +436,10 @@ public class MainActivity extends AppCompatActivity {
                 groupListManager.setSelectedPosition(position);
                 lvGroup.setItemChecked(position, true);
                 lvGroup.setSelection(position);
-
                 // 获取选中的分组名称
                 String groupName = groupListManager.getCurrentGroup(position);
                 // 保存当前分组名称，记住用户的筛选状态
                 currentGroupName = groupName;
-
                 // 筛选该分组下的频道
                 currentGroupChannelList.clear();
                 for (Channel c : channelSourceList) {
@@ -436,7 +449,6 @@ public class MainActivity extends AppCompatActivity {
                 }
                 // 更新频道列表显示（只显示当前分组的频道）
                 channelListManager.setChannelsByGroup(channelSourceList, groupName, currentPlayIndex);
-
                 // 记录操作日志
                 SettingsActivity.logOperation("【分组】选中分组：" + groupName + "，频道数：" + currentGroupChannelList.size());
                 log("【分组】选中分组：" + groupName + "，频道数：" + currentGroupChannelList.size());
@@ -449,7 +461,6 @@ public class MainActivity extends AppCompatActivity {
         dateListManager = new DateListManager(this, lvDate);
         epgManagerWrapper = new EpgManagerWrapper(this, lvEpg);
         dateListManager.initDate();
-
         panelManager = new PanelManager(panel_layout, channelListManager, epgManagerWrapper);
 
         // 日期选中监听：切换日期时刷新EPG
@@ -501,9 +512,9 @@ public class MainActivity extends AppCompatActivity {
         // 按键事件管理
         keyEventManager = new KeyEventManager(this);
         switchManager = ChannelSwitchManager.getInstance();
+
         // 恢复上次播放的频道索引
         currentPlayIndex = appConfig.getLastPlayIndex();
-
         log("【播放】记录上次播放索引：" + currentPlayIndex);
 
         // ================================================
@@ -515,6 +526,7 @@ public class MainActivity extends AppCompatActivity {
 
         // 加载直播源和EPG（带缓存机制）
         loadLiveAndEpg();
+
         // 初始化列表点击事件
         initListViewClick();
     }
@@ -547,14 +559,12 @@ public class MainActivity extends AppCompatActivity {
      */
     private void initLoadingView() {
         FrameLayout rootLayout = findViewById(android.R.id.content);
-
         // 创建加载容器（黑色半透明背景）
         FrameLayout loadingLayout = new FrameLayout(this);
         loadingLayout.setBackgroundColor(0xEE000000); // 黑色半透明
         loadingLayout.setLayoutParams(new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT));
-
         // 创建垂直布局（进度条 + 文字）
         LinearLayout linearLayout = new LinearLayout(this);
         linearLayout.setOrientation(LinearLayout.VERTICAL);
@@ -564,11 +574,9 @@ public class MainActivity extends AppCompatActivity {
                 FrameLayout.LayoutParams.WRAP_CONTENT);
         llParams.gravity = Gravity.CENTER;
         linearLayout.setLayoutParams(llParams);
-
         // 进度条
         ProgressBar progressBar = new ProgressBar(this);
         linearLayout.addView(progressBar);
-
         // 加载文字
         tv_loading_text = new TextView(this);
         tv_loading_text.setText("加载中...");
@@ -580,12 +588,9 @@ public class MainActivity extends AppCompatActivity {
         textParams.setMargins(0, 20, 0, 0);
         tv_loading_text.setLayoutParams(textParams);
         linearLayout.addView(tv_loading_text);
-
         loadingLayout.addView(linearLayout);
         rootLayout.addView(loadingLayout);
-
         loadingView = loadingLayout;
-
         log("【加载】加载视图初始化完成");
     }
 
@@ -621,7 +626,6 @@ public class MainActivity extends AppCompatActivity {
         channel_reverse = sp.getBoolean("channel_reverse", false);
         number_channel_enable = sp.getBoolean("number_channel_enable", true);
         auto_update_source = sp.getBoolean("auto_update_source", true);
-
         log("【设置】EPG开关：" + epg_enable);
         log("【设置】切台反转：" + channel_reverse);
         log("【设置】数字选台：" + number_channel_enable);
@@ -642,7 +646,6 @@ public class MainActivity extends AppCompatActivity {
             SettingsActivity.logOperation("【数字选台】取消输入");
             return;
         }
-
         if (panel_layout.getVisibility() == View.VISIBLE) {
             panel_layout.setVisibility(View.GONE);
             playerView.requestFocus();
@@ -669,7 +672,6 @@ public class MainActivity extends AppCompatActivity {
     private boolean handleNumberKey(int keyCode) {
         // 如果数字选台功能关闭，不处理
         if (!number_channel_enable) return false;
-
         // 转换按键码为数字
         int num = -1;
         switch (keyCode) {
@@ -685,21 +687,16 @@ public class MainActivity extends AppCompatActivity {
             case KeyEvent.KEYCODE_9: num = 9; break;
             default: return false; // 不是数字键，不处理
         }
-
         // 追加数字到输入缓冲区
         channelNumInput.append(num);
-
         // 显示当前输入的频道号
         tv_channel_num.setText(channelNumInput.toString());
         tv_channel_num.setVisibility(View.VISIBLE);
-
         // 重置超时计时器
         channelNumHandler.removeCallbacks(channelNumConfirmRunnable);
         channelNumHandler.postDelayed(channelNumConfirmRunnable, CHANNEL_NUM_TIMEOUT);
-
         // 记录操作日志
         SettingsActivity.logOperation("【数字选台】输入：" + channelNumInput);
-
         return true;
     }
 
@@ -709,10 +706,8 @@ public class MainActivity extends AppCompatActivity {
      */
     private void confirmChannelNum() {
         if (channelNumInput.length() == 0) return;
-
         try {
             int channelNum = Integer.parseInt(channelNumInput.toString());
-
             // 检查频道号是否有效
             if (channelNum >= 1 && channelNum <= channelSourceList.size()) {
                 // 频道号转索引（频道号从1开始，索引从0开始）
@@ -726,10 +721,8 @@ public class MainActivity extends AppCompatActivity {
         } catch (NumberFormatException e) {
             // 忽略解析错误
         }
-
         // 清空输入缓冲区
         channelNumInput.setLength(0);
-
         // 延迟1秒后隐藏频道号显示
         new Handler().postDelayed(new Runnable() {
             @Override
@@ -763,9 +756,8 @@ public class MainActivity extends AppCompatActivity {
                     // 正常模式：上键 = 上一台
                     playPrev();
                 }
-                SettingsActivity.logOperation("【切台】上键 → " + (channel_reverse ? "下一台" : "上一台"));
+                SettingsActivity.logOperation("切台】上键 → " + (channel_reverse ? "下一台" : "上一台"));
                 return true;
-
             case KeyEvent.KEYCODE_DPAD_DOWN:
                 if (channel_reverse) {
                     // 反转模式：下键 = 上一台
@@ -776,7 +768,6 @@ public class MainActivity extends AppCompatActivity {
                 }
                 SettingsActivity.logOperation("【切台】下键 → " + (channel_reverse ? "上一台" : "下一台"));
                 return true;
-
             case KeyEvent.KEYCODE_DPAD_CENTER:
             case KeyEvent.KEYCODE_ENTER:
                 // 确定键：如果正在输入数字选台，就确认
@@ -788,13 +779,11 @@ public class MainActivity extends AppCompatActivity {
                 // 否则打开/关闭面板
                 togglePanel();
                 return true;
-
             case KeyEvent.KEYCODE_DPAD_LEFT:
             case KeyEvent.KEYCODE_DPAD_RIGHT:
                 // 左右键：打开/关闭面板
                 togglePanel();
                 return true;
-
             default:
                 return false;
         }
@@ -812,13 +801,10 @@ public class MainActivity extends AppCompatActivity {
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         // 第一步：先处理数字选台
         if (handleNumberKey(keyCode)) return true;
-
         // 第二步：处理方向键（支持换台反转）
         if (handleDirectionKey(keyCode)) return true;
-
         // 第三步：其他按键交给按键事件管理器
         if (keyEventManager.dispatchKey(keyCode)) return true;
-
         return super.onKeyDown(keyCode, event);
     }
 
@@ -841,14 +827,12 @@ public class MainActivity extends AppCompatActivity {
      */
     public void loadLiveAndEpg() {
         log("【直播源】开始加载直播源...");
-
         // ================================================
         // 第一步：先读缓存，快速显示
         // ================================================
         String cacheContent = cacheManager.getFileCache("live_source");
         if (cacheContent != null && !cacheContent.isEmpty()) {
             log("【缓存】找到直播源缓存，快速显示");
-
             // 用缓存解析并显示
             List<Channel> cacheChannels = parseLiveSource(cacheContent);
             if (cacheChannels != null && !cacheChannels.isEmpty()) {
@@ -858,21 +842,17 @@ public class MainActivity extends AppCompatActivity {
                 switchManager.setCurrentIndex(currentPlayIndex);
                 groupListManager.setGroups(channelSourceList);
                 channelListManager.setChannels(channelSourceList, currentPlayIndex);
-
                 // 有缓存就先播放（秒出画面）
                 if (!hasPlayedWithCache) {
                     playChannel(currentPlayIndex);
                     hasPlayedWithCache = true;
                 }
-
                 hideLoading();
                 log("【缓存】直播源缓存加载完成，频道数：" + cacheChannels.size());
-
                 // 同时尝试加载EPG缓存
                 loadEpgCache();
             }
         }
-
         // ================================================
         // 第二步：后台从网络加载最新数据
         // ================================================
@@ -881,7 +861,6 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onSuccess(List<Channel> channels) {
                 log("【网络】直播源加载成功，频道总数：" + channels.size());
-
                 // 更新列表（用最新数据替换缓存数据）
                 channelSourceList.clear();
                 channelSourceList.addAll(channels);
@@ -889,26 +868,21 @@ public class MainActivity extends AppCompatActivity {
                 switchManager.setCurrentIndex(currentPlayIndex);
                 groupListManager.setGroups(channelSourceList);
                 channelListManager.setChannels(channelSourceList, currentPlayIndex);
-
                 // 如果之前没播放过（没有缓存），现在播放
                 if (!hasPlayedWithCache) {
                     playChannel(currentPlayIndex);
                     hasPlayedWithCache = true;
                 }
-
                 hideLoading();
                 log("【网络】直播源列表已更新");
-
                 // ================================================
                 // 第三步：后台加载EPG（不阻塞播放）
                 // ================================================
                 loadEpg();
             }
-
             @Override
             public void onError(String errorMsg) {
                 log("【网络】直播源加载失败：" + errorMsg);
-
                 // 如果有缓存，就用缓存，不提示错误
                 if (channelSourceList.isEmpty()) {
                     hideLoading();
@@ -917,7 +891,6 @@ public class MainActivity extends AppCompatActivity {
                     log("【缓存】使用缓存数据继续播放");
                     hideLoading();
                 }
-
                 // 即使直播源加载失败，也试试加载EPG缓存
                 loadEpgCache();
             }
@@ -929,7 +902,6 @@ public class MainActivity extends AppCompatActivity {
      */
     private void loadEpgCache() {
         if (!epg_enable) return;
-
         log("【EPG】尝试从缓存加载...");
         // EPG的缓存加载在 EpgManager 里实现
         // 这里只触发刷新UI
@@ -946,7 +918,6 @@ public class MainActivity extends AppCompatActivity {
      */
     private void loadEpg() {
         if (!epg_enable) return;
-
         log("【EPG】开始加载节目单...");
         // 传入 Context 初始化 EpgManager
         EpgManager.getInstance(this).setEpgUrl(UrlConfig.EPG_URL);
@@ -985,13 +956,11 @@ public class MainActivity extends AppCompatActivity {
         if (TextUtils.isEmpty(content)) {
             return channels;
         }
-
         String[] lines = content.split("\n");
         String currentName = "";
         String currentGroup = "";
         String currentLogo = "";
         String currentTvgId = "";
-
         for (String line : lines) {
             line = line.trim();
             if (line.startsWith("#EXTINF:")) {
@@ -1030,7 +999,6 @@ public class MainActivity extends AppCompatActivity {
                 currentTvgId = "";
             }
         }
-
         log("【缓存】解析完成，共 " + channels.size() + " 个频道");
         return channels;
     }
@@ -1044,15 +1012,11 @@ public class MainActivity extends AppCompatActivity {
         // 冷却时间内不处理
         if (now - lastChannelChangeTime < CHANNEL_COOLDOWN) return;
         lastChannelChangeTime = now;
-
         log("【切台】上一台");
-
         if (channelSourceList == null || channelSourceList.isEmpty()) return;
-
         // 获取当前频道和所属分组
         Channel currentChannel = channelSourceList.get(currentPlayIndex);
         String currentGroup = currentChannel.getGroup();
-
         // 收集当前分组的所有频道
         List<Channel> groupChannels = new ArrayList<>();
         for (Channel c : channelSourceList) {
@@ -1060,10 +1024,8 @@ public class MainActivity extends AppCompatActivity {
                 groupChannels.add(c);
             }
         }
-
         // 分组内只有1个频道时不切换
         if (groupChannels.size() <= 1) return;
-
         // 找到当前频道在分组内的位置
         int groupIndex = -1;
         for (int i = 0; i < groupChannels.size(); i++) {
@@ -1072,13 +1034,10 @@ public class MainActivity extends AppCompatActivity {
                 break;
             }
         }
-
         if (groupIndex == -1) return;
-
         // 计算上一个频道的位置（取模实现循环）
         int prevGroupIndex = (groupIndex - 1 + groupChannels.size()) % groupChannels.size();
         Channel prevChannel = groupChannels.get(prevGroupIndex);
-
         // 找到全局索引并播放
         int globalIndex = channelSourceList.indexOf(prevChannel);
         if (globalIndex != -1) {
@@ -1095,15 +1054,11 @@ public class MainActivity extends AppCompatActivity {
         // 冷却时间内不处理
         if (now - lastChannelChangeTime < CHANNEL_COOLDOWN) return;
         lastChannelChangeTime = now;
-
         log("【切台】下一台");
-
         if (channelSourceList == null || channelSourceList.isEmpty()) return;
-
         // 获取当前频道和所属分组
         Channel currentChannel = channelSourceList.get(currentPlayIndex);
         String currentGroup = currentChannel.getGroup();
-
         // 收集当前分组的所有频道
         List<Channel> groupChannels = new ArrayList<>();
         for (Channel c : channelSourceList) {
@@ -1111,10 +1066,8 @@ public class MainActivity extends AppCompatActivity {
                 groupChannels.add(c);
             }
         }
-
         // 分组内只有1个频道时不切换
         if (groupChannels.size() <= 1) return;
-
         // 找到当前频道在分组内的位置
         int groupIndex = -1;
         for (int i = 0; i < groupChannels.size(); i++) {
@@ -1123,13 +1076,10 @@ public class MainActivity extends AppCompatActivity {
                 break;
             }
         }
-
         if (groupIndex == -1) return;
-
         // 计算下一个频道的位置（取模实现循环）
         int nextGroupIndex = (groupIndex + 1) % groupChannels.size();
         Channel nextChannel = groupChannels.get(nextGroupIndex);
-
         // 找到全局索引并播放
         int globalIndex = channelSourceList.indexOf(nextChannel);
         if (globalIndex != -1) {
@@ -1153,34 +1103,28 @@ public class MainActivity extends AppCompatActivity {
             log("【播放】频道列表为空，无法播放");
             return;
         }
-
         // 索引边界校验
         index = Math.max(0, Math.min(index, channelSourceList.size() - 1));
         currentPlayIndex = index;
         Channel ch = channelSourceList.get(index);
-
         // 频道或播放地址为空时返回
         if (ch == null || TextUtils.isEmpty(ch.getPlayUrl())) {
             log("【播放】频道地址为空");
             return;
         }
-
         final String playUrl = ch.getPlayUrl();
-
         log("========================================");
         log("【播放】频道名称：" + ch.getName());
         log("【播放】播放地址：" + playUrl);
         log("【播放】当前索引：" + index);
         log("【播放】交给ExoPlayer自动跟随重定向");
         log("========================================");
-
         // 更新播放器状态监听器的当前频道名
         playerStateListener.setCurrentChannelName(ch.getName());
         // 显示频道号
         showChannelNum(index + 1);
         // 保存上次播放的频道索引
         appConfig.setLastPlayIndex(index);
-
         // 更新频道列表选中状态（保持分组筛选）
         if (!TextUtils.isEmpty(currentGroupName) && !currentGroupChannelList.isEmpty()) {
             // 分组筛选模式下：保持分组筛选，只显示当前分组的频道
@@ -1189,10 +1133,8 @@ public class MainActivity extends AppCompatActivity {
             // 非分组模式：显示全部频道
             channelListManager.setChannels(channelSourceList, index);
         }
-
         // 刷新EPG节目单
         epgManagerWrapper.refresh(ch, channelSourceList, currentSelectedDateIndex);
-
         // 更新信息栏
         if (info_bar != null) {
             info_bar.setVisibility(View.VISIBLE);
@@ -1203,9 +1145,8 @@ public class MainActivity extends AppCompatActivity {
             TVPlayerManager.LiveInfo live = mPlayerManager.getLiveInfo();
             tv_tag_fhd.setText(live.quality);
             tv_tag_audio.setText(live.audio);
-            tv_bitrate.setText(live.bitrate);
+ tv_bitrate.setText(live.bitrate);
         }
-
         // 直接交给播放器播放
         mPlayerManager.playUrl(playUrl);
     }
@@ -1272,11 +1213,9 @@ public class MainActivity extends AppCompatActivity {
             // 非分组模式：显示全部频道
             channelListManager.setChannels(channelSourceList, currentPlayIndex);
         }
-
         // 切换面板显示/隐藏
         boolean isOpen = panel_layout.getVisibility() == View.VISIBLE;
         panelManager.toggle(channelSourceList, currentPlayIndex, dateListManager);
-
         // 记录操作日志
         SettingsActivity.logOperation("【面板】" + (isOpen ? "关闭" : "打开") + "频道面板");
     }
@@ -1299,11 +1238,9 @@ public class MainActivity extends AppCompatActivity {
         config.setCustomUrls(liveUrl, epgUrl);
         if (liveUrl != null) UrlConfig.LIVE_URL = liveUrl;
         if (epgUrl != null) UrlConfig.EPG_URL = epgUrl;
-
         log("【远程配置】更新直播源：" + liveUrl);
         log("【远程配置】更新EPG：" + epgUrl);
         SettingsActivity.logOperation("【远程配置】更新直播源/EPG地址");
-
         runOnUiThread(new Runnable() {
             @Override
             public void run() {
@@ -1341,25 +1278,31 @@ public class MainActivity extends AppCompatActivity {
         screenRatioManager.apply();
 
         // ✅ 恢复时重新设置沉浸式全屏（防止切后台后失效）
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            // Android 11+：WindowInsetsController 方式
-            android.view.WindowInsetsController controller = getWindow().getInsetsController();
-            if (controller != null) {
-                controller.hide(android.view.WindowInsets.Type.systemBars());
-                controller.setSystemBarsBehavior(
-                        android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                // Android 11+：WindowInsetsController 方式
+                android.view.WindowInsetsController controller = getWindow().getInsetsController();
+                if (controller != null) {
+                    controller.hide(android.view.WindowInsets.Type.systemBars());
+                    controller.setSystemBarsBehavior(
+                            android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                    );
+                }
+            } else {
+                // Android 10 及以下：旧方式
+                getWindow().getDecorView().setSystemUiVisibility(
+                        View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                                | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                                | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                                | View.SYSTEM_UI_FLAG_FULLSCREEN
+                                | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                                | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
                 );
             }
-        } else {
-            // Android 10 及以下：旧方式
-            getWindow().getDecorView().setSystemUiVisibility(
-                    View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                            | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                            | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                            | View.SYSTEM_UI_FLAG_FULLSCREEN
-                            | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                            | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-            );
+        } catch (Exception e) {
+            // ✅ 全面屏适配失败不影响正常使用，忽略即可
+            e.printStackTrace();
+            log("【适配】onResume 恢复全屏失败：" + e.getMessage());
         }
 
         if (mPlayerManager != null)
@@ -1381,49 +1324,21 @@ public class MainActivity extends AppCompatActivity {
     @Override
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
-
         if (hasFocus) {
             // ✅ 获得焦点时，重新设置沉浸式全屏
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                // Android 11+：WindowInsetsController 方式
-                android.view.WindowInsetsController controller = getWindow().getInsetsController();
-                if (controller != null) {
-                    controller.hide(android.view.WindowInsets.Type.systemBars());
-                    controller.setSystemBarsBehavior(
-                            android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-                    );
-                }
-            } else {
-                // Android 10 及以下：旧方式
-                getWindow().getDecorView().setSystemUiVisibility(
-                        View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                                | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                                | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                                | View.SYSTEM_UI_FLAG_FULLSCREEN
-                                | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                                | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-                );
-            }
-        }
-    }
-
-    /**
-     * Activity销毁：释放资源，注销广播
-     */
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        log("【主页】onDestroy -> 页面销毁");
-        SettingsActivity.logOperation("【系统】APP退出");
-
-        // 取消数字选台的超时任务
-        if (channelNumHandler != null) {
-            channelNumHandler.removeCallbacks(channelNumConfirmRunnable);
-        }
-
-        try { unregisterReceiver(toggleControllerReceiver); } catch (Exception ignored) {}
-        try { unregisterReceiver(refreshReceiver); } catch (Exception ignored) {}
-        mPlayerManager.release();
-        mInstance = null;
-    }
-}
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    // Android 11+：WindowInsetsController 方式
+                    android.view.WindowInsetsController controller = getWindow().getInsetsController();
+                    if (controller != null) {
+                        controller.hide(android.view.WindowInsets.Type.systemBars());
+                        controller.setSystemBarsBehavior(
+                                android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                        );
+                    }
+                } else {
+                    // Android 10 及以下：旧方式
+                    getWindow().getDecorView().setSystemUiVisibility(
+                            View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                                    | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                                   

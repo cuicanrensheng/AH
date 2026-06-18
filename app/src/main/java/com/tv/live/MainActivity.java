@@ -65,6 +65,10 @@ import java.util.List;
  * 5. onWindowFocusChanged 确保沉浸式不失效
  * 6. onResume 切后台回来后恢复全屏
  *
+ * 【注意事项】
+ * WindowInsetsController 必须在 setContentView 之后调用，
+ * 因为 DecorView 在 setContentView 时才创建，之前调用会返回 null 导致崩溃。
+ *
  * 【新增功能】
  * 1. ✅ 换台反转：上下键切台方向可反转
  * 2. ✅ 数字选台：按数字键直接跳转到对应频道
@@ -266,9 +270,20 @@ public class MainActivity extends AppCompatActivity {
         // 3. Android 10 及以下：使用旧的 setSystemUiVisibility 方式
         // 4. 添加 onWindowFocusChanged 确保沉浸式不失效
         // 5. onResume 中重新设置，切后台回来后保持全屏
+        //
+        // 【重要：调用顺序】
+        // - layoutInDisplayCutoutMode：可以在 setContentView 之前设置（Window 属性）
+        // - setSystemUiVisibility（旧方式）：可以在 setContentView 之前设置
+        // - WindowInsetsController（新方式）：必须在 setContentView 之后设置！
+        //   因为 DecorView 在 setContentView 时才创建，之前调用会返回 null 导致崩溃
         // ================================================
 
-        // 第一步：刘海屏适配（让内容延伸到刘海/挖孔区域）
+        // ────────────────────────────────────────────────
+        // 第一部分：setContentView 之前可以设置的
+        // ────────────────────────────────────────────────
+
+        // 1. 刘海屏适配（让内容延伸到刘海/挖孔区域）
+        //    这是 Window 的属性，不需要 DecorView，可以提前设置
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             WindowManager.LayoutParams lp = getWindow().getAttributes();
 
@@ -280,7 +295,6 @@ public class MainActivity extends AppCompatActivity {
             } else {
                 // Android 9-11（API 28-30）：使用 SHORT_EDGES 模式
                 // 虽然横屏时效果有限，但这是官方推荐的安全模式
-                // 配合下面的 WindowInsetsController 使用效果更好
                 lp.layoutInDisplayCutoutMode =
                         WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
             }
@@ -288,24 +302,15 @@ public class MainActivity extends AppCompatActivity {
             getWindow().setAttributes(lp);
         }
 
-        // 第二步：沉浸式全屏（隐藏状态栏和导航栏，让内容全屏显示）
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            // ✅ Android 11+（API 30+）：使用 WindowInsetsController（官方推荐方式）
-            // 这是 Android 11 以后推荐的沉浸式控制方式，效果更稳定
-            android.view.WindowInsetsController controller = getWindow().getInsetsController();
-            if (controller != null) {
-                // 隐藏状态栏和导航栏
-                controller.hide(android.view.WindowInsets.Type.systemBars());
-                // 设置沉浸式粘性模式：从边缘滑动时临时显示系统栏
-                controller.setSystemBarsBehavior(
-                        android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-                );
-            }
-            // 让布局不考虑系统栏，真正延伸到系统栏后面
-            // 这个很重要！没有这个的话，布局还是会避开系统栏
-            getWindow().setDecorFitsSystemWindows(false);
-        } else {
-            // Android 10 及以下：使用旧的 setSystemUiVisibility 方式
+        // 2. 全屏标志（兼容旧版本 Android）
+        getWindow().setFlags(
+                WindowManager.LayoutParams.FLAG_FULLSCREEN,
+                WindowManager.LayoutParams.FLAG_FULLSCREEN
+        );
+
+        // 3. Android 10 及以下的沉浸式（旧方式）
+        //    旧的 setSystemUiVisibility 方式可以在 setContentView 之前设置
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
             getWindow().getDecorView().setSystemUiVisibility(
                     View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN       // 布局延伸到状态栏后面
                             | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION  // 布局延伸到导航栏后面
@@ -316,16 +321,36 @@ public class MainActivity extends AppCompatActivity {
             );
         }
 
-        // 第三步：全屏标志（兼容旧版本 Android）
-        getWindow().setFlags(
-                WindowManager.LayoutParams.FLAG_FULLSCREEN,
-                WindowManager.LayoutParams.FLAG_FULLSCREEN
-        );
-
         // 加载布局
         setContentView(R.layout.activity_main);
         // 保持屏幕常亮
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+
+        // ────────────────────────────────────────────────
+        // 第二部分：setContentView 之后才能设置的
+        // ────────────────────────────────────────────────
+
+        // 4. ✅ Android 11+ 的 WindowInsetsController（新方式）
+        //    重要：必须在 setContentView 之后调用！
+        //    因为 DecorView 在 setContentView 时才创建，之前调用 getInsetsController() 会返回 null
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            // 获取 WindowInsetsController（Android 11+ 官方推荐的沉浸式控制方式）
+            android.view.WindowInsetsController controller = getWindow().getInsetsController();
+
+            // 加上 null 检查，防止某些特殊情况返回 null
+            if (controller != null) {
+                // 隐藏状态栏和导航栏
+                controller.hide(android.view.WindowInsets.Type.systemBars());
+                // 设置沉浸式粘性模式：从边缘滑动时临时显示系统栏
+                controller.setSystemBarsBehavior(
+                        android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                );
+            }
+
+            // 让布局不考虑系统栏，真正延伸到系统栏后面
+            // 这个很重要！没有这个的话，布局还是会避开系统栏
+            getWindow().setDecorFitsSystemWindows(false);
+        }
 
         // 绑定频道号显示
         tv_channel_num = findViewById(R.id.tv_channel_num);

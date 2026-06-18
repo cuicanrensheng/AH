@@ -45,6 +45,12 @@ import java.util.List;
  * 【电视兼容说明】
  * 所有全面屏适配代码都加了 try-catch，
  * 即使电视不支持这些 API，也不会崩溃，只是不显示全屏效果而已。
+ *
+ * 【Toast屏蔽说明】
+ * 所有 Toast 提示已全部屏蔽，避免干扰观看。
+ *
+ * 【加载超时保护】
+ * 15秒还没加载完自动隐藏加载动画，避免一直卡在加载界面。
  */
 public class MainActivity extends AppCompatActivity {
     // Activity单例，供其他类访问
@@ -182,7 +188,8 @@ public class MainActivity extends AppCompatActivity {
                         hasPlayedWithCache = false;
                         loadLiveAndEpg();
                         SettingsActivity.logOperation("【系统】自动刷新直播源/EPG");
-                        Toast.makeText(MainActivity.this, "已刷新直播源/EPG", Toast.LENGTH_SHORT).show();
+                        // ✅ 已屏蔽 Toast
+                        // Toast.makeText(MainActivity.this, "已刷新直播源/EPG", Toast.LENGTH_SHORT).show();
                     }
                 });
             }
@@ -305,7 +312,9 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onClick(View v) {
                 if (!epg_enable) {
-                    Toast.makeText(MainActivity.this, "节目单功能已关闭", Toast.LENGTH_SHORT).show();
+                    // ✅ 已屏蔽 Toast
+                    // Toast.makeText(MainActivity.this, "节目单功能已关闭", Toast.LENGTH_SHORT).show();
+                    SettingsActivity.logOperation("【EPG】节目单功能已关闭，无法展开");
                     return;
                 }
                 epgPanelOpen = !epgPanelOpen;
@@ -535,7 +544,8 @@ public class MainActivity extends AppCompatActivity {
                 playChannel(index);
             } else {
                 SettingsActivity.logOperation("【数字选台】频道号不存在：" + channelNum);
-                Toast.makeText(this, "频道号不存在", Toast.LENGTH_SHORT).show();
+                // ✅ 已屏蔽 Toast
+                // Toast.makeText(this, "频道号不存在", Toast.LENGTH_SHORT).show();
             }
         } catch (NumberFormatException e) {
         }
@@ -594,6 +604,34 @@ public class MainActivity extends AppCompatActivity {
 
     public void loadLiveAndEpg() {
         log("【直播源】开始加载直播源...");
+
+        // ================================================
+        // ✅ 新加：加载超时保护（15秒）
+        // 防止网络异常时一直卡在加载界面
+        // ================================================
+        new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                if (loadingView != null && loadingView.getVisibility() == View.VISIBLE) {
+                    log("【加载】超时，自动隐藏加载动画");
+                    if (channelSourceList.isEmpty()) {
+                        // 频道列表为空，显示错误提示
+                        if (tv_loading_text != null) {
+                            tv_loading_text.setText("加载失败，请检查网络或稍后重试");
+                        }
+                        // 保留加载视图，但把进度条去掉（只显示文字）
+                        // 或者直接隐藏，让用户看到黑屏自己按菜单键
+                        hideLoading();
+                        SettingsActivity.logOperation("【加载】直播源加载超时");
+                    } else {
+                        // 有缓存数据，直接隐藏加载动画
+                        hideLoading();
+                    }
+                }
+            }
+        }, 15000);
+
+        // 先读缓存
         String cacheContent = cacheManager.getFileCache("live_source");
         if (cacheContent != null && !cacheContent.isEmpty()) {
             log("【缓存】找到直播源缓存，快速显示");
@@ -614,6 +652,8 @@ public class MainActivity extends AppCompatActivity {
                 loadEpgCache();
             }
         }
+
+        // 后台网络加载最新数据
         log("【网络】后台加载最新直播源...");
         LiveSourceLoader.getInstance(this).load(new LiveSourceLoader.LoadCallback() {
             @Override
@@ -633,12 +673,15 @@ public class MainActivity extends AppCompatActivity {
                 log("【网络】直播源列表已更新");
                 loadEpg();
             }
+
             @Override
             public void onError(String errorMsg) {
                 log("【网络】直播源加载失败：" + errorMsg);
                 if (channelSourceList.isEmpty()) {
                     hideLoading();
-                    Toast.makeText(MainActivity.this, "加载失败：" + errorMsg, Toast.LENGTH_SHORT).show();
+                    // ✅ 已屏蔽 Toast
+                    // Toast.makeText(MainActivity.this, "加载失败：" + errorMsg, Toast.LENGTH_SHORT).show();
+                    SettingsActivity.logOperation("【加载】直播源加载失败：" + errorMsg);
                 } else {
                     log("【缓存】使用缓存数据继续播放");
                     hideLoading();

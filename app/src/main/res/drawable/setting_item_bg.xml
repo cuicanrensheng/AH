@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- 焦点/选中状态：浅蓝色背景 -->
     <item android:state_focused="true">
         <shape android:shape="rectangle">
             <solid android:color="#3340A9FF" />
@@ -19,6 +18,5 @@
             <corners android:radius="8dp" />
         </shape>
     </item>
-    <!-- 默认状态：透明背景 -->
     <item android:drawable="@android:color/transparent" />
 </selector>

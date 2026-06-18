@@ -1,7 +1,9 @@
 package com.tv.live;
 
+import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
+import com.tv.live.util.CacheManager;
 import org.xmlpull.v1.XmlPullParser;
 import org.xmlpull.v1.XmlPullParserFactory;
 import java.io.BufferedReader;
@@ -21,11 +23,6 @@ import java.util.zip.GZIPInputStream;
  * 1. 加载成功后，自动保存原始XML文本到本地缓存
  * 2. 缓存有效期24小时
  * 3. 进入APP时先读缓存快速显示，后台再刷新最新的
- *
- * 【本次修改】
- * 1. 添加 CacheManager 缓存管理
- * 2. loadEpg 方法：先下载原始内容，保存缓存，再解析
- * 3. 添加 loadEpgFromCache 方法：从缓存加载
  */
 public class EpgManager {
     private static EpgManager instance;
@@ -34,18 +31,34 @@ public class EpgManager {
     private boolean hasPrintedSample = false;
     // 缓存管理器
     private CacheManager cacheManager;
+    // 上下文
+    private Context context;
 
-    public static EpgManager getInstance() {
+    /**
+     * 获取单例（带Context初始化）
+     * 第一次调用时传入Context，后续不用再传
+     */
+    public static EpgManager getInstance(Context ctx) {
         if (instance == null) {
-            instance = new EpgManager();
+            instance = new EpgManager(ctx.getApplicationContext());
         }
         return instance;
     }
 
-    private EpgManager() {
-        // 注意：这里用 ApplicationContext，避免内存泄漏
-        // 因为 EpgManager 是单例，需要用 Application 上下文
-        // 这里暂时延迟初始化，在 loadEpg 时再初始化 cacheManager
+    /**
+     * 兼容旧代码的无参方法
+     * 注意：第一次调用必须用带Context的版本
+     */
+    public static EpgManager getInstance() {
+        if (instance == null) {
+            throw new RuntimeException("EpgManager 未初始化，请先调用 getInstance(Context)");
+        }
+        return instance;
+    }
+
+    private EpgManager(Context ctx) {
+        this.context = ctx;
+        this.cacheManager = CacheManager.getInstance(ctx);
     }
 
     public void setEpgUrl(String url) {
@@ -127,22 +140,12 @@ public class EpgManager {
      * 2. 保存到本地缓存
      * 3. 解析XML
      * 4. 回调通知
-     *
-     * @param callback 加载完成回调
      */
     public void loadEpg(Runnable callback) {
         new Thread(() -> {
             HttpURLConnection conn = null;
             InputStream in = null;
             try {
-                // 初始化缓存管理器（延迟初始化，因为需要Context）
-                if (cacheManager == null) {
-                    // 用 Application 上下文
-                    cacheManager = CacheManager.getInstance(
-                            android.app.ActivityThread.currentApplication()
-                    );
-                }
-
                 URL url = new URL(epgUrl);
                 conn = (HttpURLConnection) url.openConnection();
                 conn.setConnectTimeout(15000);
@@ -155,7 +158,7 @@ public class EpgManager {
                     in = new GZIPInputStream(in);
                 }
 
-                // ===== 读取原始内容，用于保存缓存 =====
+                // 读取原始内容，用于保存缓存
                 StringBuilder rawContent = new StringBuilder();
                 BufferedReader reader = new BufferedReader(new InputStreamReader(in, "UTF-8"));
                 String line;
@@ -165,16 +168,15 @@ public class EpgManager {
                 reader.close();
 
                 // 保存到缓存
-                if (cacheManager != null && rawContent.length() > 0) {
+                if (rawContent.length() > 0) {
                     cacheManager.saveFileCache("epg", rawContent.toString());
                     SettingsActivity.log("【EPG】缓存已保存，大小：" + rawContent.length() + " 字节");
                 }
 
-                // ===== 解析XML =====
+                // 解析XML
                 hasPrintedSample = false;
                 channelEpgMap.clear();
 
-                // 把字符串转成 InputStream 用于解析
                 ByteArrayInputStream bais = new ByteArrayInputStream(rawContent.toString().getBytes("UTF-8"));
                 parseXml(bais);
 
@@ -195,18 +197,12 @@ public class EpgManager {
 
     /**
      * 从缓存加载EPG
-     * 用于进入APP时快速显示，不阻塞播放
+     * 用于进入APP时快速显示
      *
      * @return 是否加载成功
      */
     public boolean loadEpgFromCache() {
         try {
-            if (cacheManager == null) {
-                cacheManager = CacheManager.getInstance(
-                        android.app.ActivityThread.currentApplication()
-                );
-            }
-
             String cacheContent = cacheManager.getFileCache("epg");
             if (cacheContent == null || cacheContent.isEmpty()) {
                 return false;
@@ -323,29 +319,25 @@ public class EpgManager {
     }
 
     /**
-     * ✅ 【修复】用 Calendar 直接比较日期，彻底解决毫秒差精度问题
+     * 用 Calendar 直接比较日期，彻底解决毫秒差精度问题
      */
     public String getDayName(Calendar itemCal, Calendar todayCal) {
-        // 节目日期：清零时分秒
         Calendar itemDay = Calendar.getInstance();
         itemDay.setTime(itemCal.getTime());
         itemDay.set(Calendar.HOUR_OF_DAY, 0);
         itemDay.set(Calendar.MINUTE, 0);
         itemDay.set(Calendar.SECOND, 0);
         itemDay.set(Calendar.MILLISECOND, 0);
-        // 今天日期：清零时分秒
         Calendar todayDay = Calendar.getInstance();
         todayDay.setTime(todayCal.getTime());
         todayDay.set(Calendar.HOUR_OF_DAY, 0);
         todayDay.set(Calendar.MINUTE, 0);
         todayDay.set(Calendar.SECOND, 0);
         todayDay.set(Calendar.MILLISECOND, 0);
-        // 今天
         if (itemDay.get(Calendar.YEAR) == todayDay.get(Calendar.YEAR)
                 && itemDay.get(Calendar.DAY_OF_YEAR) == todayDay.get(Calendar.DAY_OF_YEAR)) {
             return "今天";
         }
-        // 明天
         Calendar tomorrow = Calendar.getInstance();
         tomorrow.setTime(todayDay.getTime());
         tomorrow.add(Calendar.DAY_OF_YEAR, 1);
@@ -353,7 +345,6 @@ public class EpgManager {
                 && itemDay.get(Calendar.DAY_OF_YEAR) == tomorrow.get(Calendar.DAY_OF_YEAR)) {
             return "明天";
         }
-        // 后天
         Calendar dayAfter = Calendar.getInstance();
         dayAfter.setTime(todayDay.getTime());
         dayAfter.add(Calendar.DAY_OF_YEAR, 2);
@@ -361,7 +352,6 @@ public class EpgManager {
                 && itemDay.get(Calendar.DAY_OF_YEAR) == dayAfter.get(Calendar.DAY_OF_YEAR)) {
             return "后天";
         }
-        // 其他返回周几
         String[] weekDays = {"周日", "周一", "周二", "周三", "周四", "周五", "周六"};
         int dayOfWeek = itemCal.get(Calendar.DAY_OF_WEEK) - 1;
         return weekDays[dayOfWeek];

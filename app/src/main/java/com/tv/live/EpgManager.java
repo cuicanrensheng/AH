@@ -1,5 +1,4 @@
 package com.tv.live;
-
 import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
@@ -15,14 +14,20 @@ import java.net.URL;
 import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.zip.GZIPInputStream;
-
 /**
- * ✅ EPG节目单管理器（带缓存）
+ * ✅ EPG节目单管理器（带缓存 + 智能匹配）
  *
  * 【缓存策略】
  * 1. 加载成功后，自动保存原始XML文本到本地缓存
  * 2. 缓存有效期24小时
  * 3. 进入APP时先读缓存快速显示，后台再刷新最新的
+ *
+ * 【频道匹配策略】
+ * 1. 先尝试精确匹配
+ * 2. 精确匹配失败，尝试模糊匹配
+ * 3. 计算匹配度分数，返回分数最高的
+ * 4. 支持去掉 HD/高清/4K/卫视/频道 等干扰字符
+ * 5. 支持中文数字转阿拉伯数字
  */
 public class EpgManager {
     private static EpgManager instance;
@@ -33,7 +38,6 @@ public class EpgManager {
     private CacheManager cacheManager;
     // 上下文
     private Context context;
-
     /**
      * 获取单例（带Context初始化）
      * 第一次调用时传入Context，后续不用再传
@@ -44,7 +48,6 @@ public class EpgManager {
         }
         return instance;
     }
-
     /**
      * 兼容旧代码的无参方法
      * 注意：第一次调用必须用带Context的版本
@@ -55,16 +58,13 @@ public class EpgManager {
         }
         return instance;
     }
-
     private EpgManager(Context ctx) {
         this.context = ctx;
         this.cacheManager = CacheManager.getInstance(ctx);
     }
-
     public void setEpgUrl(String url) {
         this.epgUrl = url;
     }
-
     /**
      * 从M3U直播源中提取EPG地址
      */
@@ -80,7 +80,6 @@ public class EpgManager {
             loadEpg(callback);
         }).start();
     }
-
     /**
      * 从M3U中提取x-tvg-url属性
      */
@@ -131,7 +130,6 @@ public class EpgManager {
         }
         return null;
     }
-
     /**
      * ✅ 加载EPG节目单（带缓存）
      *
@@ -152,12 +150,10 @@ public class EpgManager {
                 conn.setReadTimeout(15000);
                 conn.connect();
                 in = conn.getInputStream();
-
                 // 处理GZIP压缩
                 if (epgUrl.endsWith(".gz")) {
                     in = new GZIPInputStream(in);
                 }
-
                 // 读取原始内容，用于保存缓存
                 StringBuilder rawContent = new StringBuilder();
                 BufferedReader reader = new BufferedReader(new InputStreamReader(in, "UTF-8"));
@@ -166,20 +162,16 @@ public class EpgManager {
                     rawContent.append(line).append("\n");
                 }
                 reader.close();
-
                 // 保存到缓存
                 if (rawContent.length() > 0) {
                     cacheManager.saveFileCache("epg", rawContent.toString());
                     SettingsActivity.log("【EPG】缓存已保存，大小：" + rawContent.length() + " 字节");
                 }
-
                 // 解析XML
                 hasPrintedSample = false;
                 channelEpgMap.clear();
-
                 ByteArrayInputStream bais = new ByteArrayInputStream(rawContent.toString().getBytes("UTF-8"));
                 parseXml(bais);
-
                 SettingsActivity.log("【EPG】✅ 加载完成，共" + channelEpgMap.size() + "个频道");
             } catch (Exception e) {
                 SettingsActivity.log("【EPG】❌ 加载失败：" + e.getMessage());
@@ -194,7 +186,6 @@ public class EpgManager {
             }
         }).start();
     }
-
     /**
      * 从缓存加载EPG
      * 用于进入APP时快速显示
@@ -207,15 +198,11 @@ public class EpgManager {
             if (cacheContent == null || cacheContent.isEmpty()) {
                 return false;
             }
-
             SettingsActivity.log("【EPG】从缓存加载...");
-
             hasPrintedSample = false;
             channelEpgMap.clear();
-
             ByteArrayInputStream bais = new ByteArrayInputStream(cacheContent.getBytes("UTF-8"));
             parseXml(bais);
-
             SettingsActivity.log("【EPG】缓存加载完成，共" + channelEpgMap.size() + "个频道");
             return true;
         } catch (Exception e) {
@@ -223,11 +210,10 @@ public class EpgManager {
             return false;
         }
     }
-
     /**
      * 解析XML节目单
      */
-    private void parseXml(InputStream is) throws Exception {
+        private void parseXml(InputStream is) throws Exception {
         XmlPullParserFactory factory = XmlPullParserFactory.newInstance();
         XmlPullParser xml = factory.newPullParser();
         xml.setInput(is, "UTF-8");
@@ -304,18 +290,189 @@ public class EpgManager {
         }
     }
 
+    /**
+     * ✅ 根据频道名获取 EPG 节目列表（增强版：智能模糊匹配）
+     *
+     * 【匹配策略】
+     * 1. 先尝试精确匹配
+     * 2. 精确匹配失败，尝试模糊匹配
+     * 3. 计算匹配度分数，返回分数最高的
+     * 4. 匹配失败返回空列表
+     */
     public List<Channel.EpgItem> getEpg(String channelName) {
         if (channelName == null || channelName.isEmpty()) {
             return new ArrayList<>();
         }
-        String cleanName = channelName.replaceAll("(?i)高清|HD|超清|4K| |-", "").toLowerCase();
+        
+        // 先尝试精确匹配
+        if (channelEpgMap.containsKey(channelName)) {
+            SettingsActivity.log("【EPG】精确匹配成功：" + channelName);
+            return channelEpgMap.get(channelName);
+        }
+        
+        // 标准化输入的频道名
+        String cleanName = normalizeChannelName(channelName);
+        
+        // 模糊匹配，找到最匹配的频道
+        String bestMatch = null;
+        int bestScore = 0;
+        
         for (Map.Entry<String, List<Channel.EpgItem>> entry : channelEpgMap.entrySet()) {
-            String key = entry.getKey().replaceAll("(?i)高清|HD|超清|4K| |-", "").toLowerCase();
-            if (cleanName.contains(key) || key.contains(cleanName)) {
-                return entry.getValue();
+            String epgName = entry.getKey();
+            String cleanEpgName = normalizeChannelName(epgName);
+            
+            int score = calculateMatchScore(cleanName, cleanEpgName);
+            if (score > bestScore) {
+                bestScore = score;
+                bestMatch = epgName;
             }
         }
+        
+        if (bestMatch != null && bestScore >= 20) {
+            // 匹配度大于 20 分才算匹配成功
+            SettingsActivity.log("【EPG】模糊匹配成功：" + channelName 
+                    + " → " + bestMatch 
+                    + "（匹配度：" + bestScore + "分）");
+            return channelEpgMap.get(bestMatch);
+        }
+        
+        // 都匹配失败
+        SettingsActivity.log("【EPG】⚠️ 匹配失败：" + channelName 
+                + "（标准化后：" + cleanName + "）"
+                + "，共尝试 " + channelEpgMap.size() + " 个频道");
         return new ArrayList<>();
+    }
+
+    /**
+     * ✅ 标准化频道名称
+     * 去掉各种干扰字符，统一格式，方便匹配
+     *
+     * 【清洗规则】
+     * 1. 转小写
+     * 2. 去掉画质后缀（HD/FHD/UHD/高清/超清/4K 等）
+     * 3. 去掉特殊字符（空格、横杠、下划线、点等）
+     * 4. 去掉"频道"、"卫视"、"电视台"等后缀
+     * 5. 中文数字转阿拉伯数字（一套→1套）
+     * 6. CCTV 统一成"央视"
+     *
+     * @param name 原始频道名
+     * @return 标准化后的频道名
+     */
+    private String normalizeChannelName(String name) {
+        if (name == null || name.isEmpty()) {
+            return "";
+        }
+        
+        String result = name.toLowerCase();
+        
+        // ========================================
+        // 1. 去掉画质后缀（不区分大小写）
+        // ========================================
+        result = result.replaceAll("(?i)hd", "");
+        result = result.replaceAll("(?i)fhd", "");
+        result = result.replaceAll("(?i)uhd", "");
+        result = result.replaceAll("(?i)sdtv", "");
+        result = result.replaceAll("(?i)hdtv", "");
+        result = result.replaceAll("高清", "");
+        result = result.replaceAll("超清", "");
+        result = result.replaceAll("标清", "");
+        result = result.replaceAll("4k", "");
+        result = result.replaceAll("8k", "");
+        
+        // ========================================
+        // 2. 去掉特殊字符
+        // ========================================
+        result = result.replace(" ", "");
+        result = result.replace("-", "");
+        result = result.replace("_", "");
+        result = result.replace(".", "");
+        result = result.replace("·", "");
+        result = result.replace(":", "");
+        result = result.replace("：", "");
+        
+        // ========================================
+        // 3. 去掉"频道"、"卫视"、"电视台"等后缀
+        // ========================================
+        result = result.replace("频道", "");
+        result = result.replace("卫视", "");
+        result = result.replace("电视台", "");
+        result = result.replace("台", "");
+        result = result.replace("传媒", "");
+        
+        // ========================================
+        // 4. 中文数字转阿拉伯数字（简单处理 1-15）
+        // ========================================
+        result = result.replace("一套", "1套");
+        result = result.replace("二套", "2套");
+        result = result.replace("三套", "3套");
+        result = result.replace("四套", "4套");
+        result = result.replace("五套", "5套");
+        result = result.replace("六套", "6套");
+        result = result.replace("七套", "7套");
+        result = result.replace("八套", "8套");
+        result = result.replace("九套", "9套");
+        result = result.replace("十套", "10套");
+        result = result.replace("十一", "11");
+        result = result.replace("十二", "12");
+        result = result.replace("十三", "13");
+        result = result.replace("十四", "14");
+        result = result.replace("十五", "15");
+        
+        // ========================================
+        // 5. CCTV 统一成"央视"
+        // ========================================
+        result = result.replace("cctv", "央视");
+        
+        return result;
+    }
+
+    /**
+     * ✅ 计算两个标准化后字符串的匹配度分数
+     * 分数越高，匹配度越高
+     *
+     * 【评分规则】
+     * - 完全匹配：100 分
+     * - 互相包含：50-90 分（长度越接近分数越高）
+     * - 共同前缀：每字符 5 分（至少 2 个字符才算）
+     * - 不匹配：0 分
+     *
+     * @param s1 标准化后的频道名1
+     * @param s2 标准化后的频道名2
+     * @return 匹配度分数（0-100）
+     */
+    private int calculateMatchScore(String s1, String s2) {
+        if (s1 == null || s2 == null || s1.isEmpty() || s2.isEmpty()) {
+            return 0;
+        }
+        
+        // 完全匹配：100 分
+        if (s1.equals(s2)) {
+            return 100;
+        }
+        
+        // 互相包含：根据长度比例给分
+        if (s1.contains(s2) || s2.contains(s1)) {
+            int minLen = Math.min(s1.length(), s2.length());
+            int maxLen = Math.max(s1.length(), s2.length());
+            // 长度越接近，分数越高（50-90 分）
+            return 50 + (minLen * 40 / maxLen);
+        }
+        
+        // 有共同前缀：根据前缀长度给分
+        int prefixLen = 0;
+        int minLen = Math.min(s1.length(), s2.length());
+        for (int i = 0; i < minLen; i++) {
+            if (s1.charAt(i) == s2.charAt(i)) {
+                prefixLen++;
+            } else {
+                break;
+            }
+        }
+        if (prefixLen >= 2) {
+            return prefixLen * 5; // 每字符 5 分
+        }
+        
+        return 0;
     }
 
     /**

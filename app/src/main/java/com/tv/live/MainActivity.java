@@ -48,11 +48,13 @@ import java.util.List;
  * - 变量：channelSourceList、currentPlayIndex
  * 这些接口内部都委托给对应的 Manager，外部调用方式不变。
  *
- * 【2026-06-19 新增：左右面板切换】
- * 频道面板从三栏式布局改为左右面板切换模式：
- * - 左侧面板：分组列表 + 频道列表（默认显示）
- * - 右侧面板：日期列表 + EPG节目单（默认隐藏）
- * - 点击节目单按钮切换左右面板
+ * 【2026-06-19 优化：两个完整面板切换】
+ * 原左右面板切换模式（只有日期+EPG）改为两个完整面板切换：
+ * - 左侧面板：分组列表 + 频道列表 + 节目单按钮（默认显示）
+ * - 右侧面板：返回按钮 + 频道列表 + 日期 + EPG（默认隐藏）
+ * - 两个面板都有频道列表，切换时选中状态保持同步
+ * - 节目单页面也能直接切换频道，不用切回去
+ * - 点击节目单不关闭面板，方便连续查看多个频道的节目单
  */
 public class MainActivity extends AppCompatActivity {
 
@@ -68,7 +70,6 @@ public class MainActivity extends AppCompatActivity {
      * 【兼容说明】内部数据来自 appCoreManager，外部访问方式不变
      */
     public List<Channel> channelSourceList = new ArrayList<>();
-
     /**
      * 当前正在播放的频道索引（全局索引，对应 channelSourceList）
      * 【兼容说明】内部数据来自 channelPanelController，外部访问方式不变
@@ -92,19 +93,14 @@ public class MainActivity extends AppCompatActivity {
     // ====================== 管理器相关 ======================
     /** 播放器管理器（单例，基于 ExoPlayer 封装） */
     public TVPlayerManager mPlayerManager;
-
     /** 应用配置管理（SP 封装） */
     private AppConfig appConfig;
-
     /** 屏幕比例管理（全屏/填充/原始） */
     private ScreenRatioManager screenRatioManager;
-
     /** 手势管理（滑动、点击等手势处理） */
     private GestureManager gestureManager;
-
     /** 按键事件管理（遥控器按键分发） */
     private KeyEventManager keyEventManager;
-
     /** 播放器状态监听器（空实现，不弹 Toast） */
     private PlayerStateListenerImpl playerStateListener;
 
@@ -113,23 +109,18 @@ public class MainActivity extends AppCompatActivity {
     // ====================================================================
     /** 数字选台管理器 */
     private ChannelNumberManager channelNumberManager;
-
     /** 显示管理器（全面屏适配 + 加载动画） */
     private DisplayManager displayManager;
-
     /** 信息展示管理器（频道号 + 信息栏 + EPG 节目单） */
     private InfoDisplayManager infoDisplayManager;
-
     /** 频道面板控制器（分组 + 频道切换 + 面板控制） */
     private ChannelPanelController channelPanelController;
-
     /** 应用核心管理器（数据加载 + 广播 + 生命周期） */
     private AppCoreManager appCoreManager;
 
     // ====================== 状态标志 ======================
     /** 频道切换是否反向（上键=下一台，下键=上一台） */
     private boolean channel_reverse;
-
     /** 数字选台是否启用 */
     private boolean number_channel_enable;
 
@@ -262,51 +253,121 @@ public class MainActivity extends AppCompatActivity {
     // ====================================================================
     // 频道面板控制器初始化
     // ====================================================================
+    /**
+     * 初始化频道面板控制器
+     *
+     * 【2026-06-19 修改：两个完整面板切换】
+     * 原左右面板切换模式（只有日期+EPG）改为两个完整面板切换：
+     * - 左侧面板：分组 + 频道列表 + 节目单按钮
+     * - 右侧面板：返回按钮 + 频道列表 + 日期 + EPG
+     *
+     * 【新增内容】
+     * 1. 新增节目单页面的频道列表（lv_channel_list_epg）
+     * 2. 新增返回分组按钮（btn_back_group）
+     * 3. 新增节目单页面的频道列表管理器（channelListManagerEpg）
+     * 4. ChannelPanelController 构造函数新增 3 个参数
+     */
     private void initChannelPanelController() {
+        // ===== 面板根布局 =====
         View panel_layout = findViewById(R.id.panel_layout);
 
         // ================================================================
-        // ✅ 【2026-06-19 新增：左右面板容器】
-        // 绑定左侧面板和右侧面板的容器
+        // 左右面板容器
         // ================================================================
         View ll_left_panel = findViewById(R.id.ll_left_panel);
         View ll_right_panel = findViewById(R.id.ll_right_panel);
 
+        // ================================================================
+        // 列表控件
+        // ================================================================
         ListView lvGroup = findViewById(R.id.lv_group);
         ListView lvChannelList = findViewById(R.id.lv_channel_list);
+
+        // ================================================================
+        // ✅ 新增：节目单页面的频道列表
+        // ================================================================
+        // 【作用】
+        // 右侧面板（节目单页面）也有一个频道列表，用户在看节目单时
+        // 可以直接切换频道，不用切回左侧面板。
+        //
+        // 【布局 ID】
+        // lv_channel_list_epg：节目单页面的频道列表，在 ll_right_panel 里面
+        ListView lvChannelListEpg = findViewById(R.id.lv_channel_list_epg);
+
         ListView lvDate = findViewById(R.id.lv_date);
         ListView lvEpg = findViewById(R.id.lv_epg);
+
+        // ================================================================
+        // 按钮控件
+        // ================================================================
         TextView btn_show_epg = findViewById(R.id.btn_show_epg);
 
+        // ================================================================
+        // ✅ 新增：返回分组按钮
+        // ================================================================
+        // 【作用】
+        // 右侧面板（节目单页面）最左边的返回按钮，点击后切回左侧面板。
+        // 文字是竖排的"频道组"。
+        //
+        // 【布局 ID】
+        // btn_back_group：返回按钮，在 ll_right_panel 最左边
+        TextView btn_back_group = findViewById(R.id.btn_back_group);
+
+        // ================================================================
+        // 子管理器初始化
+        // ================================================================
         EpgManager.getInstance(this);
+
+        // 主页面频道列表管理器（左侧面板用）
         ChannelListManager channelListManager = new ChannelListManager(this, lvChannelList);
+
+        // ================================================================
+        // ✅ 新增：节目单页面频道列表管理器
+        // ================================================================
+        // 【作用】
+        // 管理右侧面板的频道列表，和左侧面板的频道列表管理器是两个独立的实例，
+        // 分别管理各自的 ListView，但数据保持同步。
+        //
+        // 【为什么需要两个管理器？】
+        // 因为有两个 ListView，每个 ListView 需要自己的 Adapter 和选中状态管理。
+        // 两个管理器的数据来源相同，切台时同时更新两边的选中状态。
+        ChannelListManager channelListManagerEpg = new ChannelListManager(this, lvChannelListEpg);
+
         GroupListManager groupListManager = new GroupListManager(this, lvGroup);
         DateListManager dateListManager = new DateListManager(this, lvDate);
         EpgManagerWrapper epgManagerWrapper = new EpgManagerWrapper(this, lvEpg);
         PanelManager panelManager = new PanelManager(panel_layout, channelListManager, epgManagerWrapper);
 
+        // 日期列表初始化
         dateListManager.initDate();
         dateListManager.setOnDateSelectedListener(pos -> {
             channelPanelController.setCurrentDateIndex(pos);
         });
 
+        // ================================================================
+        // 创建频道面板控制器
+        // ================================================================
         channelPanelController = new ChannelPanelController(
                 this,
                 panel_layout,
-                ll_left_panel,        // 【2026-06-19 新增：左侧面板容器】
-                ll_right_panel,       // 【2026-06-19 新增：右侧面板容器】
+                ll_left_panel,
+                ll_right_panel,
                 lvGroup,
                 lvChannelList,
+                lvChannelListEpg,        // ✅ 新增：节目单页面频道列表
                 lvDate,
                 lvEpg,
                 btn_show_epg,
+                btn_back_group,          // ✅ 新增：返回分组按钮
                 groupListManager,
                 channelListManager,
+                channelListManagerEpg,   // ✅ 新增：节目单页面频道管理器
                 dateListManager,
                 epgManagerWrapper,
                 panelManager
         );
 
+        // 设置频道切换监听器
         channelPanelController.setOnChannelChangeListener(new ChannelPanelController.OnChannelChangeListener() {
             @Override
             public void onChannelChanged(Channel channel, int index) {
@@ -341,12 +402,10 @@ public class MainActivity extends AppCompatActivity {
                     public void onChannelSelected(int channelIndex) {
                         channelPanelController.playChannel(channelIndex);
                     }
-
                     @Override
                     public void showChannelNumber(String number) {
                         infoDisplayManager.showChannelNum(Integer.parseInt(number));
                     }
-
                     @Override
                     public void hideChannelNumber() {
                         infoDisplayManager.hideChannelNum();
@@ -370,13 +429,10 @@ public class MainActivity extends AppCompatActivity {
                         // ✅ 同步到兼容变量 channelSourceList
                         channelSourceList.clear();
                         channelSourceList.addAll(channels);
-
                         // 更新频道面板
                         channelPanelController.setChannels(channels);
-
                         // 设置数字选台的总频道数
                         channelNumberManager.setTotalChannelCount(channels.size());
-
                         // 如果还没用缓存播放过，就播放
                         if (!appCoreManager.hasPlayedWithCache()) {
                             if (currentPlayIndex >= 0 && currentPlayIndex < channels.size()) {
@@ -385,14 +441,12 @@ public class MainActivity extends AppCompatActivity {
                                 appCoreManager.setHasPlayedWithCache(true);
                             }
                         }
-
                         // 隐藏加载动画
                         displayManager.hideLoading();
                         log("【" + (fromCache ? "缓存" : "网络") + "】直播源加载完成，频道数：" + channels.size());
                     }
                 });
             }
-
             @Override
             public void onLiveSourceFailed(String errorMsg) {
                 runOnUiThread(new Runnable() {
@@ -400,7 +454,6 @@ public class MainActivity extends AppCompatActivity {
                     public void run() {
                         if (channelSourceList.isEmpty()) {
                             displayManager.updateLoadingText("加载失败，请检查网络或稍后重试");
-                            displayManager.hideLoading();
                             SettingsActivity.logOperation("【加载】直播源加载失败：" + errorMsg);
                         } else {
                             log("【缓存】使用缓存数据继续播放");
@@ -409,7 +462,6 @@ public class MainActivity extends AppCompatActivity {
                     }
                 });
             }
-
             @Override
             public void onEpgLoaded() {
                 runOnUiThread(new Runnable() {
@@ -422,7 +474,6 @@ public class MainActivity extends AppCompatActivity {
                     }
                 });
             }
-
             @Override
             public void onLoadTimeout(boolean hasData) {
                 runOnUiThread(new Runnable() {
@@ -448,14 +499,12 @@ public class MainActivity extends AppCompatActivity {
         channel_reverse = sp.getBoolean("channel_reverse", false);
         number_channel_enable = sp.getBoolean("number_channel_enable", true);
         boolean auto_update_source = sp.getBoolean("auto_update_source", true);
-
         if (channelNumberManager != null) {
             channelNumberManager.setEnable(number_channel_enable);
         }
         if (channelPanelController != null) {
             channelPanelController.setEpgEnable(epg_enable);
         }
-
         log("【设置】EPG开关：" + epg_enable);
         log("【设置】切台反转：" + channel_reverse);
         log("【设置】数字选台：" + number_channel_enable);
@@ -486,26 +535,20 @@ public class MainActivity extends AppCompatActivity {
      */
     private void playChannel(Channel channel, int index) {
         if (channel == null || channel.getPlayUrl() == null) return;
-
         // ✅ 同步到兼容变量
         currentPlayIndex = index;
-
         log("========================================");
         log("【播放】频道名称：" + channel.getName());
         log("【播放】播放地址：" + channel.getPlayUrl());
         log("【播放】当前索引：" + index);
         log("========================================");
-
         playerStateListener.setCurrentChannelName(channel.getName());
         appConfig.setLastPlayIndex(index);
-
         // 先播放
         mPlayerManager.playUrl(channel.getPlayUrl());
-
         // 显示信息栏
         TVPlayerManager.LiveInfo live = mPlayerManager.getLiveInfo();
         infoDisplayManager.showInfoBar(channel, live);
-
         // ✅ 显示频道号（从 1 开始，用户看到的是 1、2、3...）
         infoDisplayManager.showChannelNum(index + 1);
     }
@@ -566,7 +609,6 @@ public class MainActivity extends AppCompatActivity {
                 SettingsActivity.logOperation("【切台】上键 → "
                         + (channel_reverse ? "下一台" : "上一台"));
                 return true;
-
             case KeyEvent.KEYCODE_DPAD_DOWN:
                 if (channel_reverse) {
                     playPrev();
@@ -576,7 +618,6 @@ public class MainActivity extends AppCompatActivity {
                 SettingsActivity.logOperation("【切台】下键 → "
                         + (channel_reverse ? "上一台" : "下一台"));
                 return true;
-
             case KeyEvent.KEYCODE_DPAD_CENTER:
             case KeyEvent.KEYCODE_ENTER:
                 if (channelNumberManager.isInputting()) {
@@ -585,12 +626,10 @@ public class MainActivity extends AppCompatActivity {
                 }
                 togglePanel();
                 return true;
-
             case KeyEvent.KEYCODE_DPAD_LEFT:
             case KeyEvent.KEYCODE_DPAD_RIGHT:
                 togglePanel();
                 return true;
-
             default:
                 return false;
         }
@@ -641,7 +680,6 @@ public class MainActivity extends AppCompatActivity {
             screenRatioManager.apply();
         }
         displayManager.reapplyFullScreen();
-
         // 【防花屏】延迟 100ms 再隐藏占位图
         // 等 Surface 重新创建并准备好第一帧后，再隐藏占位图
         // 避免 Surface 还没准备好就隐藏，导致短暂黑屏/花屏

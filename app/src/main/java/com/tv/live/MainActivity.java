@@ -1,8 +1,6 @@
 package com.tv.live;
 
-import android.content.Context;
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
 import android.os.Bundle;
 import android.view.KeyEvent;
@@ -33,14 +31,32 @@ import java.util.List;
  * 【核心职责】
  * 1. 页面生命周期管理
  * 2. 各 Manager 的初始化和协调
- * 3. 按键事件分发
- * 4. 播放器视图绑定
+ * 3. 播放器视图绑定
+ * 4. 手势事件绑定
+ *
+ * 【模块化拆分说明】
+ * 为了避免 MainActivity 过于臃肿，已将以下功能拆分为独立 Manager：
+ *
+ * 【已拆分的 Manager】
+ * - ChannelNumberManager：数字选台
+ * - DisplayManager：全面屏适配 + 加载动画
+ * - InfoDisplayManager：信息展示（频道号 + 信息栏 + EPG 节目单）
+ * - ChannelPanelController：频道面板（分组 + 频道切换 + 面板控制）
+ * - AppCoreManager：应用核心（数据加载 + 广播 + 生命周期）
+ * - MainController：主控制器（按键 + 播放 + 设置 + 日志）
+ * - TVPlayerManager：播放器管理
+ * - PanelManager：面板显示隐藏
+ * - ChannelSwitchManager：频道切换
+ * - GestureManager：手势处理
+ * - KeyEventManager：按键事件分发
+ * - ScreenRatioManager：屏幕比例
+ * - CacheManager：缓存管理
  *
  * 【兼容层说明】
  * 为了兼容其他类（GestureManager、KeyEventManager、ChannelListActivity 等）
  * 对旧的方法和变量的调用，保留了以下兼容接口：
- * - 方法：togglePanel()、playPrev()、playNext()、playChannel(int)
- * - 变量：channelSourceList、currentPlayIndex
+ * - 方法：togglePanel()、playPrev()、playNext()、playChannel(int)、log()
+ * - 变量：channelSourceList、currentPlayIndex、logList、mInstance
  * 这些接口内部都委托给对应的 Manager，外部调用方式不变。
  */
 public class MainActivity extends AppCompatActivity {
@@ -60,9 +76,15 @@ public class MainActivity extends AppCompatActivity {
 
     /**
      * 当前正在播放的频道索引（全局索引，对应 channelSourceList）
-     * 【兼容说明】内部数据来自 channelPanelController，外部访问方式不变
+     * 【兼容说明】内部数据来自 mainController，外部访问方式不变
      */
     public int currentPlayIndex = 0;
+
+    /**
+     * 本地日志列表（保留最近 100 条，供其他类访问）
+     * 【兼容说明】内部数据来自 MainController，外部访问方式不变
+     */
+    public static List<String> logList = new ArrayList<>();
 
     // ====================== 视图相关 ======================
     /** 播放器视图（ExoPlayer 的 PlayerView） */
@@ -79,8 +101,6 @@ public class MainActivity extends AppCompatActivity {
     private GestureManager gestureManager;
     /** 按键事件管理（遥控器按键分发） */
     private KeyEventManager keyEventManager;
-    /** 播放器状态监听器（空实现，不弹 Toast） */
-    private PlayerStateListenerImpl playerStateListener;
 
     // ====================================================================
     // 拆分新增：各个 Manager
@@ -95,16 +115,8 @@ public class MainActivity extends AppCompatActivity {
     private ChannelPanelController channelPanelController;
     /** 应用核心管理器（数据加载 + 广播 + 生命周期） */
     private AppCoreManager appCoreManager;
-
-    // ====================== 状态标志 ======================
-    /** 频道切换是否反向（上键=下一台，下键=上一台） */
-    private boolean channel_reverse;
-    /** 数字选台是否启用 */
-    private boolean number_channel_enable;
-
-    // ====================== 其他 ======================
-    /** 本地日志列表（保留最近 100 条，供其他类访问） */
-    public static List<String> logList = new ArrayList<>();
+    /** 主控制器（按键 + 播放 + 设置 + 日志） */
+    private MainController mainController;
 
     // ====================== onCreate 生命周期 ======================
     @Override
@@ -132,7 +144,6 @@ public class MainActivity extends AppCompatActivity {
 
         // 初始化配置
         appConfig = AppConfig.getInstance(this);
-        loadSettings();
 
         // 应用自定义直播源/EPG 地址
         String customLive = appConfig.getCustomLiveUrl();
@@ -171,13 +182,18 @@ public class MainActivity extends AppCompatActivity {
         // 按键事件管理
         keyEventManager = new KeyEventManager(this);
 
-        // 恢复上次播放的频道索引
-        currentPlayIndex = appConfig.getLastPlayIndex();
-        channelPanelController.setCurrentPlayIndex(currentPlayIndex);
-        log("【播放】记录上次播放索引：" + currentPlayIndex);
-
         // 数字选台管理器初始化
         initChannelNumberManager();
+
+        // ====================================================================
+        // ✅ 拆分新增：主控制器初始化（按键 + 播放 + 设置 + 日志）
+        // ====================================================================
+        initMainController();
+
+        // 恢复上次播放的频道索引
+        currentPlayIndex = appConfig.getLastPlayIndex();
+        mainController.setCurrentPlayIndex(currentPlayIndex);
+        log("【播放】记录上次播放索引：" + currentPlayIndex);
 
         // 应用核心管理器初始化
         initAppCoreManager();
@@ -263,10 +279,13 @@ public class MainActivity extends AppCompatActivity {
                 panelManager
         );
 
+        // 频道切换监听 → 交给 MainController 处理实际播放
         channelPanelController.setOnChannelChangeListener(new ChannelPanelController.OnChannelChangeListener() {
             @Override
             public void onChannelChanged(Channel channel, int index) {
-                playChannel(channel, index);
+                mainController.doPlayChannel(channel, index);
+                // 同步到兼容变量
+                currentPlayIndex = index;
             }
         });
     }
@@ -278,9 +297,7 @@ public class MainActivity extends AppCompatActivity {
         mPlayerManager = TVPlayerManager.getInstance(this);
         mPlayerManager.attachPlayerView(playerView);
 
-        playerStateListener = new PlayerStateListenerImpl(this);
-        mPlayerManager.setOnPlayStateListener(playerStateListener);
-
+        // 直播信息更新监听（画质、音频、码率）
         mPlayerManager.setOnLiveInfoUpdateListener(new TVPlayerManager.OnLiveInfoUpdateListener() {
             @Override
             public void onLiveInfoUpdate(TVPlayerManager.LiveInfo info) {
@@ -310,8 +327,45 @@ public class MainActivity extends AppCompatActivity {
                         infoDisplayManager.hideChannelNum();
                     }
                 },
-                number_channel_enable
+                true  // 默认启用，后面 loadSettings 会覆盖
         );
+    }
+
+    // ====================================================================
+    // ✅ 拆分新增：主控制器初始化（按键 + 播放 + 设置 + 日志）
+    // ====================================================================
+    private void initMainController() {
+        // 播放器状态监听器（空实现，不弹 Toast）
+        PlayerStateListenerImpl playerStateListener = new PlayerStateListenerImpl(this);
+        mPlayerManager.setOnPlayStateListener(playerStateListener);
+
+        // 创建主控制器
+        mainController = new MainController(
+                this,
+                channelPanelController,
+                channelNumberManager,
+                infoDisplayManager,
+                mPlayerManager,
+                appConfig,
+                playerStateListener
+        );
+
+        // 面板控制回调
+        mainController.setOnPanelControlListener(new MainController.OnPanelControlListener() {
+            @Override
+            public void onTogglePanel() {
+                // 面板切换后的额外处理（如果需要）
+            }
+
+            @Override
+            public void onRequestFocus() {
+                // 关闭面板后给播放器请求焦点
+                playerView.requestFocus();
+            }
+        });
+
+        // 加载设置
+        mainController.loadSettings();
     }
 
     // ====================================================================
@@ -340,7 +394,7 @@ public class MainActivity extends AppCompatActivity {
                         if (!appCoreManager.hasPlayedWithCache()) {
                             if (currentPlayIndex >= 0 && currentPlayIndex < channels.size()) {
                                 Channel ch = channels.get(currentPlayIndex);
-                                playChannel(ch, currentPlayIndex);
+                                mainController.doPlayChannel(ch, currentPlayIndex);
                                 appCoreManager.setHasPlayedWithCache(true);
                             }
                         }
@@ -402,28 +456,6 @@ public class MainActivity extends AppCompatActivity {
         appCoreManager.registerReceivers();
     }
 
-    // ====================== 设置加载 ======================
-    private void loadSettings() {
-        SharedPreferences sp = getSharedPreferences("app_settings", MODE_PRIVATE);
-        boolean epg_enable = sp.getBoolean("epg_enable", true);
-        channel_reverse = sp.getBoolean("channel_reverse", false);
-        number_channel_enable = sp.getBoolean("number_channel_enable", true);
-        boolean auto_update_source = sp.getBoolean("auto_update_source", true);
-
-        if (channelNumberManager != null) {
-            channelNumberManager.setEnable(number_channel_enable);
-        }
-
-        if (channelPanelController != null) {
-            channelPanelController.setEpgEnable(epg_enable);
-        }
-
-        log("【设置】EPG开关：" + epg_enable);
-        log("【设置】切台反转：" + channel_reverse);
-        log("【设置】数字选台：" + number_channel_enable);
-        log("【设置】自动更新源：" + auto_update_source);
-    }
-
     // ====================================================================
     // ✅ 兼容层：旧的 playChannel(int) 方法，供其他类调用
     // ====================================================================
@@ -436,37 +468,8 @@ public class MainActivity extends AppCompatActivity {
         if (channelSourceList == null || channelSourceList.isEmpty()) return;
         if (index < 0 || index >= channelSourceList.size()) return;
         Channel channel = channelSourceList.get(index);
-        playChannel(channel, index);
-    }
-
-    // ====================== 播放频道（内部方法） ======================
-    /**
-     * 播放指定频道（内部实现）
-     *
-     * @param channel 频道
-     * @param index   全局索引
-     */
-    private void playChannel(Channel channel, int index) {
-        if (channel == null || channel.getPlayUrl() == null) return;
-
-        // ✅ 同步到兼容变量
+        mainController.doPlayChannel(channel, index);
         currentPlayIndex = index;
-
-        log("========================================");
-        log("【播放】频道名称：" + channel.getName());
-        log("【播放】播放地址：" + channel.getPlayUrl());
-        log("【播放】当前索引：" + index);
-        log("========================================");
-
-        playerStateListener.setCurrentChannelName(channel.getName());
-        appConfig.setLastPlayIndex(index);
-
-        // 先播放
-        mPlayerManager.playUrl(channel.getPlayUrl());
-
-        // 显示信息栏
-        TVPlayerManager.LiveInfo live = mPlayerManager.getLiveInfo();
-        infoDisplayManager.showInfoBar(channel, live);
     }
 
     // ====================================================================
@@ -476,7 +479,7 @@ public class MainActivity extends AppCompatActivity {
      * 切换频道面板显示/隐藏（兼容旧接口）
      */
     public void togglePanel() {
-        channelPanelController.togglePanel();
+        mainController.togglePanel();
     }
 
     // ====================================================================
@@ -486,7 +489,7 @@ public class MainActivity extends AppCompatActivity {
      * 播放上一个频道（兼容旧接口）
      */
     public void playPrev() {
-        channelPanelController.playPrev();
+        mainController.playPrev();
     }
 
     // ====================================================================
@@ -496,69 +499,29 @@ public class MainActivity extends AppCompatActivity {
      * 播放下一个频道（兼容旧接口）
      */
     public void playNext() {
-        channelPanelController.playNext();
+        mainController.playNext();
     }
 
     // ====================== 返回键处理 ======================
     @Override
     public void onBackPressed() {
-        if (channelNumberManager.isInputting()) {
-            channelNumberManager.cancelInput();
+        if (mainController.handleBackPressed()) {
             return;
         }
-
-        if (channelPanelController.handleBackPressed()) {
-            playerView.requestFocus();
-            return;
-        }
-
         super.onBackPressed();
-    }
-
-    // ====================== 方向键处理 ======================
-    private boolean handleDirectionKey(int keyCode) {
-        switch (keyCode) {
-            case KeyEvent.KEYCODE_DPAD_UP:
-                if (channel_reverse) {
-                    playNext();
-                } else {
-                    playPrev();
-                }
-                SettingsActivity.logOperation("【切台】上键 → "
-                        + (channel_reverse ? "下一台" : "上一台"));
-                return true;
-            case KeyEvent.KEYCODE_DPAD_DOWN:
-                if (channel_reverse) {
-                    playPrev();
-                } else {
-                    playNext();
-                }
-                SettingsActivity.logOperation("【切台】下键 → "
-                        + (channel_reverse ? "上一台" : "下一台"));
-                return true;
-            case KeyEvent.KEYCODE_DPAD_CENTER:
-            case KeyEvent.KEYCODE_ENTER:
-                if (channelNumberManager.isInputting()) {
-                    channelNumberManager.confirmChannelNum();
-                    return true;
-                }
-                togglePanel();
-                return true;
-            case KeyEvent.KEYCODE_DPAD_LEFT:
-            case KeyEvent.KEYCODE_DPAD_RIGHT:
-                togglePanel();
-                return true;
-            default:
-                return false;
-        }
     }
 
     // ====================== 按键分发 ======================
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
-        if (channelNumberManager.handleNumberKey(keyCode)) return true;
-        if (handleDirectionKey(keyCode)) return true;
-        if (keyEventManager.dispatchKey(keyCode)) return true;
+        // 主控制器处理（数字键 + 方向键）
+        if (mainController.handleKeyDown(keyCode, event)) {
+            return true;
+        }
+        // 最后交给按键事件管理器
+        if (keyEventManager.dispatchKey(keyCode)) {
+            return true;
+        }
         return super.onKeyDown(keyCode, event);
     }
 
@@ -586,7 +549,8 @@ public class MainActivity extends AppCompatActivity {
         boolean resumed = appCoreManager.onResume();
 
         if (resumed) {
-            loadSettings();
+            // 真正回到前台时，重新加载设置
+            mainController.loadSettings();
             screenRatioManager.apply();
         }
 
@@ -611,17 +575,28 @@ public class MainActivity extends AppCompatActivity {
         if (channelNumberManager != null) channelNumberManager.release();
         if (displayManager != null) displayManager.release();
         if (channelPanelController != null) channelPanelController.release();
+        if (mainController != null) mainController.release();
         if (appCoreManager != null) appCoreManager.release();
 
         mInstance = null;
     }
 
-    // ====================== 日志工具 ======================
+    // ====================================================================
+    // ✅ 兼容层：旧的 log() 静态方法，供其他类调用
+    // ====================================================================
+    /**
+     * 记录日志（兼容旧接口）
+     * 同时保存到本地列表和 SettingsActivity 的全局日志
+     *
+     * @param msg 日志内容
+     */
     public static void log(String msg) {
+        // 同步到 MainController 的日志
+        MainController.log(msg);
+        // 同步到兼容变量 logList
         logList.add(0, msg);
         while (logList.size() > 100) {
             logList.remove(logList.size() - 1);
         }
-        SettingsActivity.log(msg);
     }
 }

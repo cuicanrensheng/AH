@@ -31,10 +31,6 @@ import java.util.List;
  * - 设置管理：loadSettings、channel_reverse、number_channel_enable
  * - 日志管理：logList、log()
  *
- * 【三播放器双向预加载】
- * 播放完成后同时预加载上一个和下一个频道，
- * 不管按上还是按下都是无缝切换，0 毫秒黑屏。
- *
  * 【五层逻辑闭环】
  * 1. 状态管理层：按键状态、播放状态、设置状态、日志状态
  * 2. 数据筛选层：设置项筛选、日志截断
@@ -64,15 +60,6 @@ public class MainController {
     private AppConfig appConfig;
     /** 播放器状态监听器 */
     private PlayerStateListenerImpl playerStateListener;
-
-    // ====================================================================
-    // ✅ 三播放器：频道列表引用（用于双向预加载）
-    // ====================================================================
-    /**
-     * 所有频道列表（用于预加载时获取上一个和下一个频道）
-     * 由外部（MainActivity）在加载完频道列表后设置
-     */
-    private List<Channel> channelList = new ArrayList<>();
 
     // ====================== 按键相关状态 ======================
     /** 频道切换是否反向（上键=下一台，下键=上一台） */
@@ -297,16 +284,6 @@ public class MainController {
     /**
      * 执行实际播放（内部方法，被 ChannelPanelController 回调）
      *
-     * 【播放流程】
-     * 1. 保存当前索引
-     * 2. 更新播放器状态监听器的频道名
-     * 3. 保存上次播放索引
-     * 4. 调用播放器播放
-     * 5. 显示频道号（右上角大数字）
-     * 6. 显示信息栏（底部，频道名+节目名等）
-     * 7. ✅ 同时预加载上一个和下一个频道（双向预加载）
-     * 8. 回调给外部
-     *
      * @param channel 频道
      * @param index   全局索引
      */
@@ -331,90 +308,13 @@ public class MainController {
         // 先播放（最重要的事情先做）
         playerManager.playUrl(channel.getPlayUrl());
 
-        // 显示频道号（右上角大数字，频道号 = 索引 + 1）
-        infoDisplayManager.showChannelNum(index + 1);
-
-        // 显示信息栏（底部，频道名+节目名+画质+码率等）
+        // 显示信息栏
         TVPlayerManager.LiveInfo live = playerManager.getLiveInfo();
         infoDisplayManager.showInfoBar(channel, live);
-
-        // ====================================================================
-        // ✅ 三播放器：同时预加载上一个和下一个频道（双向预加载）
-        // ====================================================================
-        preloadBothChannels(index);
 
         // 回调给外部
         if (playControlListener != null) {
             playControlListener.onPlayChannel(channel, index);
-        }
-    }
-
-    // ====================================================================
-    // ✅ 三播放器：同时预加载上一个和下一个频道
-    // ====================================================================
-    /**
-     * 同时预加载上一个和下一个频道
-     *
-     * 【双向预加载】
-     * 上下两个方向都预加载，不管按上还是按下都是无缝的。
-     *
-     * 【预加载策略】
-     * - 下一个：索引 + 1，最后一个的下一个是第一个（循环）
-     * - 上一个：索引 - 1，第一个的上一个是最后一个（循环）
-     *
-     * 【效果】
-     * 用户按"下"键时，下一个频道已经缓冲好了，无缝切换；
-     * 用户按"上"键时，上一个频道也已经缓冲好了，同样无缝切换。
-     * 完全 0 黑屏，极致体验。
-     *
-     * @param currentIndex 当前播放的频道索引
-     */
-    private void preloadBothChannels(int currentIndex) {
-        if (channelList == null || channelList.isEmpty()) {
-            return;
-        }
-
-        // ========================================
-        // 1. 预加载下一个频道
-        // ========================================
-        int nextIndex = currentIndex + 1;
-        if (nextIndex >= channelList.size()) {
-            nextIndex = 0;  // 循环：最后一个的下一个是第一个
-        }
-        Channel nextChannel = channelList.get(nextIndex);
-        if (nextChannel != null && nextChannel.getPlayUrl() != null) {
-            playerManager.preloadNextUrl(nextChannel.getPlayUrl());
-            log("【三播放器】预加载下一个频道：" + nextChannel.getName() + " (索引 " + nextIndex + ")");
-        }
-
-        // ========================================
-        // 2. 预加载上一个频道
-        // ========================================
-        int prevIndex = currentIndex - 1;
-        if (prevIndex < 0) {
-            prevIndex = channelList.size() - 1;  // 循环：第一个的上一个是最后一个
-        }
-        Channel prevChannel = channelList.get(prevIndex);
-        if (prevChannel != null && prevChannel.getPlayUrl() != null) {
-            playerManager.preloadPrevUrl(prevChannel.getPlayUrl());
-            log("【三播放器】预加载上一个频道：" + prevChannel.getName() + " (索引 " + prevIndex + ")");
-        }
-    }
-
-    // ====================================================================
-    // ✅ 三播放器：设置频道列表
-    // ====================================================================
-    /**
-     * 设置频道列表（用于双向预加载时获取上一个和下一个频道）
-     *
-     * 由外部（MainActivity）在加载完频道列表后调用。
-     *
-     * @param channels 频道列表
-     */
-    public void setChannelList(List<Channel> channels) {
-        if (channels != null) {
-            this.channelList = channels;
-            log("【三播放器】频道列表已设置，共 " + channels.size() + " 个频道，双向预加载已启用");
         }
     }
 
@@ -453,14 +353,6 @@ public class MainController {
 
     /**
      * 从 SharedPreferences 加载各项设置
-     *
-     * 【加载的设置项】
-     * - EPG 开关
-     * - 切台反转
-     * - 数字选台
-     * - 自动更新源
-     *
-     * 加载完成后会同步到各个对应的 Manager。
      */
     public void loadSettings() {
         SharedPreferences sp = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE);
@@ -595,9 +487,5 @@ public class MainController {
         playerStateListener = null;
         playControlListener = null;
         panelControlListener = null;
-        if (channelList != null) {
-            channelList.clear();
-            channelList = null;
-        }
     }
 }

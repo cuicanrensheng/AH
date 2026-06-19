@@ -78,6 +78,15 @@ import java.util.List;
  * 【分组内循环切台】
  * 上/下切台只在当前分组内循环，不会切到其他分组。
  * 到分组末尾时自动回到开头（循环）。
+ *
+ * 【三栏式面板布局】
+ * 从左到右：频道分组 → 频道列表 → 节目单按钮
+ * 点击节目单按钮后展开节目单（日期 + 节目列表）
+ *
+ * 【信息栏显示逻辑】
+ * - 打开面板时：信息栏 + 右上角（频道号+日期+时间）都显示
+ * - 关闭面板时：信息栏 + 右上角都隐藏
+ * - 切台时（面板未打开）：信息栏 + 频道号显示 5 秒后自动隐藏
  */
 public class MainActivity extends AppCompatActivity {
     // ====================== 单例与数据 ======================
@@ -187,7 +196,7 @@ public class MainActivity extends AppCompatActivity {
      */
     private boolean isOpeningSettings = false;
     // ====================== 其他 ======================
-    /** 隐藏信息栏的 Runnable（延迟 2 秒隐藏） */
+    /** 隐藏信息栏的 Runnable（延迟 5 秒隐藏） */
     private final Runnable hideInfoBar = new Runnable() {
         @Override
         public void run() {
@@ -209,7 +218,6 @@ public class MainActivity extends AppCompatActivity {
     private float touchStartY = 0;
     /** 滑动阈值（像素），超过才算滑动 */
     private static final float SLIDE_THRESHOLD = 80;
-
     // ====================================================================
     // ✅ 新增：节目进度定时更新
     // ====================================================================
@@ -218,12 +226,10 @@ public class MainActivity extends AppCompatActivity {
      * 节目进度不需要每秒更新，每分钟更新一次就够了
      */
     private static final long PROGRAM_PROGRESS_INTERVAL = 60000;
-
     /**
      * 节目进度更新 Handler
      */
     private Handler programProgressHandler = new Handler(Looper.getMainLooper());
-
     /**
      * 节目进度更新 Runnable
      * 每分钟更新一次信息栏的节目进度和剩余时间
@@ -241,7 +247,24 @@ public class MainActivity extends AppCompatActivity {
             programProgressHandler.postDelayed(this, PROGRAM_PROGRESS_INTERVAL);
         }
     };
-
+    // ====================================================================
+    // ✅ 新增：右上角时间更新
+    // ====================================================================
+    /**
+     * 右上角时间更新 Handler
+     */
+    private Handler timeHandler = new Handler(Looper.getMainLooper());
+    /**
+     * 右上角时间更新 Runnable
+     * 每秒更新一次日期和时间
+     */
+    private final Runnable timeUpdateRunnable = new Runnable() {
+        @Override
+        public void run() {
+            updateTopRightTime();
+            timeHandler.postDelayed(this, 1000);
+        }
+    };
     // ====================== 日志相关 ======================
     /** 本地日志列表（保留最近 100 条） */
     public static List<String> logList = new ArrayList<>();
@@ -311,7 +334,7 @@ public class MainActivity extends AppCompatActivity {
         // ===== 自动旋转横屏 =====
         // sensorLandscape：支持左横屏/右横屏自动旋转，但不会变成竖屏
         // 比固定 LANDSCAPE 更灵活，适合手机/平板使用
-        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSSCAPE);
         // ================================================
         // ✅ 全面屏适配（第一部分）- 加 try-catch 确保电视不崩溃
         // ================================================
@@ -409,7 +432,9 @@ public class MainActivity extends AppCompatActivity {
         // 注册广播
         registerReceiver(toggleControllerReceiver, new IntentFilter("com.tv.live.TOGGLE_CONTROL"));
         registerReceiver(refreshReceiver, new IntentFilter("com.tv.live.REFRESH_LIVE_AND_EPG"));
-        // ===== EPG 展开按钮点击事件 =====
+        // ====================================================================
+        // ✅ 修改：EPG 展开按钮点击事件（使用 PanelManager 管理）
+        // ====================================================================
         btn_show_epg.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -418,13 +443,11 @@ public class MainActivity extends AppCompatActivity {
                     SettingsActivity.logOperation("【EPG】节目单功能已关闭，无法展开");
                     return;
                 }
-                // 切换 EPG 面板展开/收起
-                epgPanelOpen = !epgPanelOpen;
-                lvDate.setVisibility(epgPanelOpen ? View.VISIBLE : View.GONE);
-                lvEpg.setVisibility(epgPanelOpen ? View.VISIBLE : View.GONE);
-                SettingsActivity.logOperation("【EPG】" + (epgPanelOpen ? "展开" : "收起") + "节目单");
+                // 切换 EPG 面板展开/收起（通过 PanelManager 管理）
+                panelManager.toggleEpgPanel();
+                SettingsActivity.logOperation("【EPG】" + (panelManager.isEpgExpanded() ? "展开" : "收起") + "节目单");
                 // 如果展开了，刷新当前频道的节目单
-                if (epgPanelOpen && !channelSourceList.isEmpty()) {
+                if (panelManager.isEpgExpanded() && !channelSourceList.isEmpty()) {
                     Channel curr = channelSourceList.get(currentPlayIndex);
                     epgManagerWrapper.refresh(curr, channelSourceList, currentSelectedDateIndex);
                 }
@@ -543,6 +566,42 @@ public class MainActivity extends AppCompatActivity {
         tv_next_program_name = findViewById(R.id.tv_next_program_name);
         tv_next_time_range = findViewById(R.id.tv_next_time_range);
     }
+    // ====================================================================
+    // ✅ 新增：更新右上角日期和时间
+    // ====================================================================
+    /**
+     * 更新右上角的日期和实时时间
+     * 打开面板时每秒调用一次
+     */
+    private void updateTopRightTime() {
+        try {
+            Calendar cal = Calendar.getInstance();
+            // 日期：06/19
+            String dateStr = String.format("%02d/%02d",
+                    cal.get(Calendar.MONTH) + 1,
+                    cal.get(Calendar.DAY_OF_MONTH));
+            // 星期：周五
+            int w = cal.get(Calendar.DAY_OF_WEEK);
+            String[] weekMap = {"周日", "周一", "周二", "周三", "周四", "周五", "周六"};
+            String weekStr = weekMap[w - 1];
+            // 时间：09:57:15
+            String timeStr = String.format("%02d:%02d:%02d",
+                    cal.get(Calendar.HOUR_OF_DAY),
+                    cal.get(Calendar.MINUTE),
+                    cal.get(Calendar.SECOND));
+            
+            TextView tvDate = findViewById(R.id.tv_date);
+            TextView tvTime = findViewById(R.id.tv_time);
+            if (tvDate != null) {
+                tvDate.setText(dateStr + " " + weekStr);
+            }
+            if (tvTime != null) {
+                tvTime.setText(timeStr);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
     // ====================== 加载视图相关 ======================
     /**
      * 初始化加载视图
@@ -636,15 +695,26 @@ public class MainActivity extends AppCompatActivity {
             SettingsActivity.logOperation("【数字选台】取消输入");
             return;
         }
+        // 如果节目单展开着，先收起节目单
+        if (panelManager != null && panelManager.isEpgExpanded()) {
+            panelManager.toggleEpgPanel();
+            SettingsActivity.logOperation("【EPG】返回键收起节目单");
+            return;
+        }
         // 如果面板打开着，先关闭面板
         if (panel_layout.getVisibility() == View.VISIBLE) {
             panel_layout.setVisibility(View.GONE);
             playerView.requestFocus();
             SettingsActivity.logOperation("【面板】关闭频道面板");
-        } else {
-            // 否则正常返回
-            super.onBackPressed();
+            // 关闭面板时隐藏信息栏和右上角
+            info_bar.setVisibility(View.GONE);
+            View topRight = findViewById(R.id.ll_top_right);
+            if (topRight != null) topRight.setVisibility(View.GONE);
+            timeHandler.removeCallbacks(timeUpdateRunnable);
+            return;
         }
+        // 否则正常返回
+        super.onBackPressed();
     }
     // ====================== 数字选台 ======================
     /**
@@ -698,13 +768,13 @@ public class MainActivity extends AppCompatActivity {
         }
         // 清空输入
         channelNumInput.setLength(0);
-        // 延迟 1 秒隐藏频道号显示
+        // 延迟 5 秒隐藏频道号显示（和信息栏保持一致）
         new Handler().postDelayed(new Runnable() {
             @Override
             public void run() {
                 tv_channel_num.setVisibility(View.GONE);
             }
-        }, 1000);
+        }, 5000);
     }
     // ====================== 方向键处理 ======================
     /**
@@ -1102,24 +1172,39 @@ public class MainActivity extends AppCompatActivity {
         // 先播放（最重要的事情先做）
         mPlayerManager.playUrl(playUrl);
         
+        // ====================================================================
+        // ✅ 修改：信息栏显示逻辑
+        // ====================================================================
+        /**
+         * 【显示逻辑说明】
+         *
+         * 场景 1：面板已打开
+         *   - 信息栏已经显示（打开面板时显示的）
+         *   - 只需要更新内容，不需要改变显示状态
+         *
+         * 场景 2：面板未打开（直接按上下键切台）
+         *   - 显示信息栏
+         *   - 5 秒后自动隐藏
+         */
         if (info_bar != null) {
-            info_bar.setVisibility(View.VISIBLE);
-            info_bar.removeCallbacks(hideInfoBar);
-            info_bar.postDelayed(hideInfoBar, 2000);
+            // 如果面板没打开，才需要显示信息栏（打开面板时已经显示了）
+            if (panel_layout.getVisibility() != View.VISIBLE) {
+                info_bar.setVisibility(View.VISIBLE);
+                info_bar.removeCallbacks(hideInfoBar);
+                // ✅ 5 秒后自动隐藏
+                info_bar.postDelayed(hideInfoBar, 5000);
+            }
+            // 更新信息栏内容
             tv_channel_name.setText(ch.getName());
             TVPlayerManager.LiveInfo live = mPlayerManager.getLiveInfo();
             tv_tag_fhd.setText(live.quality);
             tv_tag_audio.setText(live.audio);
             tv_bitrate.setText(live.bitrate);
             
-            // ====================================================================
-            // ✅ 新增：更新信息栏的 EPG 节目信息
-            // ====================================================================
+            // 更新信息栏的 EPG 节目信息
             updateInfoBarEpg(ch);
             
-            // ====================================================================
-            // ✅ 新增：重启节目进度定时更新
-            // ====================================================================
+            // 重启节目进度定时更新
             programProgressHandler.removeCallbacks(updateProgramProgressRunnable);
             programProgressHandler.postDelayed(updateProgramProgressRunnable, PROGRAM_PROGRESS_INTERVAL);
         }
@@ -1130,14 +1215,34 @@ public class MainActivity extends AppCompatActivity {
      * @param num 频道号
      */
     public void showChannelNum(int num) {
-        tv_channel_num.setText(String.valueOf(num));
-        tv_channel_num.setVisibility(View.VISIBLE);
-        new Handler().postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                tv_channel_num.setVisibility(View.GONE);
-            }
-        }, 3000);
+        // ====================================================================
+        // ✅ 修改：频道号显示逻辑
+        // ====================================================================
+        /**
+         * 【显示逻辑说明】
+         *
+         * 场景 1：面板已打开
+         *   - 右上角已经显示频道号+日期+时间（打开面板时显示的）
+         *   - 只需要更新频道号数字，不需要改变显示状态
+         *
+         * 场景 2：面板未打开（直接按上下键切台）
+         *   - 显示单独的频道号
+         *   - 5 秒后自动隐藏
+         */
+        if (panel_layout.getVisibility() == View.VISIBLE) {
+            // 面板已打开，右上角已经有频道号了，只更新数字
+            tv_channel_num.setText(String.valueOf(num));
+        } else {
+            // 面板未打开，显示单独的频道号，5 秒后隐藏
+            tv_channel_num.setText(String.valueOf(num));
+            tv_channel_num.setVisibility(View.VISIBLE);
+            new Handler().postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    tv_channel_num.setVisibility(View.GONE);
+                }
+            }, 5000);  // ✅ 5 秒后自动隐藏
+        }
     }
     /**
      * 初始化频道列表的点击事件
@@ -1154,413 +1259,86 @@ public class MainActivity extends AppCompatActivity {
                         log("【列表点击】切换到全局索引：" + globalIndex);
                         SettingsActivity.logOperation("【列表】点击频道：" + selectedChannel.getName());
                         playChannel(globalIndex);
-                        togglePanel();
+                        // 点击频道后不关闭面板，方便继续浏览
                     }
                 } else {
                     Channel ch = channelSourceList.get(pos);
                     SettingsActivity.logOperation("【列表】点击频道：" + ch.getName());
                     playChannel(pos);
-                    togglePanel();
+                    // 点击频道后不关闭面板，方便继续浏览
                 }
             }
         });
     }
     /**
      * 切换频道面板显示/隐藏
+     * 打开面板时：显示信息栏 + 右上角频道号和时间
+     * 关闭面板时：隐藏信息栏 + 右上角频道号和时间
      */
     public void togglePanel() {
         if (!TextUtils.isEmpty(currentGroupName) && !currentGroupChannelList.isEmpty()) {
             channelListManager.setChannelsByGroup(channelSourceList, currentGroupName, currentPlayIndex);
         } else {
             channelListManager.setChannels(channelSourceList, currentPlayIndex);
-        }
-        boolean isOpen = panel_layout.getVisibility() == View.VISIBLE;
-        panelManager.toggle(channelSourceList, currentPlayIndex, dateListManager);
-        SettingsActivity.logOperation("【面板】" + (isOpen ? "关闭" : "打开") + "频道面板");
-    }
-    /**
-     * 打开设置页面
-     *
-     * 【进入设置不暂停】
-     * 打开设置前设置 isOpeningSettings = true，
-     * 这样 onPause 时就不会暂停播放器。
-     */
-    public void openSettings() {
-        isOpeningSettings = true;
-        startActivity(new Intent(this, SettingsActivity.class));
-        SettingsActivity.logOperation("【系统】打开设置页面");
-    }
-    /**
-     * 接收远程配置（网页后台下发）
-     *
-     * @param liveUrl 直播源地址
-     * @param epgUrl EPG 地址
-     */
-    public void onReceiveConfig(final String liveUrl, final String epgUrl) {
-        AppConfig config = AppConfig.getInstance(this);
-        config.setCustomUrls(liveUrl, epgUrl);
-        if (liveUrl != null) UrlConfig.LIVE_URL = liveUrl;
-        if (epgUrl != null) UrlConfig.EPG_URL = epgUrl;
-        log("【远程配置】更新直播源：" + liveUrl);
-        log("【远程配置】更新EPG：" + epgUrl);
-        SettingsActivity.logOperation("【远程配置】更新直播源/EPG地址");
-        runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-                hasPlayedWithCache = false;
-                loadLiveAndEpg();
             }
-        });
-    }
-    /**
-     * onPause：页面暂停
-     *
-     * 【进入设置不暂停】
-     * 如果 isOpeningSettings 为 true，说明是打开设置页面，
-     * 不暂停播放器，直接返回。
-     */
-    @Override
-    protected void onPause() {
-        super.onPause();
-        if (isOpeningSettings) {
-            log("【主页】onPause -> 打开设置页面，继续播放");
-            return;
-        }
-        log("【主页】onPause -> 切到后台");
-        SettingsActivity.logOperation("【系统】APP切到后台");
-        if (mPlayerManager != null)
-            mPlayerManager.onBackground();
-    }
-    /**
-     * onResume：页面恢复
-     *
-     * 【进入设置不暂停】
-     * 如果 isOpeningSettings 为 true，说明是从设置页面回来，
-     * 重置标志位即可，不需要调用 onForeground。
-     */
-    @Override
-    protected void onResume() {
-        super.onResume();
-        if (isOpeningSettings) {
-            isOpeningSettings = false;
-            log("【主页】onResume -> 从设置页面回来");
-        } else {
-            log("【主页】onResume -> 回到前台");
-            SettingsActivity.logOperation("【系统】APP回到前台");
-            if (mPlayerManager != null)
-                mPlayerManager.onForeground();
-        }
-        loadSettings();
-        screenRatioManager.apply();
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                android.view.WindowInsetsController controller = getWindow().getInsetsController();
-                if (controller != null) {
-                    controller.hide(android.view.WindowInsets.Type.systemBars());
-                    controller.setSystemBarsBehavior(
-                            android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-                    );
-                }
-            } else {
-                getWindow().getDecorView().setSystemUiVisibility(
-                        View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                                | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                                | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                                | View.SYSTEM_UI_FLAG_FULLSCREEN
-                                | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                                | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-                                   );
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-            log("【适配】onResume 恢复全屏失败：" + e.getMessage());
-        }
-    }
-    /**
-     * onWindowFocusChanged：窗口焦点变化
-     */
-    @Override
-    public void onWindowFocusChanged(boolean hasFocus) {
-        super.onWindowFocusChanged(hasFocus);
-        if (hasFocus) {
-            try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    android.view.WindowInsetsController controller = getWindow().getInsetsController();
-                    if (controller != null) {
-                        controller.hide(android.view.WindowInsets.Type.systemBars());
-                        controller.setSystemBarsBehavior(
-                                android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-                        );
-                    }
-                } else {
-                    getWindow().getDecorView().setSystemUiVisibility(
-                            View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                                    | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                                    | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                                    | View.SYSTEM_UI_FLAG_FULLSCREEN
-                                    | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                                    | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-                    );
-                }
-            } catch (Exception e) {
-                e.printStackTrace();
-                log("【适配】onWindowFocusChanged 恢复全屏失败：" + e.getMessage());
-            }
-        }
-    }
-    /**
-     * onDestroy：页面销毁
-     */
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        log("【主页】onDestroy -> 页面销毁");
-        SettingsActivity.logOperation("【系统】APP退出");
-        
-        // ====================================================================
-        // ✅ 新增：停止节目进度更新
-        // ====================================================================
-        programProgressHandler.removeCallbacks(updateProgramProgressRunnable);
-        
-        if (channelNumHandler != null) {
-            channelNumHandler.removeCallbacks(channelNumConfirmRunnable);
-        }
-        try { unregisterReceiver(toggleControllerReceiver); } catch (Exception ignored) {}
-        try { unregisterReceiver(refreshReceiver); } catch (Exception ignored) {}
-        mPlayerManager.release();
-        mInstance = null;
-    }
-
+    boolean isOpen = panel_layout.getVisibility() == View.VISIBLE;
+    panelManager.toggle(channelSourceList, currentPlayIndex, dateListManager);
+    
     // ====================================================================
-    // ✅ 新增：信息栏 EPG 节目信息更新相关方法
+    // ✅ 打开面板时显示信息栏和右上角，关闭时隐藏
     // ====================================================================
-
-    /**
-     * 更新信息栏的 EPG 节目信息
-     * 切台时调用，更新当前节目、下一个节目、进度等
-     *
-     * @param channel 当前播放的频道
-     */
-    private void updateInfoBarEpg(Channel channel) {
-        if (channel == null || tv_current_program_name == null) {
-            return;
+    View topRight = findViewById(R.id.ll_top_right);
+    if (!isOpen) {
+        // ========================================
+        // 打开面板
+        // ========================================
+        // 1. 显示底部信息栏
+        info_bar.setVisibility(View.VISIBLE);
+        // 移除之前的自动隐藏任务（打开面板后信息栏一直显示）
+        info_bar.removeCallbacks(hideInfoBar);
+        
+        // 2. 显示右上角（频道号 + 日期 + 时间）
+        if (topRight != null) {
+            topRight.setVisibility(View.VISIBLE);
         }
         
-        try {
-            // 从 EpgManager 获取该频道的所有节目
-            List<Channel.EpgItem> epgList = EpgManager.getInstance().getEpg(channel.getName());
-            
-            if (epgList == null || epgList.isEmpty()) {
-                // 没有匹配到节目数据
-                tv_current_program_name.setText("暂无节目信息");
-                if (tv_current_time_range != null) tv_current_time_range.setText("");
-                if (tv_next_program_name != null) tv_next_program_name.setText("");
-                if (tv_next_time_range != null) tv_next_time_range.setText("");
-                if (progress_program != null) progress_program.setProgress(0);
-                if (tv_remaining_time != null) tv_remaining_time.setText("");
-                return;
-            }
-            
-            // ========================================
-            // 筛选今天的节目（双重兼容：今天/对应周几）
-            // ========================================
-            List<Channel.EpgItem> todayEpg = new ArrayList<>();
-            Calendar cal = Calendar.getInstance();
-            int w = cal.get(Calendar.DAY_OF_WEEK);
-            String[] weekMap = {"周日", "周一", "周二", "周三", "周四", "周五", "周六"};
-            String todayWeekDay = weekMap[w - 1];
-            
-            for (Channel.EpgItem item : epgList) {
-                if (item.dayName == null) continue;
-                String dayName = item.dayName.trim();
-                // 双重兼容：匹配 "今天" 或对应的周几
-                if ("今天".equals(dayName) || todayWeekDay.equals(dayName)) {
-                    todayEpg.add(item);
-                }
-            }
-            
-            if (todayEpg.isEmpty()) {
-                tv_current_program_name.setText("暂无节目信息");
-                if (tv_current_time_range != null) tv_current_time_range.setText("");
-                if (tv_next_program_name != null) tv_next_program_name.setText("");
-                if (tv_next_time_range != null) tv_next_time_range.setText("");
-                return;
-            }
-            
-            // 按开始时间排序
-            Collections.sort(todayEpg, new Comparator<Channel.EpgItem>() {
-                @Override
-                public int compare(Channel.EpgItem o1, Channel.EpgItem o2) {
-                    return o1.time.compareTo(o2.time);
-                }
-            });
-            
-            // ========================================
-            // 找到当前正在播放的节目
-            // ========================================
-            String now = getNowTimeStr();
-            Channel.EpgItem currentProgram = null;
-            Channel.EpgItem nextProgram = null;
-            int currentIndex = -1;
-            
-            for (int i = 0; i < todayEpg.size(); i++) {
-                Channel.EpgItem item = todayEpg.get(i);
-                String startTime = item.time;
-                String endTime;
-                
-                // 计算结束时间（下一个节目的开始时间）
-                if (i + 1 < todayEpg.size()) {
-                    endTime = todayEpg.get(i + 1).time;
-                } else {
-                    endTime = "23:59"; // 最后一个节目默认到 23:59
-                }
-                
-                if (isTimeInRange(now, startTime, endTime)) {
-                    currentProgram = item;
-                    currentIndex = i;
-                    // 下一个节目
-                    if (i + 1 < todayEpg.size()) {
-                        nextProgram = todayEpg.get(i + 1);
-                    }
-                    break;
-                }
-            }
-            
-            // ========================================
-            // 更新当前节目信息
-            // ========================================
-            if (currentProgram != null) {
-                // 节目名称
-                tv_current_program_name.setText(currentProgram.title);
-                
-                // 计算结束时间
-                String endTime;
-                if (currentIndex + 1 < todayEpg.size()) {
-                    endTime = todayEpg.get(currentIndex + 1).time;
-                } else {
-                    endTime = "23:59";
-                }
-                
-                // 时间范围
-                if (tv_current_time_range != null) {
-                    tv_current_time_range.setText(currentProgram.time + " - " + endTime);
-                }
-                
-                // 计算进度和剩余时间
-                long nowMillis = timeToMillis(now);
-                long startMillis = timeToMillis(currentProgram.time);
-                long endMillis = timeToMillis(endTime);
-                
-                if (endMillis > startMillis && progress_program != null) {
-                    // 进度百分比
-                    int progress = (int) ((nowMillis - startMillis) * 100 / (endMillis - startMillis));
-                    progress_program.setProgress(progress);
-                    
-                    // 剩余时间
-                    long remainingMillis = endMillis - nowMillis;
-                    int remainingMinutes = (int) (remainingMillis / 1000 / 60);
-                    if (tv_remaining_time != null) {
-                        if (remainingMinutes >= 60) {
-                            int hours = remainingMinutes / 60;
-                            int mins = remainingMinutes % 60;
-                            tv_remaining_time.setText("剩余 " + hours + "时" + mins + "分");
-                        } else {
-                            tv_remaining_time.setText("剩余 " + remainingMinutes + "分钟");
-                        }
-                    }
-                }
-            } else {
-                // 没找到当前播放的节目
-                tv_current_program_name.setText("暂无节目信息");
-                if (tv_current_time_range != null) tv_current_time_range.setText("");
-                if (progress_program != null) progress_program.setProgress(0);
-                if (tv_remaining_time != null) tv_remaining_time.setText("");
-            }
-            
-            // ========================================
-            // 更新下一个节目信息
-            // ========================================
-            if (nextProgram != null && tv_next_program_name != null) {
-                tv_next_program_name.setText(nextProgram.title);
-                // 下一个节目的结束时间
-                String nextEndTime;
-                if (currentIndex + 2 < todayEpg.size()) {
-                    nextEndTime = todayEpg.get(currentIndex + 2).time;
-                } else {
-                    nextEndTime = "23:59";
-                }
-                if (tv_next_time_range != null) {
-                    tv_next_time_range.setText(nextProgram.time + " - " + nextEndTime);
-                }
-            } else {
-                if (tv_next_program_name != null) tv_next_program_name.setText("");
-                if (tv_next_time_range != null) tv_next_time_range.setText("");
-            }
-            
-        } catch (Exception e) {
-            e.printStackTrace();
-            tv_current_program_name.setText("暂无节目信息");
-            if (tv_current_time_range != null) tv_current_time_range.setText("");
-            if (tv_next_program_name != null) tv_next_program_name.setText("");
-            if (tv_next_time_range != null) tv_next_time_range.setText("");
+        // 3. 更新右上角频道号
+        tv_channel_num.setText(String.valueOf(currentPlayIndex + 1));
+        
+        // 4. 开始时间更新（每秒刷新一次）
+        timeHandler.removeCallbacks(timeUpdateRunnable);
+        timeHandler.post(timeUpdateRunnable);
+        
+        // 5. 更新信息栏内容
+        if (!channelSourceList.isEmpty() 
+                && currentPlayIndex >= 0 
+                && currentPlayIndex < channelSourceList.size()) {
+            Channel ch = channelSourceList.get(currentPlayIndex);
+            // 频道名称
+            tv_channel_name.setText(ch.getName());
+            // 画质、音频、码率
+            TVPlayerManager.LiveInfo live = mPlayerManager.getLiveInfo();
+            tv_tag_fhd.setText(live.quality);
+            tv_tag_audio.setText(live.audio);
+            tv_bitrate.setText(live.bitrate);
+            // EPG 节目信息
+            updateInfoBarEpg(ch);
         }
-    }
-
-    /**
-     * 获取当前时间字符串（HH:mm 格式）
-     */
-    private String getNowTimeStr() {
-        Calendar cal = Calendar.getInstance();
-        return String.format("%02d:%02d",
-                cal.get(Calendar.HOUR_OF_DAY),
-                cal.get(Calendar.MINUTE));
-    }
-
-    /**
-     * 判断时间是否在指定范围内
-     *
-     * @param now 当前时间（HH:mm）
-     * @param start 开始时间（HH:mm）
-     * @param end 结束时间（HH:mm）
-     * @return 是否在范围内
-     */
-    private boolean isTimeInRange(String now, String start, String end) {
-        try {
-            if (now == null || start == null || end == null) {
-                return false;
-            }
-            if (!now.contains(":") || !start.contains(":") || !end.contains(":")) {
-                return false;
-            }
-            return now.compareTo(start) >= 0 && now.compareTo(end) < 0;
-        } catch (Exception e) {
-            return false;
+    } else {
+        // ========================================
+        // 关闭面板
+        // ========================================
+        // 1. 隐藏底部信息栏
+        info_bar.setVisibility(View.GONE);
+        
+        // 2. 隐藏右上角
+        if (topRight != null) {
+            topRight.setVisibility(View.GONE);
         }
+        
+        // 3. 停止时间更新
+        timeHandler.removeCallbacks(timeUpdateRunnable);
     }
-
-    /**
-     * 把 HH:mm 格式的时间转换成当天的毫秒数
-     * 用于计算节目进度和剩余时间
-     *
-     * @param timeStr 时间字符串（HH:mm）
-     * @return 当天的毫秒数
-     */
-    private long timeToMillis(String timeStr) {
-        try {
-            String[] parts = timeStr.split(":");
-            int hour = Integer.parseInt(parts[0].trim());
-            int minute = Integer.parseInt(parts[1].trim());
-            
-            Calendar cal = Calendar.getInstance();
-            cal.set(Calendar.HOUR_OF_DAY, hour);
-            cal.set(Calendar.MINUTE, minute);
-            cal.set(Calendar.SECOND, 0);
-            cal.set(Calendar.MILLISECOND, 0);
-            
-            return cal.getTimeInMillis();
-        } catch (Exception e) {
-            return 0;
-        }
-    }
+    
+    SettingsActivity.logOperation("【面板】" + (isOpen ? "关闭" : "打开") + "频道面板");
 }
-                   

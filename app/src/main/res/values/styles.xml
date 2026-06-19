@@ -32,19 +32,21 @@
         <!-- <item name="android:windowTranslucentNavigation">true</item> -->
 
     </style>
-
-    <!-- ================================================ -->
+        <!-- ================================================ -->
     <!-- SettingsActivity 透明主题（兼容版） -->
     <!-- ================================================ -->
-    <!--
-        【注意】去掉 windowIsFloating，避免和 windowIsTranslucent 冲突
-        某些电视 ROM 对浮动窗口支持不好，可能导致崩溃
-    -->
-    <style name="TransparentTheme" parent="Theme.AppCompat.Light.NoActionBar">
+    <style name="TransparentTheme" parent="Theme.AppCompat.NoActionBar">
+        <!-- 窗口是半透明的（关键） -->
         <item name="android:windowIsTranslucent">true</item>
+        <!-- 窗口背景透明 -->
         <item name="android:windowBackground">@android:color/transparent</item>
+        <!-- 没有标题栏 -->
         <item name="android:windowNoTitle">true</item>
-        <!-- <item name="android:windowIsFloating">true</item> --> <!-- 去掉，避免冲突 -->
-        <item name="android:backgroundDimEnabled">true</item>
+        <!-- 全屏显示 -->
+        <item name="android:windowFullscreen">true</item>
+        <!-- ✅ 关闭背景变暗，否则会像遮罩一样盖住画面 -->
+        <item name="android:backgroundDimEnabled">false</item>
+        <!-- 暗度设为 0（完全透明） -->
+        <item name="android:backgroundDimAmount">0</item>
     </style>
 </resources>

@@ -1291,4 +1291,218 @@ public class SettingsActivity extends AppCompatActivity {
                     String currentKey = key.contains("live") ? KEY_CUSTOM_LIVE : KEY_CUSTOM_EPG;
                     String currentUrl = sp.getString(currentKey, "");
                     if (currentUrl.equals(oldUrl)) {
+                                            if (currentUrl.equals(oldUrl)) {
+                        sp.edit().putString(currentKey, url).apply();
+                        sendBroadcast(new Intent("com.tv.live.REFRESH_LIVE_AND_EPG"));
+                    }
+                    logOperation("【设置】编辑源：" + oldItem.name + " → " + name);
+                    Toast.makeText(this, "已保存", Toast.LENGTH_SHORT).show();
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    /**
+     * 显示导入对话框
+     * 从剪贴板批量导入源
+     */
+    private void showImportDialog(String title, final String key, final SourceManager sourceManager,
+                                   final ArrayList<SourceManager.SourceItem> displayItems,
+                                   final SourceAdapter adapter, final EditText searchEt) {
+        ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+        if (!cm.hasPrimaryClip()) {
+            Toast.makeText(this, "剪贴板为空", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        CharSequence clipText = cm.getPrimaryClip().getItemAt(0).getText();
+        if (clipText == null || clipText.toString().trim().isEmpty()) {
+            Toast.makeText(this, "剪贴板为空", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        final String text = clipText.toString().trim();
+        final String[] lines = text.split("\n");
+        int count = 0;
+        for (String line : lines) {
+            if (line.trim().isEmpty()) continue;
+            if (line.contains("http")) count++;
+        }
+        final int importCount = count;
+
+        new AlertDialog.Builder(this)
+                .setTitle("确认导入")
+                .setMessage("检测到 " + importCount + " 个源，是否导入？")
+                .setPositiveButton("导入", (dialog, which) -> {
+                    int added = sourceManager.importFromText(text);
+                    refreshDisplayList(sourceManager, displayItems, adapter, searchEt.getText().toString());
+                    logOperation("【设置】从剪贴板导入 " + added + " 个源");
+                    Toast.makeText(this, "成功导入 " + added + " 个源", Toast.LENGTH_SHORT).show();
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    // ====================== 扫码相关 ======================
+    /**
+     * 显示二维码对话框
+     * 二维码内容是网页后台的地址
+     */
+    private void showQRCodeDialog() {
+        ImageView iv = new ImageView(this);
+        iv.setImageBitmap(createQR(currentWebUrl, 250));
+        new AlertDialog.Builder(this)
+                .setTitle("扫码管理")
+                .setView(iv)
+                .setPositiveButton("关闭", null)
+                .show();
+    }
+
+    /**
+     * 生成二维码图片
+     */
+    private Bitmap createQR(String text, int size) {
+        try {
+            BitMatrix m = new QRCodeWriter().encode(text, BarcodeFormat.QR_CODE, size, size);
+            Bitmap bmp = Bitmap.createBitmap(size, size, Bitmap.Config.RGB_565);
+            for (int x = 0; x < size; x++) {
+                for (int y = 0; y < size; y++) {
+                    bmp.setPixel(x, y, m.get(x, y) ? Color.BLACK : Color.WHITE);
+                }
+            }
+            return bmp;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    // ====================== onDestroy 生命周期 ======================
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        logOperation("【设置】关闭设置页面");
+        // 停止网页后台
+        if (webServerManager != null) {
+            webServerManager.stop();
+        }
+    }
+
+    // ====================== 多源列表适配器 ======================
+    /**
+     * 多源列表的适配器
+     *
+     * 【显示内容】
+     * - 左侧：序号（tv_index）
+     * - 中间：源名称 + URL（tv_setting_item）
+     * - 右侧：删除按钮（btn_delete）
+     *
+     * 【三种状态】
+     * 1. 选中状态：蓝色文字 + 浅蓝色背景
+     * 2. 焦点状态：蓝色文字 + 稍深蓝色背景
+     * 3. 未选中状态：白色文字 + 透明背景
+     */
+    private static class SourceAdapter extends ArrayAdapter<SourceManager.SourceItem> {
+        private final Context context;
+        private final List<SourceManager.SourceItem> items;
+        /** 当前选中的位置 */
+        private int selectedPosition = -1;
+        /** 删除按钮点击回调 */
+        private OnDeleteClickListener onDeleteClickListener;
+
+        /**
+         * 删除按钮点击回调接口
+         */
+        public interface OnDeleteClickListener {
+            void onDelete(int position);
+        }
+
+        /**
+         * 设置删除按钮点击监听器
+         */
+        public void setOnDeleteClickListener(OnDeleteClickListener listener) {
+            this.onDeleteClickListener = listener;
+        }
+
+        public SourceAdapter(Context context, List<SourceManager.SourceItem> items) {
+            super(context, R.layout.item_settings, items);
+            this.context = context;
+            this.items = items;
+        }
+
+        public void setSelectedPosition(int position) {
+            selectedPosition = position;
+            notifyDataSetChanged();
+        }
+
+        public int getSelectedPosition() {
+            return selectedPosition;
+        }
+
+        @Override
+        public View getView(int position, View convertView, ViewGroup parent) {
+            if (convertView == null) {
+                convertView = LayoutInflater.from(context).inflate(R.layout.item_settings, parent, false);
+            }
+            SourceManager.SourceItem item = items.get(position);
+            TextView tv = convertView.findViewById(R.id.tv_setting_item);
+            TextView indexTv = convertView.findViewById(R.id.tv_index);
+            Button deleteBtn = convertView.findViewById(R.id.btn_delete);
+
+            // ===== 序号显示 =====
+            indexTv.setText((position + 1) + ". ");
+            indexTv.setTextSize(13);
+
+            // ===== 构建显示文本：名称 + URL（两行） =====
+            StringBuilder displayText = new StringBuilder();
+            displayText.append(item.name);
+            // 默认源标记
+            if (item.isDefault) {
+                displayText.append("  ⭐");
+            }
+            // 第二行：URL
+            displayText.append("\n");
+            displayText.append(item.url);
+            // 自动更新状态
+            if (!item.autoUpdate) {
+                displayText.append("  🔕");
+            }
+            tv.setText(displayText.toString());
+            tv.setTextSize(14);
+            tv.setLineSpacing(4, 1);
+            tv.setSingleLine(false);  // 允许两行显示
+            tv.setEllipsize(null);    // 去掉省略号，因为要显示两行
+
+            // ===== 删除按钮点击事件 =====
+            final int pos = position;
+            deleteBtn.setOnClickListener(v -> {
+                if (onDeleteClickListener != null) {
+                    onDeleteClickListener.onDelete(pos);
+                }
+            });
+
+            // 确保按钮可点击（防止布局里设为 false）
+            deleteBtn.setClickable(true);
+            deleteBtn.setFocusable(false);  // 不抢焦点，不影响列表项选中
+
+            // ===== 选中/焦点/未选中 三种状态 =====
+            if (position == selectedPosition) {
+                // ✅ 选中状态：蓝色文字 + 浅蓝色背景
+                tv.setTextColor(Color.parseColor("#40A9FF"));
+                indexTv.setTextColor(Color.parseColor("#40A9FF"));
+                convertView.setBackgroundColor(0x3340A9FF);
+            } else if (convertView.isFocused()) {
+                // ✅ 焦点状态：蓝色文字 + 稍深蓝色背景
+                tv.setTextColor(Color.parseColor("#40A9FF"));
+                indexTv.setTextColor(Color.parseColor("#40A9FF"));
+                convertView.setBackgroundColor(0x4440A9FF);
+            } else {
+                // ✅ 未选中状态：白色文字 + 透明背景
+                tv.setTextColor(Color.WHITE);
+                indexTv.setTextColor(Color.WHITE);
+                convertView.setBackgroundColor(Color.TRANSPARENT);
+            }
+
+            return convertView;
+        }
+    }
+}
                        

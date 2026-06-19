@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ================================================ -->
+    <!-- 主主题：兼容模式（手机+电视都能用） -->
+    <!-- ================================================ -->
+    <!--
+        【设计思路】
+        1. 使用 shortEdges 模式（Android 9+ 支持，兼容性最好）
+        2. 去掉可能导致电视崩溃的属性（windowTranslucentXxx）
+        3. 保留基础的全屏属性
+        4. Android 12+ 的手机会自动使用 values-v31 中的增强版
+    -->
+    <style name="Theme.TVLive.NoTitle" parent="Theme.AppCompat.Light.NoActionBar">
+        <item name="windowActionBar">false</item>
+        <item name="windowNoTitle">true</item>
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowContentOverlay">@null</item>
+
+        <!-- 刘海屏适配：shortEdges 模式（Android 9+ 支持，兼容性最好） -->
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+
+        <!-- 内容延伸到系统栏后面 -->
+        <item name="android:fitsSystemWindows">false</item>
+
+        <!--
+            【注意】以下属性在某些电视上可能导致崩溃，暂时注释掉
+            如果你的手机需要，可以在 values-v31 中单独开启
+        -->
+        <!-- <item name="android:statusBarColor">@android:color/transparent</item> -->
+        <!-- <item name="android:navigationBarColor">@android:color/transparent</item> -->
+        <!-- <item name="android:windowTranslucentStatus">true</item> -->
+        <!-- <item name="android:windowTranslucentNavigation">true</item> -->
+
+    </style>
+
+    <!-- ================================================ -->
+    <!-- SettingsActivity 透明主题（兼容版） -->
+    <!-- ================================================ -->
+    <!--
+        【注意】去掉 windowIsFloating，避免和 windowIsTranslucent 冲突
+        某些电视 ROM 对浮动窗口支持不好，可能导致崩溃
+    -->
+    <style name="TransparentTheme" parent="Theme.AppCompat.Light.NoActionBar">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowNoTitle">true</item>
+        <!-- <item name="android:windowIsFloating">true</item> --> <!-- 去掉，避免冲突 -->
+        <item name="android:backgroundDimEnabled">true</item>
+    </style>
+</resources>

@@ -3,6 +3,7 @@ package com.tv.live.widget;
 import android.content.Context;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.AdapterView;
@@ -10,6 +11,7 @@ import android.widget.ArrayAdapter;
 import android.widget.ListView;
 import android.widget.TextView;
 import com.tv.live.Channel;
+import com.tv.live.R;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -52,45 +54,66 @@ public class ChannelListManager {
         });
     }
 
+    // ====================================================================
     // 显示全部频道
+    // ====================================================================
     public void setChannels(List<Channel> channelSourceList, int currentPlayIndex) {
         if (channelSourceList == null || channelSourceList.isEmpty()) return;
         List<String> names = new ArrayList<>();
         for (Channel c : channelSourceList) names.add(c.getName());
         selectedPosition = currentPlayIndex;
 
-        ArrayAdapter<String> adapter = new ArrayAdapter<String>(lvChannelList.getContext(), android.R.layout.simple_list_item_1, names) {
+        // ✅ 改成自定义布局，显示序号 + 频道名
+        ArrayAdapter<String> adapter = new ArrayAdapter<String>(lvChannelList.getContext(), R.layout.item_channel, names) {
             @Override
             public View getView(int position, View convertView, ViewGroup parent) {
-                View view = super.getView(position, convertView, parent);
-                TextView tv = view.findViewById(android.R.id.text1);
-                tv.setTextSize(16);
-                tv.setPadding(20, 15, 20, 15);
+                // ✅ 使用自定义布局
+                if (convertView == null) {
+                    convertView = LayoutInflater.from(getContext())
+                            .inflate(R.layout.item_channel, parent, false);
+                }
+
+                // 找到序号和频道名称两个 TextView
+                TextView tvIndex = convertView.findViewById(R.id.tv_index);
+                TextView tvChannel = convertView.findViewById(R.id.tv_channel);
+
+                // ✅ 设置序号（从 1 开始）
+                tvIndex.setText(String.valueOf(position + 1));
+
+                // ✅ 设置频道名称
+                tvChannel.setText(getItem(position));
+                tvChannel.setTextSize(16);
 
                 if (position == selectedPosition) {
                     // ✅ 选中状态：蓝色文字 + 加粗 + 浅蓝色背景
-                    tv.setTextColor(Color.parseColor("#40A9FF"));
-                    tv.setTypeface(null, Typeface.BOLD);
-                    tv.setBackgroundColor(0x3340A9FF);
-                } else if (view.isFocused()) {
+                    tvChannel.setTextColor(Color.parseColor("#40A9FF"));
+                    tvChannel.setTypeface(null, Typeface.BOLD);
+                    convertView.setBackgroundColor(0x3340A9FF);
+                    // 序号也跟着变
+                    tvIndex.setTextColor(Color.parseColor("#40A9FF"));
+                } else if (convertView.isFocused()) {
                     // ✅ 焦点状态：蓝色文字 + 稍深一点的蓝色背景
-                    tv.setTextColor(Color.parseColor("#40A9FF"));
-                    tv.setTypeface(null, Typeface.NORMAL);
-                    tv.setBackgroundColor(0x4440A9FF);
+                    tvChannel.setTextColor(Color.parseColor("#40A9FF"));
+                    tvChannel.setTypeface(null, Typeface.NORMAL);
+                    convertView.setBackgroundColor(0x4440A9FF);
+                    tvIndex.setTextColor(Color.parseColor("#40A9FF"));
                 } else {
                     // ✅ 未选中状态：白色文字 + 常规 + 透明背景
-                    tv.setTextColor(Color.WHITE);
-                    tv.setTypeface(null, Typeface.NORMAL);
-                    tv.setBackgroundColor(Color.TRANSPARENT);
+                    tvChannel.setTextColor(Color.WHITE);
+                    tvChannel.setTypeface(null, Typeface.NORMAL);
+                    convertView.setBackgroundColor(Color.TRANSPARENT);
+                    tvIndex.setTextColor(Color.parseColor("#888888"));
                 }
-                return view;
+                return convertView;
             }
         };
         lvChannelList.setAdapter(adapter);
         lvChannelList.setSelection(selectedPosition);
     }
 
+    // ====================================================================
     // 按分组显示频道
+    // ====================================================================
     public void setChannelsByGroup(List<Channel> channelSourceList, String group, int currentPlayIndex) {
         if (channelSourceList == null || channelSourceList.isEmpty()) return;
         List<String> names = new ArrayList<>();
@@ -106,31 +129,48 @@ public class ChannelListManager {
         }
         selectedPosition = realIndex;
 
-        ArrayAdapter<String> adapter = new ArrayAdapter<String>(lvChannelList.getContext(), android.R.layout.simple_list_item_1, names) {
+        // ✅ 改成自定义布局，显示序号 + 频道名
+        ArrayAdapter<String> adapter = new ArrayAdapter<String>(lvChannelList.getContext(), R.layout.item_channel, names) {
             @Override
             public View getView(int position, View convertView, ViewGroup parent) {
-                View view = super.getView(position, convertView, parent);
-                TextView tv = view.findViewById(android.R.id.text1);
-                tv.setTextSize(16);
-                tv.setPadding(20, 15, 20, 15);
+                // ✅ 使用自定义布局
+                if (convertView == null) {
+                    convertView = LayoutInflater.from(getContext())
+                            .inflate(R.layout.item_channel, parent, false);
+                }
+
+                // 找到序号和频道名称两个 TextView
+                TextView tvIndex = convertView.findViewById(R.id.tv_index);
+                TextView tvChannel = convertView.findViewById(R.id.tv_channel);
+
+                // ✅ 设置序号（从 1 开始）
+                tvIndex.setText(String.valueOf(position + 1));
+
+                // ✅ 设置频道名称
+                tvChannel.setText(getItem(position));
+                tvChannel.setTextSize(16);
 
                 if (position == selectedPosition) {
                     // ✅ 选中状态：蓝色文字 + 加粗 + 浅蓝色背景
-                    tv.setTextColor(Color.parseColor("#40A9FF"));
-                    tv.setTypeface(null, Typeface.BOLD);
-                    tv.setBackgroundColor(0x3340A9FF);
-                } else if (view.isFocused()) {
+                    tvChannel.setTextColor(Color.parseColor("#40A9FF"));
+                    tvChannel.setTypeface(null, Typeface.BOLD);
+                    convertView.setBackgroundColor(0x3340A9FF);
+                    // 序号也跟着变
+                    tvIndex.setTextColor(Color.parseColor("#40A9FF"));
+                } else if (convertView.isFocused()) {
                     // ✅ 焦点状态：蓝色文字 + 稍深一点的蓝色背景
-                    tv.setTextColor(Color.parseColor("#40A9FF"));
-                    tv.setTypeface(null, Typeface.NORMAL);
-                    tv.setBackgroundColor(0x4440A9FF);
+                    tvChannel.setTextColor(Color.parseColor("#40A9FF"));
+                    tvChannel.setTypeface(null, Typeface.NORMAL);
+                    convertView.setBackgroundColor(0x4440A9FF);
+                    tvIndex.setTextColor(Color.parseColor("#40A9FF"));
                 } else {
                     // ✅ 未选中状态：白色文字 + 常规 + 透明背景
-                    tv.setTextColor(Color.WHITE);
-                    tv.setTypeface(null, Typeface.NORMAL);
-                    tv.setBackgroundColor(Color.TRANSPARENT);
+                    tvChannel.setTextColor(Color.WHITE);
+                    tvChannel.setTypeface(null, Typeface.NORMAL);
+                    convertView.setBackgroundColor(Color.TRANSPARENT);
+                    tvIndex.setTextColor(Color.parseColor("#888888"));
                 }
-                return view;
+                return convertView;
             }
         };
         lvChannelList.setAdapter(adapter);

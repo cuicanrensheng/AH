@@ -43,90 +43,101 @@
         android:visibility="gone" />
 
     <!-- ==================================================================== -->
-    <!-- ✅ 频道面板容器（节目单按钮紧挨着内容）                              -->
+    <!-- ✅ 频道面板容器（两个完整面板切换显示）                              -->
     <!--                                                                    -->
     <!-- 【结构说明】                                                       -->
-    <!-- 整个面板是一个水平 LinearLayout，统一背景和圆角：                   -->
-    <!--   1. 内容容器（FrameLayout）：左右面板在这里切换显示                -->
-    <!--      - 左侧面板：分组列表 + 频道列表（默认显示）                    -->
-    <!--      - 右侧面板：日期列表 + EPG节目列表（默认隐藏）                 -->
-    <!--   2. 节目单按钮：一直显示，紧挨着内容                               -->
+    <!-- 两个面板在 FrameLayout 中切换显示：                                 -->
+    <!--   1. 左侧面板（默认）：分组 + 频道列表 + 节目单按钮                 -->
+    <!--   2. 右侧面板（展开）：返回按钮 + 频道列表 + 日期 + EPG             -->
     <!-- ==================================================================== -->
-    <LinearLayout
+    <FrameLayout
         android:id="@+id/panel_layout"
         android:layout_width="wrap_content"
         android:layout_height="match_parent"
-        android:orientation="horizontal"
-        android:background="@drawable/panel_bg"
         android:visibility="gone">
 
         <!-- ================================================================ -->
-        <!-- 内容容器（左右面板在这里切换显示）                                -->
+        <!-- ✅ 左侧面板：分组 + 频道列表 + 节目单按钮（默认显示）            -->
         <!-- ================================================================ -->
-        <FrameLayout
+        <LinearLayout
+            android:id="@+id/ll_left_panel"
             android:layout_width="wrap_content"
-            android:layout_height="match_parent">
-
-            <!-- 左侧面板：分组 + 频道列表（默认显示） -->
-            <LinearLayout
-                android:id="@+id/ll_left_panel"
-                android:layout_width="wrap_content"
-                android:layout_height="match_parent"
-                android:orientation="horizontal">
-
-                <!-- 分组列表 -->
-                <ListView
-                    android:id="@+id/lv_group"
-                    android:layout_width="130dp"
-                    android:layout_height="match_parent"
-                    android:background="@android:color/transparent" />
-
-                <!-- 频道列表 -->
-                <ListView
-                    android:id="@+id/lv_channel_list"
-                    android:layout_width="200dp"
-                    android:layout_height="match_parent"
-                    android:background="@android:color/transparent" />
-            </LinearLayout>
-
-            <!-- 右侧面板：日期 + EPG节目列表（默认隐藏） -->
-            <LinearLayout
-                android:id="@+id/ll_right_panel"
-                android:layout_width="wrap_content"
-                android:layout_height="match_parent"
-                android:orientation="horizontal"
-                android:visibility="gone">
-
-                <!-- 日期列表 -->
-                <ListView
-                    android:id="@+id/lv_date"
-                    android:layout_width="60dp"
-                    android:layout_height="match_parent"
-                    android:background="@android:color/transparent" />
-
-                <!-- EPG节目列表 -->
-                <ListView
-                    android:id="@+id/lv_epg"
-                    android:layout_width="360dp"
-                    android:layout_height="match_parent"
-                    android:background="@android:color/transparent" />
-            </LinearLayout>
-        </FrameLayout>
-
-        <!-- ================================================================ -->
-        <!-- 节目单按钮（一直显示，紧挨着内容）                                -->
-        <!-- ================================================================ -->
-        <TextView
-            android:id="@+id/btn_show_epg"
-            android:layout_width="50dp"
             android:layout_height="match_parent"
-            android:gravity="center"
-            android:text="节\n目\n单"
-            android:textColor="#ffffff"
-            android:textSize="14sp"
-            android:focusable="true"
-            android:clickable="true" />
-    </LinearLayout>
+            android:orientation="horizontal"
+            android:background="@drawable/panel_bg">
+
+            <!-- 分组列表 -->
+            <ListView
+                android:id="@+id/lv_group"
+                android:layout_width="130dp"
+                android:layout_height="match_parent"
+                android:background="@android:color/transparent" />
+
+            <!-- 频道列表 -->
+            <ListView
+                android:id="@+id/lv_channel_list"
+                android:layout_width="200dp"
+                android:layout_height="match_parent"
+                android:background="@android:color/transparent" />
+
+            <!-- 节目单按钮（在最右边） -->
+            <TextView
+                android:id="@+id/btn_show_epg"
+                android:layout_width="50dp"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:text="节\n目\n单"
+                android:textColor="#ffffff"
+                android:textSize="14sp"
+                android:focusable="true"
+                android:clickable="true" />
+        </LinearLayout>
+
+        <!-- ================================================================ -->
+        <!-- ✅ 右侧面板：返回 + 频道列表 + 日期 + EPG（默认隐藏）            -->
+        <!-- ================================================================ -->
+        <LinearLayout
+            android:id="@+id/ll_right_panel"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:orientation="horizontal"
+            android:background="@drawable/panel_bg"
+            android:visibility="gone">
+
+            <!-- 返回按钮（在最左边，显示"频道组"） -->
+            <TextView
+                android:id="@+id/btn_back_group"
+                android:layout_width="50dp"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:text="频\n道\n组"
+                android:textColor="#ffffff"
+                android:textSize="14sp"
+                android:focusable="true"
+                android:clickable="true" />
+
+            <!-- 频道列表（节目单页面的频道列表） -->
+            <ListView
+                android:id="@+id/lv_channel_list_epg"
+                android:layout_width="200dp"
+                android:layout_height="match_parent"
+                android:background="@android:color/transparent" />
+
+            <!-- 日期列表 -->
+            <ListView
+                android:id="@+id/lv_date"
+                android:layout_width="60dp"
+                android:layout_height="match_parent"
+                android:background="@android:color/transparent" />
+
+            <!-- EPG节目列表 -->
+            <ListView
+                android:id="@+id/lv_epg"
+                android:layout_width="360dp"
+                android:layout_height="match_parent"
+                android:background="@android:color/transparent" />
+        </LinearLayout>
+    </FrameLayout>
 
     <!-- 底部信息栏 原样保留 -->
     <LinearLayout

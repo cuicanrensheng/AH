@@ -5,7 +5,14 @@
     android:layout_height="match_parent"
     android:background="#000000">
 
-    <!-- 播放器视图 -->
+    <!-- ==================================================================== -->
+    <!-- 播放器视图（最底层） -->
+    <!-- ==================================================================== -->
+    <!--
+        【属性说明】
+        - app:use_controller="false"：屏蔽 ExoPlayer 原生的播放控制栏，我们自己做 UI
+        - app:resize_mode="fit"：默认按比例适配，不拉伸不裁剪
+    -->
     <com.google.android.exoplayer2.ui.PlayerView
         android:id="@+id/player_view"
         android:layout_width="match_parent"
@@ -17,6 +24,16 @@
     <!-- ==================================================================== -->
     <!-- ✅ 右上角：频道号 + 日期 + 实时时间（打开面板时显示） -->
     <!-- ==================================================================== -->
+    <!--
+        【显示时机】
+        - 默认隐藏（visibility="gone"）
+        - 打开左侧频道面板时显示
+        - 关闭面板时隐藏
+
+        【布局结构】
+        - 横向排列：频道号 | 分隔线 | 日期+时间（纵向）
+        - 频道号大字体（48sp），日期时间小字体，层次分明
+    -->
     <LinearLayout
         android:id="@+id/ll_top_right"
         android:layout_width="wrap_content"
@@ -28,7 +45,7 @@
         android:gravity="center_vertical"
         android:visibility="gone">
 
-        <!-- 频道号 -->
+        <!-- 频道号（大字体，加粗） -->
         <TextView
             android:id="@+id/tv_channel_num"
             android:layout_width="wrap_content"
@@ -39,13 +56,13 @@
             android:textStyle="bold"
             android:layout_marginEnd="12dp" />
 
-        <!-- 分隔线 -->
+        <!-- 分隔线（半透明白色） -->
         <View
             android:layout_width="1dp"
             android:layout_height="36dp"
             android:background="#44FFFFFF" />
 
-        <!-- 日期 + 时间（垂直排列） -->
+        <!-- 日期 + 时间（垂直排列，右对齐） -->
         <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -76,6 +93,17 @@
     <!-- ==================================================================== -->
     <!-- 左侧频道面板（三栏式：分组 → 频道 → 节目单按钮） -->
     <!-- ==================================================================== -->
+    <!--
+        【三栏布局说明】
+        第一栏：频道分组列表（130dp 宽）
+        第二栏：频道列表（200dp 宽）
+        第三栏：节目单按钮（50dp 宽，竖排文字）
+        点击节目单按钮后，右侧展开节目单区域（日期列表 + 节目列表）
+
+        【显示时机】
+        - 默认隐藏（visibility="gone"）
+        - 按确认键/左右键/菜单键时显示
+    -->
     <LinearLayout
         android:id="@+id/panel_layout"
         android:layout_width="wrap_content"
@@ -104,6 +132,11 @@
             android:listSelector="@android:color/transparent" />
 
         <!-- 第三栏：节目单按钮（竖排文字） -->
+        <!--
+            【为什么用竖排文字？】
+            因为按钮很窄（50dp），横排放不下"节目单"三个字，
+            用换行符 \n 实现竖排效果，节省横向空间。
+        -->
         <TextView
             android:id="@+id/btn_show_epg"
             android:layout_width="50dp"
@@ -124,7 +157,7 @@
             android:orientation="horizontal"
             android:visibility="gone">
 
-            <!-- 日期列表 -->
+            <!-- 日期列表（窄列，60dp） -->
             <ListView
                 android:id="@+id/lv_date"
                 android:layout_width="60dp"
@@ -134,7 +167,7 @@
                 android:divider="@null"
                 android:listSelector="@android:color/transparent" />
 
-            <!-- EPG 节目列表 -->
+            <!-- EPG 节目列表（宽列，360dp） -->
             <ListView
                 android:id="@+id/lv_epg"
                 android:layout_width="360dp"
@@ -148,8 +181,18 @@
 
     <!-- ==================================================================== -->
     <!-- 底部信息栏（切台时显示，5秒后自动隐藏） -->
-    <!-- 【注意】底部信息栏保持不动，完整信息显示 -->
     <!-- ==================================================================== -->
+    <!--
+        【显示时机】
+        - 默认隐藏
+        - 切换频道时显示
+        - 5 秒后自动隐藏
+
+        【三行布局】
+        第一行：频道名称 + 画质标签 + 音频标签 + 码率
+        第二行：节目时间 + 进度条 + 剩余时间 + 节目名称
+        第三行：下一个节目预告
+    -->
     <LinearLayout
         android:id="@+id/info_bar"
         android:layout_width="match_parent"
@@ -177,7 +220,7 @@
                 android:ellipsize="end"
                 android:maxLines="1" />
 
-            <!-- 画质标签 -->
+            <!-- 画质标签（半透明白色背景） -->
             <TextView
                 android:id="@+id/tv_tag_fhd"
                 android:layout_width="wrap_content"
@@ -201,7 +244,7 @@
                 android:textSize="12sp"
                 android:textColor="#FFFFFF" />
 
-            <!-- 码率 -->
+            <!-- 码率（次要信息，浅灰色） -->
             <TextView
                 android:id="@+id/tv_bitrate"
                 android:layout_width="wrap_content"
@@ -225,7 +268,7 @@
                 android:textColor="#99FFFFFF"
                 android:textSize="13sp" />
 
-            <!-- 节目进度条 -->
+            <!-- 节目进度条（绿色进度，白色背景） -->
             <ProgressBar
                 android:id="@+id/progress_program"
                 style="?android:attr/progressBarStyleHorizontal"
@@ -256,7 +299,7 @@
                 android:maxLines="1" />
         </LinearLayout>
 
-        <!-- 第三行：下一个节目 -->
+        <!-- 第三行：下一个节目预告 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -291,9 +334,22 @@
     </LinearLayout>
 
     <!-- ==================================================================== -->
-    <!-- ✅ 新增：右下角信息栏（打开面板时显示，一直显示） -->
-    <!-- 显示内容和底部的一样，只是位置在右下角，圆角背景 -->
+    <!-- ✅ 右下角信息栏（打开面板时显示，一直显示） -->
     <!-- ==================================================================== -->
+    <!--
+        【显示时机】
+        - 默认隐藏
+        - 打开左侧频道面板时显示
+        - 关闭面板时隐藏
+        - 面板打开期间一直显示，不会自动隐藏
+
+        【和底部信息栏的区别】
+        - 底部信息栏：切台时显示，5 秒后自动隐藏（全屏观看时不遮挡）
+        - 右下角信息栏：打开面板时显示，一直显示（浏览频道时随时看节目信息）
+
+        【背景】
+        使用自定义 drawable：info_bar_corner_bg.xml（圆角 + 半透明黑色）
+    -->
     <LinearLayout
         android:id="@+id/info_bar_corner"
         android:layout_width="wrap_content"
@@ -418,7 +474,7 @@
             android:ellipsize="end"
             android:singleLine="true"/>
 
-        <!-- 第四行：下一个节目 -->
+        <!-- 第四行：下一个节目预告 -->
         <TextView
             android:id="@+id/tv_next_program_corner"
             android:layout_width="wrap_content"
@@ -430,6 +486,50 @@
             android:maxEms="20"
             android:ellipsize="end"
             android:singleLine="true"/>
+    </LinearLayout>
+
+    <!-- ==================================================================== -->
+    <!-- ✅ 新增：加载动画视图（居中显示，加载直播源时显示） -->
+    <!-- ==================================================================== -->
+    <!--
+        【显示时机】
+        - 默认隐藏
+        - 启动应用加载直播源时显示
+        - 加载完成或超时后隐藏
+        - 15 秒超时保护（MainActivity 里控制）
+
+        【为什么需要加载动画？】
+        直播源加载需要时间（网络请求 + 解析），如果直接黑屏，
+        用户会以为应用卡住了。加个加载动画，让用户知道正在加载。
+
+        【布局结构】
+        - 垂直排列：ProgressBar（转圈动画） + 文字提示
+        - 居中显示，不挡其他内容
+    -->
+    <LinearLayout
+        android:id="@+id/loading_view"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:visibility="gone">
+
+        <!-- 加载转圈动画 -->
+        <ProgressBar
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:indeterminateTint="#FFFFFF" />
+
+        <!-- 加载文字提示 -->
+        <TextView
+            android:id="@+id/tv_loading_text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="加载中..."
+            android:textColor="#FFFFFF"
+            android:textSize="14sp" />
     </LinearLayout>
 
 </FrameLayout>

@@ -58,6 +58,13 @@ public class ChannelPanelController {
     private ListView lvEpg;
     /** 节目单展开按钮 */
     private TextView btnShowEpg;
+    // ====================== 新增：左右面板切换 ======================
+/** 左侧面板容器（分组 + 频道列表） */
+private View llLeftPanel;
+/** 右侧面板容器（日期 + EPG） */
+private View llRightPanel;
+/** 右侧面板是否展开 */
+private boolean rightPanelOpen = false;
 
     // ====================== 子管理器 ======================
     /** 分组列表管理器 */

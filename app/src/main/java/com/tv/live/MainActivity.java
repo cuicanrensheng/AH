@@ -585,7 +585,7 @@ public class MainActivity extends AppCompatActivity {
             if (channelNum >= 1 && channelNum <= channelSourceList.size()) {
                 int index = channelNum - 1;
                 SettingsActivity.logOperation("【数字选台】切换到第 " + channelNum + " 频道");
-                playChannel playChannel(index);
+                playChannel(index);
                             } else {
                 SettingsActivity.logOperation("【数字选台】频道号不存在：" + channelNum);
             }

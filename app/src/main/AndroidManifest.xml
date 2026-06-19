@@ -8,7 +8,23 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+
+    <!-- ==================================================================== -->
+    <!-- ✅ 开机自启权限（已有，保留）                                       -->
+    <!-- ==================================================================== -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- ==================================================================== -->
+    <!-- ✅ 前台服务权限（可选，Android 8.0+ 前台服务需要）                  -->
+    <!-- 用于 Android 10+ 后台启动限制的兜底方案                             -->
+    <!-- ==================================================================== -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+
+    <!-- ==================================================================== -->
+    <!-- ✅ 唤醒锁权限（可选，AlarmManager 唤醒设备用）                      -->
+    <!-- ==================================================================== -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <application
         android:name=".MyApplication"
@@ -48,13 +64,77 @@
             android:exported="false"
             android:excludeFromRecents="true" />
 
+        <!-- ==================================================================== -->
+        <!-- ✅ 开机自启广播接收器（增强版，支持多个广播）                       -->
+        <!-- ==================================================================== -->
+        <!--
+        【为什么要监听这么多广播？】
+        不同厂商、不同安卓版本的开机广播不一样：
+        - 原生安卓：BOOT_COMPLETED
+        - Android 7.0+ 锁屏开机：LOCKED_BOOT_COMPLETED
+        - 小米/OPPO 快速开机：QUICKBOOT_POWERON
+        - HTC 快速开机：com.htc.intent.action.QUICKBOOT_POWERON
+        - 应用更新后：MY_PACKAGE_REPLACED
+        - 充电连接（兜底）：ACTION_POWER_CONNECTED
+
+        多监听几个，总有一个能收到，大大提高自启成功率。
+
+        【priority="1000" 是什么意思？】
+        设置较高的优先级，让我们的广播比其他应用先收到，
+        这样启动更快，也不容易被系统拦截。
+        -->
         <receiver
             android:name=".BootReceiver"
             android:enabled="true"
             android:exported="true">
-            <intent-filter>
+
+            <intent-filter android:priority="1000">
+                <!-- 标准开机完成广播（所有安卓版本都支持，最核心） -->
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
+
+                <!-- 锁屏开机完成广播（Android 7.0+，直接启动到锁屏时发送） -->
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+
+                <!-- 应用更新完成广播（应用更新后自动启动） -->
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+
+                <!-- 小米/OPPO 等厂商的快速开机广播 -->
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+
+                <!-- HTC 快速开机广播 -->
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
+
+                <!-- 充电连接广播（兜底方案，部分电视充电时会自动开机） -->
+                <action android:name="android.intent.action.ACTION_POWER_CONNECTED" />
+
                 <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </receiver>
+
+        <!-- ==================================================================== -->
+        <!-- ✅ 延迟启动执行器（新增）                                           -->
+        <!-- ==================================================================== -->
+        <!--
+        【作用】
+        接收 BootReceiver 通过 AlarmManager 发送的延迟启动广播，
+        实际执行启动应用的操作。
+
+        【为什么要拆成两个 Receiver？】
+        1. BootReceiver：负责接收开机广播，调度延迟启动
+        2. BootStartReceiver：负责实际启动应用
+
+        这样职责更清晰，而且可以避免广播接收器生命周期太短导致的问题。
+
+        【为什么 exported="false"？】
+        这个广播只有我们自己应用内部发送，不对外暴露，更安全。
+        -->
+        <receiver
+            android:name=".BootStartReceiver"
+            android:enabled="true"
+            android:exported="false">
+
+            <intent-filter>
+                <action android:name="com.tv.live.START_APP" />
             </intent-filter>
         </receiver>
 

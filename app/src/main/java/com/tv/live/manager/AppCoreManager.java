@@ -1,5 +1,5 @@
 package com.tv.live.manager;
-
+import com.tv.live.TVPlayerManager;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;

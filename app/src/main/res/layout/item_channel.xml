@@ -1,17 +1,53 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  频道列表项布局
+  【作用】每个频道在列表中显示的样式，包含序号和频道名称
+  【使用位置】ChannelListManager 的 Adapter 中，作为 ListView 的 item 布局
+
+  【2026-06-19 修改：修复点击无效问题】
+  1. 删掉根布局的 focusable="true" 和 clickable="true"
+     - 原因：item 自己抢了焦点和点击事件，导致 ListView 的 onItemClick 不触发
+  2. 给子 View 加上 focusable="false" 和 clickable="false"
+     - 原因：确保子 View 不抢焦点，让 ListView 统一处理点击和焦点
+
+  【ListView 点击机制原理】
+  ListView 的点击事件是由 ListView 自己统一处理的，然后通过 onItemClickListener 回调。
+  如果 item 根布局设置了 clickable="true"，点击事件就会被 item 自己拦截，
+  不会传到 ListView，onItemClick 就不会触发。
+
+  正确的做法是：
+  - item 根布局：不要设置 clickable 和 focusable（或者设为 false）
+  - 子 View：都设为 focusable="false" 和 clickable="false"
+  - ListView：设置 descendantFocusability="blocksDescendants"
+  这样点击事件就会由 ListView 统一处理，onItemClick 正常触发。
+-->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="45dp"
     android:orientation="horizontal"
     android:gravity="center_vertical"
     android:paddingLeft="15dp"
-    android:background="@drawable/list_item_bg"
-    android:focusable="true"
-    android:clickable="true">
+    android:background="@drawable/list_item_bg">
+    <!--
+      ✅ 【修改说明】删掉了这两行：
+      android:focusable="true"
+      android:clickable="true"
+
+      【为什么删掉？】
+      1. focusable="true"：item 自己抢了焦点，导致 ListView 无法管理焦点
+      2. clickable="true"：item 自己拦截了点击事件，onItemClick 不触发
+
+      【正确做法】
+      让 ListView 统一管理焦点和点击事件，item 只负责显示内容。
+    -->
 
     <!-- ============================================================ -->
-    <!-- ✅ 新增：序号（灰色背景白色数字，和截图一样）                  -->
+    <!-- 序号（灰色背景白色数字，显示在频道名称左边）                   -->
     <!-- ============================================================ -->
+    <!--
+      【作用】显示频道序号，如 1、2、3...
+      【样式】24dp 正方形，灰色背景，白色数字，居中显示
+    -->
     <TextView
         android:id="@+id/tv_index"
         android:layout_width="24dp"
@@ -19,11 +55,24 @@
         android:gravity="center"
         android:textSize="12sp"
         android:textColor="#888888"
-        android:background="#333333" />
+        android:background="#333333"
+        android:focusable="false"
+        android:clickable="false" />
+        <!--
+          ✅ 【新增】加上这两行
+          【作用】确保序号 TextView 不抢焦点和点击事件
+          【为什么要加？】
+          虽然 TextView 默认不可点击，但加上更保险，
+          防止某些特殊情况下子 View 意外获取焦点。
+        -->
 
     <!-- ============================================================ -->
-    <!-- 频道名称（原来的 tv_channel，id 保持不变，Java 代码不用改）   -->
+    <!-- 频道名称（主文字，显示频道名称）                               -->
     <!-- ============================================================ -->
+    <!--
+      【作用】显示频道名称，如 "CCTV-1 综合"
+      【注意】id 保持 tv_channel 不变，兼容旧代码
+    -->
     <TextView
         android:id="@+id/tv_channel"
         android:layout_width="0dp"
@@ -31,5 +80,12 @@
         android:layout_weight="1"
         android:layout_marginLeft="10dp"
         android:textColor="@color/list_item_text"
-        android:textSize="16sp" />
+        android:textSize="16sp"
+        android:focusable="false"
+        android:clickable="false" />
+        <!--
+          ✅ 【新增】加上这两行
+          【作用】确保频道名称 TextView 不抢焦点和点击事件
+        -->
+
 </LinearLayout>

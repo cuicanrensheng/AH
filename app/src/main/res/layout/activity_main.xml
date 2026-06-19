@@ -5,9 +5,7 @@
     android:layout_height="match_parent"
     android:background="#000000">
 
-    <!-- 播放器视图（SurfaceView 渲染） -->
-    <!-- 防花屏增强：keep_content_on_player_reset 保持最后一帧 -->
-    <!-- 防花屏增强：surface_type 明确指定使用 SurfaceView -->
+    <!-- 主播放器（正在播放，有声音，显示） -->
     <com.google.android.exoplayer2.ui.PlayerView
         android:id="@+id/player_view"
         android:layout_width="match_parent"
@@ -18,8 +16,29 @@
         app:keep_content_on_player_reset="true"
         app:surface_type="surface_view" />
 
+    <!-- ==================================================================== -->
+    <!-- ✅ 双播放器新增：预加载播放器（提前缓冲下一个台，静音，隐藏）          -->
+    <!--                                                                      -->
+    <!-- 【为什么用 invisible 而不是 gone？】                                  -->
+    <!-- gone 会导致 Surface 被销毁，预加载就没用了。                          -->
+    <!-- invisible 保持 Surface 存在，只是不显示，                              -->
+    <!-- 这样预加载的视频才能正常缓冲，切台时直接交换显示状态，完全无缝。       -->
+    <!--                                                                      -->
+    <!-- 【层级说明】                                                          -->
+    <!-- 主播放器（底层）→ 预加载播放器（中层，默认隐藏）→ 占位图（上层）       -->
+    <!-- ==================================================================== -->
+    <com.google.android.exoplayer2.ui.PlayerView
+        android:id="@+id/player_view_preload"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_gravity="center"
+        android:visibility="invisible"
+        app:use_controller="false"
+        app:resize_mode="fit"
+        app:keep_content_on_player_reset="true"
+        app:surface_type="surface_view" />
+
     <!-- 播放器占位图（退到后台时显示，防止 SurfaceView 花屏） -->
-    <!-- 原理：SurfaceView 切换动画时容易花屏，用普通 ImageView 过渡 -->
     <ImageView
         android:id="@+id/iv_player_placeholder"
         android:layout_width="match_parent"

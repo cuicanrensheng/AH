@@ -47,6 +47,12 @@ import java.util.List;
  * - 方法：togglePanel()、playPrev()、playNext()、playChannel(int)
  * - 变量：channelSourceList、currentPlayIndex
  * 这些接口内部都委托给对应的 Manager，外部调用方式不变。
+ *
+ * 【2026-06-19 新增：左右面板切换】
+ * 频道面板从三栏式布局改为左右面板切换模式：
+ * - 左侧面板：分组列表 + 频道列表（默认显示）
+ * - 右侧面板：日期列表 + EPG节目单（默认隐藏）
+ * - 点击节目单按钮切换左右面板
  */
 public class MainActivity extends AppCompatActivity {
 
@@ -258,6 +264,14 @@ public class MainActivity extends AppCompatActivity {
     // ====================================================================
     private void initChannelPanelController() {
         View panel_layout = findViewById(R.id.panel_layout);
+
+        // ================================================================
+        // ✅ 【2026-06-19 新增：左右面板容器】
+        // 绑定左侧面板和右侧面板的容器
+        // ================================================================
+        View ll_left_panel = findViewById(R.id.ll_left_panel);
+        View ll_right_panel = findViewById(R.id.ll_right_panel);
+
         ListView lvGroup = findViewById(R.id.lv_group);
         ListView lvChannelList = findViewById(R.id.lv_channel_list);
         ListView lvDate = findViewById(R.id.lv_date);
@@ -279,6 +293,8 @@ public class MainActivity extends AppCompatActivity {
         channelPanelController = new ChannelPanelController(
                 this,
                 panel_layout,
+                ll_left_panel,        // 【2026-06-19 新增：左侧面板容器】
+                ll_right_panel,       // 【2026-06-19 新增：右侧面板容器】
                 lvGroup,
                 lvChannelList,
                 lvDate,
@@ -489,8 +505,9 @@ public class MainActivity extends AppCompatActivity {
         // 显示信息栏
         TVPlayerManager.LiveInfo live = mPlayerManager.getLiveInfo();
         infoDisplayManager.showInfoBar(channel, live);
-            // ✅ 新增：显示频道号（从 1 开始）
-        infoDisplayManager.showChannelNum(index + 1);  
+
+        // ✅ 显示频道号（从 1 开始，用户看到的是 1、2、3...）
+        infoDisplayManager.showChannelNum(index + 1);
     }
 
     // ====================================================================

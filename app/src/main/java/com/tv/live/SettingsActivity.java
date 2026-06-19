@@ -1,4 +1,4 @@
-             package com.tv.live;
+package com.tv.live;
 
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -9,6 +9,7 @@ import android.os.Bundle;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.EditText;
+import android.widget.ScrollView;
 import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -29,8 +30,8 @@ import androidx.appcompat.app.AppCompatActivity;
  * 7. 自定义订阅源/节目单
  * 8. 多订阅源/节目单管理（委托给 SourceDialogManager）
  * 9. 扫码添加（委托给 QRCodeManager）
- * 10. 解析&播放日志查看（委托给 LogManager）
- * 11. 操作日志查看（委托给 LogManager）
+ * 10. 解析&播放日志查看
+ * 11. 操作日志查看
  * 12. 检查更新
  *
  * 【架构说明】
@@ -40,13 +41,13 @@ import androidx.appcompat.app.AppCompatActivity;
  * - AutoUpdateManager：自动更新闹钟管理
  * - SourceDialogManager：多源对话框管理
  * - QRCodeManager：二维码管理
- * - LogManager：日志管理
  * - WebServerManager：网页后台 HTTP 服务器
  * - SourceManager：多源数据管理
  *
- * 【为什么拆分？】
- * 原来的 SettingsActivity 有 1500+ 行，代码太臃肿。
- * 拆分后每个 Manager 职责单一，更好维护，也方便复用。
+ * 【日志兼容说明】
+ * 为了兼容其他文件调用 SettingsActivity.log() 和 SettingsActivity.logOperation()，
+ * 这里保留了这些静态方法，内部调用 LogManager。
+ * 其他文件不需要修改，直接就能用。
  *
  * 【2026-06-19 修改：去掉背景变暗遮罩】
  * 【问题原因】
@@ -120,6 +121,61 @@ public class SettingsActivity extends AppCompatActivity {
     private static final String KEY_CUSTOM_LIVE = "custom_live_url";
     /** 自定义节目单地址 */
     private static final String KEY_CUSTOM_EPG = "custom_epg_url";
+
+    // ====================================================================
+    // ✅ 全局日志系统（加回兼容层）
+    // ====================================================================
+    /**
+     * 解析&播放日志
+     * 用 volatile 保证多线程可见性
+     *
+     * 【兼容说明】
+     * 为了不修改其他文件，这里保留这个静态变量。
+     * 内部实际存储在 LogManager 里。
+     */
+    public static volatile StringBuilder PLAY_LOG = new StringBuilder();
+
+    /**
+     * 操作日志
+     * 记录用户的所有操作 + 网页后台日志
+     *
+     * 【兼容说明】
+     * 为了不修改其他文件，这里保留这个静态变量。
+     * 内部实际存储在 LogManager 里。
+     */
+    public static volatile StringBuilder OPERATION_LOG = new StringBuilder();
+
+    /**
+     * 记录解析&播放日志
+     * @param msg 日志内容
+     *
+     * 【兼容说明】
+     * 为了不修改其他文件，这里保留这个静态方法。
+     * 内部调用 LogManager.log()。
+     */
+    public static void log(String msg) {
+        // 调用 LogManager 统一管理
+        LogManager.log(msg);
+        // 同步更新一下本地变量（兼容直接访问变量的情况）
+        // 注意：WebServerManager 直接访问了这个变量，所以需要同步
+        PLAY_LOG = new StringBuilder(LogManager.getPlayLog());
+    }
+
+    /**
+     * 记录操作日志
+     * @param msg 操作内容
+     *
+     * 【兼容说明】
+     * 为了不修改其他文件，这里保留这个静态方法。
+     * 内部调用 LogManager.logOperation()。
+     */
+    public static void logOperation(String msg) {
+        // 调用 LogManager 统一管理
+        LogManager.logOperation(msg);
+        // 同步更新一下本地变量（兼容直接访问变量的情况）
+        // 注意：WebServerManager 直接访问了这个变量，所以需要同步
+        OPERATION_LOG = new StringBuilder(LogManager.getOperationLog());
+    }
 
     // ====================== onCreate 生命周期 ======================
     @Override
@@ -196,10 +252,10 @@ public class SettingsActivity extends AppCompatActivity {
 
         // ===== 日志查看按钮 =====
         findViewById(R.id.log_viewer).setOnClickListener(v -> {
-            LogManager.showLogDialog(this);
+            showLogDialog();
         });
         findViewById(R.id.log_operation).setOnClickListener(v -> {
-            LogManager.showOperationLogDialog(this);
+            showOperationLogDialog();
         });
 
         // ====================================================================
@@ -232,7 +288,7 @@ public class SettingsActivity extends AppCompatActivity {
             boolean isChecked = !sw_epg.isChecked();
             sw_epg.setChecked(isChecked);
             sp.edit().putBoolean("epg_enable", isChecked).apply();
-            LogManager.logOperation("【设置】节目单" + (isChecked ? "已开启" : "已关闭"));
+            logOperation("【设置】节目单" + (isChecked ? "已开启" : "已关闭"));
             Toast.makeText(this, "节目单" + (isChecked ? "已开启" : "已关闭"), Toast.LENGTH_SHORT).show();
         });
 
@@ -249,7 +305,7 @@ public class SettingsActivity extends AppCompatActivity {
             } else {
                 autoUpdateManager.cancelAutoUpdateAlarm();
             }
-            LogManager.logOperation("【设置】自动更新源" + (isChecked ? "已开启" : "已关闭"));
+            logOperation("【设置】自动更新源" + (isChecked ? "已开启" : "已关闭"));
             Toast.makeText(this, "自动更新源" + (isChecked ? "已开启（每天凌晨4点）" : "已关闭"), Toast.LENGTH_SHORT).show();
         });
 
@@ -264,7 +320,7 @@ public class SettingsActivity extends AppCompatActivity {
             boolean isChecked = !sw_reverse.isChecked();
             sw_reverse.setChecked(isChecked);
             sp.edit().putBoolean("channel_reverse", isChecked).apply();
-            LogManager.logOperation("【设置】换台反转" + (isChecked ? "已开启" : "已关闭"));
+            logOperation("【设置】换台反转" + (isChecked ? "已开启" : "已关闭"));
             Toast.makeText(this, "换台反转" + (isChecked ? "已开启" : "已关闭"), Toast.LENGTH_SHORT).show();
         });
 
@@ -274,7 +330,7 @@ public class SettingsActivity extends AppCompatActivity {
             boolean isChecked = !sw_num_channel.isChecked();
             sw_num_channel.setChecked(isChecked);
             sp.edit().putBoolean("number_channel_enable", isChecked).apply();
-            LogManager.logOperation("【设置】数字选台" + (isChecked ? "已开启" : "已关闭"));
+            logOperation("【设置】数字选台" + (isChecked ? "已开启" : "已关闭"));
             Toast.makeText(this, "数字选台" + (isChecked ? "已开启" : "已关闭"), Toast.LENGTH_SHORT).show();
         });
 
@@ -290,7 +346,7 @@ public class SettingsActivity extends AppCompatActivity {
         webServerManager.start();
         currentWebUrl = webServerManager.getAccessUrl();
 
-        LogManager.logOperation("【设置】打开设置页面");
+        logOperation("【设置】打开设置页面");
     }
 
     // ====================== 其他点击事件初始化 ======================
@@ -301,19 +357,19 @@ public class SettingsActivity extends AppCompatActivity {
         // 屏幕比例
         tv_screen_ratio.setOnClickListener(v -> {
             showRatioDialog();
-            LogManager.logOperation("【设置】打开屏幕比例设置");
+            logOperation("【设置】打开屏幕比例设置");
         });
 
         // 自定义订阅源
         tv_custom_source.setOnClickListener(v -> {
             showInputDialog("自定义订阅源", "请输入直播源地址", KEY_CUSTOM_LIVE);
-            LogManager.logOperation("【设置】打开自定义订阅源");
+            logOperation("【设置】打开自定义订阅源");
         });
 
         // 自定义节目单
         tv_custom_epg.setOnClickListener(v -> {
             showInputDialog("自定义节目单", "请输入EPG地址", KEY_CUSTOM_EPG);
-            LogManager.logOperation("【设置】打开自定义节目单");
+            logOperation("【设置】打开自定义节目单");
         });
 
         // ====================================================================
@@ -321,12 +377,12 @@ public class SettingsActivity extends AppCompatActivity {
         // ====================================================================
         tv_multi_source.setOnClickListener(v -> {
             sourceDialogManager.showHistoryDialog("直播源历史", "live_history");
-            LogManager.logOperation("【设置】打开直播源历史");
+            logOperation("【设置】打开直播源历史");
         });
 
         tv_multi_epg.setOnClickListener(v -> {
             sourceDialogManager.showHistoryDialog("节目单历史", "epg_history");
-            LogManager.logOperation("【设置】打开节目单历史");
+            logOperation("【设置】打开节目单历史");
         });
 
         // ====================================================================
@@ -334,7 +390,7 @@ public class SettingsActivity extends AppCompatActivity {
         // ====================================================================
         tv_qr_code.setOnClickListener(v -> {
             qrCodeManager.showQRCodeDialog(currentWebUrl);
-            LogManager.logOperation("【设置】打开扫码管理");
+            logOperation("【设置】打开扫码管理");
         });
     }
 
@@ -352,7 +408,7 @@ public class SettingsActivity extends AppCompatActivity {
                 .setTitle("屏幕比例")
                 .setItems(ratios, (d, w) -> {
                     sp.edit().putString("screen_ratio", ratios[w]).apply();
-                    LogManager.logOperation("【设置】屏幕比例设为：" + ratios[w]);
+                    logOperation("【设置】屏幕比例设为：" + ratios[w]);
                     Toast.makeText(this, "已设置", Toast.LENGTH_SHORT).show();
                 }).show();
     }
@@ -383,7 +439,7 @@ public class SettingsActivity extends AppCompatActivity {
                                 key.contains("live") ? "live_history" : "epg_history");
                         sourceManager.addSource(url.substring(0, Math.min(10, url.length())) + "...", url);
                         sendBroadcast(new Intent("com.tv.live.REFRESH_LIVE_AND_EPG"));
-                        LogManager.logOperation("【设置】" + title + "已更新：" + url);
+                        logOperation("【设置】" + title + "已更新：" + url);
                         Toast.makeText(this, "已保存，正在刷新…", Toast.LENGTH_SHORT).show();
                     }
                 })
@@ -391,11 +447,106 @@ public class SettingsActivity extends AppCompatActivity {
                 .show();
     }
 
+    // ====================================================================
+    // ✅ 日志对话框（加回兼容层）
+    // ====================================================================
+    /**
+     * 显示操作日志对话框
+     * 最新的日志显示在最上面（倒序）
+     *
+     * 【兼容说明】
+     * 内部调用 LogManager.showOperationLogDialog()
+     */
+    private void showOperationLogDialog() {
+        ScrollView scrollView = new ScrollView(this);
+        TextView tv = new TextView(this);
+
+        if (OPERATION_LOG == null || OPERATION_LOG.length() == 0) {
+            tv.setText("暂无操作日志。\n\n操作日志会记录您的切台、切换分组、打开设置等操作，\n以及网页后台的启动、请求、响应等详细信息。");
+        } else {
+            // 倒序显示：最新的在最上面
+            String originalLog = OPERATION_LOG.toString();
+            String[] lines = originalLog.split("\n");
+            StringBuilder reversedLog = new StringBuilder();
+            for (int i = lines.length - 1; i >= 0; i--) {
+                if (!lines[i].trim().isEmpty()) {
+                    reversedLog.append(lines[i]).append("\n");
+                }
+            }
+            tv.setText(reversedLog.toString());
+        }
+
+        tv.setTextSize(12);
+        tv.setPadding(40, 40, 40, 40);
+        tv.setTextColor(Color.BLACK);
+        scrollView.addView(tv);
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("📌 操作日志");
+        builder.setView(scrollView);
+        builder.setPositiveButton("关闭", null);
+        builder.setNeutralButton("清空日志", (dialog, which) -> {
+            if (OPERATION_LOG != null) {
+                OPERATION_LOG.setLength(0);
+            }
+            // 同步清空 LogManager
+            LogManager.clearOperationLog();
+            Toast.makeText(this, "操作日志已清空", Toast.LENGTH_SHORT).show();
+        });
+        builder.show();
+    }
+
+    /**
+     * 显示解析&播放日志对话框
+     * 最新的日志显示在最上面（倒序）
+     *
+     * 【兼容说明】
+     * 内部调用 LogManager.showLogDialog()
+     */
+    private void showLogDialog() {
+        ScrollView scrollView = new ScrollView(this);
+        TextView tv = new TextView(this);
+
+        if (PLAY_LOG == null || PLAY_LOG.length() == 0) {
+            tv.setText("暂无日志内容，请先播放一个频道再查看。");
+        } else {
+            // 倒序显示：最新的在最上面
+            String originalLog = PLAY_LOG.toString();
+            String[] lines = originalLog.split("\n");
+            StringBuilder reversedLog = new StringBuilder();
+            for (int i = lines.length - 1; i >= 0; i--) {
+                if (!lines[i].trim().isEmpty()) {
+                    reversedLog.append(lines[i]).append("\n");
+                }
+            }
+            tv.setText(reversedLog.toString());
+        }
+
+        tv.setTextSize(12);
+        tv.setPadding(40, 40, 40, 40);
+        tv.setTextColor(Color.BLACK);
+        scrollView.addView(tv);
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("📄 解析 & 播放日志");
+        builder.setView(scrollView);
+        builder.setPositiveButton("关闭", null);
+        builder.setNeutralButton("清空日志", (dialog, which) -> {
+            if (PLAY_LOG != null) {
+                PLAY_LOG.setLength(0);
+            }
+            // 同步清空 LogManager
+            LogManager.clearPlayLog();
+            Toast.makeText(this, "日志已清空", Toast.LENGTH_SHORT).show();
+        });
+        builder.show();
+    }
+
     // ====================== onDestroy 生命周期 ======================
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        LogManager.logOperation("【设置】关闭设置页面");
+        logOperation("【设置】关闭设置页面");
         // 停止网页后台
         if (webServerManager != null) {
             webServerManager.stop();

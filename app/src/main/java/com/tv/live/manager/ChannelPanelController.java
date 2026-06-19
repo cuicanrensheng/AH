@@ -37,6 +37,13 @@ import java.util.List;
  * 3. 状态同步层：分组切换→频道列表更新、切台→选中状态同步
  * 4. 异常兜底层：空列表兜底、索引越界保护、防抖保护
  * 5. 交互闭环层：点击、按键、手势都触发对应状态更新
+ *
+ * 【2026-06-19 新增：左右面板切换】
+ * 原三栏式布局（分组+频道+节目单按钮）改为左右面板切换模式：
+ * - 左侧面板：分组列表 + 频道列表（默认显示）
+ * - 右侧面板：日期列表 + EPG节目单（默认隐藏）
+ * - 点击节目单按钮：左右面板切换显示
+ * - 返回键：先收起右侧面板，再关闭整个面板
  */
 public class ChannelPanelController {
 
@@ -58,13 +65,48 @@ public class ChannelPanelController {
     private ListView lvEpg;
     /** 节目单展开按钮 */
     private TextView btnShowEpg;
+
     // ====================== 新增：左右面板切换 ======================
-/** 左侧面板容器（分组 + 频道列表） */
-private View llLeftPanel;
-/** 右侧面板容器（日期 + EPG） */
-private View llRightPanel;
-/** 右侧面板是否展开 */
-private boolean rightPanelOpen = false;
+    /**
+     * 左侧面板容器（分组 + 频道列表）
+     *
+     * 【作用】
+     * 把分组列表和频道列表放在同一个容器里，统一管理显示/隐藏，
+     * 并且统一设置背景样式（半透明黑色圆角）。
+     *
+     * 【显示时机】
+     * - 默认显示
+     * - 点击节目单按钮后隐藏
+     * - 再次点击节目单按钮后重新显示
+     */
+    private View llLeftPanel;
+
+    /**
+     * 右侧面板容器（日期 + EPG节目单）
+     *
+     * 【作用】
+     * 把日期列表和EPG列表放在同一个容器里，统一管理显示/隐藏，
+     * 并且统一设置背景样式（半透明黑色圆角）。
+     *
+     * 【显示时机】
+     * - 默认隐藏
+     * - 点击节目单按钮后显示
+     * - 再次点击节目单按钮后重新隐藏
+     */
+    private View llRightPanel;
+
+    /**
+     * 右侧面板是否展开
+     *
+     * 【作用】
+     * 记录当前显示的是左侧面板还是右侧面板，
+     * 点击节目单按钮时根据这个状态决定切换到哪个面板。
+     *
+     * 【值说明】
+     * - false：显示左侧面板（分组+频道），隐藏右侧面板
+     * - true：显示右侧面板（日期+EPG），隐藏左侧面板
+     */
+    private boolean rightPanelOpen = false;
 
     // ====================== 子管理器 ======================
     /** 分组列表管理器 */
@@ -91,7 +133,14 @@ private boolean rightPanelOpen = false;
     private int currentSelectedDateIndex = 0;
 
     // ====================== 面板状态 ======================
-    /** EPG 面板是否展开 */
+    /**
+     * EPG 面板是否展开
+     *
+     * 【注意】
+     * 这个变量是为了兼容旧代码保留的，现在和 rightPanelOpen 保持同步。
+     * 因为右侧面板展开就意味着EPG面板展开了。
+     * 其他地方如果调用 isEpgPanelOpen()，返回的就是这个值。
+     */
     private boolean epgPanelOpen = false;
     /** EPG 功能是否启用 */
     private boolean epgEnable = true;
@@ -140,6 +189,8 @@ private boolean rightPanelOpen = false;
      *
      * @param context           上下文
      * @param panelLayout       面板根布局
+     * @param llLeftPanel       左侧面板容器（分组 + 频道列表）【2026-06-19 新增】
+     * @param llRightPanel      右侧面板容器（日期 + EPG）【2026-06-19 新增】
      * @param lvGroup           分组列表
      * @param lvChannelList     频道列表
      * @param lvDate            日期列表
@@ -154,8 +205,8 @@ private boolean rightPanelOpen = false;
     public ChannelPanelController(
             Context context,
             View panelLayout,
-            View llLeftPanel,        // 新增
-            View llRightPanel,       // 新增
+            View llLeftPanel,        // 【2026-06-19 新增：左侧面板容器】
+            View llRightPanel,       // 【2026-06-19 新增：右侧面板容器】
             ListView lvGroup,
             ListView lvChannelList,
             ListView lvDate,
@@ -169,8 +220,8 @@ private boolean rightPanelOpen = false;
     ) {
         this.context = context.getApplicationContext();
         this.panelLayout = panelLayout;
-        this.llLeftPanel = llLeftPanel;        // 新增
-        this.llRightPanel = llRightPanel;      // 新增 
+        this.llLeftPanel = llLeftPanel;        // 【2026-06-19 新增：保存左侧面板引用】
+        this.llRightPanel = llRightPanel;      // 【2026-06-19 新增：保存右侧面板引用】
         this.lvGroup = lvGroup;
         this.lvChannelList = lvChannelList;
         this.lvDate = lvDate;
@@ -528,7 +579,22 @@ private boolean rightPanelOpen = false;
     }
 
     /**
-     * EPG 展开按钮被点击了
+     * 节目单按钮被点击了
+     *
+     * 【2026-06-19 修改：左右面板切换模式】
+     * 原逻辑：单独控制日期列表和EPG列表的显示/隐藏
+     * 新逻辑：切换左右两个面板容器的显示/隐藏
+     *
+     * 【交互逻辑】
+     * 点击后切换左右面板：
+     * - 左侧面板显示时 → 收起左侧，展开右侧（日期+EPG）
+     * - 右侧面板显示时 → 收起右侧，展开左侧（分组+频道）
+     *
+     * 【为什么要改成左右面板切换？】
+     * 1. 视觉上更统一：左右两个面板各自有完整的背景和圆角
+     * 2. 交互更清晰：点击节目单按钮就是切换到节目单页面
+     * 3. 更节省空间：不需要同时显示分组和日期
+     * 4. 更符合电视端的交互习惯
      */
     private void onEpgButtonClicked() {
         if (!epgEnable) {
@@ -537,18 +603,45 @@ private boolean rightPanelOpen = false;
             return;
         }
 
-        // 切换 EPG 面板展开/收起
-        epgPanelOpen = !epgPanelOpen;
-        lvDate.setVisibility(epgPanelOpen ? View.VISIBLE : View.GONE);
-        lvEpg.setVisibility(epgPanelOpen ? View.VISIBLE : View.GONE);
+        if (!rightPanelOpen) {
+            // ============================================================
+            // ✅ 状态：左侧面板显示 → 切换到右侧面板
+            // ============================================================
 
-        SettingsActivity.logOperation("【EPG】" + (epgPanelOpen ? "展开" : "收起") + "节目单");
+            // 隐藏左侧面板（分组 + 频道列表）
+            llLeftPanel.setVisibility(View.GONE);
+            // 显示右侧面板（日期 + EPG节目单）
+            llRightPanel.setVisibility(View.VISIBLE);
+            // 更新状态标记
+            rightPanelOpen = true;
+            // 同步更新 epgPanelOpen，保持旧接口兼容
+            epgPanelOpen = true;
 
-        // 如果展开了，刷新当前频道的节目单
-        if (epgPanelOpen && !channelSourceList.isEmpty()
-                && currentPlayIndex >= 0 && currentPlayIndex < channelSourceList.size()) {
-            Channel curr = channelSourceList.get(currentPlayIndex);
-            epgManagerWrapper.refresh(curr, channelSourceList, currentSelectedDateIndex);
+            SettingsActivity.logOperation("【面板】展开节目单面板");
+
+            // 【为什么要在这里刷新EPG？】
+            // 因为右侧面板刚显示出来，EPG数据可能还没加载，
+            // 或者是之前的数据已经过期了，需要刷新一下当前频道的节目单。
+            if (!channelSourceList.isEmpty()
+                    && currentPlayIndex >= 0 && currentPlayIndex < channelSourceList.size()) {
+                Channel curr = channelSourceList.get(currentPlayIndex);
+                epgManagerWrapper.refresh(curr, channelSourceList, currentSelectedDateIndex);
+            }
+        } else {
+            // ============================================================
+            // ✅ 状态：右侧面板显示 → 切换回左侧面板
+            // ============================================================
+
+            // 隐藏右侧面板（日期 + EPG节目单）
+            llRightPanel.setVisibility(View.GONE);
+            // 显示左侧面板（分组 + 频道列表）
+            llLeftPanel.setVisibility(View.VISIBLE);
+            // 更新状态标记
+            rightPanelOpen = false;
+            // 同步更新 epgPanelOpen，保持旧接口兼容
+            epgPanelOpen = false;
+
+            SettingsActivity.logOperation("【面板】收起节目单面板");
         }
     }
 
@@ -556,6 +649,10 @@ private boolean rightPanelOpen = false;
      * EPG 面板是否展开
      *
      * @return 是否展开
+     *
+     * 【注意】
+     * 这个方法是为了兼容旧代码保留的，现在和 rightPanelOpen 保持同步。
+     * 因为右侧面板展开就意味着EPG面板展开了。
      */
     public boolean isEpgPanelOpen() {
         return epgPanelOpen;
@@ -593,11 +690,28 @@ private boolean rightPanelOpen = false;
     /**
      * 处理返回键
      *
+     * 【2026-06-19 优化：分级返回逻辑】
+     * 原逻辑：只要面板打开，按返回键就直接关闭整个面板
+     * 新逻辑：先收起右侧面板，再按一次才关闭整个面板
+     *
+     * 【交互逻辑】
+     * 1. 如果右侧面板（节目单）展开着 → 先收起节目单，回到频道列表
+     * 2. 如果只有左侧面板（频道列表）打开着 → 关闭整个面板
+     *
+     * 【为什么要分级返回？】
+     * 更符合电视端的交互习惯，用户不会因为误按返回键就直接退出整个面板，
+     * 而是一步一步返回，体验更好。
+     *
      * @return 是否处理了返回键（true=已处理，不退出）
      */
     public boolean handleBackPressed() {
         if (isPanelOpen()) {
-            // 如果面板打开着，先关闭面板
+            // 如果右侧面板展开着，先收起右侧面板（回到频道列表）
+            if (rightPanelOpen) {
+                onEpgButtonClicked();  // 复用节目单按钮的切换逻辑
+                return true;
+            }
+            // 否则关闭整个面板
             hidePanel();
             return true;
         }
@@ -638,6 +752,8 @@ private boolean rightPanelOpen = false;
         // 清空引用，避免内存泄漏
         context = null;
         panelLayout = null;
+        llLeftPanel = null;          // 【2026-06-19 新增：释放左侧面板引用】
+        llRightPanel = null;         // 【2026-06-19 新增：释放右侧面板引用】
         lvGroup = null;
         lvChannelList = null;
         lvDate = null;

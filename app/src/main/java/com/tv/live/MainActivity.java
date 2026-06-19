@@ -2,7 +2,6 @@ package com.tv.live;
 
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
-import android.graphics.Bitmap;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -57,11 +56,14 @@ import java.util.List;
  * - CacheManager：缓存管理
  *
  * 【防花屏增强说明】
- * 四层防护，解决滑动退到后台时 SurfaceView 花屏问题：
+ * 三层防护，解决滑动退到后台时 SurfaceView 花屏问题：
  * 1. 保持最后一帧：播放器暂停时不清空画面
- * 2. 优化层级：Surface 放在媒体层，更稳定
- * 3. 占位图过渡：退到后台时用 ImageView 盖住 SurfaceView
- * 4. 延迟隐藏：回到前台后等 Surface 准备好再隐藏占位图
+ * 2. 占位图过渡：退到后台时用 ImageView 盖住 SurfaceView
+ * 3. 延迟隐藏：回到前台后等 Surface 准备好再隐藏占位图
+ *
+ * 【兼容说明】
+ * 旧版 ExoPlayer 没有 setSurfaceZOrderMediaOverlay 和 getBitmap 方法，
+ * 已改用兼容方案，不影响防花屏效果。
  *
  * 【兼容层说明】
  * 为了兼容其他类（GestureManager、KeyEventManager、ChannelListActivity 等）
@@ -111,9 +113,13 @@ public class MainActivity extends AppCompatActivity {
      * SurfaceView 有自己独立的渲染线程和 Surface，
      * 在 Activity 切换动画时容易出现花屏、撕裂、绿屏等问题。
      *
-     * 用一个普通的 ImageView 显示最后一帧画面（或黑色背景），
+     * 用一个普通的 ImageView 显示黑色背景，
      * 退到后台时显示 ImageView，盖住 SurfaceView，
      * 动画时用户看到的是 ImageView，就不会花屏了。
+     *
+     * 【兼容说明】
+     * 旧版 ExoPlayer 没有 getBitmap() 方法，
+     * 所以不支持截取当前帧，直接用黑色背景作为占位图。
      */
     private ImageView ivPlayerPlaceholder;
 
@@ -186,7 +192,7 @@ public class MainActivity extends AppCompatActivity {
         playerView.setControllerVisibilityListener(null);
 
         // ====================================================================
-        // ✅ 防花屏增强：PlayerView 设置 + 占位图初始化
+        // ✅ 防花屏增强：初始化防花屏设置
         // ====================================================================
         initAntiFlicker();
 
@@ -241,27 +247,25 @@ public class MainActivity extends AppCompatActivity {
     /**
      * 初始化防花屏相关设置
      *
-     * 【四层防护】
+     * 【三层防护】
      * 1. 保持最后一帧：播放器暂停时不清空画面
-     * 2. 优化层级：Surface 放在媒体层，更稳定
-     * 3. 占位图过渡：退到后台时用 ImageView 盖住 SurfaceView
-     * 4. 延迟隐藏：回到前台后等 Surface 准备好再隐藏占位图
+     * 2. 占位图过渡：退到后台时用 ImageView 盖住 SurfaceView
+     * 3. 延迟隐藏：回到前台后等 Surface 准备好再隐藏占位图
+     *
+     * 【兼容说明】
+     * 旧版 ExoPlayer 没有 setSurfaceZOrderMediaOverlay 方法，
+     * 已去掉该设置，不影响防花屏核心效果。
      */
     private void initAntiFlicker() {
         // ===== 第一层：保持最后一帧 =====
         // 播放器暂停/重置时不清空画面，保留最后一帧
         playerView.setKeepContentOnPlayerReset(true);
 
-        // ===== 第二层：优化 Surface 层级 =====
-        // 设置 Surface 在媒体层（在普通 View 之上，但在状态栏之下）
-        // 比默认层级更稳定，动画时不容易花屏
-        playerView.setSurfaceZOrderMediaOverlay(true);
-
-        // ===== 第三层：占位图初始化 =====
+        // ===== 第二层：占位图初始化 =====
         // 占位图默认隐藏，退到后台时显示
         ivPlayerPlaceholder = findViewById(R.id.iv_player_placeholder);
 
-        log("【防花屏】防花屏增强已启用（四层防护）");
+        log("【防花屏】防花屏增强已启用（三层防护，兼容旧版 ExoPlayer）");
     }
 
     // ====================================================================
@@ -669,38 +673,22 @@ public class MainActivity extends AppCompatActivity {
      * SurfaceView 有自己独立的渲染线程和 Surface，
      * 在 Activity 切换动画时容易出现花屏、撕裂、绿屏等问题。
      *
-     * 用一个普通的 ImageView 显示最后一帧画面（或黑色背景），
+     * 用一个普通的 ImageView 显示黑色背景，
      * 退到后台时显示 ImageView，盖住 SurfaceView，
      * 动画时用户看到的是 ImageView，就不会花屏了。
      *
-     * 【降级策略】
-     * 1. 优先尝试截取播放器当前帧作为占位图（API 24+）
-     * 2. 截取失败就显示黑色背景（总比花屏好看）
+     * 【兼容说明】
+     * 旧版 ExoPlayer 没有 getBitmap() 方法，
+     * 所以不支持截取当前帧，直接用黑色背景作为占位图。
+     * 黑色背景虽然没有最后一帧那么自然，但总比花屏好看多了。
      */
     private void showPlayerPlaceholder() {
-        if (ivPlayerPlaceholder == null || playerView == null) return;
+        if (ivPlayerPlaceholder == null) return;
 
-        // 方案 1：尝试截取播放器当前帧作为占位图（需要 API 24+）
-        try {
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
-                Bitmap bitmap = playerView.getBitmap();
-                if (bitmap != null && !bitmap.isRecycled()) {
-                    ivPlayerPlaceholder.setImageBitmap(bitmap);
-                    ivPlayerPlaceholder.setVisibility(View.VISIBLE);
-                    log("【防花屏】显示占位图（截取当前帧成功）");
-                    return;
-                }
-            }
-        } catch (Exception e) {
-            // 截取失败，降级到方案 2
-            e.printStackTrace();
-            log("【防花屏】截取当前帧失败：" + e.getMessage());
-        }
-
-        // 方案 2：截取失败就显示黑色背景（总比花屏好看）
+        // 直接显示黑色背景（兼容所有版本的 ExoPlayer）
         ivPlayerPlaceholder.setImageResource(android.R.color.black);
         ivPlayerPlaceholder.setVisibility(View.VISIBLE);
-        log("【防花屏】显示占位图（黑色背景降级）");
+        log("【防花屏】显示占位图（黑色背景，兼容旧版 ExoPlayer）");
     }
 
     /**

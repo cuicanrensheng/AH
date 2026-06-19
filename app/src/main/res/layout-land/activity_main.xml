@@ -147,7 +147,8 @@
     </LinearLayout>
 
     <!-- ==================================================================== -->
-    <!-- 底部信息栏（打开面板时显示，关闭面板时隐藏） -->
+    <!-- 底部信息栏（切台时显示，5秒后自动隐藏） -->
+    <!-- 【注意】底部信息栏保持不动，完整信息显示 -->
     <!-- ==================================================================== -->
     <LinearLayout
         android:id="@+id/info_bar"
@@ -287,6 +288,148 @@
                 android:ellipsize="end"
                 android:maxLines="1" />
         </LinearLayout>
+    </LinearLayout>
+
+    <!-- ==================================================================== -->
+    <!-- ✅ 新增：右下角信息栏（打开面板时显示，一直显示） -->
+    <!-- 显示内容和底部的一样，只是位置在右下角，圆角背景 -->
+    <!-- ==================================================================== -->
+    <LinearLayout
+        android:id="@+id/info_bar_corner"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|end"
+        android:layout_marginBottom="32dp"
+        android:layout_marginEnd="32dp"
+        android:background="@drawable/info_bar_corner_bg"
+        android:orientation="vertical"
+        android:padding="14dp"
+        android:visibility="gone">
+
+        <!-- 第一行：频道名称 + 画质标签 + 音频标签 + 码率 -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:id="@+id/tv_channel_name_corner"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="频道名称"
+                android:textColor="#FFFFFF"
+                android:textSize="17sp"
+                android:textStyle="bold"
+                android:maxEms="12"
+                android:ellipsize="end"
+                android:singleLine="true"/>
+
+            <!-- 画质标签 -->
+            <TextView
+                android:id="@+id/tv_tag_fhd_corner"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:background="#40FFFFFF"
+                android:paddingStart="6dp"
+                android:paddingEnd="6dp"
+                android:paddingTop="2dp"
+                android:paddingBottom="2dp"
+                android:text="FHD"
+                android:textColor="#FFFFFF"
+                android:textSize="12sp"/>
+
+            <!-- 音频标签 -->
+            <TextView
+                android:id="@+id/tv_tag_audio_corner"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:background="#40FFFFFF"
+                android:paddingStart="6dp"
+                android:paddingEnd="6dp"
+                android:paddingTop="2dp"
+                android:paddingBottom="2dp"
+                android:text="立体声"
+                android:textColor="#FFFFFF"
+                android:textSize="12sp"/>
+
+            <!-- 码率 -->
+            <TextView
+                android:id="@+id/tv_bitrate_corner"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:text="0KB/s"
+                android:textColor="#B3FFFFFF"
+                android:textSize="12sp"/>
+        </LinearLayout>
+
+        <!-- 第二行：当前节目时间 + 进度条 + 剩余时间 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="8dp"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:id="@+id/tv_current_time_range_corner"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="00:00 - 23:59"
+                android:textColor="#80FFFFFF"
+                android:textSize="12sp"/>
+
+            <!-- 节目进度条 -->
+            <ProgressBar
+                android:id="@+id/progress_program_corner"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="3dp"
+                android:layout_marginStart="8dp"
+                android:layout_marginEnd="8dp"
+                android:max="100"
+                android:progress="0"
+                android:progressTint="#4CAF50"
+                android:progressBackgroundTint="#33FFFFFF"/>
+
+            <TextView
+                android:id="@+id/tv_remaining_time_corner"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="剩余30分"
+                android:textColor="#80FFFFFF"
+                android:textSize="12sp"/>
+        </LinearLayout>
+
+        <!-- 第三行：当前节目名称 -->
+        <TextView
+            android:id="@+id/tv_current_program_name_corner"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="精彩节目"
+            android:textColor="#E6FFFFFF"
+            android:textSize="14sp"
+            android:maxEms="18"
+            android:ellipsize="end"
+            android:singleLine="true"/>
+
+        <!-- 第四行：下一个节目 -->
+        <TextView
+            android:id="@+id/tv_next_program_corner"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="接下来：xxx"
+            android:textColor="#66FFFFFF"
+            android:textSize="12sp"
+            android:maxEms="20"
+            android:ellipsize="end"
+            android:singleLine="true"/>
     </LinearLayout>
 
 </FrameLayout>

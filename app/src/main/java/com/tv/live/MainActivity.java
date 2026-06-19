@@ -334,7 +334,7 @@ public class MainActivity extends AppCompatActivity {
         // ===== 自动旋转横屏 =====
         // sensorLandscape：支持左横屏/右横屏自动旋转，但不会变成竖屏
         // 比固定 LANDSCAPE 更灵活，适合手机/平板使用
-        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSSCAPE);
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
         // ================================================
         // ✅ 全面屏适配（第一部分）- 加 try-catch 确保电视不崩溃
         // ================================================

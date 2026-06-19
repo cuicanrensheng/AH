@@ -5,14 +5,12 @@ import android.view.View;
 import android.widget.AdapterView;
 import android.widget.ListView;
 import android.widget.TextView;
-
 import com.tv.live.Channel;
 import com.tv.live.SettingsActivity;
 import com.tv.live.widget.ChannelListManager;
 import com.tv.live.widget.DateListManager;
 import com.tv.live.widget.EpgManagerWrapper;
 import com.tv.live.widget.GroupListManager;
-
 import java.util.ArrayList;
 import java.util.List;
 
@@ -38,12 +36,13 @@ import java.util.List;
  * 4. 异常兜底层：空列表兜底、索引越界保护、防抖保护
  * 5. 交互闭环层：点击、按键、手势都触发对应状态更新
  *
- * 【2026-06-19 新增：左右面板切换】
- * 原三栏式布局（分组+频道+节目单按钮）改为左右面板切换模式：
- * - 左侧面板：分组列表 + 频道列表（默认显示）
- * - 右侧面板：日期列表 + EPG节目单（默认隐藏）
- * - 点击节目单按钮：左右面板切换显示
- * - 返回键：先收起右侧面板，再关闭整个面板
+ * 【2026-06-19 优化：两个完整面板切换】
+ * 原左右面板切换模式（只有日期+EPG）改为两个完整面板切换：
+ * - 左侧面板：分组列表 + 频道列表 + 节目单按钮（默认显示）
+ * - 右侧面板：返回按钮 + 频道列表 + 日期 + EPG（默认隐藏）
+ * - 两个面板都有频道列表，切换时选中状态保持同步
+ * - 节目单页面也能直接切换频道，不用切回去
+ * - 点击节目单不关闭面板，方便连续查看多个频道的节目单
  */
 public class ChannelPanelController {
 
@@ -57,62 +56,92 @@ public class ChannelPanelController {
     private View panelLayout;
     /** 分组列表 */
     private ListView lvGroup;
-    /** 频道列表 */
+    /** 频道列表（主页面，左侧面板用） */
     private ListView lvChannelList;
+    /**
+     * ✅ 新增：频道列表（节目单页面，右侧面板用）
+     *
+     * 【作用】
+     * 右侧面板（节目单页面）也有一个频道列表，用户在看节目单时
+     * 可以直接切换频道，不用切回左侧面板。
+     *
+     * 【数据同步】
+     * 和左侧面板的频道列表数据完全同步，切台时两边一起更新选中状态。
+     */
+    private ListView lvChannelListEpg;
     /** 日期列表 */
     private ListView lvDate;
     /** EPG 节目列表 */
     private ListView lvEpg;
-    /** 节目单展开按钮 */
+    /** 节目单展开按钮（左侧面板最右边） */
     private TextView btnShowEpg;
-
-    // ====================== 新增：左右面板切换 ======================
     /**
-     * 左侧面板容器（分组 + 频道列表）
+     * ✅ 新增：返回分组按钮（右侧面板最左边）
      *
      * 【作用】
-     * 把分组列表和频道列表放在同一个容器里，统一管理显示/隐藏，
-     * 并且统一设置背景样式（半透明黑色圆角）。
+     * 右侧面板（节目单页面）最左边的返回按钮，点击后切回左侧面板（分组列表）。
+     * 文字是竖排的"频道组"。
+     *
+     * 【为什么需要两个按钮？】
+     * 因为两个面板是独立切换的，每个面板有自己的边缘按钮，
+     * 切换面板时按钮跟着面板一起显示/隐藏，位置也跟着变。
+     */
+    private TextView btnBackGroup;
+
+    // ====================== 左右面板切换 ======================
+    /**
+     * 左侧面板容器（分组 + 频道列表 + 节目单按钮）
+     *
+     * 【结构】
+     * 水平排列：分组列表 + 频道列表 + 节目单按钮
      *
      * 【显示时机】
      * - 默认显示
-     * - 点击节目单按钮后隐藏
-     * - 再次点击节目单按钮后重新显示
+     * - 点击"频道组"返回按钮后显示
      */
     private View llLeftPanel;
-
     /**
-     * 右侧面板容器（日期 + EPG节目单）
+     * 右侧面板容器（返回按钮 + 频道列表 + 日期 + EPG）
      *
-     * 【作用】
-     * 把日期列表和EPG列表放在同一个容器里，统一管理显示/隐藏，
-     * 并且统一设置背景样式（半透明黑色圆角）。
+     * 【结构】
+     * 水平排列：返回按钮 + 频道列表 + 日期列表 + EPG列表
      *
      * 【显示时机】
      * - 默认隐藏
-     * - 点击节目单按钮后显示
-     * - 再次点击节目单按钮后重新隐藏
+     * - 点击"节目单"按钮后显示
+     *
+     * 【为什么右侧面板也有频道列表？】
+     * 用户在看节目单的时候，经常需要切换频道看不同频道的节目单，
+     * 如果每次都要切回左侧面板选频道，再切回右侧面板看节目单，
+     * 操作太繁琐。所以右侧面板也放一个频道列表，直接切换，体验更好。
      */
     private View llRightPanel;
-
     /**
      * 右侧面板是否展开
      *
-     * 【作用】
-     * 记录当前显示的是左侧面板还是右侧面板，
-     * 点击节目单按钮时根据这个状态决定切换到哪个面板。
-     *
      * 【值说明】
-     * - false：显示左侧面板（分组+频道），隐藏右侧面板
-     * - true：显示右侧面板（日期+EPG），隐藏左侧面板
+     * - false：显示左侧面板（分组+频道+节目单按钮），隐藏右侧面板
+     * - true：显示右侧面板（返回+频道+日期+EPG），隐藏左侧面板
      */
     private boolean rightPanelOpen = false;
 
     // ====================== 子管理器 ======================
     /** 分组列表管理器 */
     private GroupListManager groupListManager;
-    /** 频道列表管理器 */
+    /** 频道列表管理器（主页面，左侧面板用） */
     private ChannelListManager channelListManager;
+    /**
+     * ✅ 新增：频道列表管理器（节目单页面，右侧面板用）
+     *
+     * 【作用】
+     * 管理右侧面板的频道列表，和左侧面板的频道列表管理器是两个独立的实例，
+     * 分别管理各自的 ListView，但数据保持同步。
+     *
+     * 【为什么需要两个管理器？】
+     * 因为有两个 ListView，每个 ListView 需要自己的 Adapter 和选中状态管理。
+     * 两个管理器的数据来源相同，切台时同时更新两边的选中状态。
+     */
+    private ChannelListManager channelListManagerEpg;
     /** 日期列表管理器 */
     private DateListManager dateListManager;
     /** EPG 节目单包装器 */
@@ -187,48 +216,57 @@ public class ChannelPanelController {
     /**
      * 构造函数
      *
-     * @param context           上下文
-     * @param panelLayout       面板根布局
-     * @param llLeftPanel       左侧面板容器（分组 + 频道列表）【2026-06-19 新增】
-     * @param llRightPanel      右侧面板容器（日期 + EPG）【2026-06-19 新增】
-     * @param lvGroup           分组列表
-     * @param lvChannelList     频道列表
-     * @param lvDate            日期列表
-     * @param lvEpg             EPG 节目列表
-     * @param btnShowEpg        节目单展开按钮
-     * @param groupListManager  分组列表管理器
-     * @param channelListManager 频道列表管理器
-     * @param dateListManager   日期列表管理器
-     * @param epgManagerWrapper EPG 包装器
-     * @param panelManager      面板管理器
+     * @param context               上下文
+     * @param panelLayout           面板根布局
+     * @param llLeftPanel           左侧面板容器（分组 + 频道 + 节目单按钮）
+     * @param llRightPanel          右侧面板容器（返回 + 频道 + 日期 + EPG）
+     * @param lvGroup               分组列表
+     * @param lvChannelList         频道列表（主页面，左侧面板用）
+     * @param lvChannelListEpg      ✅ 新增：频道列表（节目单页面，右侧面板用）
+     * @param lvDate                日期列表
+     * @param lvEpg                 EPG 节目列表
+     * @param btnShowEpg            节目单展开按钮（左侧面板最右边）
+     * @param btnBackGroup          ✅ 新增：返回分组按钮（右侧面板最左边）
+     * @param groupListManager      分组列表管理器
+     * @param channelListManager    频道列表管理器（主页面）
+     * @param channelListManagerEpg ✅ 新增：频道列表管理器（节目单页面）
+     * @param dateListManager       日期列表管理器
+     * @param epgManagerWrapper     EPG 包装器
+     * @param panelManager          面板管理器
      */
     public ChannelPanelController(
             Context context,
             View panelLayout,
-            View llLeftPanel,        // 【2026-06-19 新增：左侧面板容器】
-            View llRightPanel,       // 【2026-06-19 新增：右侧面板容器】
+            View llLeftPanel,
+            View llRightPanel,
             ListView lvGroup,
             ListView lvChannelList,
+            ListView lvChannelListEpg,        // ✅ 新增
             ListView lvDate,
             ListView lvEpg,
             TextView btnShowEpg,
+            TextView btnBackGroup,             // ✅ 新增
             GroupListManager groupListManager,
             ChannelListManager channelListManager,
+            ChannelListManager channelListManagerEpg,  // ✅ 新增
             DateListManager dateListManager,
             EpgManagerWrapper epgManagerWrapper,
             PanelManager panelManager
     ) {
         this.context = context.getApplicationContext();
         this.panelLayout = panelLayout;
-        this.llLeftPanel = llLeftPanel;        // 【2026-06-19 新增：保存左侧面板引用】
-        this.llRightPanel = llRightPanel;      // 【2026-06-19 新增：保存右侧面板引用】
+        this.llLeftPanel = llLeftPanel;
+        this.llRightPanel = llRightPanel;
         this.lvGroup = lvGroup;
         this.lvChannelList = lvChannelList;
+        this.lvChannelListEpg = lvChannelListEpg;        // ✅ 新增：保存节目单页面频道列表引用
         this.lvDate = lvDate;
         this.lvEpg = lvEpg;
         this.btnShowEpg = btnShowEpg;
+        this.btnBackGroup = btnBackGroup;                 // ✅ 新增：保存返回按钮引用
         this.groupListManager = groupListManager;
         this.channelListManager = channelListManager;
+        this.channelListManagerEpg = channelListManagerEpg;  // ✅ 新增：保存节目单页面频道管理器
         this.dateListManager = dateListManager;
         this.epgManagerWrapper = epgManagerWrapper;
         this.panelManager = panelManager;
@@ -240,10 +278,9 @@ public class ChannelPanelController {
     // ====================================================================
     // 1. 初始化点击事件
     // ====================================================================
-
     /**
      * 初始化所有点击事件
-     * 包括：分组列表点击、频道列表点击、EPG 展开按钮点击
+     * 包括：分组列表点击、两个频道列表点击、节目单按钮、返回按钮
      */
     private void initClickListeners() {
         // ===== 分组列表点击事件 =====
@@ -254,7 +291,7 @@ public class ChannelPanelController {
             }
         });
 
-        // ===== 频道列表点击事件 =====
+        // ===== 主页面频道列表点击事件（左侧面板） =====
         lvChannelList.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> p, View v, int pos, long id) {
@@ -262,11 +299,38 @@ public class ChannelPanelController {
             }
         });
 
-        // ===== EPG 展开按钮点击事件 =====
+        // ================================================================
+        // ✅ 新增：节目单页面频道列表点击事件（右侧面板）
+        // ================================================================
+        // 【为什么需要单独的点击事件？】
+        // 因为有两个频道列表，分别在左右两个面板里，
+        // 每个 ListView 都需要自己的点击监听器。
+        // 但是两个列表的点击逻辑是一样的，都调用 onChannelClicked()。
+        lvChannelListEpg.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+            @Override
+            public void onItemClick(AdapterView<?> p, View v, int pos, long id) {
+                onChannelClicked(pos);
+            }
+        });
+
+        // ===== 节目单按钮点击事件 =====
         btnShowEpg.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 onEpgButtonClicked();
+            }
+        });
+
+        // ================================================================
+        // ✅ 新增：返回分组按钮点击事件
+        // ================================================================
+        // 【作用】
+        // 点击右侧面板最左边的"频道组"按钮，切回左侧面板（分组列表）。
+        // 和节目单按钮的作用相反，一个是展开节目单，一个是返回分组。
+        btnBackGroup.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                onBackGroupClicked();
             }
         });
     }
@@ -274,19 +338,29 @@ public class ChannelPanelController {
     // ====================================================================
     // 2. 分组管理相关
     // ====================================================================
-
     /**
-     * 设置频道列表（同时更新分组）
+     * 设置频道列表（同时更新分组和两个频道列表）
      *
      * @param channels 全部频道列表
      */
     public void setChannels(List<Channel> channels) {
         if (channels == null) return;
         this.channelSourceList = channels;
+
         // 更新分组列表
         groupListManager.setGroups(channels);
-        // 更新频道列表（全部频道）
+
+        // 更新主页面频道列表（全部频道）
         channelListManager.setChannels(channels, currentPlayIndex);
+
+        // ================================================================
+        // ✅ 新增：同步更新节目单页面的频道列表
+        // ================================================================
+        // 【为什么要同步更新？】
+        // 因为有两个频道列表，数据必须保持一致。
+        // 节目单页面的频道列表永远显示全部频道，不按分组筛选，
+        // 因为右侧面板没有分组列表，只有全部频道。
+        channelListManagerEpg.setChannels(channels, currentPlayIndex);
     }
 
     /**
@@ -312,8 +386,16 @@ public class ChannelPanelController {
             }
         }
 
-        // 更新频道列表（按分组筛选）
+        // 更新主页面频道列表（按分组筛选）
         channelListManager.setChannelsByGroup(channelSourceList, groupName, currentPlayIndex);
+
+        // ================================================================
+        // ✅ 说明：节目单页面的频道列表不筛选分组
+        // ================================================================
+        // 【为什么不筛选？】
+        // 因为右侧面板（节目单页面）没有分组列表，用户无法切换分组，
+        // 所以节目单页面的频道列表一直显示全部频道，方便用户查看任意频道的节目单。
+        // 如果用户想看某个分组的频道，可以切回左侧面板筛选。
 
         SettingsActivity.logOperation("【分组】选中分组：" + groupName
                 + "，频道数：" + currentGroupChannelList.size());
@@ -349,7 +431,6 @@ public class ChannelPanelController {
     // ====================================================================
     // 3. 频道切换相关
     // ====================================================================
-
     /**
      * 播放上一个频道（分组内循环）
      */
@@ -383,6 +464,7 @@ public class ChannelPanelController {
                 break;
             }
         }
+
         if (groupIndex == -1) return;
 
         // 计算上一个频道的索引（分组内循环）
@@ -428,6 +510,7 @@ public class ChannelPanelController {
                 break;
             }
         }
+
         if (groupIndex == -1) return;
 
         // 计算下一个频道的索引（分组内循环）
@@ -455,12 +538,24 @@ public class ChannelPanelController {
         Channel ch = channelSourceList.get(index);
         if (ch == null) return;
 
-        // 更新频道列表的选中状态
+        // 更新主页面频道列表的选中状态
         if (!currentGroupName.isEmpty() && !currentGroupChannelList.isEmpty()) {
             channelListManager.setChannelsByGroup(channelSourceList, currentGroupName, index);
         } else {
             channelListManager.setChannels(channelSourceList, index);
         }
+
+        // ================================================================
+        // ✅ 新增：同步更新节目单页面的频道列表选中状态
+        // ================================================================
+        // 【为什么要同步？】
+        // 因为有两个频道列表，切台时两边都要更新选中高亮，
+        // 这样用户切换面板时，选中状态是一致的，不会出现错乱。
+        //
+        // 【节目单页面的频道列表永远是全部频道】
+        // 因为右侧面板没有分组筛选，所以直接用全部频道数据，
+        // 不需要调用 setChannelsByGroup。
+        channelListManagerEpg.setChannels(channelSourceList, index);
 
         // 刷新 EPG
         epgManagerWrapper.refresh(ch, channelSourceList, currentSelectedDateIndex);
@@ -475,24 +570,39 @@ public class ChannelPanelController {
      * 频道列表被点击了
      *
      * @param position 点击的位置
+     *
+     * 【2026-06-19 修改：区分左右面板的点击逻辑】
+     * - 左侧面板点击频道：按分组筛选，点击后关闭面板
+     * - 右侧面板点击频道：全部频道，点击后不关闭面板（方便继续看节目单）
      */
     private void onChannelClicked(int position) {
-        if (!currentGroupChannelList.isEmpty() && position < currentGroupChannelList.size()) {
-            // 分组筛选模式
+        if (!currentGroupChannelList.isEmpty() && position < currentGroupChannelList.size()
+                && !rightPanelOpen) {
+            // ============================================================
+            // 左侧面板（分组筛选模式）
+            // ============================================================
+            // 左侧面板有分组列表，频道列表是按分组筛选后的，
+            // 所以需要把分组内的位置转换成全局索引。
             Channel selectedChannel = currentGroupChannelList.get(position);
             int globalIndex = channelSourceList.indexOf(selectedChannel);
             if (globalIndex != -1) {
                 SettingsActivity.logOperation("【列表】点击频道：" + selectedChannel.getName());
                 playChannel(globalIndex);
-                togglePanel();  // 点击后关闭面板
+                togglePanel();  // 左侧面板点击频道后关闭面板，开始播放
             }
         } else {
-            // 全部频道模式
+            // ============================================================
+            // ✅ 右侧面板（全部频道模式）
+            // ============================================================
+            // 【为什么不关闭面板？】
+            // 用户在节目单页面，经常需要连续看多个频道的节目单，
+            // 如果每次点击频道都关闭面板，体验不好。
+            // 所以节目单页面点击频道只切换频道和刷新EPG，不关闭面板。
             if (position < channelSourceList.size()) {
                 Channel ch = channelSourceList.get(position);
                 SettingsActivity.logOperation("【列表】点击频道：" + ch.getName());
                 playChannel(position);
-                togglePanel();  // 点击后关闭面板
+                // 注意：这里不调用 togglePanel()，面板保持打开
             }
         }
     }
@@ -528,17 +638,24 @@ public class ChannelPanelController {
     // ====================================================================
     // 4. 面板控制相关
     // ====================================================================
-
     /**
      * 切换面板显示/隐藏
      */
     public void togglePanel() {
-        // 先更新频道列表选中状态
+        // 先更新主页面频道列表选中状态
         if (!currentGroupName.isEmpty() && !currentGroupChannelList.isEmpty()) {
             channelListManager.setChannelsByGroup(channelSourceList, currentGroupName, currentPlayIndex);
         } else {
             channelListManager.setChannels(channelSourceList, currentPlayIndex);
         }
+
+        // ================================================================
+        // ✅ 新增：同步更新节目单页面的频道列表
+        // ================================================================
+        // 【为什么要在这里更新？】
+        // 打开面板前，确保两个频道列表的选中状态都是最新的，
+        // 这样用户打开面板时，选中高亮是正确的。
+        channelListManagerEpg.setChannels(channelSourceList, currentPlayIndex);
 
         boolean isOpen = isPanelOpen();
         panelManager.toggle(channelSourceList, currentPlayIndex, dateListManager);
@@ -581,20 +698,16 @@ public class ChannelPanelController {
     /**
      * 节目单按钮被点击了
      *
-     * 【2026-06-19 修改：左右面板切换模式】
-     * 原逻辑：单独控制日期列表和EPG列表的显示/隐藏
-     * 新逻辑：切换左右两个面板容器的显示/隐藏
+     * 【2026-06-19 修改：两个完整面板切换】
+     * 原逻辑：左右面板切换（只有日期+EPG在右侧）
+     * 新逻辑：两个完整面板切换（都有频道列表）
      *
      * 【交互逻辑】
-     * 点击后切换左右面板：
-     * - 左侧面板显示时 → 收起左侧，展开右侧（日期+EPG）
-     * - 右侧面板显示时 → 收起右侧，展开左侧（分组+频道）
-     *
-     * 【为什么要改成左右面板切换？】
-     * 1. 视觉上更统一：左右两个面板各自有完整的背景和圆角
-     * 2. 交互更清晰：点击节目单按钮就是切换到节目单页面
-     * 3. 更节省空间：不需要同时显示分组和日期
-     * 4. 更符合电视端的交互习惯
+     * 点击后切换到右侧面板（节目单页面）：
+     * - 隐藏左侧面板（分组 + 频道 + 节目单按钮）
+     * - 显示右侧面板（返回 + 频道 + 日期 + EPG）
+     * - 同步节目单页面的频道列表选中状态
+     * - 刷新当前频道的 EPG 数据
      */
     private void onEpgButtonClicked() {
         if (!epgEnable) {
@@ -605,17 +718,19 @@ public class ChannelPanelController {
 
         if (!rightPanelOpen) {
             // ============================================================
-            // ✅ 状态：左侧面板显示 → 切换到右侧面板
+            // ✅ 状态：左侧面板显示 → 切换到右侧面板（节目单页面）
             // ============================================================
-
-            // 隐藏左侧面板（分组 + 频道列表）
+            // 隐藏左侧面板
             llLeftPanel.setVisibility(View.GONE);
-            // 显示右侧面板（日期 + EPG节目单）
+            // 显示右侧面板
             llRightPanel.setVisibility(View.VISIBLE);
             // 更新状态标记
             rightPanelOpen = true;
-            // 同步更新 epgPanelOpen，保持旧接口兼容
             epgPanelOpen = true;
+
+            // 同步节目单页面的频道列表选中状态
+            // （确保切换过去时，选中的频道是正确的）
+            channelListManagerEpg.setChannels(channelSourceList, currentPlayIndex);
 
             SettingsActivity.logOperation("【面板】展开节目单面板");
 
@@ -629,19 +744,46 @@ public class ChannelPanelController {
             }
         } else {
             // ============================================================
-            // ✅ 状态：右侧面板显示 → 切换回左侧面板
+            // 状态：右侧面板显示 → 切换回左侧面板
             // ============================================================
-
-            // 隐藏右侧面板（日期 + EPG节目单）
             llRightPanel.setVisibility(View.GONE);
-            // 显示左侧面板（分组 + 频道列表）
+            llLeftPanel.setVisibility(View.VISIBLE);
+            rightPanelOpen = false;
+            epgPanelOpen = false;
+            SettingsActivity.logOperation("【面板】收起节目单面板");
+        }
+    }
+
+    // ====================================================================
+    // ✅ 新增：返回分组按钮被点击了
+    // ====================================================================
+    /**
+     * 返回分组按钮被点击了
+     *
+     * 【作用】
+     * 从节目单页面（右侧面板）返回到分组列表页面（左侧面板）。
+     *
+     * 【和 onEpgButtonClicked 的区别】
+     * - onEpgButtonClicked：节目单按钮的点击，是双向切换（点一下展开，再点一下收起）
+     * - onBackGroupClicked：返回按钮的点击，只负责从右侧切回左侧
+     *
+     * 【为什么不直接复用 onEpgButtonClicked？】
+     * 虽然功能上可以复用，但是语义上不一样：
+     * - 节目单按钮 = "展开/收起节目单"
+     * - 返回按钮 = "返回分组列表"
+     * 分开写逻辑更清晰，以后改起来也方便。
+     */
+    private void onBackGroupClicked() {
+        if (rightPanelOpen) {
+            // 隐藏右侧面板（节目单页面）
+            llRightPanel.setVisibility(View.GONE);
+            // 显示左侧面板（分组列表）
             llLeftPanel.setVisibility(View.VISIBLE);
             // 更新状态标记
             rightPanelOpen = false;
-            // 同步更新 epgPanelOpen，保持旧接口兼容
             epgPanelOpen = false;
 
-            SettingsActivity.logOperation("【面板】收起节目单面板");
+            SettingsActivity.logOperation("【面板】返回频道分组");
         }
     }
 
@@ -652,7 +794,6 @@ public class ChannelPanelController {
      *
      * 【注意】
      * 这个方法是为了兼容旧代码保留的，现在和 rightPanelOpen 保持同步。
-     * 因为右侧面板展开就意味着EPG面板展开了。
      */
     public boolean isEpgPanelOpen() {
         return epgPanelOpen;
@@ -666,6 +807,7 @@ public class ChannelPanelController {
     public void setCurrentDateIndex(int index) {
         this.currentSelectedDateIndex = index;
         panelManager.setCurrentDateIndex(index);
+
         // 如果有数据，刷新 EPG
         if (!channelSourceList.isEmpty()
                 && currentPlayIndex >= 0 && currentPlayIndex < channelSourceList.size()) {
@@ -686,17 +828,16 @@ public class ChannelPanelController {
     // ====================================================================
     // 5. 返回键处理
     // ====================================================================
-
     /**
      * 处理返回键
      *
      * 【2026-06-19 优化：分级返回逻辑】
-     * 原逻辑：只要面板打开，按返回键就直接关闭整个面板
-     * 新逻辑：先收起右侧面板，再按一次才关闭整个面板
+     * 原逻辑：复用节目单按钮的切换逻辑
+     * 新逻辑：调用专门的返回分组方法
      *
      * 【交互逻辑】
-     * 1. 如果右侧面板（节目单）展开着 → 先收起节目单，回到频道列表
-     * 2. 如果只有左侧面板（频道列表）打开着 → 关闭整个面板
+     * 1. 如果右侧面板（节目单）展开着 → 先收起节目单，回到分组列表
+     * 2. 如果只有左侧面板打开着 → 关闭整个面板
      *
      * 【为什么要分级返回？】
      * 更符合电视端的交互习惯，用户不会因为误按返回键就直接退出整个面板，
@@ -706,9 +847,11 @@ public class ChannelPanelController {
      */
     public boolean handleBackPressed() {
         if (isPanelOpen()) {
-            // 如果右侧面板展开着，先收起右侧面板（回到频道列表）
+            // 如果右侧面板展开着，先收起右侧面板（回到分组列表）
             if (rightPanelOpen) {
-                onEpgButtonClicked();  // 复用节目单按钮的切换逻辑
+                // ✅ 修改：调用专门的返回分组方法，而不是复用节目单按钮逻辑
+                // 语义更清晰，以后改返回逻辑不会影响节目单按钮
+                onBackGroupClicked();
                 return true;
             }
             // 否则关闭整个面板
@@ -721,7 +864,6 @@ public class ChannelPanelController {
     // ====================================================================
     // 6. 监听器设置
     // ====================================================================
-
     /**
      * 设置频道切换监听器
      *
@@ -743,7 +885,6 @@ public class ChannelPanelController {
     // ====================================================================
     // 7. 资源释放
     // ====================================================================
-
     /**
      * 释放资源
      * Activity onDestroy 时调用
@@ -752,13 +893,15 @@ public class ChannelPanelController {
         // 清空引用，避免内存泄漏
         context = null;
         panelLayout = null;
-        llLeftPanel = null;          // 【2026-06-19 新增：释放左侧面板引用】
-        llRightPanel = null;         // 【2026-06-19 新增：释放右侧面板引用】
+        llLeftPanel = null;
+        llRightPanel = null;
         lvGroup = null;
         lvChannelList = null;
+        lvChannelListEpg = null;    // ✅ 新增：释放节目单页面频道列表引用
         lvDate = null;
         lvEpg = null;
         btnShowEpg = null;
+        btnBackGroup = null;        // ✅ 新增：释放返回按钮引用
         channelSourceList = null;
         currentGroupChannelList = null;
         channelChangeListener = null;

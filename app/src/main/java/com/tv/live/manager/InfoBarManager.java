@@ -333,7 +333,7 @@ public class InfoBarManager {
      *
      * @param channel 当前播放的频道
      */
-    private void updateBottomEpgInfo(Channel channel) {
+    public void updateBottomEpgInfo(Channel channel) {
         if (channel == null || tvCurrentProgramName == null) {
             return;
         }
@@ -759,7 +759,7 @@ public class InfoBarManager {
      * @param currentIndex 当前节目索引
      * @param todayEpg 今天的节目列表
      */
-    private void updateCornerNextProgramInfo(Channel.EpgItem nextProgram, int currentIndex,
+  private void updateCornerNextProgramInfo(Channel.EpgItem nextProgram, int currentIndex,
                                              List<Channel.EpgItem> todayEpg) {
         if (nextProgram != null && tvNextProgramCorner != null) {
             tvNextProgramCorner.setText("接下来：" + nextProgram.title);

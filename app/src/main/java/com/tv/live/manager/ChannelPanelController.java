@@ -154,6 +154,8 @@ private boolean rightPanelOpen = false;
     public ChannelPanelController(
             Context context,
             View panelLayout,
+            View llLeftPanel,        // 新增
+            View llRightPanel,       // 新增
             ListView lvGroup,
             ListView lvChannelList,
             ListView lvDate,
@@ -167,6 +169,8 @@ private boolean rightPanelOpen = false;
     ) {
         this.context = context.getApplicationContext();
         this.panelLayout = panelLayout;
+        this.llLeftPanel = llLeftPanel;        // 新增
+        this.llRightPanel = llRightPanel;      // 新增 
         this.lvGroup = lvGroup;
         this.lvChannelList = lvChannelList;
         this.lvDate = lvDate;

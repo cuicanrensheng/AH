@@ -1,4 +1,4 @@
-             package com.tv.live;
+package com.tv.live;
 
 import android.app.AlarmManager;
 import android.app.AlertDialog;
@@ -58,22 +58,43 @@ import java.util.List;
  * 11. 操作日志查看
  * 12. 检查更新
  *
+ * 【开机自启增强说明】
+ * 1. 状态检测：自动检测自启权限、组件状态、开关状态
+ * 2. 测试功能：一键模拟开机自启，测试是否能正常启动
+ * 3. 厂商引导：针对不同品牌电视给出自启设置引导
+ * 4. 详细日志：记录自启相关的所有操作，方便排查
+ *
+ * 【架构说明】
+ * 本 Activity 只负责 UI 展示和用户交互，
+ * 业务逻辑都委托给专门的管理类：
+ * - WebServerManager：网页后台 HTTP 服务器
+ * - SourceManager：多源管理（增删改查、导入导出）
+ *
+ * 【为什么拆分？】
+ * 原来的 SettingsActivity 有 1000+ 行，代码太臃肿。
+ * 拆分后职责清晰，更好维护。
+ *
  * 【2026-06-19 修改：去掉背景变暗遮罩】
+ * 【问题现象】
+ * 进入设置页面后，后面的播放画面变得很暗，甚至接近全黑。
+ *
  * 【问题原因】
  * 原来的代码设置了 FLAG_DIM_BEHIND 和 dimAmount=0.6f，
- * 这会让后面的 MainActivity 播放画面变暗（蒙上 60% 的黑色遮罩），
- * 导致用户看到的背景很暗，甚至接近全黑。
+ * 这会在当前窗口后面加一层 60% 的黑色遮罩，导致背景变暗。
+ *
+ * 【为什么 styles.xml 中的设置不生效？】
+ * 因为 Java 代码的优先级比主题更高。
+ * 即使 styles.xml 中设置了 backgroundDimEnabled=false，
+ * 但 Java 代码中又调用了 setFlags(FLAG_DIM_BEHIND, ...)，
+ * 代码的设置会覆盖主题中的设置，最终还是会生效。
  *
  * 【修改内容】
- * 删除了 FLAG_DIM_BEHIND 和 dimAmount 的设置，
- * 让窗口背景完全透明，能清楚看到后面的播放画面。
+ * 删除了 onCreate() 中的以下两行代码：
+ * - getWindow().getAttributes().dimAmount = 0.6f;
+ * - getWindow().setFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND, ...);
  *
- * 【为什么 Java 代码会覆盖主题设置？】
- * Android 中，主题（styles.xml）是在 Activity 创建时应用的，
- * 但是 Java 代码中对 Window 的设置是在运行时动态修改的，
- * 代码的优先级更高，会覆盖主题中的设置。
- * 所以即使 styles.xml 中设置了 backgroundDimEnabled=false，
- * Java 代码中又调用了 setFlags(FLAG_DIM_BEHIND, ...)，最终还是会生效。
+ * 【修改后效果】
+ * 窗口背景完全透明，能清楚看到后面的播放画面。
  */
 public class SettingsActivity extends AppCompatActivity {
 
@@ -274,7 +295,7 @@ public class SettingsActivity extends AppCompatActivity {
         // 【验证方法】
         // 删除这两行后，进入设置页面，应该能清楚看到后面的播放画面。
         // 如果还是全黑，那就是 MainActivity.onPause() 中黑色占位图的问题，
-        // 需要再修改 MainActivity。
+        // 需要再修改 MainActivity，打开设置页面时不显示占位图。
 
         super.onCreate(savedInstanceState);
 
@@ -433,8 +454,15 @@ public class SettingsActivity extends AppCompatActivity {
     /**
      * 更新开机自启状态文本
      * 显示在开关下面，让用户一目了然
+     *
+     * 【状态说明】
+     * 1. 未开启：灰色文字，开关没打开
+     * 2. 已开启·正常：绿色文字，一切正常
+     * 3. 需授权自启权限：橙色文字，需要用户手动授权
+     * 4. 组件被禁用：红色文字，自启完全失效
+     * 5. 需在系统设置中开启：橙色文字，厂商自启管理限制
      */
-        private void updateBootStatusText() {
+    private void updateBootStatusText() {
         if (tv_boot_status == null) {
             return;
         }
@@ -445,18 +473,7 @@ public class SettingsActivity extends AppCompatActivity {
             return;
         }
 
-        // ====================================================================
         // 已开启：检查实际状态并显示
-        // ====================================================================
-        //
-        // 【为什么要检查状态？】
-        // 即使开关打开了，也不一定能正常自启，可能有以下问题：
-        // 1. 没有自启权限（需要用户手动授权）
-        // 2. 组件被禁用（BootReceiver 被系统或安全软件禁用）
-        // 3. 系统限制（某些厂商的自启管理会阻止应用自启）
-        //
-        // 所以需要检测实际状态，让用户知道当前自启是否真的有效。
-
         BootStatus status = checkBootStatus();
 
         switch (status) {
@@ -493,7 +510,7 @@ public class SettingsActivity extends AppCompatActivity {
     }
 
     // ====================================================================
-    // 检测开机自启状态
+    // ✅ 检测开机自启状态（新增）
     // ====================================================================
     /**
      * 检测开机自启的实际状态
@@ -511,9 +528,6 @@ public class SettingsActivity extends AppCompatActivity {
      */
     private BootStatus checkBootStatus() {
         // 1. 先检查组件是否被禁用
-        // 【原理】
-        // 通过 PackageManager 检查 BootReceiver 组件的启用状态。
-        // 如果组件被禁用（比如被安全软件或用户手动禁用），即使广播发了也收不到。
         try {
             PackageManager pm = getPackageManager();
             ComponentName componentName = new ComponentName(this, BootReceiver.class);
@@ -531,10 +545,6 @@ public class SettingsActivity extends AppCompatActivity {
         }
 
         // 2. 检查是否是 MIUI、EMUI 等有自启管理的系统
-        // 【原理】
-        // 某些厂商（小米、华为、OPPO、vivo 等）有自己的自启管理，
-        // 即使应用注册了开机广播，也需要用户在系统设置中手动开启自启权限。
-        // 这里通过读取系统属性来判断厂商。
         String manufacturer = Build.MANUFACTURER;
         if (manufacturer != null) {
             manufacturer = manufacturer.toLowerCase();
@@ -565,10 +575,6 @@ public class SettingsActivity extends AppCompatActivity {
         }
 
         // 3. 检查 Android 10+ 后台启动限制
-        // 【原理】
-        // Android 10 开始，对后台启动 Activity 有严格限制，
-        // 即使收到开机广播，也可能无法正常启动 Activity。
-        // 但对于电视应用来说，这个限制通常不严格。
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             // Android 10+ 有后台启动限制，但电视应用一般不受影响
             // 这里暂时不做特殊处理，标记为正常
@@ -580,7 +586,7 @@ public class SettingsActivity extends AppCompatActivity {
     }
 
     // ====================================================================
-    // 显示开机自启引导对话框
+    // ✅ 显示开机自启引导对话框（新增）
     // ====================================================================
     /**
      * 显示自启引导对话框
@@ -588,11 +594,6 @@ public class SettingsActivity extends AppCompatActivity {
      * 【作用】
      * 当检测到自启可能有问题时，显示详细的引导信息，
      * 告诉用户如何开启自启权限。
-     *
-     * 【内容】
-     * 1. 说明当前状态
-     * 2. 给出具体的设置路径
-     * 3. 提供"去设置"按钮（如果能跳转到对应页面）
      */
     private void showBootGuideDialog() {
         BootStatus status = checkBootStatus();
@@ -636,14 +637,13 @@ public class SettingsActivity extends AppCompatActivity {
                 .setMessage(message)
                 .setPositiveButton("我知道了", null)
                 .setNeutralButton("测试自启", (dialog, which) -> {
-                    // 测试自启功能
                     testBootAutoStart();
                 })
                 .show();
     }
 
     // ====================================================================
-    // 显示开机自启详细状态对话框
+    // ✅ 显示开机自启详细状态对话框（新增）
     // ====================================================================
     /**
      * 显示自启详细状态对话框（长按触发）
@@ -715,7 +715,7 @@ public class SettingsActivity extends AppCompatActivity {
     }
 
     // ====================================================================
-    // 测试开机自启
+    // ✅ 测试开机自启（新增）
     // ====================================================================
     /**
      * 测试开机自启功能
@@ -727,10 +727,6 @@ public class SettingsActivity extends AppCompatActivity {
      * 【原理】
      * 手动发送一个 BOOT_COMPLETED 广播，
      * 模拟电视开机时的场景，看看能不能正常启动。
-     *
-     * 【注意】
-     * 这只是一个测试功能，方便用户验证自启配置是否正确，
-     * 真正的开机自启还是要等电视重启后才能验证。
      */
     private void testBootAutoStart() {
         logOperation("【自启】开始测试自启功能");
@@ -751,3 +747,616 @@ public class SettingsActivity extends AppCompatActivity {
                     Toast.LENGTH_SHORT).show();
         }
     }
+
+    // ====================== 自动更新闹钟 ======================
+    /**
+     * 设置自动更新闹钟
+     * 每天凌晨4点执行，自动更新直播源和 EPG
+     */
+    private void setAutoUpdateAlarm() {
+        try {
+            AlarmManager alarmManager = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
+            Intent intent = new Intent("com.tv.live.REFRESH_LIVE_AND_EPG");
+            PendingIntent pendingIntent = PendingIntent.getBroadcast(
+                    this,
+                    0,
+                    intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+            );
+
+            // 设置每天凌晨4点
+            Calendar calendar = Calendar.getInstance();
+            calendar.setTimeInMillis(System.currentTimeMillis());
+            calendar.set(Calendar.HOUR_OF_DAY, 4);
+            calendar.set(Calendar.MINUTE, 0);
+            calendar.set(Calendar.SECOND, 0);
+
+            // 如果今天的4点已经过了，就设为明天
+            if (calendar.getTimeInMillis() <= System.currentTimeMillis()) {
+                calendar.add(Calendar.DAY_OF_MONTH, 1);
+            }
+
+            // 设置重复闹钟（每天一次）
+            alarmManager.setInexactRepeating(
+                    AlarmManager.RTC_WAKEUP,
+                    calendar.getTimeInMillis(),
+                    AlarmManager.INTERVAL_DAY,
+                    pendingIntent
+            );
+
+            logOperation("【设置】已设置自动更新闹钟，每天凌晨4点执行");
+        } catch (Exception e) {
+            e.printStackTrace();
+            logOperation("【设置】设置自动更新闹钟失败：" + e.getMessage());
+        }
+    }
+
+    /**
+     * 取消自动更新闹钟
+     */
+    private void cancelAutoUpdateAlarm() {
+        try {
+            AlarmManager alarmManager = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
+            Intent intent = new Intent("com.tv.live.REFRESH_LIVE_AND_EPG");
+            PendingIntent pendingIntent = PendingIntent.getBroadcast(
+                    this,
+                    0,
+                    intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+            );
+            alarmManager.cancel(pendingIntent);
+            logOperation("【设置】已取消自动更新闹钟");
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    // ====================== 其他点击事件初始化 ======================
+    /**
+     * 初始化纯文本项的点击事件
+     */
+    private void initListeners() {
+        // 屏幕比例
+        tv_screen_ratio.setOnClickListener(v -> {
+            showRatioDialog();
+            logOperation("【设置】打开屏幕比例设置");
+        });
+
+        // 自定义订阅源
+        tv_custom_source.setOnClickListener(v -> {
+            showInputDialog("自定义订阅源", "请输入直播源地址", KEY_CUSTOM_LIVE);
+            logOperation("【设置】打开自定义订阅源");
+        });
+
+        // 自定义节目单
+        tv_custom_epg.setOnClickListener(v -> {
+            showInputDialog("自定义节目单", "请输入EPG地址", KEY_CUSTOM_EPG);
+            logOperation("【设置】打开自定义节目单");
+        });
+
+        // 多订阅源（历史记录）
+        tv_multi_source.setOnClickListener(v -> {
+            showHistoryDialog("直播源历史", "live_history");
+            logOperation("【设置】打开直播源历史");
+        });
+
+        // 多节目单（历史记录）
+        tv_multi_epg.setOnClickListener(v -> {
+            showHistoryDialog("节目单历史", "epg_history");
+            logOperation("【设置】打开节目单历史");
+        });
+
+        // 扫码添加
+        tv_qr_code.setOnClickListener(v -> {
+            showQRCodeDialog();
+            logOperation("【设置】打开扫码管理");
+        });
+    }
+
+    // ====================== 屏幕比例对话框 ======================
+    /**
+     * 显示屏幕比例选择对话框
+     */
+    private void showRatioDialog() {
+        final String[] ratios = {"全屏", "填充", "原始"};
+        new AlertDialog.Builder(this)
+                .setTitle("屏幕比例")
+                .setItems(ratios, (d, w) -> {
+                    sp.edit().putString("screen_ratio", ratios[w]).apply();
+                    logOperation("【设置】屏幕比例设为：" + ratios[w]);
+                    Toast.makeText(this, "已设置", Toast.LENGTH_SHORT).show();
+                }).show();
+    }
+
+    // ====================== 输入对话框（自定义源/节目单） ======================
+    /**
+     * 显示输入对话框
+     * 用于自定义直播源和自定义节目单
+     */
+    private void showInputDialog(String title, String hint, String key) {
+        EditText ed = new EditText(this);
+        ed.setHint(hint);
+        ed.setText(sp.getString(key, ""));
+
+        new AlertDialog.Builder(this)
+                .setTitle(title)
+                .setView(ed)
+                .setPositiveButton("确定", (d, w) -> {
+                    String url = ed.getText().toString().trim();
+                    if (!url.isEmpty()) {
+                        sp.edit().putString(key, url).apply();
+                        // 同时添加到多源管理
+                        SourceManager sourceManager = new SourceManager(this,
+                                key.contains("live") ? "live_history" : "epg_history");
+                        sourceManager.addSource(url.substring(0, Math.min(10, url.length())) + "...", url);
+                        sendBroadcast(new Intent("com.tv.live.REFRESH_LIVE_AND_EPG"));
+                        logOperation("【设置】" + title + "已更新：" + url);
+                        Toast.makeText(this, "已保存，正在刷新…", Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    // ====================== 多源管理对话框 ======================
+    /**
+     * 显示多源管理对话框
+     *
+     * 【功能】
+     * 搜索、添加、编辑、删除、设为默认、排序、导入导出、刷新
+     *
+     * 【业务逻辑委托】
+     * 所有数据操作都委托给 SourceManager，
+     * 这里只负责 UI 展示和用户交互。
+     *
+     * @param title 对话框标题
+     * @param key SP 存储的 key
+     */
+    private void showHistoryDialog(String title, final String key) {
+        final SourceManager sourceManager = new SourceManager(this, key);
+        final ArrayList<SourceManager.SourceItem> displayItems =
+                new ArrayList<>(sourceManager.getAllSources());
+
+        if (displayItems.isEmpty()) {
+            new AlertDialog.Builder(this)
+                    .setTitle(title)
+                    .setMessage("暂无记录，是否添加一个？")
+                    .setPositiveButton("添加", (d, w) -> showAddSourceDialog(title, key))
+                    .setNegativeButton("取消", null)
+                    .show();
+            return;
+        }
+
+        adapter = new SourceAdapter(this, displayItems);
+
+        // ===== 删除按钮点击事件 =====
+        adapter.setOnDeleteClickListener(position -> {
+            if (position < 0 || position >= displayItems.size()) return;
+            SourceManager.SourceItem item = displayItems.get(position);
+            int realPos = sourceManager.indexOfUrl(item.url);
+
+            new AlertDialog.Builder(this)
+                    .setTitle("确认删除")
+                    .setMessage("确定要删除「" + item.name + "」吗？")
+                    .setPositiveButton("删除", (d, w) -> {
+                        sourceManager.removeSource(realPos);
+                        refreshDisplayList(sourceManager, displayItems, adapter, "");
+                        adapter.setSelectedPosition(-1);
+                        logOperation("【设置】删除源：" + item.name);
+                        Toast.makeText(this, "已删除", Toast.LENGTH_SHORT).show();
+                    })
+                    .setNegativeButton("取消", null)
+                    .show();
+        });
+
+        // 找到当前使用的源，设置为选中状态
+        String currentUrl = sp.getString(key.contains("live") ? KEY_CUSTOM_LIVE : KEY_CUSTOM_EPG, "");
+        int selectedIndex = sourceManager.indexOfUrl(currentUrl);
+        if (selectedIndex >= 0) {
+            adapter.setSelectedPosition(selectedIndex);
+        }
+
+        final String finalTitle = title + "（共" + displayItems.size() + "个）";
+
+        // 搜索框
+        final EditText searchEt = new EditText(this);
+        searchEt.setHint("🔍 搜索源名称或地址");
+        searchEt.setTextSize(14);
+        searchEt.setSingleLine(true);
+        searchEt.setPadding(40, 20, 40, 20);
+        searchEt.setBackgroundColor(0xFFEEEEEE);
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle(finalTitle);
+        builder.setCustomTitle(searchEt);
+        builder.setAdapter(adapter, null);
+
+        // ===== 三个按钮：添加（右）、操作（中）、关闭（左） =====
+        builder.setPositiveButton("➕ 添加", (dialog, which) -> {
+            showAddSourceDialog(title, key);
+        });
+
+        builder.setNeutralButton("⚙ 操作", (dialog, which) -> {
+            final int pos = adapter.getSelectedPosition();
+            if (pos < 0 || pos >= displayItems.size()) {
+                Toast.makeText(this, "请先选择一项", Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+            final SourceManager.SourceItem selectedItem = displayItems.get(pos);
+
+            final String[] options = {
+                    "✏️ 编辑",
+                    "⭐ 设为默认",
+                    "⬆ 移到顶部",
+                    "⬇ 移到底部",
+                    "🔄 刷新此源",
+                    selectedItem.autoUpdate ? "🔕 关闭自动更新" : "🔔 开启自动更新",
+                    "🗑 删除",
+                    "📋 导出全部",
+                    "📥 导入",
+                    "🧹 清空全部"
+            };
+
+            new AlertDialog.Builder(this)
+                    .setTitle("操作")
+                    .setItems(options, (d, w) -> {
+                        int realPos = sourceManager.indexOfUrl(selectedItem.url);
+                        switch (w) {
+                            case 0: // 编辑
+                                showEditSourceDialog(title, key, realPos, selectedItem);
+                                break;
+                            case 1: // 设为默认
+                                sourceManager.setDefault(realPos);
+                                refreshDisplayList(sourceManager, displayItems, adapter, searchEt.getText().toString());
+                                logOperation("【设置】设为默认源：" + selectedItem.name);
+                                Toast.makeText(this, "已设为默认源", Toast.LENGTH_SHORT).show();
+                                break;
+                            case 2: // 移到顶部
+                                sourceManager.moveToTop(realPos);
+                                refreshDisplayList(sourceManager, displayItems, adapter, searchEt.getText().toString());
+                                adapter.setSelectedPosition(0);
+                                logOperation("【设置】移到顶部：" + selectedItem.name);
+                                Toast.makeText(this, "已移到顶部", Toast.LENGTH_SHORT).show();
+                                break;
+                            case 3: // 移到底部
+                                sourceManager.moveToBottom(realPos);
+                                refreshDisplayList(sourceManager, displayItems, adapter, searchEt.getText().toString());
+                                logOperation("【设置】移到底部：" + selectedItem.name);
+                                Toast.makeText(this, "已移到底部", Toast.LENGTH_SHORT).show();
+                                break;
+                            case 4: // 刷新此源
+                                sp.edit().putString(key.contains("live") ? KEY_CUSTOM_LIVE : KEY_CUSTOM_EPG, selectedItem.url).apply();
+                                sendBroadcast(new Intent("com.tv.live.REFRESH_LIVE_AND_EPG"));
+                                logOperation("【设置】刷新单个源：" + selectedItem.name);
+                                Toast.makeText(this, "正在刷新…", Toast.LENGTH_SHORT).show();
+                                break;
+                            case 5: // 切换自动更新
+                                boolean newState = sourceManager.toggleAutoUpdate(realPos);
+                                refreshDisplayList(sourceManager, displayItems, adapter, searchEt.getText().toString());
+                                logOperation("【设置】" + selectedItem.name + " 自动更新：" + (newState ? "开启" : "关闭"));
+                                Toast.makeText(this, "自动更新已" + (newState ? "开启" : "关闭"), Toast.LENGTH_SHORT).show();
+                                break;
+                            case 6: // 删除
+                                new AlertDialog.Builder(this)
+                                        .setTitle("确认删除")
+                                        .setMessage("确定要删除「" + selectedItem.name + "」吗？")
+                                        .setPositiveButton("删除", (dd, ww) -> {
+                                            sourceManager.removeSource(realPos);
+                                            refreshDisplayList(sourceManager, displayItems, adapter, searchEt.getText().toString());
+                                            adapter.setSelectedPosition(-1);
+                                            logOperation("【设置】删除源：" + selectedItem.name);
+                                            Toast.makeText(this, "已删除", Toast.LENGTH_SHORT).show();
+                                        })
+                                        .setNegativeButton("取消", null)
+                                        .show();
+                                break;
+                            case 7: // 导出全部
+                                String exportText = sourceManager.exportToText();
+                                ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                                cm.setPrimaryClip(ClipData.newPlainText("sources", exportText));
+                                logOperation("【设置】导出 " + sourceManager.size() + " 个源到剪贴板");
+                                Toast.makeText(this, "已复制到剪贴板", Toast.LENGTH_SHORT).show();
+                                break;
+                            case 8: // 导入
+                                showImportDialog(title, key, sourceManager, displayItems, adapter, searchEt);
+                                break;
+                            case 9: // 清空全部
+                                new AlertDialog.Builder(this)
+                                        .setTitle("确认清空")
+                                        .setMessage("确定要清空全部吗？此操作不可恢复！")
+                                        .setPositiveButton("全部清空", (dd, ww) -> {
+                                            sourceManager.clearAll();
+                                            displayItems.clear();
+                                            adapter.notifyDataSetChanged();
+                                            logOperation("【设置】清空全部" + title);
+                                            Toast.makeText(this, "已全部清空", Toast.LENGTH_SHORT).show();
+                                        })
+                                        .setNegativeButton("取消", null)
+                                        .show();
+                                break;
+                        }
+                    })
+                    .show();
+        });
+
+        builder.setNegativeButton("关闭", null);
+
+        final AlertDialog dialog = builder.create();
+        dialog.show();
+
+        // ===== 搜索功能 =====
+        searchEt.addTextChangedListener(new android.text.TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {}
+            @Override
+            public void afterTextChanged(android.text.Editable s) {
+                refreshDisplayList(sourceManager, displayItems, adapter, s.toString());
+                dialog.setTitle(title + "（共" + displayItems.size() + "个）");
+            }
+        });
+
+        // ===== 列表项点击事件：切换到该源 =====
+        dialog.getListView().setOnItemClickListener((parent, view, position, id) -> {
+            SourceManager.SourceItem item = displayItems.get(position);
+            sp.edit().putString(key.contains("live") ? KEY_CUSTOM_LIVE : KEY_CUSTOM_EPG, item.url).apply();
+            // 移到最前面
+            int realPos = sourceManager.indexOfUrl(item.url);
+            if (realPos > 0) {
+                sourceManager.moveToTop(realPos);
+            }
+            sendBroadcast(new Intent("com.tv.live.REFRESH_LIVE_AND_EPG"));
+            adapter.setSelectedPosition(position);
+            logOperation("【设置】切换" + title + "：" + item.name);
+            Toast.makeText(this, "已切换，正在刷新…", Toast.LENGTH_SHORT).show();
+        });
+    }
+
+    /**
+     * 刷新显示列表（搜索后用）
+     */
+    private void refreshDisplayList(SourceManager sourceManager,
+                                    ArrayList<SourceManager.SourceItem> displayItems,
+                                    SourceAdapter adapter, String keyword) {
+        displayItems.clear();
+        displayItems.addAll(sourceManager.search(keyword));
+        adapter.notifyDataSetChanged();
+    }
+
+    // ====================== 添加/编辑/导入对话框 ======================
+    /**
+     * 显示添加源的对话框
+     * 可以输入名称和地址
+     *
+     * 【注意】
+     * 动态创建输入框，不用 dialog_edit.xml 布局，
+     * 避免布局文件 id 不匹配导致编译错误。
+     */
+    private void showAddSourceDialog(String title, final String key) {
+        // 动态创建布局：两个输入框（名称 + 地址）
+        android.widget.LinearLayout layout = new android.widget.LinearLayout(this);
+        layout.setOrientation(android.widget.LinearLayout.VERTICAL);
+        layout.setPadding(40, 20, 40, 20);
+
+        final EditText nameEt = new EditText(this);
+        nameEt.setHint("源名称（如：主源、备用源）");
+        nameEt.setTextSize(14);
+        nameEt.setSingleLine(true);
+        layout.addView(nameEt);
+
+        // 加一点间距
+        android.widget.LinearLayout.LayoutParams params =
+                new android.widget.LinearLayout.LayoutParams(
+                        android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                        android.widget.LinearLayout.LayoutParams.WRAP_CONTENT);
+        params.setMargins(0, 20, 0, 0);
+
+        final EditText urlEt = new EditText(this);
+        urlEt.setHint("源地址 URL");
+        urlEt.setTextSize(14);
+        urlEt.setSingleLine(true);
+        urlEt.setLayoutParams(params);
+        layout.addView(urlEt);
+
+        new AlertDialog.Builder(this)
+                .setTitle("添加" + title.replace("历史", ""))
+                .setView(layout)
+                .setPositiveButton("添加", (dialog, which) -> {
+                    String name = nameEt.getText().toString().trim();
+                    String url = urlEt.getText().toString().trim();
+                    if (url.isEmpty()) {
+                        Toast.makeText(this, "地址不能为空", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    SourceManager sourceManager = new SourceManager(this, key);
+                    boolean success = sourceManager.addSource(name, url);
+                    if (!success) {
+                        Toast.makeText(this, "该源已存在", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    // 设为当前使用的源
+                    sp.edit().putString(key.contains("live") ? KEY_CUSTOM_LIVE : KEY_CUSTOM_EPG, url).apply();
+                    sendBroadcast(new Intent("com.tv.live.REFRESH_LIVE_AND_EPG"));
+                    logOperation("【设置】添加源：" + (name.isEmpty() ? "未命名" : name) + " - " + url);
+                    Toast.makeText(this, "已添加，正在刷新…", Toast.LENGTH_SHORT).show();
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    /**
+     * 显示编辑源的对话框
+     * 可以修改名称和地址
+     *
+     * 【注意】
+     * 动态创建输入框，不用 dialog_edit.xml 布局。
+     */
+    private void showEditSourceDialog(String title, final String key, final int position, SourceManager.SourceItem oldItem) {
+        // 动态创建布局：两个输入框（名称 + 地址）
+        android.widget.LinearLayout layout = new android.widget.LinearLayout(this);
+        layout.setOrientation(android.widget.LinearLayout.VERTICAL);
+        layout.setPadding(40, 20, 40, 20);
+
+        final EditText nameEt = new EditText(this);
+        nameEt.setText(oldItem.name);
+        nameEt.setTextSize(14);
+        nameEt.setSingleLine(true);
+        layout.addView(nameEt);
+
+        android.widget.LinearLayout.LayoutParams params =
+                new android.widget.LinearLayout.LayoutParams(
+                        android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                        android.widget.LinearLayout.LayoutParams.WRAP_CONTENT);
+        params.setMargins(0, 20, 0, 0);
+
+        final EditText urlEt = new EditText(this);
+        urlEt.setText(oldItem.url);
+        urlEt.setTextSize(14);
+        urlEt.setSingleLine(true);
+        urlEt.setSelection(urlEt.getText().length());
+        urlEt.setLayoutParams(params);
+        layout.addView(urlEt);
+
+        new AlertDialog.Builder(this)
+                .setTitle("编辑" + title.replace("历史", ""))
+                .setView(layout)
+                .setPositiveButton("保存", (dialog, which) -> {
+                    String name = nameEt.getText().toString().trim();
+                    String url = urlEt.getText().toString().trim();
+                    if (url.isEmpty()) {
+                        Toast.makeText(this, "地址不能为空", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    if (name.isEmpty()) {
+                        name = "未命名";
+                    }
+                    SourceManager sourceManager = new SourceManager(this, key);
+                    String oldUrl = oldItem.url;
+                    sourceManager.updateSource(position, name, url);
+                    // 如果编辑的是当前使用的源，同步更新
+                    String currentKey = key.contains("live") ? KEY_CUSTOM_LIVE : KEY_CUSTOM_EPG;
+                    String currentUrl = sp.getString(currentKey, "");
+                    if (currentUrl.equals(oldUrl)) {
+                        sp.edit().putString(currentKey, url).apply();
+                        sendBroadcast(new Intent("com.tv.live.REFRESH_LIVE_AND_EPG"));
+                    }
+                    logOperation("【设置】编辑源：" + oldItem.name + " → " + name);
+                    Toast.makeText(this, "已保存", Toast.LENGTH_SHORT).show();
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    /**
+     * 显示导入对话框
+     * 从剪贴板批量导入源
+     */
+    private void showImportDialog(String title, final String key, final SourceManager sourceManager,
+                                   final ArrayList<SourceManager.SourceItem> displayItems,
+                                   final SourceAdapter adapter, final EditText searchEt) {
+        ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+        if (!cm.hasPrimaryClip()) {
+            Toast.makeText(this, "剪贴板为空", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        CharSequence clipText = cm.getPrimaryClip().getItemAt(0).getText();
+        if (clipText == null || clipText.toString().trim().isEmpty()) {
+            Toast.makeText(this, "剪贴板为空", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        final String text = clipText.toString().trim();
+        final String[] lines = text.split("\n");
+        int count = 0;
+        for (String line : lines) {
+            if (line.trim().isEmpty()) continue;
+            if (line.contains("http")) count++;
+        }
+        final int importCount = count;
+
+        new AlertDialog.Builder(this)
+                .setTitle("确认导入")
+                .setMessage("检测到 " + importCount + " 个源，是否导入？")
+                .setPositiveButton("导入", (dialog, which) -> {
+                    int added = sourceManager.importFromText(text);
+                    refreshDisplayList(sourceManager, displayItems, adapter, searchEt.getText().toString());
+                    logOperation("【设置】从剪贴板导入 " + added + " 个源");
+                    Toast.makeText(this, "成功导入 " + added + " 个源", Toast.LENGTH_SHORT).show();
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    // ====================== 扫码相关 ======================
+    /**
+     * 显示二维码对话框
+     * 二维码内容是网页后台的地址
+     */
+    private void showQRCodeDialog() {
+        ImageView iv = new ImageView(this);
+        iv.setImageBitmap(createQR(currentWebUrl, 250));
+
+        new AlertDialog.Builder(this)
+                .setTitle("扫码管理")
+                      // ===== 构建显示文本：名称 + URL（两行） =====
+            StringBuilder displayText = new StringBuilder();
+            displayText.append(item.name);
+
+            // 默认源标记
+            if (item.isDefault) {
+                displayText.append("  ⭐");
+            }
+
+            // 第二行：URL
+            displayText.append("\n");
+            displayText.append(item.url);
+
+            // 自动更新状态
+            if (!item.autoUpdate) {
+                displayText.append("  🔕");
+            }
+
+            tv.setText(displayText.toString());
+            tv.setTextSize(14);
+            tv.setLineSpacing(4, 1);
+            tv.setSingleLine(false);  // 允许两行显示
+            tv.setEllipsize(null);    // 去掉省略号，因为要显示两行
+
+            // ===== 删除按钮点击事件 =====
+            final int pos = position;
+            deleteBtn.setOnClickListener(v -> {
+                if (onDeleteClickListener != null) {
+                    onDeleteClickListener.onDelete(pos);
+                }
+            });
+
+            // 确保按钮可点击（防止布局里设为 false）
+            deleteBtn.setClickable(true);
+            deleteBtn.setFocusable(false);  // 不抢焦点，不影响列表项选中
+
+            // ===== 选中/焦点/未选中 三种状态 =====
+            if (position == selectedPosition) {
+                // ✅ 选中状态：蓝色文字 + 浅蓝色背景
+                tv.setTextColor(Color.parseColor("#40A9FF"));
+                indexTv.setTextColor(Color.parseColor("#40A9FF"));
+                convertView.setBackgroundColor(0x3340A9FF);
+            } else if (convertView.isFocused()) {
+                // ✅ 焦点状态：蓝色文字 + 稍深蓝色背景
+                tv.setTextColor(Color.parseColor("#40A9FF"));
+                indexTv.setTextColor(Color.parseColor("#40A9FF"));
+                convertView.setBackgroundColor(0x4440A9FF);
+            } else {
+                // ✅ 未选中状态：白色文字 + 透明背景
+                tv.setTextColor(Color.WHITE);
+                indexTv.setTextColor(Color.WHITE);
+                convertView.setBackgroundColor(Color.TRANSPARENT);
+            }
+
+            return convertView;
+        }
+    }
+
+}
+               

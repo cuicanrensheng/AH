@@ -1,438 +1,387 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  主页面布局
-  【作用】直播应用的主页面，包含播放器、频道面板、信息栏等
-  【结构】FrameLayout 帧布局，子 View 按顺序叠加显示
+  设置页面布局（右侧滑出式菜单风格）
+  【作用】设置页面的整体布局
+  【效果】屏幕右侧显示，四个角圆角，半透明深色背景
+  【结构】FrameLayout（全屏透明） → ScrollView（右侧内容） → LinearLayout（设置项）
 
-  【2026-06-19 修改记录】
-  1. 修复频道列表点击无效问题：给所有 ListView 加上 descendantFocusability="blocksDescendants"
-  2. 频道面板改成四个角圆角 + 半透明深色背景 + 离左边 20dp 距离
-  3. 播放器 surface_type 从 surface_view 改成 texture_view
-     - 原因：进入设置页面（透明 Activity）时，SurfaceView 会黑屏但有声音
-     - 原理：SurfaceView 在独立窗口渲染，透明 Activity 叠加时不可见
-             TextureView 在普通 View 层级渲染，支持透明叠加
+  【2026-06-19 修改：改成四个角圆角 + 右侧滑出菜单样式】
+  1. 根布局改成 FrameLayout，背景透明
+  2. 内容区域靠右对齐，固定宽度 240dp
+  3. 离右边 20dp 距离，让右侧圆角能看到
+  4. 上下各 20dp 边距
+  5. 背景：settings_panel_bg（四个角圆角，半透明深色）
+  6. 和频道面板风格完全统一，一个在左一个在右，对称
 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#000000">
+    android:background="@android:color/transparent">
 
-    <!-- ==================================================================== -->
-    <!-- 主播放器视图（ExoPlayer 的 PlayerView）                              -->
-    <!-- ==================================================================== -->
-    <!--
-      【属性说明】
-      - use_controller="false"：屏蔽原生播放器控制器，用自定义的
-      - resize_mode="fit"：等比例缩放，保持画面比例
-      - keep_content_on_player_reset="true"：暂停/切台时保持最后一帧，避免黑屏
-      - surface_type="texture_view"：使用 TextureView 渲染
-        ✅ 【2026-06-19 修改：从 surface_view 改成 texture_view】
-        【为什么改？】
-        SurfaceView 是在一个独立的窗口中渲染的，当另一个透明 Activity（如设置页面）
-        叠加在上面时，某些设备上 SurfaceView 会不可见（有声音但画面全黑）。
-        TextureView 是普通的 View，在正常的 View 层级中渲染，支持透明叠加，
-        所有设备都能正常显示。
-        【性能影响】
-        TextureView 性能比 SurfaceView 稍差一点点，但对于电视直播来说完全够用，
-        肉眼几乎看不出区别。兼容性和稳定性更重要。
-    -->
-    <com.google.android.exoplayer2.ui.PlayerView
-        android:id="@+id/player_view"
-        android:layout_width="match_parent"
+    <!-- ================================================================ -->
+    <!-- 设置面板：靠右显示，离右边有 20dp 距离，四个角圆角半透明背景  -->
+    <!-- ================================================================ -->
+    <ScrollView
+        android:id="@+id/settings_content"
+        android:layout_width="240dp"
         android:layout_height="match_parent"
-        android:layout_gravity="center"
-        app:use_controller="false"
-        app:resize_mode="fit"
-        app:keep_content_on_player_reset="true"
-        app:surface_type="texture_view" />
-
-    <!-- ==================================================================== -->
-    <!-- 防花屏占位图（退到后台时显示，黑色背景盖住播放画面）                -->
-    <!-- ==================================================================== -->
-    <!--
-      【作用】退到后台时显示黑色背景，防止 Surface 销毁导致花屏
-      【时机】onPause 时显示，onResume 后延迟 100ms 隐藏
-      【原理】SurfaceView 的 Surface 销毁是异步的，销毁过程中可能出现花屏、绿屏，
-             用一个 ImageView 盖在上面，用户看到的就是平滑的黑色过渡。
-      【注意】改成 TextureView 后，这个占位图可能就不那么重要了，
-             但保留着也没坏处，可以作为兜底。
-    -->
-    <ImageView
-        android:id="@+id/iv_player_placeholder"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:visibility="gone"
-        android:scaleType="centerCrop"
-        android:background="@android:color/black" />
-
-    <!-- ==================================================================== -->
-    <!-- 频道号显示（右上角大数字，切台时显示）                              -->
-    <!-- ==================================================================== -->
-    <!--
-      【作用】切台时在右上角显示频道号，3 秒后自动隐藏
-      【样式】50sp 白色文字，80% 透明度
-    -->
-    <TextView
-        android:id="@+id/tv_channel_num"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="top|end"
-        android:layout_marginTop="20dp"
+        android:layout_gravity="end"
         android:layout_marginEnd="20dp"
-        android:text="1"
-        android:textSize="50sp"
-        android:textColor="#FFF"
-        android:alpha="0.8"
-        android:visibility="gone" />
+        android:layout_marginTop="20dp"
+        android:layout_marginBottom="20dp"
+        android:background="@drawable/settings_panel_bg"
+        android:paddingTop="20dp"
+        android:paddingBottom="20dp"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp">
 
-    <!-- ==================================================================== -->
-    <!-- 频道面板容器（两个完整面板切换显示）                                -->
-    <!--                                                                    -->
-    <!-- 【结构说明】                                                       -->
-    <!-- 两个面板在 FrameLayout 中切换显示：                                 -->
-    <!--   1. 左侧面板（默认）：分组列表 + 频道列表 + 节目单按钮             -->
-    <!--   2. 右侧面板（展开）：返回按钮 + 频道列表 + 日期列表 + EPG列表     -->
-    <!--                                                                    -->
-    <!-- 【为什么用 FrameLayout？】                                         -->
-    <!-- 因为两个面板是叠加切换的，FrameLayout 最适合这种场景。              -->
-    <!-- 两个面板宽度相同，位置相同，切换时直接显示/隐藏即可。               -->
-    <!-- ==================================================================== -->
-    <FrameLayout
-        android:id="@+id/panel_layout"
-        android:layout_width="wrap_content"
-        android:layout_height="match_parent"
-        android:visibility="gone">
-
-        <!-- ================================================================ -->
-        <!-- 左侧面板：分组列表 + 频道列表 + 节目单按钮（默认显示）          -->
-        <!-- ================================================================ -->
-        <!--
-          ✅ 【2026-06-19 修改：改成四个角圆角 + 半透明深色背景】
-          【修改点】
-          1. 新增 layout_marginStart="20dp"：离左边 20dp，让左侧圆角能看到
-          2. 新增 layout_marginTop="20dp"：上边距 20dp
-          3. 新增 layout_marginBottom="20dp"：下边距 20dp
-          4. 新增 paddingTop/paddingBottom="20dp"：内容上下内边距
-          5. 背景：panel_bg（四个角圆角，半透明深色）
-
-          【和设置面板对称】
-          - 频道面板：左边距 20dp，上下边距 20dp，四个角圆角
-          - 设置面板：右边距 20dp，上下边距 20dp，四个角圆角
-          完全对称，风格统一！
-
-          【结构】水平排列：分组列表 + 频道列表 + 节目单按钮
-          【宽度】130dp + 200dp + 50dp = 380dp
-        -->
         <LinearLayout
-            android:id="@+id/ll_left_panel"
-            android:layout_width="wrap_content"
-            android:layout_height="match_parent"
-            android:orientation="horizontal"
-            android:background="@drawable/panel_bg"
-            android:layout_marginStart="20dp"
-            android:layout_marginTop="20dp"
-            android:layout_marginBottom="20dp"
-            android:paddingTop="20dp"
-            android:paddingBottom="20dp">
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
 
-            <!-- 分组列表（第一栏，显示所有分组） -->
-            <!--
-              【作用】显示频道分组列表，如 "卫视"、"电影"、"体育" 等
-              【宽度】130dp
-              【交互】点击分组，切换到该分组的频道列表
-            -->
-            <ListView
-                android:id="@+id/lv_group"
-                android:layout_width="130dp"
-                android:layout_height="match_parent"
-                android:background="@android:color/transparent"
-                android:descendantFocusability="blocksDescendants"
-                android:paddingStart="16dp"
-                android:paddingEnd="8dp" />
-                <!--
-                  ✅ 【新增】加上这行
-                  【作用】阻止子 View 抢焦点，让 ListView 自己统一处理焦点和点击
-                  【为什么要加？】
-                  之前 item 布局设置了 focusable="true"，导致 ListView 焦点管理混乱，
-                  加上这个属性后，ListView 会阻止子 View 获取焦点，完全由自己管理。
-                -->
-
-            <!-- 频道列表（第二栏，显示当前分组的所有频道） -->
-            <!--
-              【作用】显示当前分组的所有频道，点击切换频道
-              【宽度】200dp
-              【交互】点击频道，切换到该频道并关闭面板
-            -->
-            <ListView
-                android:id="@+id/lv_channel_list"
-                android:layout_width="200dp"
-                android:layout_height="match_parent"
-                android:background="@android:color/transparent"
-                android:descendantFocusability="blocksDescendants"
+            <!-- 开机自启（两行布局：文字+开关 + 状态文本） -->
+            <LinearLayout
+                android:id="@+id/item_boot"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
                 android:paddingStart="8dp"
-                android:paddingEnd="16dp" />
-                <!--
-                  ✅ 【新增】加上这行
-                  【作用】阻止子 View 抢焦点，让 ListView 自己统一处理焦点和点击
-                -->
-
-            <!-- 节目单按钮（在最右边，竖排文字） -->
-            <!--
-              【作用】点击后切换到右侧面板（节目单页面）
-              【样式】50dp 宽，竖排文字 "节目单"
-              【交互】可点击、可聚焦
-            -->
-            <TextView
-                android:id="@+id/btn_show_epg"
-                android:layout_width="50dp"
-                android:layout_height="match_parent"
-                android:gravity="center"
-                android:text="节\n目\n单"
-                android:textColor="#ffffff"
-                android:textSize="14sp"
+                android:paddingEnd="8dp"
+                android:paddingTop="10dp"
+                android:paddingBottom="10dp"
+                android:background="@drawable/setting_item_bg"
                 android:focusable="true"
-                android:clickable="true"
-                android:paddingEnd="16dp" />
+                android:clickable="true">
 
-        </LinearLayout>
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
 
-        <!-- ================================================================ -->
-        <!-- 右侧面板：返回按钮 + 频道列表 + 日期列表 + EPG列表（默认隐藏）  -->
-        <!-- ================================================================ -->
-        <!--
-          ✅ 【2026-06-19 修改：和左侧面板样式统一】
-          也是四个角圆角 + 离左边 20dp + 上下边距 20dp
-          （因为右侧面板也在屏幕左边，和左侧面板切换显示）
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_weight="1"
+                        android:layout_height="wrap_content"
+                        android:text="开机自启"
+                        android:textColor="#FFFFFF"
+                        android:textSize="16sp" />
 
-          【结构】水平排列：返回按钮 + 频道列表 + 日期列表 + EPG列表
-          【宽度】50dp + 200dp + 60dp + 360dp = 670dp
-          【默认状态】gone，点击节目单按钮后显示
+                    <Switch
+                        android:id="@+id/sw_boot"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:focusable="false"
+                        android:clickable="false" />
 
-          【为什么右侧面板也有频道列表？】
-          用户在看节目单的时候，经常需要切换频道看不同频道的节目单，
-          如果每次都要切回左侧面板选频道，再切回右侧面板看节目单，
-          操作太繁琐。所以右侧面板也放一个频道列表，直接切换，体验更好。
-        -->
-        <LinearLayout
-            android:id="@+id/ll_right_panel"
-            android:layout_width="wrap_content"
-            android:layout_height="match_parent"
-            android:orientation="horizontal"
-            android:background="@drawable/panel_bg"
-            android:layout_marginStart="20dp"
-            android:layout_marginTop="20dp"
-            android:layout_marginBottom="20dp"
-            android:paddingTop="20dp"
-            android:paddingBottom="20dp"
-            android:visibility="gone">
+                </LinearLayout>
 
-            <!-- 返回按钮（在最左边，显示"频道组"，竖排文字） -->
-            <!--
-              【作用】点击后切回左侧面板（分组列表）
-              【样式】50dp 宽，竖排文字 "频道组"
-              【交互】可点击、可聚焦
-            -->
-            <TextView
-                android:id="@+id/btn_back_group"
-                android:layout_width="50dp"
-                android:layout_height="match_parent"
-                android:gravity="center"
-                android:text="频\n道\n组"
-                android:textColor="#ffffff"
-                android:textSize="14sp"
+                <TextView
+                    android:id="@+id/tv_boot_status"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="未开启"
+                    android:textColor="#80FFFFFF"
+                    android:textSize="12sp" />
+
+            </LinearLayout>
+
+            <!-- 节目单开关 -->
+            <LinearLayout
+                android:id="@+id/item_epg"
+                android:layout_width="match_parent"
+                android:layout_height="55dp"
+                android:gravity="center_vertical"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:background="@drawable/setting_item_bg"
                 android:focusable="true"
-                android:clickable="true"
-                android:paddingStart="16dp" />
+                android:clickable="true">
 
-            <!-- 频道列表（节目单页面的频道列表，显示全部频道） -->
-            <!--
-              【作用】节目单页面也能直接切换频道，不用切回左侧面板
-              【宽度】200dp
-              【注意】显示全部频道，不按分组筛选
-              【交互】点击频道，切换频道并刷新 EPG，面板不关闭
-            -->
-            <ListView
-                android:id="@+id/lv_channel_list_epg"
-                android:layout_width="200dp"
-                android:layout_height="match_parent"
-                android:background="@android:color/transparent"
-                android:descendantFocusability="blocksDescendants"
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content"
+                    android:text="节目单开关"
+                    android:textColor="#FFFFFF"
+                    android:textSize="16sp" />
+
+                <Switch
+                    android:id="@+id/sw_epg"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:focusable="false"
+                    android:clickable="false" />
+
+            </LinearLayout>
+
+            <!-- 自动更新源 -->
+            <LinearLayout
+                android:id="@+id/item_auto_update"
+                android:layout_width="match_parent"
+                android:layout_height="55dp"
+                android:gravity="center_vertical"
                 android:paddingStart="8dp"
-                android:paddingEnd="8dp" />
-                <!--
-                  ✅ 【新增】加上这行
-                  【作用】阻止子 View 抢焦点，让 ListView 自己统一处理焦点和点击
-                -->
+                android:paddingEnd="8dp"
+                android:background="@drawable/setting_item_bg"
+                android:focusable="true"
+                android:clickable="true">
 
-            <!-- 日期列表（显示 8 天日期，今天/明天/后天...） -->
-            <!--
-              【作用】选择日期，查看对应日期的节目单
-              【宽度】60dp
-            -->
-            <ListView
-                android:id="@+id/lv_date"
-                android:layout_width="60dp"
-                android:layout_height="match_parent"
-                android:background="@android:color/transparent"
-                android:descendantFocusability="blocksDescendants"
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content"
+                    android:text="自动更新源"
+                    android:textColor="#FFFFFF"
+                    android:textSize="16sp" />
+
+                <Switch
+                    android:id="@+id/sw_auto_update"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:focusable="false"
+                    android:clickable="false" />
+
+            </LinearLayout>
+
+            <!-- 换台反转 -->
+            <LinearLayout
+                android:id="@+id/item_reverse"
+                android:layout_width="match_parent"
+                android:layout_height="55dp"
+                android:gravity="center_vertical"
                 android:paddingStart="8dp"
-                android:paddingEnd="8dp" />
-                <!--
-                  ✅ 【新增】加上这行
-                  【作用】阻止子 View 抢焦点，让 ListView 自己统一处理焦点和点击
-                -->
+                android:paddingEnd="8dp"
+                android:background="@drawable/setting_item_bg"
+                android:focusable="true"
+                android:clickable="true">
 
-            <!-- EPG 节目列表（显示当前频道、当前日期的所有节目） -->
-            <!--
-              【作用】显示节目单，包含节目时间、名称、状态（直播中/回看/预约）
-              【宽度】360dp
-            -->
-            <ListView
-                android:id="@+id/lv_epg"
-                android:layout_width="360dp"
-                android:layout_height="match_parent"
-                android:background="@android:color/transparent"
-                android:descendantFocusability="blocksDescendants"
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content"
+                    android:text="换台反转"
+                    android:textColor="#FFFFFF"
+                    android:textSize="16sp" />
+
+                <Switch
+                    android:id="@+id/sw_reverse"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:focusable="false"
+                    android:clickable="false" />
+
+            </LinearLayout>
+
+            <!-- 数字选台 -->
+            <LinearLayout
+                android:id="@+id/item_num_channel"
+                android:layout_width="match_parent"
+                android:layout_height="55dp"
+                android:gravity="center_vertical"
                 android:paddingStart="8dp"
-                android:paddingEnd="16dp" />
-                <!--
-                  ✅ 【新增】加上这行
-                  【作用】阻止子 View 抢焦点，让 ListView 自己统一处理焦点和点击
-                -->
+                android:paddingEnd="8dp"
+                android:background="@drawable/setting_item_bg"
+                android:focusable="true"
+                android:clickable="true">
 
-        </LinearLayout>
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content"
+                    android:text="数字选台"
+                    android:textColor="#FFFFFF"
+                    android:textSize="16sp" />
 
-    </FrameLayout>
+                <Switch
+                    android:id="@+id/sw_num_channel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:focusable="false"
+                    android:clickable="false" />
 
-    <!-- ==================================================================== -->
-    <!-- 底部信息栏（切台时显示，5 秒后自动隐藏）                            -->
-    <!-- ==================================================================== -->
-    <!--
-      【结构】三行：
-      第一行：频道名 + 画质标签 + 音频标签 + 码率
-      第二行：当前节目时间 + 进度条 + 剩余时间 + 节目名称
-      第三行：下一个节目时间 + 节目名称
-      【样式】80% 黑色半透明背景，白色文字
-    -->
-    <LinearLayout
-        android:id="@+id/info_bar"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="8dp"
-        android:layout_gravity="bottom"
-        android:background="#CC000000"
-        android:visibility="gone">
+            </LinearLayout>
 
-        <!-- 第一行：频道名 + 画质 + 音频 + 码率 -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="center_vertical">
+            <!-- 分隔线 -->
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="#33FFFFFF"
+                android:layout_marginTop="8dp"
+                android:layout_marginBottom="8dp" />
 
+            <!-- 屏幕比例 -->
             <TextView
-                android:id="@+id/tv_channel_name"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
+                android:id="@+id/tv_screen_ratio"
+                android:layout_width="match_parent"
+                android:layout_height="55dp"
+                android:gravity="center_vertical"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:text="屏幕比例"
                 android:textColor="#FFFFFF"
-                android:textSize="22sp"
-                android:textStyle="bold" />
+                android:textSize="16sp"
+                android:background="@drawable/setting_item_bg"
+                android:focusable="true"
+                android:clickable="true" />
 
+            <!-- 自定义订阅源 -->
             <TextView
-                android:id="@+id/tv_tag_fhd"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginLeft="10dp"
-                android:background="#DDDDDD"
-                android:paddingHorizontal="6dp"
-                android:paddingVertical="2dp"
-                android:textSize="12sp"
-                android:textColor="#000" />
-
-            <TextView
-                android:id="@+id/tv_tag_audio"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginLeft="6dp"
-                android:background="#DDDDDD"
-                android:paddingHorizontal="6dp"
-                android:paddingVertical="2dp"
-                android:textSize="12sp"
-                android:textColor="#000" />
-
-            <TextView
-                android:id="@+id/tv_bitrate"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginLeft="10dp"
+                android:id="@+id/tv_custom_source"
+                android:layout_width="match_parent"
+                android:layout_height="55dp"
+                android:gravity="center_vertical"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:text="自定义订阅源"
                 android:textColor="#FFFFFF"
-                android:textSize="14sp" />
+                android:textSize="16sp"
+                android:background="@drawable/setting_item_bg"
+                android:focusable="true"
+                android:clickable="true" />
 
-        </LinearLayout>
-
-        <!-- 第二行：时间 + 进度条 + 剩余时间 + 节目名 -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="center_vertical"
-            android:layout_marginTop="4dp">
-
+            <!-- 自定义节目单 -->
             <TextView
-                android:id="@+id/tv_current_time_range"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
+                android:id="@+id/tv_custom_epg"
+                android:layout_width="match_parent"
+                android:layout_height="55dp"
+                android:gravity="center_vertical"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:text="自定义节目单"
                 android:textColor="#FFFFFF"
-                android:textSize="13sp" />
+                android:textSize="16sp"
+                android:background="@drawable/setting_item_bg"
+                android:focusable="true"
+                android:clickable="true" />
 
-            <ProgressBar
-                android:id="@+id/progress_program"
-                style="?android:attr/progressBarStyleHorizontal"
-                android:layout_width="0dp"
-                android:layout_weight="1"
-                android:layout_height="3dp"
-                android:layout_marginHorizontal="8dp" />
-
+            <!-- 多订阅源 -->
             <TextView
-                android:id="@+id/tv_remaining_time"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
+                android:id="@+id/tv_multi_source"
+                android:layout_width="match_parent"
+                android:layout_height="55dp"
+                android:gravity="center_vertical"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:text="多订阅源"
                 android:textColor="#FFFFFF"
-                android:textSize="13sp" />
+                android:textSize="16sp"
+                android:background="@drawable/setting_item_bg"
+                android:focusable="true"
+                android:clickable="true" />
 
+            <!-- 多节目单 -->
             <TextView
-                android:id="@+id/tv_current_program_name"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginLeft="8dp"
+                android:id="@+id/tv_multi_epg"
+                android:layout_width="match_parent"
+                android:layout_height="55dp"
+                android:gravity="center_vertical"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:text="多节目单"
                 android:textColor="#FFFFFF"
-                android:textSize="13sp" />
+                android:textSize="16sp"
+                android:background="@drawable/setting_item_bg"
+                android:focusable="true"
+                android:clickable="true" />
 
-        </LinearLayout>
-
-        <!-- 第三行：下一个节目 -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="center_vertical"
-            android:layout_marginTop="4dp">
-
+            <!-- 扫码添加 -->
             <TextView
-                android:id="@+id/tv_next_time_range"
-                android:layout_width="wrap_content"
+                android:id="@+id/tv_qr_code"
+                android:layout_width="match_parent"
+                android:layout_height="55dp"
+                android:gravity="center_vertical"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:text="扫码添加直播源/节目单"
+                android:textColor="#FFFFFF"
+                android:textSize="16sp"
+                android:background="@drawable/setting_item_bg"
+                android:focusable="true"
+                android:clickable="true" />
+
+            <!-- 分隔线 -->
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="#33FFFFFF"
+                android:layout_marginTop="8dp"
+                android:layout_marginBottom="8dp" />
+
+            <!-- 查看解析日志 -->
+            <TextView
+                android:id="@+id/log_viewer"
+                android:layout_width="match_parent"
+                android:layout_height="55dp"
+                android:gravity="center_vertical"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:text="📄 查看解析日志"
+                android:textColor="#FFFFFF"
+                android:textSize="16sp"
+                android:background="@drawable/setting_item_bg"
+                android:focusable="true"
+                android:clickable="true" />
+
+            <!-- 操作崩溃日志 -->
+            <TextView
+                android:id="@+id/log_operation"
+                android:layout_width="match_parent"
+                android:layout_height="55dp"
+                android:gravity="center_vertical"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:text="📌 操作崩溃日志"
+                android:textColor="#FFFFFF"
+                android:textSize="16sp"
+                android:background="@drawable/setting_item_bg"
+                android:focusable="true"
+                android:clickable="true" />
+
+            <!-- 检查更新 -->
+            <LinearLayout
+                android:id="@+id/item_check_update"
+                android:layout_width="match_parent"
+                android:layout_height="55dp"
+                android:gravity="center_vertical"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:background="@drawable/setting_item_bg"
+                android:focusable="true"
+                android:clickable="true">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content"
+                    android:text="检查更新"
+                    android:textColor="#FFFFFF"
+                    android:textSize="16sp" />
+
+                <Button
+                    android:id="@+id/btn_check_update"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="检查更新"
+                    android:focusable="false"
+                    android:clickable="false" />
+
+            </LinearLayout>
+
+            <!-- 网页设置提示 -->
+            <TextView
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:textColor="#AAAAAA"
+                android:layout_marginTop="16dp"
+                android:gravity="center"
+                android:text="网页设置：http://设备IP:10481"
+                android:textColor="#80FFFFFF"
                 android:textSize="12sp" />
 
-            <TextView
-                android:id="@+id/tv_next_program_name"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:textColor="#AAAAAA"
-                android:textSize="12sp" />
-
         </LinearLayout>
 
-    </LinearLayout>
+    </ScrollView>
 
 </FrameLayout>

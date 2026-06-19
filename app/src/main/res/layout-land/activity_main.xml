@@ -1,4 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  主页面布局
+  【作用】直播应用的主页面，包含播放器、频道面板、信息栏等
+  【结构】FrameLayout 帧布局，子 View 按顺序叠加显示
+
+  【2026-06-19 修改：修复频道列表点击无效问题】
+  给所有 ListView 加上 android:descendantFocusability="blocksDescendants"
+  - 作用：阻止子 View 抢焦点，让 ListView 自己统一处理焦点和点击
+  - 原因：item_channel.xml 的根布局之前设置了 focusable="true"，
+          导致 ListView 的焦点管理混乱，点击事件不触发
+
+  【descendantFocusability 三个值的区别】
+  1. beforeDescendants：父 View 优先获取焦点（默认值）
+  2. afterDescendants：子 View 优先获取焦点（如果子 View 能获取的话）
+  3. blocksDescendants：父 View 阻止子 View 获取焦点，完全由父 View 自己处理
+
+  对于 ListView，应该用 blocksDescendants，
+  这样 ListView 自己统一管理焦点和点击，item 只负责显示内容。
+-->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
@@ -6,8 +25,15 @@
     android:background="#000000">
 
     <!-- ==================================================================== -->
-    <!-- ✅ 主播放器（加上 keep_content_on_player_reset，暂停时保持最后一帧） -->
+    <!-- 主播放器视图（ExoPlayer 的 PlayerView）                              -->
     <!-- ==================================================================== -->
+    <!--
+      【属性说明】
+      - use_controller="false"：屏蔽原生播放器控制器，用自定义的
+      - resize_mode="fit"：等比例缩放，保持画面比例
+      - keep_content_on_player_reset="true"：暂停/切台时保持最后一帧，避免黑屏
+      - surface_type="surface_view"：使用 SurfaceView 渲染，性能更好
+    -->
     <com.google.android.exoplayer2.ui.PlayerView
         android:id="@+id/player_view"
         android:layout_width="match_parent"
@@ -19,8 +45,14 @@
         app:surface_type="surface_view" />
 
     <!-- ==================================================================== -->
-    <!-- ✅ 防花屏占位图（退到后台时显示，黑色背景盖住 SurfaceView）        -->
+    <!-- 防花屏占位图（退到后台时显示，黑色背景盖住 SurfaceView）            -->
     <!-- ==================================================================== -->
+    <!--
+      【作用】退到后台时显示黑色背景，盖住 SurfaceView，防止 Surface 销毁导致花屏
+      【时机】onPause 时显示，onResume 后延迟 100ms 隐藏
+      【原理】SurfaceView 的 Surface 销毁是异步的，销毁过程中可能出现花屏、绿屏，
+             用一个 ImageView 盖在上面，用户看到的就是平滑的黑色过渡。
+    -->
     <ImageView
         android:id="@+id/iv_player_placeholder"
         android:layout_width="match_parent"
@@ -29,6 +61,13 @@
         android:scaleType="centerCrop"
         android:background="@android:color/black" />
 
+    <!-- ==================================================================== -->
+    <!-- 频道号显示（右上角大数字，切台时显示）                              -->
+    <!-- ==================================================================== -->
+    <!--
+      【作用】切台时在右上角显示频道号，3 秒后自动隐藏
+      【样式】50sp 白色文字，80% 透明度
+    -->
     <TextView
         android:id="@+id/tv_channel_num"
         android:layout_width="wrap_content"
@@ -43,12 +82,16 @@
         android:visibility="gone" />
 
     <!-- ==================================================================== -->
-    <!-- ✅ 频道面板容器（两个完整面板切换显示）                              -->
+    <!-- 频道面板容器（两个完整面板切换显示）                                -->
     <!--                                                                    -->
     <!-- 【结构说明】                                                       -->
     <!-- 两个面板在 FrameLayout 中切换显示：                                 -->
-    <!--   1. 左侧面板（默认）：分组 + 频道列表 + 节目单按钮                 -->
-    <!--   2. 右侧面板（展开）：返回按钮 + 频道列表 + 日期 + EPG             -->
+    <!--   1. 左侧面板（默认）：分组列表 + 频道列表 + 节目单按钮             -->
+    <!--   2. 右侧面板（展开）：返回按钮 + 频道列表 + 日期列表 + EPG列表     -->
+    <!--                                                                    -->
+    <!-- 【为什么用 FrameLayout？】                                         -->
+    <!-- 因为两个面板是叠加切换的，FrameLayout 最适合这种场景。              -->
+    <!-- 两个面板宽度相同，位置相同，切换时直接显示/隐藏即可。               -->
     <!-- ==================================================================== -->
     <FrameLayout
         android:id="@+id/panel_layout"
@@ -57,8 +100,12 @@
         android:visibility="gone">
 
         <!-- ================================================================ -->
-        <!-- ✅ 左侧面板：分组 + 频道列表 + 节目单按钮（默认显示）            -->
+        <!-- 左侧面板：分组列表 + 频道列表 + 节目单按钮（默认显示）          -->
         <!-- ================================================================ -->
+        <!--
+          【结构】水平排列：分组列表 + 频道列表 + 节目单按钮
+          【宽度】130dp + 200dp + 50dp = 380dp
+        -->
         <LinearLayout
             android:id="@+id/ll_left_panel"
             android:layout_width="wrap_content"
@@ -66,21 +113,49 @@
             android:orientation="horizontal"
             android:background="@drawable/panel_bg">
 
-            <!-- 分组列表 -->
+            <!-- 分组列表（第一栏，显示所有分组） -->
+            <!--
+              【作用】显示频道分组列表，如 "卫视"、"电影"、"体育" 等
+              【宽度】130dp
+              【交互】点击分组，切换到该分组的频道列表
+            -->
             <ListView
                 android:id="@+id/lv_group"
                 android:layout_width="130dp"
                 android:layout_height="match_parent"
-                android:background="@android:color/transparent" />
+                android:background="@android:color/transparent"
+                android:descendantFocusability="blocksDescendants" />
+                <!--
+                  ✅ 【新增】加上这行
+                  【作用】阻止子 View 抢焦点，让 ListView 自己统一处理焦点和点击
+                  【为什么要加？】
+                  之前 item 布局设置了 focusable="true"，导致 ListView 焦点管理混乱，
+                  加上这个属性后，ListView 会阻止子 View 获取焦点，完全由自己管理。
+                -->
 
-            <!-- 频道列表 -->
+            <!-- 频道列表（第二栏，显示当前分组的所有频道） -->
+            <!--
+              【作用】显示当前分组的所有频道，点击切换频道
+              【宽度】200dp
+              【交互】点击频道，切换到该频道并关闭面板
+            -->
             <ListView
                 android:id="@+id/lv_channel_list"
                 android:layout_width="200dp"
                 android:layout_height="match_parent"
-                android:background="@android:color/transparent" />
+                android:background="@android:color/transparent"
+                android:descendantFocusability="blocksDescendants" />
+                <!--
+                  ✅ 【新增】加上这行
+                  【作用】阻止子 View 抢焦点，让 ListView 自己统一处理焦点和点击
+                -->
 
-            <!-- 节目单按钮（在最右边） -->
+            <!-- 节目单按钮（在最右边，竖排文字） -->
+            <!--
+              【作用】点击后切换到右侧面板（节目单页面）
+              【样式】50dp 宽，竖排文字 "节目单"
+              【交互】可点击、可聚焦
+            -->
             <TextView
                 android:id="@+id/btn_show_epg"
                 android:layout_width="50dp"
@@ -91,11 +166,22 @@
                 android:textSize="14sp"
                 android:focusable="true"
                 android:clickable="true" />
+
         </LinearLayout>
 
         <!-- ================================================================ -->
-        <!-- ✅ 右侧面板：返回 + 频道列表 + 日期 + EPG（默认隐藏）            -->
+        <!-- 右侧面板：返回按钮 + 频道列表 + 日期列表 + EPG列表（默认隐藏）  -->
         <!-- ================================================================ -->
+        <!--
+          【结构】水平排列：返回按钮 + 频道列表 + 日期列表 + EPG列表
+          【宽度】50dp + 200dp + 60dp + 360dp = 670dp
+          【默认状态】gone，点击节目单按钮后显示
+
+          【为什么右侧面板也有频道列表？】
+          用户在看节目单的时候，经常需要切换频道看不同频道的节目单，
+          如果每次都要切回左侧面板选频道，再切回右侧面板看节目单，
+          操作太繁琐。所以右侧面板也放一个频道列表，直接切换，体验更好。
+        -->
         <LinearLayout
             android:id="@+id/ll_right_panel"
             android:layout_width="wrap_content"
@@ -104,7 +190,12 @@
             android:background="@drawable/panel_bg"
             android:visibility="gone">
 
-            <!-- 返回按钮（在最左边，显示"频道组"） -->
+            <!-- 返回按钮（在最左边，显示"频道组"，竖排文字） -->
+            <!--
+              【作用】点击后切回左侧面板（分组列表）
+              【样式】50dp 宽，竖排文字 "频道组"
+              【交互】可点击、可聚焦
+            -->
             <TextView
                 android:id="@+id/btn_back_group"
                 android:layout_width="50dp"
@@ -116,30 +207,71 @@
                 android:focusable="true"
                 android:clickable="true" />
 
-            <!-- 频道列表（节目单页面的频道列表） -->
+            <!-- 频道列表（节目单页面的频道列表，显示全部频道） -->
+            <!--
+              【作用】节目单页面也能直接切换频道，不用切回左侧面板
+              【宽度】200dp
+              【注意】显示全部频道，不按分组筛选
+              【交互】点击频道，切换频道并刷新 EPG，面板不关闭
+            -->
             <ListView
                 android:id="@+id/lv_channel_list_epg"
                 android:layout_width="200dp"
                 android:layout_height="match_parent"
-                android:background="@android:color/transparent" />
+                android:background="@android:color/transparent"
+                android:descendantFocusability="blocksDescendants" />
+                <!--
+                  ✅ 【新增】加上这行
+                  【作用】阻止子 View 抢焦点，让 ListView 自己统一处理焦点和点击
+                -->
 
-            <!-- 日期列表 -->
+            <!-- 日期列表（显示 8 天日期，今天/明天/后天...） -->
+            <!--
+              【作用】选择日期，查看对应日期的节目单
+              【宽度】60dp
+            -->
             <ListView
                 android:id="@+id/lv_date"
                 android:layout_width="60dp"
                 android:layout_height="match_parent"
-                android:background="@android:color/transparent" />
+                android:background="@android:color/transparent"
+                android:descendantFocusability="blocksDescendants" />
+                <!--
+                  ✅ 【新增】加上这行
+                  【作用】阻止子 View 抢焦点，让 ListView 自己统一处理焦点和点击
+                -->
 
-            <!-- EPG节目列表 -->
+            <!-- EPG 节目列表（显示当前频道、当前日期的所有节目） -->
+            <!--
+              【作用】显示节目单，包含节目时间、名称、状态（直播中/回看/预约）
+              【宽度】360dp
+            -->
             <ListView
                 android:id="@+id/lv_epg"
                 android:layout_width="360dp"
                 android:layout_height="match_parent"
-                android:background="@android:color/transparent" />
+                android:background="@android:color/transparent"
+                android:descendantFocusability="blocksDescendants" />
+                <!--
+                  ✅ 【新增】加上这行
+                  【作用】阻止子 View 抢焦点，让 ListView 自己统一处理焦点和点击
+                -->
+
         </LinearLayout>
+
     </FrameLayout>
 
-    <!-- 底部信息栏 原样保留 -->
+    <!-- ==================================================================== -->
+    <!-- 底部信息栏（切台时显示，5 秒后自动隐藏）                            -->
+    <!-- ==================================================================== -->
+    <!--
+      【结构】三行：
+      第一行：频道名 + 画质标签 + 音频标签 + 码率
+      第二行：当前节目时间 + 进度条 + 剩余时间 + 节目名称
+      第三行：下一个节目时间 + 节目名称
+
+      【样式】80% 黑色半透明背景，白色文字
+    -->
     <LinearLayout
         android:id="@+id/info_bar"
         android:layout_width="match_parent"
@@ -150,6 +282,7 @@
         android:background="#CC000000"
         android:visibility="gone">
 
+        <!-- 第一行：频道名 + 画质 + 音频 + 码率 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -192,8 +325,10 @@
                 android:layout_marginLeft="10dp"
                 android:textColor="#FFFFFF"
                 android:textSize="14sp" />
+
         </LinearLayout>
 
+        <!-- 第二行：时间 + 进度条 + 剩余时间 + 节目名 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -229,8 +364,10 @@
                 android:layout_marginLeft="8dp"
                 android:textColor="#FFFFFF"
                 android:textSize="13sp" />
+
         </LinearLayout>
 
+        <!-- 第三行：下一个节目 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -250,6 +387,9 @@
                 android:layout_height="wrap_content"
                 android:textColor="#AAAAAA"
                 android:textSize="12sp" />
+
         </LinearLayout>
+
     </LinearLayout>
+
 </FrameLayout>

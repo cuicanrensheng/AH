@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<shape xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- 圆角 -->
-    <corners android:radius="10dp" />
-    <!-- 半透明黑色背景（75% 不透明度） -->
-    <solid android:color="#BF000000" />
-</shape>

@@ -1291,7 +1291,6 @@ public class SettingsActivity extends AppCompatActivity {
                     String currentKey = key.contains("live") ? KEY_CUSTOM_LIVE : KEY_CUSTOM_EPG;
                     String currentUrl = sp.getString(currentKey, "");
                     if (currentUrl.equals(oldUrl)) {
-                                            if (currentUrl.equals(oldUrl)) {
                         sp.edit().putString(currentKey, url).apply();
                         sendBroadcast(new Intent("com.tv.live.REFRESH_LIVE_AND_EPG"));
                     }

@@ -42,7 +42,7 @@ public class InfoDisplayManager {
 
     // ====================== 常量 ======================
     /** 信息栏自动隐藏延迟（毫秒） */
-    private static final long INFO_BAR_HIDE_DELAY = 2000;
+    private static final long INFO_BAR_HIDE_DELAY = 3000;
     /** 频道号自动隐藏延迟（毫秒） */
     private static final long CHANNEL_NUM_HIDE_DELAY = 3000;
     /** 节目进度更新间隔（1 分钟） */

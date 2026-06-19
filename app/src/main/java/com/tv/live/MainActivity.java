@@ -2,11 +2,15 @@ package com.tv.live;
 
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
+import android.graphics.Bitmap;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
+import android.widget.ImageView;
 import android.widget.ListView;
 import android.widget.ProgressBar;
 import android.widget.TextView;
@@ -52,6 +56,13 @@ import java.util.List;
  * - ScreenRatioManager：屏幕比例
  * - CacheManager：缓存管理
  *
+ * 【防花屏增强说明】
+ * 四层防护，解决滑动退到后台时 SurfaceView 花屏问题：
+ * 1. 保持最后一帧：播放器暂停时不清空画面
+ * 2. 优化层级：Surface 放在媒体层，更稳定
+ * 3. 占位图过渡：退到后台时用 ImageView 盖住 SurfaceView
+ * 4. 延迟隐藏：回到前台后等 Surface 准备好再隐藏占位图
+ *
  * 【兼容层说明】
  * 为了兼容其他类（GestureManager、KeyEventManager、ChannelListActivity 等）
  * 对旧的方法和变量的调用，保留了以下兼容接口：
@@ -89,6 +100,22 @@ public class MainActivity extends AppCompatActivity {
     // ====================== 视图相关 ======================
     /** 播放器视图（ExoPlayer 的 PlayerView） */
     private PlayerView playerView;
+
+    // ====================================================================
+    // ✅ 防花屏增强：播放器占位图
+    // ====================================================================
+    /**
+     * 播放器占位图（退到后台时显示，防止 SurfaceView 花屏）
+     *
+     * 【原理】
+     * SurfaceView 有自己独立的渲染线程和 Surface，
+     * 在 Activity 切换动画时容易出现花屏、撕裂、绿屏等问题。
+     *
+     * 用一个普通的 ImageView 显示最后一帧画面（或黑色背景），
+     * 退到后台时显示 ImageView，盖住 SurfaceView，
+     * 动画时用户看到的是 ImageView，就不会花屏了。
+     */
+    private ImageView ivPlayerPlaceholder;
 
     // ====================== 管理器相关 ======================
     /** 播放器管理器（单例，基于 ExoPlayer 封装） */
@@ -158,6 +185,11 @@ public class MainActivity extends AppCompatActivity {
         playerView.setUseController(false);
         playerView.setControllerVisibilityListener(null);
 
+        // ====================================================================
+        // ✅ 防花屏增强：PlayerView 设置 + 占位图初始化
+        // ====================================================================
+        initAntiFlicker();
+
         // 频道面板控制器初始化
         initChannelPanelController();
 
@@ -185,9 +217,7 @@ public class MainActivity extends AppCompatActivity {
         // 数字选台管理器初始化
         initChannelNumberManager();
 
-        // ====================================================================
-        // ✅ 拆分新增：主控制器初始化（按键 + 播放 + 设置 + 日志）
-        // ====================================================================
+        // 主控制器初始化（按键 + 播放 + 设置 + 日志）
         initMainController();
 
         // 恢复上次播放的频道索引
@@ -203,6 +233,35 @@ public class MainActivity extends AppCompatActivity {
 
         // 加载直播源和 EPG
         appCoreManager.loadLiveAndEpg();
+    }
+
+    // ====================================================================
+    // ✅ 防花屏增强：初始化防花屏相关设置
+    // ====================================================================
+    /**
+     * 初始化防花屏相关设置
+     *
+     * 【四层防护】
+     * 1. 保持最后一帧：播放器暂停时不清空画面
+     * 2. 优化层级：Surface 放在媒体层，更稳定
+     * 3. 占位图过渡：退到后台时用 ImageView 盖住 SurfaceView
+     * 4. 延迟隐藏：回到前台后等 Surface 准备好再隐藏占位图
+     */
+    private void initAntiFlicker() {
+        // ===== 第一层：保持最后一帧 =====
+        // 播放器暂停/重置时不清空画面，保留最后一帧
+        playerView.setKeepContentOnPlayerReset(true);
+
+        // ===== 第二层：优化 Surface 层级 =====
+        // 设置 Surface 在媒体层（在普通 View 之上，但在状态栏之下）
+        // 比默认层级更稳定，动画时不容易花屏
+        playerView.setSurfaceZOrderMediaOverlay(true);
+
+        // ===== 第三层：占位图初始化 =====
+        // 占位图默认隐藏，退到后台时显示
+        ivPlayerPlaceholder = findViewById(R.id.iv_player_placeholder);
+
+        log("【防花屏】防花屏增强已启用（四层防护）");
     }
 
     // ====================================================================
@@ -332,7 +391,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // ====================================================================
-    // ✅ 拆分新增：主控制器初始化（按键 + 播放 + 设置 + 日志）
+    // 主控制器初始化（按键 + 播放 + 设置 + 日志）
     // ====================================================================
     private void initMainController() {
         // 播放器状态监听器（空实现，不弹 Toast）
@@ -540,12 +599,19 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onPause() {
         super.onPause();
+
+        // ====================================================================
+        // ✅ 防花屏：进入后台前显示占位图，盖住 SurfaceView
+        // ====================================================================
+        showPlayerPlaceholder();
+
         appCoreManager.onPause();
     }
 
     @Override
     protected void onResume() {
         super.onResume();
+
         boolean resumed = appCoreManager.onResume();
 
         if (resumed) {
@@ -555,6 +621,17 @@ public class MainActivity extends AppCompatActivity {
         }
 
         displayManager.reapplyFullScreen();
+
+        // ====================================================================
+        // ✅ 防花屏：回到前台后延迟隐藏占位图
+        //    等 Surface 渲染好第一帧再隐藏，避免短暂黑屏或花屏
+        // ====================================================================
+        new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                hidePlayerPlaceholder();
+            }
+        }, 100);  // 延迟 100ms，等 Surface 准备好
     }
 
     @Override
@@ -579,6 +656,68 @@ public class MainActivity extends AppCompatActivity {
         if (appCoreManager != null) appCoreManager.release();
 
         mInstance = null;
+    }
+
+    // ====================================================================
+    // ✅ 防花屏增强：占位图显示/隐藏方法
+    // ====================================================================
+
+    /**
+     * 显示播放器占位图（防止退到后台时 SurfaceView 花屏）
+     *
+     * 【原理】
+     * SurfaceView 有自己独立的渲染线程和 Surface，
+     * 在 Activity 切换动画时容易出现花屏、撕裂、绿屏等问题。
+     *
+     * 用一个普通的 ImageView 显示最后一帧画面（或黑色背景），
+     * 退到后台时显示 ImageView，盖住 SurfaceView，
+     * 动画时用户看到的是 ImageView，就不会花屏了。
+     *
+     * 【降级策略】
+     * 1. 优先尝试截取播放器当前帧作为占位图（API 24+）
+     * 2. 截取失败就显示黑色背景（总比花屏好看）
+     */
+    private void showPlayerPlaceholder() {
+        if (ivPlayerPlaceholder == null || playerView == null) return;
+
+        // 方案 1：尝试截取播放器当前帧作为占位图（需要 API 24+）
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+                Bitmap bitmap = playerView.getBitmap();
+                if (bitmap != null && !bitmap.isRecycled()) {
+                    ivPlayerPlaceholder.setImageBitmap(bitmap);
+                    ivPlayerPlaceholder.setVisibility(View.VISIBLE);
+                    log("【防花屏】显示占位图（截取当前帧成功）");
+                    return;
+                }
+            }
+        } catch (Exception e) {
+            // 截取失败，降级到方案 2
+            e.printStackTrace();
+            log("【防花屏】截取当前帧失败：" + e.getMessage());
+        }
+
+        // 方案 2：截取失败就显示黑色背景（总比花屏好看）
+        ivPlayerPlaceholder.setImageResource(android.R.color.black);
+        ivPlayerPlaceholder.setVisibility(View.VISIBLE);
+        log("【防花屏】显示占位图（黑色背景降级）");
+    }
+
+    /**
+     * 隐藏播放器占位图
+     *
+     * 【注意】
+     * 要等 Surface 渲染好第一帧再隐藏，
+     * 否则可能会出现短暂的黑屏或花屏。
+     * 所以调用方需要延迟 100ms 左右再调用这个方法。
+     */
+    private void hidePlayerPlaceholder() {
+        if (ivPlayerPlaceholder != null) {
+            ivPlayerPlaceholder.setVisibility(View.GONE);
+            // 清空图片，释放内存
+            ivPlayerPlaceholder.setImageDrawable(null);
+            log("【防花屏】隐藏占位图");
+        }
     }
 
     // ====================================================================

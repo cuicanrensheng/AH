@@ -333,7 +333,7 @@ public class MainActivity extends AppCompatActivity {
     private void initPlayer() {
         mPlayerManager = TVPlayerManager.getInstance(this);
 
-        // 绑定两个播放器视图
+        // 绑定两个播放器视图（主播放器 + 预加载播放器）
         mPlayerManager.attachPlayerViews(playerView, playerViewPreload);
 
         // 直播信息更新监听（画质、音频、码率）
@@ -428,6 +428,11 @@ public class MainActivity extends AppCompatActivity {
 
                         // 设置数字选台的总频道数
                         channelNumberManager.setTotalChannelCount(channels.size());
+
+                        // ====================================================================
+                        // ✅ 双播放器：把频道列表传给 MainController，用于预加载下一个频道
+                        // ====================================================================
+                        mainController.setChannelList(channels);
 
                         // 如果还没用缓存播放过，就播放
                         if (!appCoreManager.hasPlayedWithCache()) {

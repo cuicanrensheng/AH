@@ -489,6 +489,8 @@ public class MainActivity extends AppCompatActivity {
         // 显示信息栏
         TVPlayerManager.LiveInfo live = mPlayerManager.getLiveInfo();
         infoDisplayManager.showInfoBar(channel, live);
+            // ✅ 新增：显示频道号（从 1 开始）
+        infoDisplayManager.showChannelNum(index + 1);  
     }
 
     // ====================================================================

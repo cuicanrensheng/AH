@@ -34,14 +34,16 @@ import java.util.List;
  * 【核心职责】
  * 1. 页面生命周期管理
  * 2. 各 Manager 的初始化和协调
- * 3. 播放器视图绑定（双播放器：主播放器 + 预加载播放器）
+ * 3. 播放器视图绑定（三播放器：主播放器 + 下一个预加载 + 上一个预加载）
  * 4. 手势事件绑定
  *
- * 【双播放器无缝切台】
- * 两个播放器叠加：
+ * 【三播放器双向预加载】
+ * 三个播放器叠加：
  * - 主播放器（player_view）：正在播放，有声音，显示
- * - 预加载播放器（player_view_preload）：提前缓冲下一个台，静音，隐藏
- * 切台时直接交换两个播放器，0 毫秒黑屏，完全无缝
+ * - 预加载播放器（player_view_preload_next）：提前缓冲下一个台，静音，隐藏
+ * - 预加载播放器（player_view_preload_prev）：提前缓冲上一个台，静音，隐藏
+ * 切台时直接交换主播放器和对应方向的预加载播放器，0 毫秒黑屏，完全无缝。
+ * 上下两个方向都预加载，不管按上还是按下都是无缝的。
  *
  * 【防花屏增强】
  * 三层防护，解决滑动退到后台时 SurfaceView 花屏问题：
@@ -57,7 +59,7 @@ import java.util.List;
  * - ChannelPanelController：频道面板（分组 + 切台 + 面板）
  * - AppCoreManager：应用核心（数据加载 + 广播 + 生命周期）
  * - MainController：主控制器（按键 + 播放 + 设置 + 日志）
- * - TVPlayerManager：播放器管理（双播放器版）
+ * - TVPlayerManager：播放器管理（三播放器双向预加载版）
  * - ... 等
  */
 public class MainActivity extends AppCompatActivity {
@@ -87,8 +89,10 @@ public class MainActivity extends AppCompatActivity {
     // ====================== 视图相关 ======================
     /** 主播放器视图（正在播放，显示） */
     private PlayerView playerView;
-    /** 预加载播放器视图（提前缓冲，隐藏） */
-    private PlayerView playerViewPreload;
+    /** 预加载播放器视图 - 下一个频道（提前缓冲，隐藏） */
+    private PlayerView playerViewPreloadNext;
+    /** 预加载播放器视图 - 上一个频道（提前缓冲，隐藏） */
+    private PlayerView playerViewPreloadPrev;
 
     // ====================================================================
     // ✅ 防花屏增强：播放器占位图
@@ -99,7 +103,7 @@ public class MainActivity extends AppCompatActivity {
     private ImageView ivPlayerPlaceholder;
 
     // ====================== 管理器相关 ======================
-    /** 播放器管理器（单例，双播放器版） */
+    /** 播放器管理器（单例，三播放器双向预加载版） */
     public TVPlayerManager mPlayerManager;
     /** 应用配置管理（SP 封装） */
     private AppConfig appConfig;
@@ -162,10 +166,11 @@ public class MainActivity extends AppCompatActivity {
         log("【配置】EPG地址：" + UrlConfig.EPG_URL);
 
         // ====================================================================
-        // ✅ 双播放器：绑定两个播放器视图
+        // ✅ 三播放器：绑定三个播放器视图
         // ====================================================================
         playerView = findViewById(R.id.player_view);
-        playerViewPreload = findViewById(R.id.player_view_preload);
+        playerViewPreloadNext = findViewById(R.id.player_view_preload_next);
+        playerViewPreloadPrev = findViewById(R.id.player_view_preload_prev);
 
         // ====================================================================
         // ✅ 防花屏增强：初始化防花屏设置
@@ -175,7 +180,7 @@ public class MainActivity extends AppCompatActivity {
         // 频道面板控制器初始化
         initChannelPanelController();
 
-        // 播放器初始化（双播放器版）
+        // 播放器初始化（三播放器双向预加载版）
         initPlayer();
 
         // 屏幕比例
@@ -321,20 +326,21 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // ====================================================================
-    // ✅ 双播放器：播放器初始化
+    // ✅ 三播放器：播放器初始化
     // ====================================================================
     /**
-     * 播放器初始化（双播放器版）
+     * 播放器初始化（三播放器双向预加载版）
      *
-     * 绑定两个播放器视图：
+     * 绑定三个播放器视图：
      * - 主播放器：正在播放，有声音，显示
-     * - 预加载播放器：提前缓冲下一个台，静音，隐藏
+     * - 预加载播放器 - 下一个：提前缓冲下一个台，静音，隐藏
+     * - 预加载播放器 - 上一个：提前缓冲上一个台，静音，隐藏
      */
     private void initPlayer() {
         mPlayerManager = TVPlayerManager.getInstance(this);
 
-        // 绑定两个播放器视图（主播放器 + 预加载播放器）
-        mPlayerManager.attachPlayerViews(playerView, playerViewPreload);
+        // 绑定三个播放器视图（主播放器 + 下一个预加载 + 上一个预加载）
+        mPlayerManager.attachPlayerViews(playerView, playerViewPreloadNext, playerViewPreloadPrev);
 
         // 直播信息更新监听（画质、音频、码率）
         mPlayerManager.setOnLiveInfoUpdateListener(new TVPlayerManager.OnLiveInfoUpdateListener() {
@@ -430,7 +436,7 @@ public class MainActivity extends AppCompatActivity {
                         channelNumberManager.setTotalChannelCount(channels.size());
 
                         // ====================================================================
-                        // ✅ 双播放器：把频道列表传给 MainController，用于预加载下一个频道
+                        // ✅ 三播放器：把频道列表传给 MainController，用于双向预加载
                         // ====================================================================
                         mainController.setChannelList(channels);
 

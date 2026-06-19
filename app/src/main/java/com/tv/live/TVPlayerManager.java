@@ -32,96 +32,94 @@ import java.util.Map;
 
 /**
  * 播放器管理类（单例模式）
- * 基于ExoPlayer封装，提供直播播放、状态监听、画质切换、Header设置等功能
  *
- * 【双播放器无缝切台版】
- * 两个播放器叠加：
+ * 【三播放器双向预加载版】
+ * 三个播放器同时工作：
  * - 主播放器（mainPlayer）：正在播放，有声音，显示
- * - 预加载播放器（preloadPlayer）：提前缓冲下一个台，静音，隐藏
- * 切台时直接交换两个播放器，0 毫秒黑屏，完全无缝
+ * - 预加载播放器（preloadPlayerNext）：提前缓冲下一个台，静音，隐藏
+ * - 预加载播放器（preloadPlayerPrev）：提前缓冲上一个台，静音，隐藏
  *
- * 【防卡优化 + 切台优化 + 真实数据 + 双播放器】
- * 1. 增大缓冲（50秒），抗网络波动
- * 2. 检测播放卡住，自动重新加载
- * 3. 切台保持最后一帧，避免黑屏
- * 4. 优化缓冲参数，更快出画
- * 5. 显示真实画质、音频、码率
- * 6. ✅ 双播放器预加载，无缝切台，0 黑屏
+ * 切台时直接交换主播放器和对应方向的预加载播放器，0 毫秒黑屏，完全无缝。
+ * 上下两个方向都预加载，不管按上还是按下都是无缝的。
+ *
+ * 【切换原理】
+ * 按下键时：
+ * - 原来的下一个预加载 → 新的主播放器（显示，有声音）
+ * - 原来的主播放器 → 新的上一个预加载（隐藏，静音）
+ * - 原来的上一个预加载 → 释放，重新预加载新的下一个
+ *
+ * 按上键时：
+ * - 原来的上一个预加载 → 新的主播放器（显示，有声音）
+ * - 原来的主播放器 → 新的下一个预加载（隐藏，静音）
+ * - 原来的下一个预加载 → 释放，重新预加载新的上一个
+ *
+ * 这样每次切换后，都有一个方向的预加载可以直接复用（不用重新缓冲），
+ * 另一个方向需要重新预加载。
  */
 public class TVPlayerManager {
 
     private static final String TAG = "TVPlayerLog";
     private static TVPlayerManager instance;
 
-    // ====================== 双播放器相关 ======================
+    // ====================== 三播放器相关 ======================
     /** 主播放器（正在播放，有声音，显示） */
     private ExoPlayer mainPlayer;
-    /** 预加载播放器（提前缓冲，静音，隐藏） */
-    private ExoPlayer preloadPlayer;
+    /** 预加载播放器 - 下一个频道（静音，隐藏） */
+    private ExoPlayer preloadPlayerNext;
+    /** 预加载播放器 - 上一个频道（静音，隐藏） */
+    private ExoPlayer preloadPlayerPrev;
+
     /** 主播放器视图 */
     private PlayerView mainPlayerView;
-    /** 预加载播放器视图 */
-    private PlayerView preloadPlayerView;
-    /** 当前预加载的地址 */
-    private String preloadedUrl = "";
-    /** 预加载是否就绪（缓冲完成，可以随时切换） */
-    private boolean isPreloadReady = false;
+    /** 预加载播放器视图 - 下一个 */
+    private PlayerView preloadPlayerViewNext;
+    /** 预加载播放器视图 - 上一个 */
+    private PlayerView preloadPlayerViewPrev;
+
+    /** 当前预加载的下一个地址 */
+    private String preloadedUrlNext = "";
+    /** 当前预加载的上一个地址 */
+    private String preloadedUrlPrev = "";
+
+    /** 下一个预加载是否就绪 */
+    private boolean isPreloadReadyNext = false;
+    /** 上一个预加载是否就绪 */
+    private boolean isPreloadReadyPrev = false;
 
     // ====================== 其他成员变量 ======================
     private Context context;
-    // 屏幕缩放模式枚举
     public enum ScaleMode { FIT, FILL, ZOOM }
-    // 播放状态监听器
     private OnPlayStateListener listener;
-    // 当前播放地址
     private String currentUrl = "";
-    // 是否正在播放
     private boolean isPlaying = false;
-    // 当前频道号
     private int currentChannelNumber = 0;
-    // 频道号显示TextView
     private TextView channelNumText;
-    // 主线程Handler，用于UI操作
     private final Handler mHandler = new Handler(Looper.getMainLooper());
-    // 频道号显示时长（3秒）
     private static final long CHANNEL_SHOW_DURATION = 3000L;
-    // 日志时间格式化
     private final SimpleDateFormat logSdf = new SimpleDateFormat("HH:mm:ss", Locale.getDefault());
-    // 直播信息更新监听器
     private OnLiveInfoUpdateListener infoUpdateListener;
-    // 播放状态监听器（成员变量，只添加一次）
     private Player.Listener mainPlayerListener;
-    private Player.Listener preloadPlayerListener;
+    private Player.Listener preloadNextListener;
+    private Player.Listener preloadPrevListener;
 
-    // ================================================
-    // ✅ 防卡优化相关成员变量
-    // ================================================
-    // 是否使用软解码（默认硬解码，硬解码有问题再切软解码）
+    // ====================== 防卡优化相关 ======================
     private boolean useSoftwareDecoder = false;
-    // 卡住检测：记录上次播放位置的时间
     private long lastPositionUpdateTime = 0;
     private long lastPosition = 0;
-    // 卡住检测超时时间（5秒没动就算卡住了）
     private static final long STUCK_TIMEOUT = 5000;
-    // 自动重试次数限制（防止无限重试）
     private int retryCount = 0;
     private static final int MAX_RETRY_COUNT = 3;
-    // 卡住检测的Handler
     private final Handler stuckHandler = new Handler(Looper.getMainLooper());
-    // 是否正在重试中
     private boolean isRetrying = false;
 
-    /**
-     * 直播信息实体类
-     * 所有数据都从播放器实时获取，不再写死
-     */
+    // ====================== 直播信息实体类 ======================
     public static class LiveInfo {
-        public String quality;      // 画质（HD/FHD/SD）
-        public String audio;        // 音频信息
-        public String bitrate;      // 码率
-        public int channelNum;      // 频道号
-        public int videoWidth;      // 视频宽度（真实分辨率）
-        public int videoHeight;     // 视频高度（真实分辨率）
+        public String quality;
+        public String audio;
+        public String bitrate;
+        public int channelNum;
+        public int videoWidth;
+        public int videoHeight;
     }
 
     public interface OnLiveInfoUpdateListener {
@@ -135,34 +133,20 @@ public class TVPlayerManager {
     public LiveInfo getLiveInfo() {
         LiveInfo info = new LiveInfo();
         info.channelNum = currentChannelNumber;
-
-        // ====================================================================
-        // ✅ 从主播放器获取真实的视频/音频信息
-        // ====================================================================
         try {
             if (mainPlayer != null) {
-                // ========================================
-                // 1. 画质（根据真实分辨率判断）
-                // ========================================
                 Format videoFormat = mainPlayer.getVideoFormat();
                 if (videoFormat != null && videoFormat.width != Format.NO_VALUE) {
                     info.videoWidth = videoFormat.width;
                     info.videoHeight = videoFormat.height;
-
-                    // 根据分辨率判断画质等级
                     if (videoFormat.width >= 1920 || videoFormat.height >= 1080) {
-                        info.quality = "FHD";  // 全高清
+                        info.quality = "FHD";
                     } else if (videoFormat.width >= 1280 || videoFormat.height >= 720) {
-                        info.quality = "HD";   // 高清
+                        info.quality = "HD";
                     } else {
-                        info.quality = "SD";   // 标清
+                        info.quality = "SD";
                     }
-
-                    // ========================================
-                    // 2. 码率（从视频格式获取，单位 MB/s）
-                    // ========================================
                     if (videoFormat.bitrate != Format.NO_VALUE && videoFormat.bitrate > 0) {
-                        // bitrate 是比特每秒(bps)，转换成兆字节每秒(MB/s)
                         double bitrateMBs = videoFormat.bitrate / 8.0 / 1024.0 / 1024.0;
                         info.bitrate = String.format("%.1fMB/s", bitrateMBs);
                     } else {
@@ -171,25 +155,14 @@ public class TVPlayerManager {
                 } else {
                     info.quality = "—";
                     info.bitrate = "—";
-                    info.videoWidth = 0;
-                    info.videoHeight = 0;
                 }
-
-                // ========================================
-                // 3. 音频（根据真实声道数判断）
-                // ========================================
                 Format audioFormat = mainPlayer.getAudioFormat();
                 if (audioFormat != null) {
                     int channels = audioFormat.channelCount;
-                    if (channels == 1) {
-                        info.audio = "单声道";
-                    } else if (channels == 2) {
-                        info.audio = "立体声";
-                    } else if (channels >= 6) {
-                        info.audio = "5.1";  // 6声道及以上显示 5.1
-                    } else {
-                        info.audio = channels + "声道";
-                    }
+                    if (channels == 1) info.audio = "单声道";
+                    else if (channels == 2) info.audio = "立体声";
+                    else if (channels >= 6) info.audio = "5.1";
+                    else info.audio = channels + "声道";
                 } else {
                     info.audio = "—";
                 }
@@ -204,7 +177,6 @@ public class TVPlayerManager {
             info.audio = "—";
             info.bitrate = "—";
         }
-
         return info;
     }
 
@@ -249,55 +221,41 @@ public class TVPlayerManager {
 
     private TVPlayerManager(Context ctx) {
         context = ctx.getApplicationContext();
-        // 初始化两个播放器
+        // 初始化三个播放器
         initMainPlayer();
-        initPreloadPlayer();
+        initPreloadPlayerNext();
+        initPreloadPlayerPrev();
     }
 
     // ====================================================================
-    // ✅ 双播放器：初始化主播放器
+    // 初始化三个播放器
     // ====================================================================
-    /**
-     * 初始化主播放器
-     */
     private void initMainPlayer() {
         mainPlayer = createPlayer();
-        mainPlayerListener = createPlayerListener(true);
+        mainPlayerListener = createPlayerListener(true, "主播放器");
         mainPlayer.addListener(mainPlayerListener);
     }
 
-    // ====================================================================
-    // ✅ 双播放器：初始化预加载播放器
-    // ====================================================================
-    /**
-     * 初始化预加载播放器
-     *
-     * 【特点】
-     * 1. 静音：预加载的播放器不能有声音
-     * 2. 隐藏：预加载的播放器不显示
-     * 3. 只缓冲不播放：预加载好就暂停，等切换时再播放
-     */
-    private void initPreloadPlayer() {
-        preloadPlayer = createPlayer();
-        preloadPlayerListener = createPlayerListener(false);
-        preloadPlayer.addListener(preloadPlayerListener);
-        // 预加载播放器默认静音
-        preloadPlayer.setVolume(0f);
+    private void initPreloadPlayerNext() {
+        preloadPlayerNext = createPlayer();
+        preloadNextListener = createPlayerListener(false, "预加载-下一个");
+        preloadPlayerNext.addListener(preloadNextListener);
+        preloadPlayerNext.setVolume(0f);  // 静音
+    }
+
+    private void initPreloadPlayerPrev() {
+        preloadPlayerPrev = createPlayer();
+        preloadPrevListener = createPlayerListener(false, "预加载-上一个");
+        preloadPlayerPrev.addListener(preloadPrevListener);
+        preloadPlayerPrev.setVolume(0f);  // 静音
     }
 
     // ====================================================================
-    // ✅ 双播放器：创建播放器（公共方法，两个播放器都用同样的配置）
+    // 创建播放器（公共方法，三个播放器用同样的配置）
     // ====================================================================
-    /**
-     * 创建一个播放器实例（两个播放器用同样的配置）
-     *
-     * @return ExoPlayer 实例
-     */
     private ExoPlayer createPlayer() {
-        // 初始化渲染器工厂
         DefaultRenderersFactory renderersFactory = new DefaultRenderersFactory(context);
         if (useSoftwareDecoder) {
-            // 软解码模式
             renderersFactory.setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF);
             try {
                 renderersFactory.setEnableDecoderFallback(true);
@@ -305,24 +263,14 @@ public class TVPlayerManager {
                 Log.e(TAG, "设置软解码失败", e);
             }
         } else {
-            // 硬解码模式：启用解码器降级
             renderersFactory.setEnableDecoderFallback(true);
         }
 
-        // ================================================
-        // ✅ 缓冲配置（快速出画 + 大缓冲防卡）
-        // ================================================
         DefaultLoadControl loadControl = new DefaultLoadControl.Builder()
-                .setBufferDurationsMs(
-                        2000,      // minBufferMs - 最小缓冲 2秒
-                        50000,     // maxBufferMs - 最大缓冲 50秒（抗网络波动）
-                        300,       // bufferForPlaybackMs - 有 300ms 就开始播（快速出画）
-                        500        // bufferForPlaybackAfterRebufferMs - 重缓冲后 500ms 就播
-                )
+                .setBufferDurationsMs(2000, 50000, 300, 500)
                 .setPrioritizeTimeOverSizeThresholds(true)
                 .build();
 
-        // 创建 ExoPlayer 实例
         return new ExoPlayer.Builder(context)
                 .setRenderersFactory(renderersFactory)
                 .setLoadControl(loadControl)
@@ -330,41 +278,33 @@ public class TVPlayerManager {
     }
 
     // ====================================================================
-    // ✅ 双播放器：创建播放器监听器
+    // 创建播放器监听器
     // ====================================================================
-    /**
-     * 创建播放器状态监听器
-     *
-     * @param isMain 是否是主播放器（主播放器才触发回调和卡住检测）
-     * @return Player.Listener
-     */
-    private Player.Listener createPlayerListener(final boolean isMain) {
+    private Player.Listener createPlayerListener(final boolean isMain, final String tag) {
         return new Player.Listener() {
             @Override
             public void onPlayerError(PlaybackException error) {
-                Log.e(TAG, (isMain ? "主播放器" : "预加载播放器") + "异常: " + error.getMessage());
-
+                Log.e(TAG, tag + "异常: " + error.getMessage());
                 if (isMain) {
-                    // 主播放器错误才触发回调和重试
-                    if (listener != null) {
-                        listener.onPlayError(error.getMessage());
-                    }
+                    if (listener != null) listener.onPlayError(error.getMessage());
                     autoRetry("播放错误");
                 } else {
-                    // 预加载播放器失败，标记未就绪
-                    isPreloadReady = false;
-                    Log.w(TAG, "预加载失败：" + error.getMessage());
+                    // 预加载失败，标记未就绪
+                    if (tag.contains("下一个")) {
+                        isPreloadReadyNext = false;
+                    } else {
+                        isPreloadReadyPrev = false;
+                    }
+                    Log.w(TAG, tag + "失败：" + error.getMessage());
                 }
             }
 
             @Override
             public void onPlaybackStateChanged(int state) {
                 if (isMain) {
-                    // 主播放器状态变化
                     handleMainPlayerState(state);
                 } else {
-                    // 预加载播放器状态变化
-                    handlePreloadPlayerState(state);
+                    handlePreloadPlayerState(state, tag);
                 }
             }
 
@@ -378,10 +318,6 @@ public class TVPlayerManager {
             @Override
             public void onVideoSizeChanged(VideoSize videoSize) {
                 if (isMain) {
-                    // 主播放器分辨率变化才通知 UI 更新
-                    int width = videoSize.width;
-                    int height = videoSize.height;
-                    Log.d(TAG, "视频分辨率变化：" + width + "×" + height);
                     notifyLiveInfoUpdate();
                 }
             }
@@ -389,29 +325,22 @@ public class TVPlayerManager {
     }
 
     // ====================================================================
-    // ✅ 双播放器：主播放器状态处理
+    // 状态处理
     // ====================================================================
-    /**
-     * 处理主播放器状态变化
-     */
     private void handleMainPlayerState(int state) {
         if (state == Player.STATE_READY) {
             updateWakeLock(true);
             notifyLiveInfoUpdate();
             showChannelAndAutoHide();
             if (listener != null) listener.onPlayReady();
-            // 播放就绪，重置重试计数
             retryCount = 0;
             isRetrying = false;
-            // 开始卡住检测
             startStuckDetection();
         } else if (state == Player.STATE_BUFFERING) {
             if (listener != null) listener.onBuffering();
-            // 缓冲中也重置卡住检测
             lastPositionUpdateTime = System.currentTimeMillis();
         } else if (state == Player.STATE_ENDED) {
             if (listener != null) listener.onPlayEnd();
-            // 直播流意外结束，自动重试
             autoRetry("播放结束");
         } else if (state == Player.STATE_IDLE) {
             if (listener != null) listener.onIdle();
@@ -420,37 +349,26 @@ public class TVPlayerManager {
         }
     }
 
-    // ====================================================================
-    // ✅ 双播放器：预加载播放器状态处理
-    // ====================================================================
-    /**
-     * 处理预加载播放器状态变化
-     *
-     * 预加载播放器缓冲就绪后，就暂停播放（只保持缓冲，不播放），
-     * 标记为就绪状态，等待切台时直接切换。
-     */
-    private void handlePreloadPlayerState(int state) {
+    private void handlePreloadPlayerState(int state, String tag) {
         if (state == Player.STATE_READY) {
             // 预加载就绪，暂停播放（只缓冲，不播放）
-            preloadPlayer.pause();
-            isPreloadReady = true;
-            Log.d(TAG, "【双播放器】预加载就绪：" + preloadedUrl);
+            if (tag.contains("下一个")) {
+                preloadPlayerNext.pause();
+                isPreloadReadyNext = true;
+                Log.d(TAG, "【三播放器】下一个预加载就绪：" + preloadedUrlNext);
+            } else {
+                preloadPlayerPrev.pause();
+                isPreloadReadyPrev = true;
+                Log.d(TAG, "【三播放器】上一个预加载就绪：" + preloadedUrlPrev);
+            }
         } else if (state == Player.STATE_BUFFERING) {
-            // 缓冲中，继续等
-            Log.d(TAG, "【双播放器】预加载缓冲中：" + preloadedUrl);
-        } else if (state == Player.STATE_ENDED) {
-            // 预加载结束（不太可能，直播流一般不会结束）
-            isPreloadReady = false;
+            Log.d(TAG, "【三播放器】" + tag + "缓冲中");
         }
     }
 
-    // ================================================
-    // ✅ 卡住检测 + 自动重试（只检测主播放器）
-    // ================================================
-    /**
-     * 开始卡住检测
-     * 每隔2秒检查一次播放位置，如果长时间没动，说明卡住了
-     */
+    // ====================================================================
+    // 卡住检测 + 自动重试
+    // ====================================================================
     private void startStuckDetection() {
         stuckHandler.removeCallbacks(stuckCheckRunnable);
         lastPositionUpdateTime = System.currentTimeMillis();
@@ -458,21 +376,14 @@ public class TVPlayerManager {
         stuckHandler.postDelayed(stuckCheckRunnable, 2000);
     }
 
-    /**
-     * 停止卡住检测
-     */
     private void stopStuckDetection() {
         stuckHandler.removeCallbacks(stuckCheckRunnable);
     }
 
-    /**
-     * 卡住检测Runnable
-     */
     private final Runnable stuckCheckRunnable = new Runnable() {
         @Override
         public void run() {
             if (mainPlayer == null || !mainPlayer.isPlaying()) {
-                // 没在播放，不检测
                 stuckHandler.postDelayed(this, 2000);
                 return;
             }
@@ -480,32 +391,24 @@ public class TVPlayerManager {
                 long currentPosition = mainPlayer.getCurrentPosition();
                 long now = System.currentTimeMillis();
                 if (currentPosition != lastPosition) {
-                    // 播放位置在动，正常
                     lastPosition = currentPosition;
                     lastPositionUpdateTime = now;
                 } else {
-                    // 播放位置没动，检查超时
                     if (now - lastPositionUpdateTime > STUCK_TIMEOUT) {
-                        // 卡住了，自动重试
                         Log.w(TAG, "检测到播放卡住，自动重试...");
                         autoRetry("播放卡住");
-                        return; // 重试后不再继续检测
+                        return;
                     }
                 }
             } catch (Exception e) {
                 Log.e(TAG, "卡住检测异常", e);
             }
-            // 继续下一次检测
             stuckHandler.postDelayed(this, 2000);
         }
     };
 
-    /**
-     * ✅ 自动重试
-     * @param reason 重试原因（用于日志）
-     */
     private void autoRetry(String reason) {
-        if (isRetrying) return; // 已经在重试中，避免重复
+        if (isRetrying) return;
         if (retryCount >= MAX_RETRY_COUNT) {
             Log.w(TAG, "重试次数已达上限：" + MAX_RETRY_COUNT);
             return;
@@ -513,41 +416,27 @@ public class TVPlayerManager {
         isRetrying = true;
         retryCount++;
         Log.w(TAG, "自动重试（第" + retryCount + "次），原因：" + reason);
-        // 延迟1秒后重新加载
         mHandler.postDelayed(new Runnable() {
             @Override
             public void run() {
                 if (!TextUtils.isEmpty(currentUrl)) {
-                    // 重新播放当前地址（用主播放器正常播放，不用预加载）
                     playUrlInternal(currentUrl);
                 }
             }
         }, 1000);
     }
 
-    /**
-     * 切换软解码/硬解码
-     * @param useSoftware true=软解码，false=硬解码
-     */
     public void setSoftwareDecoder(boolean useSoftware) {
         if (useSoftwareDecoder == useSoftware) return;
         useSoftwareDecoder = useSoftware;
         Log.d(TAG, "切换解码器：" + (useSoftware ? "软解码" : "硬解码"));
-
-        // 重新创建两个播放器
         releaseAllPlayers();
         initMainPlayer();
-        initPreloadPlayer();
-
-        // 重新绑定视图
-        if (mainPlayerView != null) {
-            mainPlayerView.setPlayer(mainPlayer);
-        }
-        if (preloadPlayerView != null) {
-            preloadPlayerView.setPlayer(preloadPlayer);
-        }
-
-        // 重新播放当前地址
+        initPreloadPlayerNext();
+        initPreloadPlayerPrev();
+        if (mainPlayerView != null) mainPlayerView.setPlayer(mainPlayer);
+        if (preloadPlayerViewNext != null) preloadPlayerViewNext.setPlayer(preloadPlayerNext);
+        if (preloadPlayerViewPrev != null) preloadPlayerViewPrev.setPlayer(preloadPlayerPrev);
         if (!TextUtils.isEmpty(currentUrl)) {
             retryCount = 0;
             isRetrying = false;
@@ -577,28 +466,32 @@ public class TVPlayerManager {
     }
 
     // ====================================================================
-    // ✅ 双播放器：绑定播放器视图
+    // ✅ 三播放器：绑定三个播放器视图
     // ====================================================================
     /**
-     * 绑定播放器视图（两个都要绑定）
+     * 绑定三个播放器视图
      *
-     * @param mainView    主播放器视图
-     * @param preloadView 预加载播放器视图
+     * @param mainView          主播放器视图
+     * @param preloadNextView   下一个预加载视图
+     * @param preloadPrevView   上一个预加载视图
      */
-    public void attachPlayerViews(PlayerView mainView, PlayerView preloadView) {
+    public void attachPlayerViews(PlayerView mainView, PlayerView preloadNextView, PlayerView preloadPrevView) {
         this.mainPlayerView = mainView;
-        this.preloadPlayerView = preloadView;
+        this.preloadPlayerViewNext = preloadNextView;
+        this.preloadPlayerViewPrev = preloadPrevView;
 
         mainPlayerView.setPlayer(mainPlayer);
         mainPlayerView.setUseController(false);
 
-        preloadPlayerView.setPlayer(preloadPlayer);
-        preloadPlayerView.setUseController(false);
+        preloadPlayerViewNext.setPlayer(preloadPlayerNext);
+        preloadPlayerViewNext.setUseController(false);
+
+        preloadPlayerViewPrev.setPlayer(preloadPlayerPrev);
+        preloadPlayerViewPrev.setUseController(false);
     }
 
     /**
      * 兼容旧方法：只绑定主播放器视图
-     * （为了兼容旧代码，保留这个方法）
      */
     public void attachPlayerView(PlayerView view) {
         this.mainPlayerView = view;
@@ -613,54 +506,37 @@ public class TVPlayerManager {
         }
     }
 
-    private String getLogTime() {
-        return "[" + logSdf.format(new Date()) + "]";
-    }
-
     private Map<String, String> getHeaders(String url) {
         Map<String, String> headers = new HashMap<>();
         headers.put("User-Agent", "ExoPlayer");
         headers.put("Accept", "*/*");
         headers.put("Connection", "keep-alive");
         headers.put("Icy-MetaData", "1");
-
         boolean isHuya = url.contains("huya.com") || url.contains("huya.cn");
         boolean isDouyu = url.contains("douyu.com") || url.contains("douyucdn.cn");
-
         if (isHuya) {
             headers.put("Referer", "https://www.huya.com/");
-            Log.d(TAG, "虎牙直播，设置虎牙Referer");
         } else if (isDouyu) {
             headers.put("Referer", "https://www.douyu.com/");
-            Log.d(TAG, "斗鱼直播，设置斗鱼Referer");
         } else {
             headers.put("Referer", "https://www.huya.com/");
         }
-
         String cookies = CookieManager.getInstance().getCookie(url);
         if (cookies != null) {
             headers.put("Cookie", cookies);
         }
-
         return headers;
     }
 
-    /**
-     * 创建 MediaSource（公共方法，两个播放器都用）
-     */
     private com.google.android.exoplayer2.source.MediaSource buildMediaSource(String url) {
         RedirectLoggingHttpDataSource.Factory httpFactory =
                 new RedirectLoggingHttpDataSource.Factory();
         httpFactory.setDefaultRequestProperties(getHeaders(url));
         httpFactory.setAllowCrossProtocolRedirects(true);
-
         MediaItem mediaItem = MediaItem.fromUri(url);
-
         if (url.toLowerCase().contains("m3u8")) {
-            Log.d(TAG, "流格式：HLS (m3u8)");
             return new HlsMediaSource.Factory(httpFactory).createMediaSource(mediaItem);
         } else {
-            Log.d(TAG, "流格式：普通流 (Progressive)");
             return new ProgressiveMediaSource.Factory(httpFactory).createMediaSource(mediaItem);
         }
     }
@@ -670,65 +546,57 @@ public class TVPlayerManager {
     }
 
     // ====================================================================
-    // ✅ 双播放器：播放指定URL（对外接口）
+    // ✅ 三播放器：播放指定URL（智能判断是否已预加载）
     // ====================================================================
     /**
-     * 播放指定URL（对外接口）
+     * 播放指定URL
      *
      * 【智能切换逻辑】
-     * 1. 如果目标地址已经预加载好了 → 直接无缝切换（0 黑屏）
-     * 2. 如果没有预加载 → 用主播放器正常切换（可能有短暂黑屏）
-     *
-     * @param url 播放地址
+     * 1. 如果是下一个频道且已预加载 → 无缝切换到下一个预加载
+     * 2. 如果是上一个频道且已预加载 → 无缝切换到上一个预加载
+     * 3. 否则 → 用主播放器正常播放
      */
     public void playUrl(String url) {
         if (url == null || url.trim().isEmpty()) return;
         url = url.trim();
 
-        // 切换频道，重置重试计数
         retryCount = 0;
         isRetrying = false;
 
-        // ====================================================================
-        // ✅ 双播放器：检查是否已经预加载了目标地址
-        // ====================================================================
-        if (url.equals(preloadedUrl) && isPreloadReady) {
-            // 已经预加载好了，直接无缝切换
-            Log.d(TAG, "【双播放器】无缝切换到预加载频道：" + url);
-            switchToPreload();
+        // 检查下一个预加载
+        if (url.equals(preloadedUrlNext) && isPreloadReadyNext) {
+            Log.d(TAG, "【三播放器】无缝切换到下一个预加载：" + url);
+            switchToNextPreload();
             return;
         }
 
-        // 没有预加载，用主播放器正常播放
-        Log.d(TAG, "【双播放器】未预加载，正常播放：" + url);
+        // 检查上一个预加载
+        if (url.equals(preloadedUrlPrev) && isPreloadReadyPrev) {
+            Log.d(TAG, "【三播放器】无缝切换到上一个预加载：" + url);
+            switchToPrevPreload();
+            return;
+        }
+
+        // 都没预加载，正常播放
+        Log.d(TAG, "【三播放器】未预加载，正常播放：" + url);
         playUrlInternal(url);
     }
 
     // ====================================================================
-    // ✅ 双播放器：内部播放方法（用主播放器正常播放）
+    // 内部播放方法（用主播放器正常播放）
     // ====================================================================
-    /**
-     * 内部播放方法（用主播放器正常播放）
-     *
-     * 【切台优化：保持最后一帧】
-     * 去掉 player.stop() 和 player.clearMediaItems()
-     * 直接用 setMediaSource 切换，旧画面会保留到新画面出来
-     */
     private void playUrlInternal(String url) {
         try {
             if (mainPlayer == null || url == null || url.trim().isEmpty()) return;
             currentUrl = url.trim();
             Log.d(TAG, "开始播放：" + currentUrl);
 
-            // 直接设置新的媒体源，不调用 stop，保持最后一帧
             com.google.android.exoplayer2.source.MediaSource mediaSource = buildMediaSource(currentUrl);
             mainPlayer.setMediaSource(mediaSource, true);
             mainPlayer.prepare();
             mainPlayer.play();
 
-            // 开始卡住检测
             startStuckDetection();
-
         } catch (Exception e) {
             Log.e(TAG, "播放异常", e);
             autoRetry("播放异常：" + e.getMessage());
@@ -736,154 +604,227 @@ public class TVPlayerManager {
     }
 
     // ====================================================================
-    // ✅ 双播放器：预加载指定地址
+    // ✅ 三播放器：预加载下一个频道
     // ====================================================================
     /**
-     * 预加载指定地址（提前缓冲，等切台时直接切换）
+     * 预加载下一个频道
      *
-     * 【预加载流程】
-     * 1. 用预加载播放器加载目标地址
-     * 2. 缓冲就绪后自动暂停（只缓冲，不播放）
-     * 3. 标记为就绪状态
-     * 4. 切台时直接交换两个播放器，无缝切换
-     *
-     * @param url 要预加载的地址
+     * @param url 下一个频道的播放地址
      */
-    public void preloadUrl(String url) {
+    public void preloadNextUrl(String url) {
         if (url == null || url.trim().isEmpty()) return;
         url = url.trim();
 
-        // 如果预加载的就是当前播放的，跳过
         if (url.equals(currentUrl)) {
-            Log.d(TAG, "【双播放器】预加载地址就是当前地址，跳过");
+            Log.d(TAG, "【三播放器】下一个预加载地址就是当前地址，跳过");
+            return;
+        }
+        if (url.equals(preloadedUrlNext) && isPreloadReadyNext) {
+            Log.d(TAG, "【三播放器】下一个已预加载过：" + url);
             return;
         }
 
-        // 如果已经预加载了这个地址，跳过
-        if (url.equals(preloadedUrl) && isPreloadReady) {
-            Log.d(TAG, "【双播放器】已预加载过：" + url);
-            return;
-        }
-
-        Log.d(TAG, "【双播放器】开始预加载：" + url);
-        preloadedUrl = url;
-        isPreloadReady = false;
+        Log.d(TAG, "【三播放器】开始预加载下一个：" + url);
+        preloadedUrlNext = url;
+        isPreloadReadyNext = false;
 
         try {
-            // 用预加载播放器加载
             com.google.android.exoplayer2.source.MediaSource mediaSource = buildMediaSource(url);
-            preloadPlayer.setMediaSource(mediaSource, true);
-            preloadPlayer.prepare();
-            // 预加载播放器静音
-            preloadPlayer.setVolume(0f);
-            // 准备好后会自动暂停（在状态监听器里处理）
-
+            preloadPlayerNext.setMediaSource(mediaSource, true);
+            preloadPlayerNext.prepare();
+            preloadPlayerNext.setVolume(0f);
         } catch (Exception e) {
-            Log.e(TAG, "预加载异常", e);
-            isPreloadReady = false;
+            Log.e(TAG, "下一个预加载异常", e);
+            isPreloadReadyNext = false;
         }
     }
 
     // ====================================================================
-    // ✅ 双播放器：切换到预加载播放器（无缝切换，0 黑屏）
+    // ✅ 三播放器：预加载上一个频道
     // ====================================================================
     /**
-     * 切换到预加载播放器（无缝切换，0 黑屏）
+     * 预加载上一个频道
      *
-     * 【切换流程】
-     * 1. 交换两个播放器的引用
-     * 2. 交换两个 PlayerView 的显示/隐藏
-     * 3. 新的主播放器取消静音，新的预加载播放器静音
-     * 4. 新的主播放器开始播放
-     * 5. 更新 currentUrl
-     * 6. 重新设置监听器（因为播放器交换了）
-     *
-     * 【效果】
-     * 用户完全感知不到切换，画面瞬间从旧台变到新台，0 毫秒黑屏。
+     * @param url 上一个频道的播放地址
      */
-    private void switchToPreload() {
-        if (preloadPlayer == null || !isPreloadReady) return;
+    public void preloadPrevUrl(String url) {
+        if (url == null || url.trim().isEmpty()) return;
+        url = url.trim();
 
-        Log.d(TAG, "【双播放器】执行无缝切换");
+        if (url.equals(currentUrl)) {
+            Log.d(TAG, "【三播放器】上一个预加载地址就是当前地址，跳过");
+            return;
+        }
+        if (url.equals(preloadedUrlPrev) && isPreloadReadyPrev) {
+            Log.d(TAG, "【三播放器】上一个已预加载过：" + url);
+            return;
+        }
 
-        // ========================================
-        // 1. 交换两个播放器的引用
-        // ========================================
-        ExoPlayer tempPlayer = mainPlayer;
-        mainPlayer = preloadPlayer;
-        preloadPlayer = tempPlayer;
+        Log.d(TAG, "【三播放器】开始预加载上一个：" + url);
+        preloadedUrlPrev = url;
+        isPreloadReadyPrev = false;
 
-        // ========================================
-        // 2. 交换两个 PlayerView 的显示/隐藏
-        // ========================================
-        // 新的主播放器视图显示
+        try {
+            com.google.android.exoplayer2.source.MediaSource mediaSource = buildMediaSource(url);
+            preloadPlayerPrev.setMediaSource(mediaSource, true);
+            preloadPlayerPrev.prepare();
+            preloadPlayerPrev.setVolume(0f);
+        } catch (Exception e) {
+            Log.e(TAG, "上一个预加载异常", e);
+            isPreloadReadyPrev = false;
+        }
+    }
+
+    // ====================================================================
+    // ✅ 三播放器：切换到下一个预加载（无缝切换）
+    // ====================================================================
+    /**
+     * 切换到下一个预加载播放器（无缝切换）
+     *
+     * 【切换后角色变化】
+     * - 新的主播放器：原来的下一个预加载
+     * - 新的下一个预加载：需要重新预加载新的下一个
+     * - 新的上一个预加载：原来的主播放器（不用重新加载，直接复用）
+     */
+    private void switchToNextPreload() {
+        if (preloadPlayerNext == null || !isPreloadReadyNext) return;
+
+        Log.d(TAG, "【三播放器】执行无缝切换（下一个）");
+
+        // 1. 保存原来的主播放器
+        ExoPlayer tempMain = mainPlayer;
+        PlayerView tempMainView = mainPlayerView;
+        String tempMainUrl = currentUrl;
+
+        // 2. 下一个预加载变成新的主播放器
+        mainPlayer = preloadPlayerNext;
+        mainPlayerView = preloadPlayerViewNext;
+        currentUrl = preloadedUrlNext;
+
+        // 3. 原来的主播放器变成新的上一个预加载
+        preloadPlayerPrev = tempMain;
+        preloadPlayerViewPrev = tempMainView;
+        preloadedUrlPrev = tempMainUrl;
+        isPreloadReadyPrev = true;  // 原来的主播放器肯定是就绪的
+
+        // 4. 下一个预加载标记为未就绪（需要重新预加载）
+        isPreloadReadyNext = false;
+        preloadedUrlNext = "";
+
+        // 5. 更新视图显示
         if (mainPlayerView != null) {
             mainPlayerView.setVisibility(View.VISIBLE);
             mainPlayerView.setPlayer(mainPlayer);
         }
-        // 新的预加载播放器视图隐藏
-        if (preloadPlayerView != null) {
-            preloadPlayerView.setVisibility(View.INVISIBLE);
-            preloadPlayerView.setPlayer(preloadPlayer);
+        if (preloadPlayerViewPrev != null) {
+            preloadPlayerViewPrev.setVisibility(View.INVISIBLE);
+            preloadPlayerViewPrev.setPlayer(preloadPlayerPrev);
+            preloadPlayerPrev.setVolume(0f);  // 静音
+            preloadPlayerPrev.pause();        // 暂停，只缓冲
         }
 
-        // ========================================
-        // 3. 音量控制：主播放器有声音，预加载播放器静音
-        // ========================================
-        mainPlayer.setVolume(1f);    // 主播放器取消静音
-        preloadPlayer.setVolume(0f);  // 预加载播放器静音
-
-        // ========================================
-        // 4. 新的主播放器开始播放
-        // ========================================
+        // 6. 新的主播放器开始播放，取消静音
+        mainPlayer.setVolume(1f);
         mainPlayer.play();
 
-        // ========================================
-        // 5. 更新当前播放地址
-        // ========================================
-        currentUrl = preloadedUrl;
-        preloadedUrl = "";
-        isPreloadReady = false;
-
-        // ========================================
-        // 6. 重新设置监听器
-        // ========================================
-        // （因为播放器交换了，监听器也要重新绑定）
-        // 这里简化处理：直接重新开始卡住检测
+        // 7. 重新开始卡住检测
         startStuckDetection();
 
-        // ========================================
-        // 7. 触发回调
-        // ========================================
-        if (listener != null) {
-            listener.onPlayReady();
-        }
+        // 8. 触发回调
+        if (listener != null) listener.onPlayReady();
         notifyLiveInfoUpdate();
         showChannelAndAutoHide();
 
-        Log.d(TAG, "【双播放器】无缝切换完成：" + currentUrl);
+        Log.d(TAG, "【三播放器】下一个无缝切换完成：" + currentUrl);
     }
 
     // ====================================================================
-    // ✅ 双播放器：检查指定地址是否已经预加载
+    // ✅ 三播放器：切换到上一个预加载（无缝切换）
     // ====================================================================
     /**
-     * 检查指定地址是否已经预加载就绪
+     * 切换到上一个预加载播放器（无缝切换）
      *
-     * @param url 播放地址
-     * @return 是否已预加载就绪
+     * 【切换后角色变化】
+     * - 新的主播放器：原来的上一个预加载
+     * - 新的上一个预加载：需要重新预加载新的上一个
+     * - 新的下一个预加载：原来的主播放器（不用重新加载，直接复用）
+     */
+    private void switchToPrevPreload() {
+        if (preloadPlayerPrev == null || !isPreloadReadyPrev) return;
+
+        Log.d(TAG, "【三播放器】执行无缝切换（上一个）");
+
+        // 1. 保存原来的主播放器
+        ExoPlayer tempMain = mainPlayer;
+        PlayerView tempMainView = mainPlayerView;
+        String tempMainUrl = currentUrl;
+
+        // 2. 上一个预加载变成新的主播放器
+        mainPlayer = preloadPlayerPrev;
+        mainPlayerView = preloadPlayerViewPrev;
+        currentUrl = preloadedUrlPrev;
+
+        // 3. 原来的主播放器变成新的下一个预加载
+        preloadPlayerNext = tempMain;
+        preloadPlayerViewNext = tempMainView;
+        preloadedUrlNext = tempMainUrl;
+        isPreloadReadyNext = true;  // 原来的主播放器肯定是就绪的
+
+        // 4. 上一个预加载标记为未就绪（需要重新预加载）
+        isPreloadReadyPrev = false;
+        preloadedUrlPrev = "";
+
+        // 5. 更新视图显示
+        if (mainPlayerView != null) {
+            mainPlayerView.setVisibility(View.VISIBLE);
+            mainPlayerView.setPlayer(mainPlayer);
+        }
+        if (preloadPlayerViewNext != null) {
+            preloadPlayerViewNext.setVisibility(View.INVISIBLE);
+            preloadPlayerViewNext.setPlayer(preloadPlayerNext);
+            preloadPlayerNext.setVolume(0f);  // 静音
+            preloadPlayerNext.pause();        // 暂停，只缓冲
+        }
+
+        // 6. 新的主播放器开始播放，取消静音
+        mainPlayer.setVolume(1f);
+        mainPlayer.play();
+
+        // 7. 重新开始卡住检测
+        startStuckDetection();
+
+        // 8. 触发回调
+        if (listener != null) listener.onPlayReady();
+        notifyLiveInfoUpdate();
+        showChannelAndAutoHide();
+
+        Log.d(TAG, "【三播放器】上一个无缝切换完成：" + currentUrl);
+    }
+
+    // ====================================================================
+    // 检查是否已预加载
+    // ====================================================================
+    public boolean isNextPreloaded(String url) {
+        return url != null && url.equals(preloadedUrlNext) && isPreloadReadyNext;
+    }
+
+    public boolean isPrevPreloaded(String url) {
+        return url != null && url.equals(preloadedUrlPrev) && isPreloadReadyPrev;
+    }
+
+    /**
+     * 兼容旧方法：检查是否已预加载（默认检查下一个）
      */
     public boolean isPreloaded(String url) {
-        return url != null && url.equals(preloadedUrl) && isPreloadReady;
+        return isNextPreloaded(url);
     }
 
-    /**
-     * 获取当前预加载的地址
-     *
-     * @return 预加载地址
-     */
-    public String getPreloadedUrl() {
-        return preloadedUrl;
+    public String getPreloadedUrlNext() {
+        return preloadedUrlNext;
+    }
+
+    public String getPreloadedUrlPrev() {
+        return preloadedUrlPrev;
     }
 
     public void setScaleMode(ScaleMode mode) {
@@ -930,32 +871,27 @@ public class TVPlayerManager {
     }
 
     // ====================================================================
-    // ✅ 双播放器：释放所有播放器
+    // 释放所有播放器
     // ====================================================================
-    /**
-     * 释放所有播放器资源
-     */
     private void releaseAllPlayers() {
         stopStuckDetection();
         mHandler.removeCallbacks(hideChannelRunnable);
         updateWakeLock(false);
 
-        // 释放主播放器
         if (mainPlayer != null) {
-            if (mainPlayerListener != null) {
-                mainPlayer.removeListener(mainPlayerListener);
-            }
+            if (mainPlayerListener != null) mainPlayer.removeListener(mainPlayerListener);
             mainPlayer.release();
             mainPlayer = null;
         }
-
-        // 释放预加载播放器
-        if (preloadPlayer != null) {
-            if (preloadPlayerListener != null) {
-                preloadPlayer.removeListener(preloadPlayerListener);
-            }
-            preloadPlayer.release();
-            preloadPlayer = null;
+        if (preloadPlayerNext != null) {
+            if (preloadNextListener != null) preloadPlayerNext.removeListener(preloadNextListener);
+            preloadPlayerNext.release();
+            preloadPlayerNext = null;
+        }
+        if (preloadPlayerPrev != null) {
+            if (preloadPrevListener != null) preloadPlayerPrev.removeListener(preloadPrevListener);
+            preloadPlayerPrev.release();
+            preloadPlayerPrev = null;
         }
     }
 

@@ -46,10 +46,8 @@ public class EpgManagerWrapper {
     public EpgManagerWrapper(Context context, ListView lvEpg) {
         this.context = context;
         this.lvEpg = lvEpg;
-        // ✅ 改成 false，item 不需要获取焦点
         lvEpg.setItemsCanFocus(false);
         lvEpg.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
-
         lvEpg.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int pos, long id) {
@@ -61,7 +59,6 @@ public class EpgManagerWrapper {
             @Override
             public void onNothingSelected(AdapterView<?> parent) {}
         });
-
         registerReminderReceiver();
     }
 
@@ -77,7 +74,6 @@ public class EpgManagerWrapper {
         playingIndex = -1;
         selectDayIndex = dateIndex;
         epgEndTimeMap.clear();
-
         new Thread(() -> {
             List<Channel.EpgItem> epgList;
             try {
@@ -94,10 +90,9 @@ public class EpgManagerWrapper {
                 }
                 SettingsActivity.log("【EPG包装】📅 EPG包含日期：" + dayNames);
             }
-
             List<Channel.EpgItem> data = new ArrayList<>();
             if (epgList != null && !epgList.isEmpty()) {
-                // ✅ 计算目标日期 + 对应的周几（全部双重兼容）
+                // 计算目标日期 + 对应的周几（全部双重兼容）
                 String targetDay;
                 String targetWeekDay = null;
                 Calendar cal = Calendar.getInstance();
@@ -120,8 +115,7 @@ public class EpgManagerWrapper {
                 SettingsActivity.log("【EPG包装】🎯 目标日期：" + targetDay
                         + "，对应周几：" + weekDay
                         + (targetWeekDay != null ? "，兼容匹配：" + targetDay + " 或 " + targetWeekDay : ""));
-
-                // ✅ 双重兼容筛选：匹配目标日期 或 对应的周几
+                // 双重兼容筛选：匹配目标日期 或 对应的周几
                 int matchCount = 0;
                 for (Channel.EpgItem item : epgList) {
                     if (item.dayName == null) continue;
@@ -136,10 +130,8 @@ public class EpgManagerWrapper {
                     }
                 }
                 SettingsActivity.log("【EPG包装】✅ 筛选后节目数：" + matchCount);
-
                 // 按时间排序
                 Collections.sort(data, Comparator.comparing(o -> o.time));
-
                 // 计算结束时间 + 标记播放中
                 String now = getNow();
                 Channel.EpgItem playing = null;
@@ -170,7 +162,6 @@ public class EpgManagerWrapper {
                     playingIndex = 0;
                 }
             }
-
             // 主线程更新UI
             final List<Channel.EpgItem> finalData = data;
             final Channel finalChannel = currentChannel;
@@ -242,6 +233,9 @@ public class EpgManagerWrapper {
         context.registerReceiver(receiver, new IntentFilter(ACTION_REMINDER));
     }
 
+    // ====================================================================
+    // ✅ 节目单适配器（带回看/预约/直播中按钮）
+    // ====================================================================
     private class EpgAdapter extends ArrayAdapter<Channel.EpgItem> {
         private final Context ctx;
         private Channel currentChannel;
@@ -290,41 +284,56 @@ public class EpgManagerWrapper {
 
             boolean isSelected = (position == selectedPosition || item.isPlaying);
 
+            // ====================================================================
+            // ✅ 选中/焦点/普通 三种状态的背景和文字颜色
+            // ====================================================================
             if (isSelected) {
-                // ✅ 选中状态：蓝色文字 + 标题加粗 + 浅蓝色背景
-                holder.tv_dayName.setTextColor(Color.parseColor("#40A9FF"));
+                // 选中状态：蓝色文字 + 标题加粗 + 浅蓝色背景
                 holder.tv_time.setTextColor(Color.parseColor("#40A9FF"));
                 holder.tv_title.setTextColor(Color.parseColor("#40A9FF"));
                 holder.tv_title.setTypeface(null, Typeface.BOLD);
                 convertView.setBackgroundColor(0x3340A9FF);
             } else if (convertView.isFocused()) {
-                // ✅ 焦点状态：蓝色文字 + 稍深一点的蓝色背景
-                holder.tv_dayName.setTextColor(Color.parseColor("#40A9FF"));
+                // 焦点状态：蓝色文字 + 稍深一点的蓝色背景
                 holder.tv_time.setTextColor(Color.parseColor("#40A9FF"));
                 holder.tv_title.setTextColor(Color.parseColor("#40A9FF"));
                 holder.tv_title.setTypeface(null, Typeface.NORMAL);
                 convertView.setBackgroundColor(0x4440A9FF);
             } else {
-                // ✅ 未选中状态：原来的颜色 + 透明背景
-                holder.tv_dayName.setTextColor(Color.WHITE);
+                // 未选中状态
                 holder.tv_time.setTextColor(Color.LTGRAY);
                 holder.tv_title.setTextColor(Color.WHITE);
                 holder.tv_title.setTypeface(null, Typeface.NORMAL);
                 convertView.setBackgroundColor(Color.TRANSPARENT);
             }
 
+            // ====================================================================
+            // ✅ 节目状态按钮：直播中（红）/ 回看（灰）/ 预约（白）
+            // ====================================================================
             String key = currentChannel.getName() + "_" + position;
             boolean isPast = false;
             try { isPast = item.time.compareTo(getNow()) < 0; } catch (Exception ignored) {}
 
             if (item.isPlaying) {
-                holder.tv_action.setText("播放中");
-                holder.tv_action.setBackgroundColor(0xFFFF9800);
+                // 🔴 直播中：红色背景 + 白色文字
+                holder.tv_action.setText("直播中");
+                holder.tv_action.setTextColor(Color.WHITE);
+                holder.tv_action.setBackgroundColor(0xFFFF5252);
                 holder.tv_action.setEnabled(false);
+                // 直播中的节目时间也用红色
+                holder.tv_time.setTextColor(0xFFFF5252);
             } else if (isPast) {
+                // ⚪ 回看：灰色背景 + 白色文字
                 holder.tv_action.setText("回看");
+                holder.tv_action.setTextColor(Color.WHITE);
                 holder.tv_action.setBackgroundColor(0xFF607D8B);
                 holder.tv_action.setEnabled(true);
+                // 已结束的节目文字变灰
+                holder.tv_title.setTextColor(Color.parseColor("#66FFFFFF"));
+                holder.tv_time.setTextColor(Color.parseColor("#44FFFFFF"));
+                
+                // 回看点击事件
+                final String finalEndTime = endTime;
                 holder.tv_action.setOnClickListener(v -> {
                     try {
                         String liveUrl = currentChannel.getPlayUrl();
@@ -339,7 +348,7 @@ public class EpgManagerWrapper {
                         startCal.set(Calendar.HOUR_OF_DAY, Integer.parseInt(startHm[0].trim()));
                         startCal.set(Calendar.MINUTE, Integer.parseInt(startHm[1].trim()));
                         startCal.set(Calendar.SECOND, 0);
-                        String[] endHm = endTime.split(":");
+                        String[] endHm = finalEndTime.split(":");
                         Calendar endCal = (Calendar) playDay.clone();
                         endCal.set(Calendar.HOUR_OF_DAY, Integer.parseInt(endHm[0].trim()));
                         endCal.set(Calendar.MINUTE, Integer.parseInt(endHm[1].trim()));
@@ -355,25 +364,45 @@ public class EpgManagerWrapper {
                     }
                 });
             } else {
-                holder.tv_action.setText(bookedSet.contains(key) ? "已预约" : "预约");
-                holder.tv_action.setBackgroundColor(bookedSet.contains(key) ? 0xFF607D8B : 0xFF4CAF50);
+                // 📅 预约：白色边框 + 白色文字
+                holder.tv_action.setText("预约");
+                holder.tv_action.setTextColor(Color.WHITE);
+                holder.tv_action.setBackgroundColor(0x33FFFFFF);
                 holder.tv_action.setEnabled(true);
+                
+                // 预约点击事件
+                final boolean isBooked = bookedSet.contains(key);
+                if (isBooked) {
+                    holder.tv_action.setText("已预约");
+                    holder.tv_action.setBackgroundColor(0xFF4CAF50); // 绿色
+                }
+                
                 holder.tv_action.setOnClickListener(v -> {
                     if (bookedSet.contains(key)) {
+                        // 取消预约
                         bookedSet.remove(key);
+                        holder.tv_action.setText("预约");
+                        holder.tv_action.setBackgroundColor(0x33FFFFFF);
                         Toast.makeText(ctx, "已取消预约", Toast.LENGTH_SHORT).show();
                     } else {
+                        // 添加预约
                         bookedSet.add(key);
+                        holder.tv_action.setText("已预约");
+                        holder.tv_action.setBackgroundColor(0xFF4CAF50); // 绿色
                         Toast.makeText(ctx, "已预约：" + item.title, Toast.LENGTH_SHORT).show();
                     }
                     notifyDataSetChanged();
                 });
             }
+
             return convertView;
         }
 
-        class ViewHolder {
-            TextView tv_dayName, tv_time, tv_title, tv_action;
+        private class ViewHolder {
+            TextView tv_dayName;
+            TextView tv_time;
+            TextView tv_title;
+            TextView tv_action;
         }
     }
 }

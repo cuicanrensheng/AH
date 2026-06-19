@@ -25,7 +25,7 @@
         app:use_controller="false"
         app:resize_mode="fit"
         app:keep_content_on_player_reset="true"
-        app:surface_type="surface_view" />
+        app:surface_type="texture_view" />
 
     <!-- ==================================================================== -->
     <!-- 防花屏占位图（退到后台时显示，黑色背景盖住 SurfaceView）            -->

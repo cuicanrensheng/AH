@@ -19,6 +19,7 @@ import com.google.android.exoplayer2.Player;
 import com.google.android.exoplayer2.source.ProgressiveMediaSource;
 import com.google.android.exoplayer2.source.hls.HlsMediaSource;
 import com.google.android.exoplayer2.ui.PlayerView;
+import com.google.android.exoplayer2.video.VideoSize;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.HashMap;
@@ -325,7 +326,7 @@ public class TVPlayerManager {
                 }
             }
             // ====================================================================
-            // ✅ 新增：视频分辨率变化时触发
+            // ✅ 视频分辨率变化时触发（新版本 ExoPlayer 签名）
             // ====================================================================
             /**
              * 为什么需要这个？
@@ -334,9 +335,9 @@ public class TVPlayerManager {
              * 这时候我们需要更新一下信息栏的画质标签。
              */
             @Override
-            public void onVideoSizeChanged(int width, int height,
-                                           int unappliedRotationDegrees,
-                                           float pixelWidthHeightRatio) {
+            public void onVideoSizeChanged(VideoSize videoSize) {
+                int width = videoSize.width;
+                int height = videoSize.height;
                 Log.d(TAG, "视频分辨率变化：" + width + "×" + height);
                 // 分辨率变化时，通知 UI 更新
                 notifyLiveInfoUpdate();
@@ -541,7 +542,6 @@ public class TVPlayerManager {
             if (player == null || url == null || url.trim().isEmpty()) return;
             currentUrl = url.trim();
             Log.d(TAG, "开始播放：" + currentUrl);
-
             // ====================================================================
             // ✅ 关键修改：去掉 player.stop() 和 player.clearMediaItems()
             // ====================================================================
@@ -567,16 +567,13 @@ public class TVPlayerManager {
              */
             // player.stop();          // ✅ 注释掉，保持最后一帧
             // player.clearMediaItems(); // ✅ 注释掉，保持最后一帧
-
             // ===== 创建数据源（带重定向日志版） =====
             // 每一重定向都会打印详细日志，方便调试直播源
             RedirectLoggingHttpDataSource.Factory httpFactory =
                     new RedirectLoggingHttpDataSource.Factory();
             httpFactory.setDefaultRequestProperties(getHeaders(currentUrl));
             httpFactory.setAllowCrossProtocolRedirects(true);
-
             MediaItem mediaItem = MediaItem.fromUri(currentUrl);
-
             com.google.android.exoplayer2.source.MediaSource mediaSource;
             if (currentUrl.toLowerCase().contains("m3u8")) {
                 Log.d(TAG, "流格式：HLS (m3u8)");
@@ -585,14 +582,12 @@ public class TVPlayerManager {
                 Log.d(TAG, "流格式：普通流 (Progressive)");
                 mediaSource = new ProgressiveMediaSource.Factory(httpFactory).createMediaSource(mediaItem);
             }
-
             // ====================================================================
             // ✅ 关键修改：直接设置新的媒体源，第二个参数 true = 重置到开头
             // ====================================================================
             player.setMediaSource(mediaSource, true);
             player.prepare();
             player.play();
-
             // 开始卡住检测
             startStuckDetection();
         } catch (Exception e) {

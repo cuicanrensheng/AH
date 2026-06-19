@@ -4,49 +4,13 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#000000">
-
-    <!-- 主播放器（正在播放，有声音，显示） -->
     <com.google.android.exoplayer2.ui.PlayerView
         android:id="@+id/player_view"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:layout_gravity="center"
         app:use_controller="false"
-        app:resize_mode="fit"
-        app:keep_content_on_player_reset="true"
-        app:surface_type="surface_view" />
-
-    <!-- ==================================================================== -->
-    <!-- ✅ 双播放器新增：预加载播放器（提前缓冲下一个台，静音，隐藏）          -->
-    <!--                                                                      -->
-    <!-- 【为什么用 invisible 而不是 gone？】                                  -->
-    <!-- gone 会导致 Surface 被销毁，预加载就没用了。                          -->
-    <!-- invisible 保持 Surface 存在，只是不显示，                              -->
-    <!-- 这样预加载的视频才能正常缓冲，切台时直接交换显示状态，完全无缝。       -->
-    <!--                                                                      -->
-    <!-- 【层级说明】                                                          -->
-    <!-- 主播放器（底层）→ 预加载播放器（中层，默认隐藏）→ 占位图（上层）       -->
-    <!-- ==================================================================== -->
-    <com.google.android.exoplayer2.ui.PlayerView
-        android:id="@+id/player_view_preload"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:layout_gravity="center"
-        android:visibility="invisible"
-        app:use_controller="false"
-        app:resize_mode="fit"
-        app:keep_content_on_player_reset="true"
-        app:surface_type="surface_view" />
-
-    <!-- 播放器占位图（退到后台时显示，防止 SurfaceView 花屏） -->
-    <ImageView
-        android:id="@+id/iv_player_placeholder"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:visibility="gone"
-        android:scaleType="centerCrop"
-        android:background="@android:color/black" />
-
+        app:resize_mode="fit"/>
     <TextView
         android:id="@+id/tv_channel_num"
         android:layout_width="wrap_content"
@@ -59,7 +23,6 @@
         android:textColor="#FFF"
         android:alpha="0.8"
         android:visibility="gone"/>
-
     <LinearLayout
         android:id="@+id/panel_layout"
         android:layout_width="match_parent"
@@ -105,8 +68,7 @@
             android:background="#CC000000"
             android:visibility="gone"/>
     </LinearLayout>
-
-    <!-- 底部信息栏 -->
+    <!-- 底部信息栏 原样保留 -->
     <LinearLayout
         android:id="@+id/info_bar"
         android:layout_width="match_parent"

@@ -1,12 +1,12 @@
 package com.tv.live;
 
+import android.app.AlarmManager;
+import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Build;
-import android.os.Handler;
-import android.os.Looper;
 import android.util.Log;
 
 /**
@@ -31,13 +31,10 @@ import android.util.Log;
  * 有些电视设备开机后系统服务还没准备好，立刻启动 Activity 会失败。
  * 延迟 3 秒再启动，等系统完全准备好，成功率更高。
  *
- * 【为什么要监听多个广播？】
- * 不同厂商、不同安卓版本的开机广播不一样：
- * - 原生安卓：BOOT_COMPLETED
- * - Android 7.0+ 锁屏开机：LOCKED_BOOT_COMPLETED
- * - 小米/OPPO 快速开机：QUICKBOOT_POWERON
- * - 应用更新后：MY_PACKAGE_REPLACED
- * 多监听几个，总有一个能收到。
+ * 【为什么用 AlarmManager 而不是 Handler？】
+ * 广播接收器的生命周期很短（只有 10 秒左右），
+ * 如果用 Handler postDelayed，可能还没执行完接收器就被销毁了。
+ * 用 AlarmManager 设置一个一次性闹钟，更可靠。
  */
 public class BootReceiver extends BroadcastReceiver {
 
@@ -114,11 +111,8 @@ public class BootReceiver extends BroadcastReceiver {
         Log.d(TAG, "延迟 " + delay + "ms 后启动应用");
 
         // ====================================================================
-        // 第四步：延迟启动应用
+        // 第四步：延迟启动应用（用 AlarmManager 更可靠）
         // ====================================================================
-        // 使用 Handler 延迟执行，避免阻塞广播接收器
-        // 注意：广播接收器的生命周期很短，必须用 goAsync() 或者快速返回
-        // 这里我们用 PendingIntent + AlarmManager 来实现延迟启动，更可靠
         scheduleDelayedStart(context, delay);
     }
 
@@ -180,14 +174,12 @@ public class BootReceiver extends BroadcastReceiver {
      */
     private void scheduleDelayedStart(Context context, long delayMs) {
         try {
-            // 方案 1：用 AlarmManager 调度（更可靠，推荐）
-            android.app.AlarmManager alarmManager =
-                    (android.app.AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
+            AlarmManager alarmManager = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
 
             Intent startIntent = new Intent(context, BootStartReceiver.class);
             startIntent.setAction("com.tv.live.START_APP");
 
-            android.app.PendingIntent pendingIntent = android.app.PendingIntent.getBroadcast(
+            PendingIntent pendingIntent = PendingIntent.getBroadcast(
                     context,
                     0,
                     startIntent,
@@ -202,21 +194,21 @@ public class BootReceiver extends BroadcastReceiver {
                     // Android 6.0+ 使用 setExactAndAllowWhileIdle
                     // 即使在低电耗模式下也能触发
                     alarmManager.setExactAndAllowWhileIdle(
-                            android.app.AlarmManager.RTC_WAKEUP,
+                            AlarmManager.RTC_WAKEUP,
                             triggerAt,
                             pendingIntent
                     );
                 } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
                     // Android 4.4+ 使用 setExact
                     alarmManager.setExact(
-                            android.app.AlarmManager.RTC_WAKEUP,
+                            AlarmManager.RTC_WAKEUP,
                             triggerAt,
                             pendingIntent
                     );
                 } else {
                     // 低版本使用 set
                     alarmManager.set(
-                            android.app.AlarmManager.RTC_WAKEUP,
+                            AlarmManager.RTC_WAKEUP,
                             triggerAt,
                             pendingIntent
                     );
@@ -226,7 +218,7 @@ public class BootReceiver extends BroadcastReceiver {
 
         } catch (Exception e) {
             Log.e(TAG, "设置延迟启动失败，尝试直接启动", e);
-            // 方案 2：兜底方案，直接启动（可能失败，但总比不启动好）
+            // 兜底方案：直接启动（可能失败，但总比不启动好）
             try {
                 startMainActivity(context);
             } catch (Exception e2) {
@@ -247,10 +239,11 @@ public class BootReceiver extends BroadcastReceiver {
      * @return PendingIntent flags
      */
     private int getPendingIntentFlags() {
-        int flags = android.app.PendingIntent.FLAG_UPDATE_CURRENT;
-        // Android 12+ 必须指定 IMMUTABLE 或 MUTABLE
+        int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+        // Android 6.0+ 可以加上 IMMUTABLE，更安全
+        // 注意：Android 12+ 必须指定 IMMUTABLE 或 MUTABLE
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            flags |= android.app.PendingIntent.FLAG_IMMUTABLE;
+            flags |= PendingIntent.FLAG_IMMUTABLE;
         }
         return flags;
     }

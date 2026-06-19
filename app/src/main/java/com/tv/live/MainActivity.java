@@ -48,13 +48,19 @@ import java.util.List;
  * - 变量：channelSourceList、currentPlayIndex
  * 这些接口内部都委托给对应的 Manager，外部调用方式不变。
  *
- * 【2026-06-19 优化：两个完整面板切换】
+ * 【2026-06-19 优化：两个完整面板切换 + 焦点管理】
  * 原左右面板切换模式（只有日期+EPG）改为两个完整面板切换：
  * - 左侧面板：分组列表 + 频道列表 + 节目单按钮（默认显示）
  * - 右侧面板：返回按钮 + 频道列表 + 日期 + EPG（默认隐藏）
  * - 两个面板都有频道列表，切换时选中状态保持同步
  * - 节目单页面也能直接切换频道，不用切回去
- * - 点击节目单不关闭面板，方便连续查看多个频道的节目单
+ *
+ * 【按键分发说明】
+ * 按键事件按以下优先级分发：
+ * 1. 数字选台（ChannelNumberManager）- 数字键
+ * 2. 频道面板（ChannelPanelController）- 左右键、OK键（面板打开时）
+ * 3. 方向键切台（handleDirectionKey）- 上下键（面板关闭时）
+ * 4. 按键事件管理（KeyEventManager）- 其他按键
  */
 public class MainActivity extends AppCompatActivity {
 
@@ -113,7 +119,7 @@ public class MainActivity extends AppCompatActivity {
     private DisplayManager displayManager;
     /** 信息展示管理器（频道号 + 信息栏 + EPG 节目单） */
     private InfoDisplayManager infoDisplayManager;
-    /** 频道面板控制器（分组 + 频道切换 + 面板控制） */
+    /** 频道面板控制器（分组 + 频道切换 + 面板控制 + 焦点管理） */
     private ChannelPanelController channelPanelController;
     /** 应用核心管理器（数据加载 + 广播 + 生命周期） */
     private AppCoreManager appCoreManager;
@@ -256,7 +262,7 @@ public class MainActivity extends AppCompatActivity {
     /**
      * 初始化频道面板控制器
      *
-     * 【2026-06-19 修改：两个完整面板切换】
+     * 【两个完整面板切换】
      * 原左右面板切换模式（只有日期+EPG）改为两个完整面板切换：
      * - 左侧面板：分组 + 频道列表 + 节目单按钮
      * - 右侧面板：返回按钮 + 频道列表 + 日期 + EPG
@@ -636,11 +642,48 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // ====================== 按键分发 ======================
+    /**
+     * 按键事件分发
+     *
+     * 【按键分发优先级】
+     * 1. 数字选台（ChannelNumberManager）- 数字键 0-9
+     * 2. 频道面板（ChannelPanelController）- 左右键、OK键（面板打开时）
+     * 3. 方向键切台（handleDirectionKey）- 上下键（面板关闭时）
+     * 4. 按键事件管理（KeyEventManager）- 其他按键
+     *
+     * 【为什么要先让频道面板处理？】
+     * 因为频道面板打开时，左右键应该在面板内移动焦点，
+     * 而不是切换频道面板的显示/隐藏。
+     * 如果频道面板处理了这个按键，就直接返回 true，不再往下分发。
+     */
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
+        // 1. 先处理数字选台
         if (channelNumberManager.handleNumberKey(keyCode)) return true;
+
+        // ================================================================
+        // ✅ 新增：再让频道面板处理按键（左右键、OK键）
+        // ================================================================
+        // 【为什么要在这里加？】
+        // 因为频道面板有自己的焦点管理逻辑，需要处理左右键在面板内的焦点移动，
+        // 以及OK键选中当前项。
+        //
+        // 【什么时候生效？】
+        // 只有面板打开时才会处理，面板关闭时直接返回 false，
+        // 不会影响正常的切台逻辑。
+        //
+        // 【如果频道面板处理了按键】
+        // 直接返回 true，不再往下分发（不会再触发 handleDirectionKey）。
+        if (channelPanelController != null && channelPanelController.dispatchKeyEvent(keyCode)) {
+            return true;
+        }
+
+        // 3. 再处理方向键切台（面板关闭时）
         if (handleDirectionKey(keyCode)) return true;
+
+        // 4. 最后交给按键事件管理
         if (keyEventManager.dispatchKey(keyCode)) return true;
+
         return super.onKeyDown(keyCode, event);
     }
 

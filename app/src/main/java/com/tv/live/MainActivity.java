@@ -1,15 +1,14 @@
 package com.tv.live;
 
+import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.Looper;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
-import android.widget.ImageView;
 import android.widget.ListView;
 import android.widget.ProgressBar;
 import android.widget.TextView;
@@ -34,31 +33,15 @@ import java.util.List;
  * 【核心职责】
  * 1. 页面生命周期管理
  * 2. 各 Manager 的初始化和协调
- * 3. 播放器视图绑定（双播放器：主播放器 + 预加载播放器）
- * 4. 手势事件绑定
+ * 3. 按键事件分发
+ * 4. 播放器视图绑定
  *
- * 【双播放器无缝切台】
- * 两个播放器叠加：
- * - 主播放器（player_view）：正在播放，有声音，显示
- * - 预加载播放器（player_view_preload）：提前缓冲下一个台，静音，隐藏
- * 切台时直接交换两个播放器，0 毫秒黑屏，完全无缝
- *
- * 【防花屏增强】
- * 三层防护，解决滑动退到后台时 SurfaceView 花屏问题：
- * 1. 保持最后一帧：播放器暂停时不清空画面
- * 2. 占位图过渡：退到后台时用 ImageView 盖住 SurfaceView
- * 3. 延迟隐藏：回到前台后等 Surface 准备好再隐藏占位图
- *
- * 【模块化拆分说明】
- * 已拆分的 Manager：
- * - ChannelNumberManager：数字选台
- * - DisplayManager：全面屏适配 + 加载动画
- * - InfoDisplayManager：信息展示（频道号 + 信息栏 + EPG）
- * - ChannelPanelController：频道面板（分组 + 切台 + 面板）
- * - AppCoreManager：应用核心（数据加载 + 广播 + 生命周期）
- * - MainController：主控制器（按键 + 播放 + 设置 + 日志）
- * - TVPlayerManager：播放器管理（双播放器版）
- * - ... 等
+ * 【兼容层说明】
+ * 为了兼容其他类（GestureManager、KeyEventManager、ChannelListActivity 等）
+ * 对旧的方法和变量的调用，保留了以下兼容接口：
+ * - 方法：togglePanel()、playPrev()、playNext()、playChannel(int)
+ * - 变量：channelSourceList、currentPlayIndex
+ * 这些接口内部都委托给对应的 Manager，外部调用方式不变。
  */
 public class MainActivity extends AppCompatActivity {
 
@@ -71,35 +54,22 @@ public class MainActivity extends AppCompatActivity {
     // ====================================================================
     /**
      * 所有频道数据源列表（全部频道，未筛选）
+     * 【兼容说明】内部数据来自 appCoreManager，外部访问方式不变
      */
     public List<Channel> channelSourceList = new ArrayList<>();
 
     /**
      * 当前正在播放的频道索引（全局索引，对应 channelSourceList）
+     * 【兼容说明】内部数据来自 channelPanelController，外部访问方式不变
      */
     public int currentPlayIndex = 0;
 
-    /**
-     * 本地日志列表（保留最近 100 条，供其他类访问）
-     */
-    public static List<String> logList = new ArrayList<>();
-
     // ====================== 视图相关 ======================
-    /** 主播放器视图（正在播放，显示） */
+    /** 播放器视图（ExoPlayer 的 PlayerView） */
     private PlayerView playerView;
-    /** 预加载播放器视图（提前缓冲，隐藏） */
-    private PlayerView playerViewPreload;
-
-    // ====================================================================
-    // ✅ 防花屏增强：播放器占位图
-    // ====================================================================
-    /**
-     * 播放器占位图（退到后台时显示，防止 SurfaceView 花屏）
-     */
-    private ImageView ivPlayerPlaceholder;
 
     // ====================== 管理器相关 ======================
-    /** 播放器管理器（单例，双播放器版） */
+    /** 播放器管理器（单例，基于 ExoPlayer 封装） */
     public TVPlayerManager mPlayerManager;
     /** 应用配置管理（SP 封装） */
     private AppConfig appConfig;
@@ -109,6 +79,8 @@ public class MainActivity extends AppCompatActivity {
     private GestureManager gestureManager;
     /** 按键事件管理（遥控器按键分发） */
     private KeyEventManager keyEventManager;
+    /** 播放器状态监听器（空实现，不弹 Toast） */
+    private PlayerStateListenerImpl playerStateListener;
 
     // ====================================================================
     // 拆分新增：各个 Manager
@@ -123,8 +95,16 @@ public class MainActivity extends AppCompatActivity {
     private ChannelPanelController channelPanelController;
     /** 应用核心管理器（数据加载 + 广播 + 生命周期） */
     private AppCoreManager appCoreManager;
-    /** 主控制器（按键 + 播放 + 设置 + 日志） */
-    private MainController mainController;
+
+    // ====================== 状态标志 ======================
+    /** 频道切换是否反向（上键=下一台，下键=上一台） */
+    private boolean channel_reverse;
+    /** 数字选台是否启用 */
+    private boolean number_channel_enable;
+
+    // ====================== 其他 ======================
+    /** 本地日志列表（保留最近 100 条，供其他类访问） */
+    public static List<String> logList = new ArrayList<>();
 
     // ====================== onCreate 生命周期 ======================
     @Override
@@ -152,6 +132,7 @@ public class MainActivity extends AppCompatActivity {
 
         // 初始化配置
         appConfig = AppConfig.getInstance(this);
+        loadSettings();
 
         // 应用自定义直播源/EPG 地址
         String customLive = appConfig.getCustomLiveUrl();
@@ -161,21 +142,15 @@ public class MainActivity extends AppCompatActivity {
         log("【配置】直播源地址：" + UrlConfig.LIVE_URL);
         log("【配置】EPG地址：" + UrlConfig.EPG_URL);
 
-        // ====================================================================
-        // ✅ 双播放器：绑定两个播放器视图
-        // ====================================================================
+        // 绑定播放器视图
         playerView = findViewById(R.id.player_view);
-        playerViewPreload = findViewById(R.id.player_view_preload);
-
-        // ====================================================================
-        // ✅ 防花屏增强：初始化防花屏设置
-        // ====================================================================
-        initAntiFlicker();
+        playerView.setUseController(false);
+        playerView.setControllerVisibilityListener(null);
 
         // 频道面板控制器初始化
         initChannelPanelController();
 
-        // 播放器初始化（双播放器版）
+        // 播放器初始化
         initPlayer();
 
         // 屏幕比例
@@ -196,16 +171,13 @@ public class MainActivity extends AppCompatActivity {
         // 按键事件管理
         keyEventManager = new KeyEventManager(this);
 
-        // 数字选台管理器初始化
-        initChannelNumberManager();
-
-        // 主控制器初始化（按键 + 播放 + 设置 + 日志）
-        initMainController();
-
         // 恢复上次播放的频道索引
         currentPlayIndex = appConfig.getLastPlayIndex();
-        mainController.setCurrentPlayIndex(currentPlayIndex);
+        channelPanelController.setCurrentPlayIndex(currentPlayIndex);
         log("【播放】记录上次播放索引：" + currentPlayIndex);
+
+        // 数字选台管理器初始化
+        initChannelNumberManager();
 
         // 应用核心管理器初始化
         initAppCoreManager();
@@ -215,24 +187,6 @@ public class MainActivity extends AppCompatActivity {
 
         // 加载直播源和 EPG
         appCoreManager.loadLiveAndEpg();
-    }
-
-    // ====================================================================
-    // ✅ 防花屏增强：初始化防花屏相关设置
-    // ====================================================================
-    /**
-     * 初始化防花屏相关设置
-     *
-     * 【三层防护】
-     * 1. 保持最后一帧：播放器暂停时不清空画面（布局里设置）
-     * 2. 占位图过渡：退到后台时用 ImageView 盖住 SurfaceView
-     * 3. 延迟隐藏：回到前台后等 Surface 准备好再隐藏占位图
-     */
-    private void initAntiFlicker() {
-        // 占位图初始化（默认隐藏，退到后台时显示）
-        ivPlayerPlaceholder = findViewById(R.id.iv_player_placeholder);
-
-        log("【防花屏】防花屏增强已启用（三层防护，兼容旧版 ExoPlayer）");
     }
 
     // ====================================================================
@@ -309,34 +263,24 @@ public class MainActivity extends AppCompatActivity {
                 panelManager
         );
 
-        // 频道切换监听 → 交给 MainController 处理实际播放
         channelPanelController.setOnChannelChangeListener(new ChannelPanelController.OnChannelChangeListener() {
             @Override
             public void onChannelChanged(Channel channel, int index) {
-                mainController.doPlayChannel(channel, index);
-                // 同步到兼容变量
-                currentPlayIndex = index;
+                playChannel(channel, index);
             }
         });
     }
 
     // ====================================================================
-    // ✅ 双播放器：播放器初始化
+    // 播放器初始化
     // ====================================================================
-    /**
-     * 播放器初始化（双播放器版）
-     *
-     * 绑定两个播放器视图：
-     * - 主播放器：正在播放，有声音，显示
-     * - 预加载播放器：提前缓冲下一个台，静音，隐藏
-     */
     private void initPlayer() {
         mPlayerManager = TVPlayerManager.getInstance(this);
+        mPlayerManager.attachPlayerView(playerView);
 
-        // 绑定两个播放器视图
-        mPlayerManager.attachPlayerViews(playerView, playerViewPreload);
+        playerStateListener = new PlayerStateListenerImpl(this);
+        mPlayerManager.setOnPlayStateListener(playerStateListener);
 
-        // 直播信息更新监听（画质、音频、码率）
         mPlayerManager.setOnLiveInfoUpdateListener(new TVPlayerManager.OnLiveInfoUpdateListener() {
             @Override
             public void onLiveInfoUpdate(TVPlayerManager.LiveInfo info) {
@@ -366,45 +310,8 @@ public class MainActivity extends AppCompatActivity {
                         infoDisplayManager.hideChannelNum();
                     }
                 },
-                true  // 默认启用，后面 loadSettings 会覆盖
+                number_channel_enable
         );
-    }
-
-    // ====================================================================
-    // 主控制器初始化（按键 + 播放 + 设置 + 日志）
-    // ====================================================================
-    private void initMainController() {
-        // 播放器状态监听器（空实现，不弹 Toast）
-        PlayerStateListenerImpl playerStateListener = new PlayerStateListenerImpl(this);
-        mPlayerManager.setOnPlayStateListener(playerStateListener);
-
-        // 创建主控制器
-        mainController = new MainController(
-                this,
-                channelPanelController,
-                channelNumberManager,
-                infoDisplayManager,
-                mPlayerManager,
-                appConfig,
-                playerStateListener
-        );
-
-        // 面板控制回调
-        mainController.setOnPanelControlListener(new MainController.OnPanelControlListener() {
-            @Override
-            public void onTogglePanel() {
-                // 面板切换后的额外处理（如果需要）
-            }
-
-            @Override
-            public void onRequestFocus() {
-                // 关闭面板后给播放器请求焦点
-                playerView.requestFocus();
-            }
-        });
-
-        // 加载设置
-        mainController.loadSettings();
     }
 
     // ====================================================================
@@ -433,7 +340,7 @@ public class MainActivity extends AppCompatActivity {
                         if (!appCoreManager.hasPlayedWithCache()) {
                             if (currentPlayIndex >= 0 && currentPlayIndex < channels.size()) {
                                 Channel ch = channels.get(currentPlayIndex);
-                                mainController.doPlayChannel(ch, currentPlayIndex);
+                                playChannel(ch, currentPlayIndex);
                                 appCoreManager.setHasPlayedWithCache(true);
                             }
                         }
@@ -495,6 +402,28 @@ public class MainActivity extends AppCompatActivity {
         appCoreManager.registerReceivers();
     }
 
+    // ====================== 设置加载 ======================
+    private void loadSettings() {
+        SharedPreferences sp = getSharedPreferences("app_settings", MODE_PRIVATE);
+        boolean epg_enable = sp.getBoolean("epg_enable", true);
+        channel_reverse = sp.getBoolean("channel_reverse", false);
+        number_channel_enable = sp.getBoolean("number_channel_enable", true);
+        boolean auto_update_source = sp.getBoolean("auto_update_source", true);
+
+        if (channelNumberManager != null) {
+            channelNumberManager.setEnable(number_channel_enable);
+        }
+
+        if (channelPanelController != null) {
+            channelPanelController.setEpgEnable(epg_enable);
+        }
+
+        log("【设置】EPG开关：" + epg_enable);
+        log("【设置】切台反转：" + channel_reverse);
+        log("【设置】数字选台：" + number_channel_enable);
+        log("【设置】自动更新源：" + auto_update_source);
+    }
+
     // ====================================================================
     // ✅ 兼容层：旧的 playChannel(int) 方法，供其他类调用
     // ====================================================================
@@ -507,8 +436,37 @@ public class MainActivity extends AppCompatActivity {
         if (channelSourceList == null || channelSourceList.isEmpty()) return;
         if (index < 0 || index >= channelSourceList.size()) return;
         Channel channel = channelSourceList.get(index);
-        mainController.doPlayChannel(channel, index);
+        playChannel(channel, index);
+    }
+
+    // ====================== 播放频道（内部方法） ======================
+    /**
+     * 播放指定频道（内部实现）
+     *
+     * @param channel 频道
+     * @param index   全局索引
+     */
+    private void playChannel(Channel channel, int index) {
+        if (channel == null || channel.getPlayUrl() == null) return;
+
+        // ✅ 同步到兼容变量
         currentPlayIndex = index;
+
+        log("========================================");
+        log("【播放】频道名称：" + channel.getName());
+        log("【播放】播放地址：" + channel.getPlayUrl());
+        log("【播放】当前索引：" + index);
+        log("========================================");
+
+        playerStateListener.setCurrentChannelName(channel.getName());
+        appConfig.setLastPlayIndex(index);
+
+        // 先播放
+        mPlayerManager.playUrl(channel.getPlayUrl());
+
+        // 显示信息栏
+        TVPlayerManager.LiveInfo live = mPlayerManager.getLiveInfo();
+        infoDisplayManager.showInfoBar(channel, live);
     }
 
     // ====================================================================
@@ -518,7 +476,7 @@ public class MainActivity extends AppCompatActivity {
      * 切换频道面板显示/隐藏（兼容旧接口）
      */
     public void togglePanel() {
-        mainController.togglePanel();
+        channelPanelController.togglePanel();
     }
 
     // ====================================================================
@@ -528,7 +486,7 @@ public class MainActivity extends AppCompatActivity {
      * 播放上一个频道（兼容旧接口）
      */
     public void playPrev() {
-        mainController.playPrev();
+        channelPanelController.playPrev();
     }
 
     // ====================================================================
@@ -538,29 +496,69 @@ public class MainActivity extends AppCompatActivity {
      * 播放下一个频道（兼容旧接口）
      */
     public void playNext() {
-        mainController.playNext();
+        channelPanelController.playNext();
     }
 
     // ====================== 返回键处理 ======================
     @Override
     public void onBackPressed() {
-        if (mainController.handleBackPressed()) {
+        if (channelNumberManager.isInputting()) {
+            channelNumberManager.cancelInput();
             return;
         }
+
+        if (channelPanelController.handleBackPressed()) {
+            playerView.requestFocus();
+            return;
+        }
+
         super.onBackPressed();
+    }
+
+    // ====================== 方向键处理 ======================
+    private boolean handleDirectionKey(int keyCode) {
+        switch (keyCode) {
+            case KeyEvent.KEYCODE_DPAD_UP:
+                if (channel_reverse) {
+                    playNext();
+                } else {
+                    playPrev();
+                }
+                SettingsActivity.logOperation("【切台】上键 → "
+                        + (channel_reverse ? "下一台" : "上一台"));
+                return true;
+            case KeyEvent.KEYCODE_DPAD_DOWN:
+                if (channel_reverse) {
+                    playPrev();
+                } else {
+                    playNext();
+                }
+                SettingsActivity.logOperation("【切台】下键 → "
+                        + (channel_reverse ? "上一台" : "下一台"));
+                return true;
+            case KeyEvent.KEYCODE_DPAD_CENTER:
+            case KeyEvent.KEYCODE_ENTER:
+                if (channelNumberManager.isInputting()) {
+                    channelNumberManager.confirmChannelNum();
+                    return true;
+                }
+                togglePanel();
+                return true;
+            case KeyEvent.KEYCODE_DPAD_LEFT:
+            case KeyEvent.KEYCODE_DPAD_RIGHT:
+                togglePanel();
+                return true;
+            default:
+                return false;
+        }
     }
 
     // ====================== 按键分发 ======================
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
-        // 主控制器处理（数字键 + 方向键）
-        if (mainController.handleKeyDown(keyCode, event)) {
-            return true;
-        }
-        // 最后交给按键事件管理器
-        if (keyEventManager.dispatchKey(keyCode)) {
-            return true;
-        }
+        if (channelNumberManager.handleNumberKey(keyCode)) return true;
+        if (handleDirectionKey(keyCode)) return true;
+        if (keyEventManager.dispatchKey(keyCode)) return true;
         return super.onKeyDown(keyCode, event);
     }
 
@@ -579,39 +577,20 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onPause() {
         super.onPause();
-
-        // ====================================================================
-        // ✅ 防花屏：进入后台前显示占位图，盖住 SurfaceView
-        // ====================================================================
-        showPlayerPlaceholder();
-
         appCoreManager.onPause();
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-
         boolean resumed = appCoreManager.onResume();
 
         if (resumed) {
-            // 真正回到前台时，重新加载设置
-            mainController.loadSettings();
+            loadSettings();
             screenRatioManager.apply();
         }
 
         displayManager.reapplyFullScreen();
-
-        // ====================================================================
-        // ✅ 防花屏：回到前台后延迟隐藏占位图
-        //    等 Surface 渲染好第一帧再隐藏，避免短暂黑屏或花屏
-        // ====================================================================
-        new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                hidePlayerPlaceholder();
-            }
-        }, 100);  // 延迟 100ms，等 Surface 准备好
     }
 
     @Override
@@ -632,74 +611,17 @@ public class MainActivity extends AppCompatActivity {
         if (channelNumberManager != null) channelNumberManager.release();
         if (displayManager != null) displayManager.release();
         if (channelPanelController != null) channelPanelController.release();
-        if (mainController != null) mainController.release();
         if (appCoreManager != null) appCoreManager.release();
 
         mInstance = null;
     }
 
-    // ====================================================================
-    // ✅ 防花屏增强：占位图显示/隐藏方法
-    // ====================================================================
-
-    /**
-     * 显示播放器占位图（防止退到后台时 SurfaceView 花屏）
-     *
-     * 【原理】
-     * SurfaceView 有自己独立的渲染线程和 Surface，
-     * 在 Activity 切换动画时容易出现花屏、撕裂、绿屏等问题。
-     *
-     * 用一个普通的 ImageView 显示黑色背景，
-     * 退到后台时显示 ImageView，盖住 SurfaceView，
-     * 动画时用户看到的是 ImageView，就不会花屏了。
-     *
-     * 【兼容说明】
-     * 旧版 ExoPlayer 没有 getBitmap() 方法，
-     * 所以不支持截取当前帧，直接用黑色背景作为占位图。
-     * 黑色背景虽然没有最后一帧那么自然，但总比花屏好看多了。
-     */
-    private void showPlayerPlaceholder() {
-        if (ivPlayerPlaceholder == null) return;
-
-        // 直接显示黑色背景（兼容所有版本的 ExoPlayer）
-        ivPlayerPlaceholder.setImageResource(android.R.color.black);
-        ivPlayerPlaceholder.setVisibility(View.VISIBLE);
-        log("【防花屏】显示占位图（黑色背景，兼容旧版 ExoPlayer）");
-    }
-
-    /**
-     * 隐藏播放器占位图
-     *
-     * 【注意】
-     * 要等 Surface 渲染好第一帧再隐藏，
-     * 否则可能会出现短暂的黑屏或花屏。
-     * 所以调用方需要延迟 100ms 左右再调用这个方法。
-     */
-    private void hidePlayerPlaceholder() {
-        if (ivPlayerPlaceholder != null) {
-            ivPlayerPlaceholder.setVisibility(View.GONE);
-            // 清空图片，释放内存
-            ivPlayerPlaceholder.setImageDrawable(null);
-            log("【防花屏】隐藏占位图");
-        }
-    }
-
-    // ====================================================================
-    // ✅ 兼容层：旧的 log() 静态方法，供其他类调用
-    // ====================================================================
-    /**
-     * 记录日志（兼容旧接口）
-     * 同时保存到本地列表和 SettingsActivity 的全局日志
-     *
-     * @param msg 日志内容
-     */
+    // ====================== 日志工具 ======================
     public static void log(String msg) {
-        // 同步到 MainController 的日志
-        MainController.log(msg);
-        // 同步到兼容变量 logList
         logList.add(0, msg);
         while (logList.size() > 100) {
             logList.remove(logList.size() - 1);
         }
+        SettingsActivity.log(msg);
     }
 }

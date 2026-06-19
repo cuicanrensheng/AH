@@ -1,6 +1,7 @@
 package com.tv.live.manager;
 
 import android.content.Context;
+import android.view.KeyEvent;
 import android.view.View;
 import android.widget.AdapterView;
 import android.widget.ListView;
@@ -22,6 +23,8 @@ import java.util.List;
  * 1. 分组管理（分组列表、选中状态、分组筛选）
  * 2. 频道切换（上/下切台、分组内循环、防抖）
  * 3. 面板控制（显示/隐藏、EPG 展开/收起、列表点击）
+ * 4. 焦点管理（手机触屏 + 电视遥控器）
+ * 5. 按键处理（左右键移动焦点、OK键选中）
  *
  * 【拆分来源】
  * 从 MainActivity 拆分合并而来，原分散在三个地方：
@@ -30,19 +33,24 @@ import java.util.List;
  * - PanelManager 增强：面板交互、列表点击逻辑
  *
  * 【五层逻辑闭环】
- * 1. 状态管理层：分组选中状态、面板显示状态、EPG 展开状态、当前播放索引
+ * 1. 状态管理层：分组选中状态、面板显示状态、EPG 展开状态、当前播放索引、焦点位置
  * 2. 数据筛选层：按分组筛选频道列表、按日期筛选 EPG
- * 3. 状态同步层：分组切换→频道列表更新、切台→选中状态同步
- * 4. 异常兜底层：空列表兜底、索引越界保护、防抖保护
+ * 3. 状态同步层：分组切换→频道列表更新、切台→选中状态同步、面板切换→焦点转移
+ * 4. 异常兜底层：空列表兜底、索引越界保护、防抖保护、焦点丢失兜底
  * 5. 交互闭环层：点击、按键、手势都触发对应状态更新
  *
- * 【2026-06-19 优化：两个完整面板切换】
+ * 【2026-06-19 优化：两个完整面板切换 + 焦点管理】
  * 原左右面板切换模式（只有日期+EPG）改为两个完整面板切换：
  * - 左侧面板：分组列表 + 频道列表 + 节目单按钮（默认显示）
  * - 右侧面板：返回按钮 + 频道列表 + 日期 + EPG（默认隐藏）
  * - 两个面板都有频道列表，切换时选中状态保持同步
  * - 节目单页面也能直接切换频道，不用切回去
- * - 点击节目单不关闭面板，方便连续查看多个频道的节目单
+ *
+ * 【焦点管理说明】
+ * - 手机端：点击即可选中，不需要焦点管理
+ * - 电视端：通过遥控器左右键移动焦点，OK键选中
+ * - 切换面板时：焦点自动转移到新面板的频道列表
+ * - 打开面板时：焦点自动给到左侧面板的频道列表
  */
 public class ChannelPanelController {
 
@@ -59,7 +67,7 @@ public class ChannelPanelController {
     /** 频道列表（主页面，左侧面板用） */
     private ListView lvChannelList;
     /**
-     * ✅ 新增：频道列表（节目单页面，右侧面板用）
+     * 频道列表（节目单页面，右侧面板用）
      *
      * 【作用】
      * 右侧面板（节目单页面）也有一个频道列表，用户在看节目单时
@@ -76,7 +84,7 @@ public class ChannelPanelController {
     /** 节目单展开按钮（左侧面板最右边） */
     private TextView btnShowEpg;
     /**
-     * ✅ 新增：返回分组按钮（右侧面板最左边）
+     * 返回分组按钮（右侧面板最左边）
      *
      * 【作用】
      * 右侧面板（节目单页面）最左边的返回按钮，点击后切回左侧面板（分组列表）。
@@ -131,7 +139,7 @@ public class ChannelPanelController {
     /** 频道列表管理器（主页面，左侧面板用） */
     private ChannelListManager channelListManager;
     /**
-     * ✅ 新增：频道列表管理器（节目单页面，右侧面板用）
+     * 频道列表管理器（节目单页面，右侧面板用）
      *
      * 【作用】
      * 管理右侧面板的频道列表，和左侧面板的频道列表管理器是两个独立的实例，
@@ -178,6 +186,48 @@ public class ChannelPanelController {
     /** 上次频道切换时间 */
     private long lastChannelChangeTime = 0;
 
+    // ====================== 焦点管理 ======================
+    /**
+     * 当前焦点在哪个面板
+     *
+     * 【值说明】
+     * - "left"：焦点在左侧面板（分组/频道列表）
+     * - "right"：焦点在右侧面板（频道列表/日期/EPG）
+     *
+     * 【作用】
+     * 处理左右键时，根据当前焦点在哪个面板，决定焦点往哪移。
+     */
+    private String currentFocusPanel = "left";
+
+    /**
+     * 当前焦点在左侧面板的哪个视图
+     *
+     * 【值说明】
+     * - "group"：焦点在分组列表
+     * - "channel"：焦点在频道列表
+     * - "epgBtn"：焦点在节目单按钮
+     *
+     * 【作用】
+     * 处理左右键时，根据当前焦点在哪个视图，决定下一个焦点是哪个。
+     * 比如当前在分组列表，按右键就移到频道列表。
+     */
+    private String leftFocusView = "channel";
+
+    /**
+     * 当前焦点在右侧面板的哪个视图
+     *
+     * 【值说明】
+     * - "backBtn"：焦点在返回按钮
+     * - "channel"：焦点在频道列表
+     * - "date"：焦点在日期列表
+     * - "epg"：焦点在EPG列表
+     *
+     * 【作用】
+     * 处理左右键时，根据当前焦点在哪个视图，决定下一个焦点是哪个。
+     * 比如当前在频道列表，按右键就移到日期列表。
+     */
+    private String rightFocusView = "channel";
+
     // ====================== 回调监听器 ======================
     /** 频道切换监听器 */
     private OnChannelChangeListener channelChangeListener;
@@ -222,14 +272,14 @@ public class ChannelPanelController {
      * @param llRightPanel          右侧面板容器（返回 + 频道 + 日期 + EPG）
      * @param lvGroup               分组列表
      * @param lvChannelList         频道列表（主页面，左侧面板用）
-     * @param lvChannelListEpg      ✅ 新增：频道列表（节目单页面，右侧面板用）
+     * @param lvChannelListEpg      频道列表（节目单页面，右侧面板用）
      * @param lvDate                日期列表
      * @param lvEpg                 EPG 节目列表
      * @param btnShowEpg            节目单展开按钮（左侧面板最右边）
-     * @param btnBackGroup          ✅ 新增：返回分组按钮（右侧面板最左边）
+     * @param btnBackGroup          返回分组按钮（右侧面板最左边）
      * @param groupListManager      分组列表管理器
      * @param channelListManager    频道列表管理器（主页面）
-     * @param channelListManagerEpg ✅ 新增：频道列表管理器（节目单页面）
+     * @param channelListManagerEpg 频道列表管理器（节目单页面）
      * @param dateListManager       日期列表管理器
      * @param epgManagerWrapper     EPG 包装器
      * @param panelManager          面板管理器
@@ -241,14 +291,14 @@ public class ChannelPanelController {
             View llRightPanel,
             ListView lvGroup,
             ListView lvChannelList,
-            ListView lvChannelListEpg,        // ✅ 新增
+            ListView lvChannelListEpg,
             ListView lvDate,
             ListView lvEpg,
             TextView btnShowEpg,
-            TextView btnBackGroup,             // ✅ 新增
+            TextView btnBackGroup,
             GroupListManager groupListManager,
             ChannelListManager channelListManager,
-            ChannelListManager channelListManagerEpg,  // ✅ 新增
+            ChannelListManager channelListManagerEpg,
             DateListManager dateListManager,
             EpgManagerWrapper epgManagerWrapper,
             PanelManager panelManager
@@ -259,20 +309,22 @@ public class ChannelPanelController {
         this.llRightPanel = llRightPanel;
         this.lvGroup = lvGroup;
         this.lvChannelList = lvChannelList;
-        this.lvChannelListEpg = lvChannelListEpg;        // ✅ 新增：保存节目单页面频道列表引用
+        this.lvChannelListEpg = lvChannelListEpg;
         this.lvDate = lvDate;
         this.lvEpg = lvEpg;
         this.btnShowEpg = btnShowEpg;
-        this.btnBackGroup = btnBackGroup;                 // ✅ 新增：保存返回按钮引用
+        this.btnBackGroup = btnBackGroup;
         this.groupListManager = groupListManager;
         this.channelListManager = channelListManager;
-        this.channelListManagerEpg = channelListManagerEpg;  // ✅ 新增：保存节目单页面频道管理器
+        this.channelListManagerEpg = channelListManagerEpg;
         this.dateListManager = dateListManager;
         this.epgManagerWrapper = epgManagerWrapper;
         this.panelManager = panelManager;
 
         // 初始化点击事件
         initClickListeners();
+        // 初始化焦点监听
+        initFocusListeners();
     }
 
     // ====================================================================
@@ -299,9 +351,7 @@ public class ChannelPanelController {
             }
         });
 
-        // ================================================================
-        // ✅ 新增：节目单页面频道列表点击事件（右侧面板）
-        // ================================================================
+        // ===== 节目单页面频道列表点击事件（右侧面板） =====
         // 【为什么需要单独的点击事件？】
         // 因为有两个频道列表，分别在左右两个面板里，
         // 每个 ListView 都需要自己的点击监听器。
@@ -321,9 +371,7 @@ public class ChannelPanelController {
             }
         });
 
-        // ================================================================
-        // ✅ 新增：返回分组按钮点击事件
-        // ================================================================
+        // ===== 返回分组按钮点击事件 =====
         // 【作用】
         // 点击右侧面板最左边的"频道组"按钮，切回左侧面板（分组列表）。
         // 和节目单按钮的作用相反，一个是展开节目单，一个是返回分组。
@@ -331,6 +379,99 @@ public class ChannelPanelController {
             @Override
             public void onClick(View v) {
                 onBackGroupClicked();
+            }
+        });
+    }
+
+    // ====================================================================
+    // ✅ 新增：初始化焦点变化监听
+    // ====================================================================
+    /**
+     * 初始化所有焦点变化监听
+     *
+     * 【作用】
+     * 当某个视图获取焦点时，记录当前焦点的位置（在哪个面板、哪个视图），
+     * 方便后续处理左右键时，知道该往哪个视图移焦点。
+     *
+     * 【为什么需要记录焦点位置？】
+     * 因为 ListView 自己会处理上下键，但是左右键需要我们自己处理，
+     * 我们需要知道当前焦点在哪个列表上，才能决定按左键/右键后移到哪个列表。
+     */
+    private void initFocusListeners() {
+        // ===== 分组列表焦点变化 =====
+        lvGroup.setOnFocusChangeListener(new View.OnFocusChangeListener() {
+            @Override
+            public void onFocusChange(View v, boolean hasFocus) {
+                if (hasFocus) {
+                    currentFocusPanel = "left";
+                    leftFocusView = "group";
+                }
+            }
+        });
+
+        // ===== 主页面频道列表焦点变化 =====
+        lvChannelList.setOnFocusChangeListener(new View.OnFocusChangeListener() {
+            @Override
+            public void onFocusChange(View v, boolean hasFocus) {
+                if (hasFocus) {
+                    currentFocusPanel = "left";
+                    leftFocusView = "channel";
+                }
+            }
+        });
+
+        // ===== 节目单按钮焦点变化 =====
+        btnShowEpg.setOnFocusChangeListener(new View.OnFocusChangeListener() {
+            @Override
+            public void onFocusChange(View v, boolean hasFocus) {
+                if (hasFocus) {
+                    currentFocusPanel = "left";
+                    leftFocusView = "epgBtn";
+                }
+            }
+        });
+
+        // ===== 节目单页面频道列表焦点变化 =====
+        lvChannelListEpg.setOnFocusChangeListener(new View.OnFocusChangeListener() {
+            @Override
+            public void onFocusChange(View v, boolean hasFocus) {
+                if (hasFocus) {
+                    currentFocusPanel = "right";
+                    rightFocusView = "channel";
+                }
+            }
+        });
+
+        // ===== 日期列表焦点变化 =====
+        lvDate.setOnFocusChangeListener(new View.OnFocusChangeListener() {
+            @Override
+            public void onFocusChange(View v, boolean hasFocus) {
+                if (hasFocus) {
+                    currentFocusPanel = "right";
+                    rightFocusView = "date";
+                }
+            }
+        });
+
+        // ===== EPG列表焦点变化 =====
+        lvEpg.setOnFocusChangeListener(new View.OnFocusChangeListener() {
+            @Override
+            public void onFocusChange(View v, boolean hasFocus) {
+                if (hasFocus) {
+                    currentFocusPanel = "right";
+                    rightFocusView = "epg";
+                }
+            }
+        });
+
+        // ===== 返回按钮焦点变化 =====
+        btnBackGroup.setOnFocusChangeListener(new View.OnFocusChangeListener() {
+            @Override
+            public void onFocusChange(View v, boolean hasFocus) {
+                if (hasFocus) {
+                    currentFocusPanel = "right";
+                    rightFocusView = "backBtn";
+                }
             }
         });
     }
@@ -353,9 +494,7 @@ public class ChannelPanelController {
         // 更新主页面频道列表（全部频道）
         channelListManager.setChannels(channels, currentPlayIndex);
 
-        // ================================================================
-        // ✅ 新增：同步更新节目单页面的频道列表
-        // ================================================================
+        // 同步更新节目单页面的频道列表
         // 【为什么要同步更新？】
         // 因为有两个频道列表，数据必须保持一致。
         // 节目单页面的频道列表永远显示全部频道，不按分组筛选，
@@ -389,9 +528,7 @@ public class ChannelPanelController {
         // 更新主页面频道列表（按分组筛选）
         channelListManager.setChannelsByGroup(channelSourceList, groupName, currentPlayIndex);
 
-        // ================================================================
-        // ✅ 说明：节目单页面的频道列表不筛选分组
-        // ================================================================
+        // 说明：节目单页面的频道列表不筛选分组
         // 【为什么不筛选？】
         // 因为右侧面板（节目单页面）没有分组列表，用户无法切换分组，
         // 所以节目单页面的频道列表一直显示全部频道，方便用户查看任意频道的节目单。
@@ -545,9 +682,7 @@ public class ChannelPanelController {
             channelListManager.setChannels(channelSourceList, index);
         }
 
-        // ================================================================
-        // ✅ 新增：同步更新节目单页面的频道列表选中状态
-        // ================================================================
+        // 同步更新节目单页面的频道列表选中状态
         // 【为什么要同步？】
         // 因为有两个频道列表，切台时两边都要更新选中高亮，
         // 这样用户切换面板时，选中状态是一致的，不会出现错乱。
@@ -571,7 +706,7 @@ public class ChannelPanelController {
      *
      * @param position 点击的位置
      *
-     * 【2026-06-19 修改：区分左右面板的点击逻辑】
+     * 【区分左右面板的点击逻辑】
      * - 左侧面板点击频道：按分组筛选，点击后关闭面板
      * - 右侧面板点击频道：全部频道，点击后不关闭面板（方便继续看节目单）
      */
@@ -592,7 +727,7 @@ public class ChannelPanelController {
             }
         } else {
             // ============================================================
-            // ✅ 右侧面板（全部频道模式）
+            // 右侧面板（全部频道模式）
             // ============================================================
             // 【为什么不关闭面板？】
             // 用户在节目单页面，经常需要连续看多个频道的节目单，
@@ -642,16 +777,13 @@ public class ChannelPanelController {
      * 切换面板显示/隐藏
      */
     public void togglePanel() {
-        // 先更新主页面频道列表选中状态
+        // 先更新两个频道列表的选中状态
         if (!currentGroupName.isEmpty() && !currentGroupChannelList.isEmpty()) {
             channelListManager.setChannelsByGroup(channelSourceList, currentGroupName, currentPlayIndex);
         } else {
             channelListManager.setChannels(channelSourceList, currentPlayIndex);
         }
-
-        // ================================================================
-        // ✅ 新增：同步更新节目单页面的频道列表
-        // ================================================================
+        // 同步更新节目单页面的频道列表
         // 【为什么要在这里更新？】
         // 打开面板前，确保两个频道列表的选中状态都是最新的，
         // 这样用户打开面板时，选中高亮是正确的。
@@ -659,6 +791,29 @@ public class ChannelPanelController {
 
         boolean isOpen = isPanelOpen();
         panelManager.toggle(channelSourceList, currentPlayIndex, dateListManager);
+
+        // ================================================================
+        // ✅ 新增：打开面板时自动请求焦点
+        // ================================================================
+        // 【为什么要自动请求焦点？】
+        // 电视端用遥控器操作时，必须有一个视图获取焦点，否则按键没反应。
+        // 打开面板时，自动把焦点给到左侧面板的频道列表，
+        // 用户打开面板后直接就能用上下键选频道，体验更好。
+        //
+        // 【为什么要用 post？】
+        // 因为面板刚显示出来，布局还没绘制完成，
+        // 这时候请求焦点可能会失败。用 post 延迟到下一帧执行，
+        // 等布局绘制完成后再请求焦点，确保成功。
+        if (!isOpen) {
+            panelLayout.post(new Runnable() {
+                @Override
+                public void run() {
+                    lvChannelList.requestFocus();
+                    // 把选中位置滚动到可见区域
+                    lvChannelList.setSelection(getChannelListSelection());
+                }
+            });
+        }
 
         // 回调状态变化
         if (panelStateListener != null) {
@@ -698,7 +853,7 @@ public class ChannelPanelController {
     /**
      * 节目单按钮被点击了
      *
-     * 【2026-06-19 修改：两个完整面板切换】
+     * 【两个完整面板切换】
      * 原逻辑：左右面板切换（只有日期+EPG在右侧）
      * 新逻辑：两个完整面板切换（都有频道列表）
      *
@@ -708,6 +863,7 @@ public class ChannelPanelController {
      * - 显示右侧面板（返回 + 频道 + 日期 + EPG）
      * - 同步节目单页面的频道列表选中状态
      * - 刷新当前频道的 EPG 数据
+     * - 自动把焦点移到右侧面板的频道列表
      */
     private void onEpgButtonClicked() {
         if (!epgEnable) {
@@ -718,7 +874,7 @@ public class ChannelPanelController {
 
         if (!rightPanelOpen) {
             // ============================================================
-            // ✅ 状态：左侧面板显示 → 切换到右侧面板（节目单页面）
+            // 状态：左侧面板显示 → 切换到右侧面板（节目单页面）
             // ============================================================
             // 隐藏左侧面板
             llLeftPanel.setVisibility(View.GONE);
@@ -731,6 +887,25 @@ public class ChannelPanelController {
             // 同步节目单页面的频道列表选中状态
             // （确保切换过去时，选中的频道是正确的）
             channelListManagerEpg.setChannels(channelSourceList, currentPlayIndex);
+
+            // ============================================================
+            // ✅ 新增：切换面板后，自动把焦点移到右侧面板的频道列表
+            // ============================================================
+            // 【为什么要自动移焦点？】
+            // 电视端用遥控器操作时，切换面板后焦点还在旧面板的视图上，
+            // 但是旧面板已经隐藏了，焦点就丢了，按键就没反应了。
+            // 所以切换面板后，必须主动把焦点移到新面板的视图上。
+            //
+            // 【为什么要用 post？】
+            // 因为右侧面板刚显示出来，布局还没绘制完成，
+            // 这时候请求焦点可能会失败。用 post 延迟到下一帧执行。
+            llRightPanel.post(new Runnable() {
+                @Override
+                public void run() {
+                    lvChannelListEpg.requestFocus();
+                    lvChannelListEpg.setSelection(currentPlayIndex);
+                }
+            });
 
             SettingsActivity.logOperation("【面板】展开节目单面板");
 
@@ -750,12 +925,24 @@ public class ChannelPanelController {
             llLeftPanel.setVisibility(View.VISIBLE);
             rightPanelOpen = false;
             epgPanelOpen = false;
+
+            // ============================================================
+            // ✅ 新增：切换面板后，自动把焦点移回左侧面板的频道列表
+            // ============================================================
+            llLeftPanel.post(new Runnable() {
+                @Override
+                public void run() {
+                    lvChannelList.requestFocus();
+                    lvChannelList.setSelection(getChannelListSelection());
+                }
+            });
+
             SettingsActivity.logOperation("【面板】收起节目单面板");
         }
     }
 
     // ====================================================================
-    // ✅ 新增：返回分组按钮被点击了
+    // 返回分组按钮被点击了
     // ====================================================================
     /**
      * 返回分组按钮被点击了
@@ -782,6 +969,17 @@ public class ChannelPanelController {
             // 更新状态标记
             rightPanelOpen = false;
             epgPanelOpen = false;
+
+            // ============================================================
+            // ✅ 新增：返回左侧面板后，自动把焦点移到左侧面板的频道列表
+            // ============================================================
+            llLeftPanel.post(new Runnable() {
+                @Override
+                public void run() {
+                    lvChannelList.requestFocus();
+                    lvChannelList.setSelection(getChannelListSelection());
+                }
+            });
 
             SettingsActivity.logOperation("【面板】返回频道分组");
         }
@@ -826,16 +1024,40 @@ public class ChannelPanelController {
     }
 
     // ====================================================================
+    // ✅ 新增：辅助方法 - 获取频道列表选中位置
+    // ====================================================================
+    /**
+     * 获取当前频道列表应该选中的位置
+     *
+     * 【作用】
+     * 根据当前是否在分组筛选模式，计算频道列表的选中位置。
+     * 用于请求焦点时，把选中项滚动到可见区域。
+     *
+     * @return 频道列表的选中位置
+     */
+    private int getChannelListSelection() {
+        if (!currentGroupName.isEmpty() && !currentGroupChannelList.isEmpty()) {
+            // 分组筛选模式，找到当前频道在分组中的位置
+            Channel currentChannel = channelSourceList.get(currentPlayIndex);
+            for (int i = 0; i < currentGroupChannelList.size(); i++) {
+                if (currentGroupChannelList.get(i).getName().equals(currentChannel.getName())) {
+                    return i;
+                }
+            }
+            return 0;
+        } else {
+            // 全部频道模式，直接返回全局索引
+            return currentPlayIndex;
+        }
+    }
+
+    // ====================================================================
     // 5. 返回键处理
     // ====================================================================
     /**
      * 处理返回键
      *
-     * 【2026-06-19 优化：分级返回逻辑】
-     * 原逻辑：复用节目单按钮的切换逻辑
-     * 新逻辑：调用专门的返回分组方法
-     *
-     * 【交互逻辑】
+     * 【分级返回逻辑】
      * 1. 如果右侧面板（节目单）展开着 → 先收起节目单，回到分组列表
      * 2. 如果只有左侧面板打开着 → 关闭整个面板
      *
@@ -849,7 +1071,7 @@ public class ChannelPanelController {
         if (isPanelOpen()) {
             // 如果右侧面板展开着，先收起右侧面板（回到分组列表）
             if (rightPanelOpen) {
-                // ✅ 修改：调用专门的返回分组方法，而不是复用节目单按钮逻辑
+                // 调用专门的返回分组方法，而不是复用节目单按钮逻辑
                 // 语义更清晰，以后改返回逻辑不会影响节目单按钮
                 onBackGroupClicked();
                 return true;
@@ -859,6 +1081,218 @@ public class ChannelPanelController {
             return true;
         }
         return false;  // 没处理，让外部（MainActivity）处理
+    }
+
+    // ====================================================================
+    // ✅ 新增：按键事件分发（处理遥控器左右键、OK键）
+    // ====================================================================
+    /**
+     * 分发按键事件
+     *
+     * 【作用】
+     * 处理遥控器的左右键、OK键，在两个面板之间切换焦点，以及选中当前焦点的项。
+     *
+     * 【什么时候调用？】
+     * MainActivity 的 onKeyDown 中先调用这个方法，如果返回 true 表示已处理，
+     * 就不再往下分发了。
+     *
+     * 【按键逻辑】
+     * 左侧面板（从左到右）：分组列表 → 频道列表 → 节目单按钮
+     * 右侧面板（从左到右）：返回按钮 → 频道列表 → 日期列表 → EPG列表
+     *
+     * @param keyCode 按键码
+     * @return 是否处理了按键（true=已处理）
+     */
+    public boolean dispatchKeyEvent(int keyCode) {
+        if (!isPanelOpen()) {
+            return false;  // 面板没打开，不处理
+        }
+
+        switch (keyCode) {
+            // ============================================================
+            // 左键：往左移焦点
+            // ============================================================
+            case KeyEvent.KEYCODE_DPAD_LEFT:
+                return handleLeftKey();
+
+            // ============================================================
+            // 右键：往右移焦点
+            // ============================================================
+            case KeyEvent.KEYCODE_DPAD_RIGHT:
+                return handleRightKey();
+
+            // ============================================================
+            // OK键/确认键：选中当前项
+            // ============================================================
+            case KeyEvent.KEYCODE_DPAD_CENTER:
+            case KeyEvent.KEYCODE_ENTER:
+                return handleOkKey();
+
+            default:
+                return false;
+        }
+    }
+
+    /**
+     * 处理左键（往左移焦点）
+     *
+     * 【逻辑】
+     * 从右往左移焦点，比如：
+     * - 左侧面板：节目单按钮 → 频道列表 → 分组列表
+     * - 右侧面板：EPG列表 → 日期列表 → 频道列表 → 返回按钮
+     *
+     * 【为什么要自己处理左键？】
+     * 因为 ListView 自己只会处理上下键，不会处理左右键，
+     * 左右键需要我们自己控制焦点在不同列表之间移动。
+     *
+     * @return 是否处理了按键
+     */
+    private boolean handleLeftKey() {
+        if ("left".equals(currentFocusPanel)) {
+            // 左侧面板：从右往左移
+            if ("epgBtn".equals(leftFocusView)) {
+                // 节目单按钮 → 频道列表
+                lvChannelList.requestFocus();
+                return true;
+            } else if ("channel".equals(leftFocusView)) {
+                // 频道列表 → 分组列表
+                lvGroup.requestFocus();
+                return true;
+            }
+        } else if ("right".equals(currentFocusPanel)) {
+            // 右侧面板：从右往左移
+            if ("epg".equals(rightFocusView)) {
+                // EPG列表 → 日期列表
+                lvDate.requestFocus();
+                return true;
+            } else if ("date".equals(rightFocusView)) {
+                // 日期列表 → 频道列表
+                lvChannelListEpg.requestFocus();
+                return true;
+            } else if ("channel".equals(rightFocusView)) {
+                // 频道列表 → 返回按钮
+                btnBackGroup.requestFocus();
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 处理右键（往右移焦点）
+     *
+     * 【逻辑】
+     * 从左往右移焦点，比如：
+     * - 左侧面板：分组列表 → 频道列表 → 节目单按钮
+     * - 右侧面板：返回按钮 → 频道列表 → 日期列表 → EPG列表
+     *
+     * @return 是否处理了按键
+     */
+    private boolean handleRightKey() {
+        if ("left".equals(currentFocusPanel)) {
+            // 左侧面板：从左往右移
+            if ("group".equals(leftFocusView)) {
+                // 分组列表 → 频道列表
+                lvChannelList.requestFocus();
+                return true;
+            } else if ("channel".equals(leftFocusView)) {
+                // 频道列表 → 节目单按钮
+                btnShowEpg.requestFocus();
+                return true;
+            }
+        } else if ("right".equals(currentFocusPanel)) {
+            // 右侧面板：从左往右移
+            if ("backBtn".equals(rightFocusView)) {
+                // 返回按钮 → 频道列表
+                lvChannelListEpg.requestFocus();
+                return true;
+            } else if ("channel".equals(rightFocusView)) {
+                // 频道列表 → 日期列表
+                lvDate.requestFocus();
+                return true;
+            } else if ("date".equals(rightFocusView)) {
+                // 日期列表 → EPG列表
+                lvEpg.requestFocus();
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 处理OK键（选中当前项）
+     *
+     * 【逻辑】
+     * 根据当前焦点在哪个视图，执行对应的选中操作：
+     * - 分组列表：切换分组
+     * - 频道列表：切换频道
+     * - 日期列表：切换日期
+     * - 节目单按钮：切换到节目单页面
+     * - 返回按钮：返回分组列表
+     *
+     * 【为什么要自己处理OK键？】
+     * 因为 ListView 的 onItemClickListener 是在点击时触发的，
+     * 遥控器的 OK 键不一定会触发 onItemClick，
+     * 所以需要我们自己处理 OK 键，模拟点击效果。
+     *
+     * @return 是否处理了按键
+     */
+    private boolean handleOkKey() {
+        if ("left".equals(currentFocusPanel)) {
+            // 左侧面板
+            if ("group".equals(leftFocusView)) {
+                // 分组列表：选中当前分组
+                int pos = lvGroup.getSelectedItemPosition();
+                if (pos >= 0) {
+                    onGroupClicked(pos);
+                    return true;
+                }
+            } else if ("channel".equals(leftFocusView)) {
+                // 频道列表：选中当前频道
+                int pos = lvChannelList.getSelectedItemPosition();
+                if (pos >= 0) {
+                    onChannelClicked(pos);
+                    return true;
+                }
+            } else if ("epgBtn".equals(leftFocusView)) {
+                // 节目单按钮：点击按钮
+                onEpgButtonClicked();
+                return true;
+            }
+        } else if ("right".equals(currentFocusPanel)) {
+            // 右侧面板
+            if ("backBtn".equals(rightFocusView)) {
+                // 返回按钮：点击按钮
+                onBackGroupClicked();
+                return true;
+            } else if ("channel".equals(rightFocusView)) {
+                // 频道列表：选中当前频道
+                int pos = lvChannelListEpg.getSelectedItemPosition();
+                if (pos >= 0) {
+                    onChannelClicked(pos);
+                    return true;
+                }
+            } else if ("date".equals(rightFocusView)) {
+                // 日期列表：选中当前日期
+                // 直接调用 setCurrentDateIndex，触发日期切换和EPG刷新
+                int pos = lvDate.getSelectedItemPosition();
+                if (pos >= 0) {
+                    setCurrentDateIndex(pos);
+                    return true;
+                }
+            } else if ("epg".equals(rightFocusView)) {
+                // EPG列表：选中当前节目
+                // 这里可以加 EPG 节目的点击逻辑
+                // 比如点击回看节目，跳转到对应时间播放
+                // 暂时先留空，以后有需要再加
+                int pos = lvEpg.getSelectedItemPosition();
+                if (pos >= 0) {
+                    // TODO: EPG节目点击逻辑
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     // ====================================================================
@@ -897,11 +1331,11 @@ public class ChannelPanelController {
         llRightPanel = null;
         lvGroup = null;
         lvChannelList = null;
-        lvChannelListEpg = null;    // ✅ 新增：释放节目单页面频道列表引用
+        lvChannelListEpg = null;    // 节目单页面频道列表
         lvDate = null;
         lvEpg = null;
         btnShowEpg = null;
-        btnBackGroup = null;        // ✅ 新增：释放返回按钮引用
+        btnBackGroup = null;        // 返回按钮
         channelSourceList = null;
         currentGroupChannelList = null;
         channelChangeListener = null;

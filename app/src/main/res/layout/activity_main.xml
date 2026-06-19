@@ -4,13 +4,37 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#000000">
+
     <com.google.android.exoplayer2.ui.PlayerView
         android:id="@+id/player_view"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:layout_gravity="center"
         app:use_controller="false"
-        app:resize_mode="fit"/>
+        app:resize_mode="fit"
+        <!-- ==================================================================== -->
+        <!-- ✅ 防花屏增强：保持最后一帧，播放器暂停/重置时不清空画面          -->
+        <!-- ==================================================================== -->
+        app:keep_content_on_player_reset="true"
+        <!-- 明确指定使用 SurfaceView（默认就是，写上更清晰） -->
+        app:surface_type="surface_view" />
+
+    <!-- ==================================================================== -->
+    <!-- ✅ 防花屏增强：播放器占位图（退到后台时显示，防止 SurfaceView 花屏） -->
+    <!--                                                                      -->
+    <!-- 【原理】                                                              -->
+    <!-- SurfaceView 在 Activity 切换动画时容易花屏，                          -->
+    <!-- 用一个普通的 ImageView 显示最后一帧画面，                             -->
+    <!-- 退到后台时显示 ImageView，动画就不会花屏了。                           -->
+    <!-- ==================================================================== -->
+    <ImageView
+        android:id="@+id/iv_player_placeholder"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone"
+        android:scaleType="centerCrop"
+        android:background="@android:color/black" />
+
     <TextView
         android:id="@+id/tv_channel_num"
         android:layout_width="wrap_content"
@@ -23,6 +47,7 @@
         android:textColor="#FFF"
         android:alpha="0.8"
         android:visibility="gone"/>
+
     <LinearLayout
         android:id="@+id/panel_layout"
         android:layout_width="match_parent"
@@ -68,6 +93,7 @@
             android:background="#CC000000"
             android:visibility="gone"/>
     </LinearLayout>
+
     <!-- 底部信息栏 原样保留 -->
     <LinearLayout
         android:id="@+id/info_bar"

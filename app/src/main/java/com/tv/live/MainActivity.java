@@ -42,110 +42,62 @@ import java.util.List;
  * 1. PlayerView 设置 keep_content_on_player_reset="true"，暂停时保持最后一帧
  * 2. 退到后台时显示黑色占位图，盖住 SurfaceView，防止花屏
  * 3. 回到前台后延迟 2000ms 隐藏占位图，等 Surface 完全准备好
- * 4. 【2026-06-20 优化】占位图显示移到 super.onPause() 前面，先盖住再销毁
+ * 4. 占位图显示移到 super.onPause() 前面，先盖住再销毁
  *
  * 【兼容层说明】
- * 为了兼容其他类（GestureManager、KeyEventManager、ChannelListActivity 等）
- * 对旧的方法和变量的调用，保留了以下兼容接口：
+ * 为了兼容其他类对旧的方法和变量的调用，保留了以下兼容接口：
  * - 方法：togglePanel()、playPrev()、playNext()、playChannel(int)
  * - 变量：channelSourceList、currentPlayIndex
  * 这些接口内部都委托给对应的 Manager，外部调用方式不变。
  *
- * 【2026-06-19 优化：两个完整面板切换 + 焦点管理】
- * 原左右面板切换模式（只有日期+EPG）改为两个完整面板切换：
+ * 【2026-06-20 优化：两个完整面板切换 + 焦点管理】
+ * 原左右面板切换模式改为两个完整面板切换：
  * - 左侧面板：分组列表 + 频道列表 + 节目单按钮（默认显示）
  * - 右侧面板：返回按钮 + 频道列表 + 日期 + EPG（默认隐藏）
  * - 两个面板都有频道列表，切换时选中状态保持同步
- * - 节目单页面也能直接切换频道，不用切回去
  *
- * 【按键分发说明】
- * 按键事件按以下优先级分发：
- * 1. 数字选台（ChannelNumberManager）- 数字键
- * 2. 频道面板（ChannelPanelController）- 左右键、OK键（面板打开时）
- * 3. 方向键切台（handleDirectionKey）- 上下键（面板关闭时）
- * 4. 按键事件管理（KeyEventManager）- 其他按键
- *
- * 【2026-06-20 修改：打开设置页面时不显示占位图】
+ * 【2026-06-20 优化：按键处理统一管理（合并 KeyEventManager）】
  * 【问题原因】
- * 打开设置页面时，MainActivity 会走 onPause()，然后显示黑色占位图。
- * 但设置页面是透明主题，背景透过来就会看到黑色占位图，看不到播放画面。
+ * 之前按键处理分散在三个地方：
+ * 1. ChannelPanelController - 面板打开时的左右键、OK键
+ * 2. handleDirectionKey() - 面板关闭时的上下键
+ * 3. KeyEventManager - 其他按键（Menu键等）
+ * 分散管理容易出现逻辑不同步的问题，比如换台反转失效。
  *
  * 【解决方案】
- * 新增 isOpeningSettings 标志位：
- * - 打开设置前设为 true → onPause 时不显示占位图
- * - onResume 时重置为 false → 下次退到后台还是会显示占位图
+ * 把 KeyEventManager 的功能全部合并到 ChannelPanelController 里，
+ * 所有按键统一走 channelPanelController.dispatchKeyEvent() 入口，
+ * 面板打开/关闭都能处理，反转逻辑统一管理。
  *
- * 【效果】
- * - 按 Home 键退到后台 → 显示占位图，防花屏 ✅
- * - 打开设置页面 → 不显示占位图，能看到播放画面 ✅
+ * 【合并后效果】
+ * 1. 反转逻辑统一管理：所有切台入口都走 switchUp()/switchDown()，反转肯定生效
+ * 2. 减少文件：可以删掉 KeyEventManager.java
+ * 3. 调用简单：MainActivity 只需要调用一个 dispatchKeyEvent() 方法
+ * 4. 避免不同步：不会出现"KeyEventManager 改了，ChannelPanelController 没改"的情况
  *
- * 【2026-06-20 新增：首次打开 app 后频道面板 3 秒自动隐藏】
- * 【需求来源】
- * 用户希望首次打开 app 时，频道面板显示 3 秒后自动隐藏，
- * 让用户能先看到频道列表，然后自动进入全屏播放状态。
- *
- * 【实现方式】
- * 1. 用 Handler postDelayed 延迟 3 秒
- * 2. 延迟时间到了就调用 channelPanelController.hidePanel() 隐藏面板
- * 3. 如果用户有操作（按键、点击等），就取消自动隐藏
- * 4. 只有首次打开时自动隐藏，手动打开的不自动隐藏
- *
- * 【效果】
- * - 首次打开 app → 面板显示，3 秒后自动隐藏 ✅
- * - 用户按了键 → 取消自动隐藏，面板保持显示 ✅
- * - 手动打开面板 → 不自动隐藏 ✅
- *
- * 【2026-06-20 优化：防花屏增强（方案A）】
- * 【问题原因】
- * 1. 退到后台时，super.onPause() 先执行，Surface 开始销毁，
- *    然后才显示占位图，那一瞬间还是会看到花屏。
- * 2. 回到前台时，500ms 延迟不够，Surface 还没完全准备好，
- *    隐藏占位图后会看到短暂的花屏/黑屏。
- *
- * 【优化方案】
- * 1. 退到后台：把 showPlayerPlaceholder() 移到 super.onPause() 前面，
- *    先盖住再销毁，完全看不到花屏。
- * 2. 回到前台：把延迟从 500ms 改成 2000ms，
- *    等 Surface 完全创建好、第一帧渲染出来再隐藏，过渡更平滑。
- *
- * 【2026-06-20 修复：换台反转 + 屏幕比例失效】
- * 【问题原因】
- * onResume() 中只有 resumed == true 时才重新加载设置，
- * 从设置页面返回后，appCoreManager.onResume() 可能返回 false，
- * 导致设置没有重新加载，改了换台反转/屏幕比例不生效。
- *
- * 【修复方案】
- * 把 loadSettings() 和 screenRatioManager.apply() 移到 if (resumed) 外面，
- * 确保每次 onResume 都重新加载设置和应用屏幕比例。
- *
- * 【2026-06-20 优化：换台反转统一管理（合并 ChannelSwitchManager）】
- * 【问题原因】
- * 之前反转逻辑只在 MainActivity 的 handleDirectionKey() 里，
- * ChannelPanelController 不知道反转状态，容易出现不同步的问题。
- *
- * 【解决方案】
- * 把 ChannelSwitchManager 的功能全部合并到 ChannelPanelController 里，
- * 统一由 ChannelPanelController 管理反转：
- * 1. loadSettings() 时同步反转设置到 ChannelPanelController
- * 2. handleDirectionKey() 改用 switchUp()/switchDown() 统一方法
- *
- * 【效果】
- * 所有频道切换相关的逻辑都在 ChannelPanelController 里，
- * 反转设置统一管理，不会出现不同步的问题。
+ * 【按键分发优先级（合并后）】
+ * 1. 数字选台（ChannelNumberManager）- 数字键 0-9
+ * 2. 频道面板（ChannelPanelController）- 所有按键（面板打开/关闭都能处理）
+ *    - 面板打开时：左右键移焦点、OK键选中、Menu键打开设置
+ *    - 面板关闭时：上下键切台（带反转）、OK键打开面板、Menu键打开设置
  */
 public class MainActivity extends AppCompatActivity {
+
     // ====================== 单例 ======================
+
     /** Activity 单例，供其他类访问 */
     public static MainActivity mInstance;
 
     // ====================================================================
     // ✅ 兼容层：保留旧的 public 变量，供其他类直接访问
     // ====================================================================
+
     /**
      * 所有频道数据源列表（全部频道，未筛选）
      * 【兼容说明】内部数据来自 appCoreManager，外部访问方式不变
      */
     public List<Channel> channelSourceList = new ArrayList<>();
+
     /**
      * 当前正在播放的频道索引（全局索引，对应 channelSourceList）
      * 【兼容说明】内部数据来自 channelPanelController，外部访问方式不变
@@ -153,56 +105,70 @@ public class MainActivity extends AppCompatActivity {
     public int currentPlayIndex = 0;
 
     // ====================== 视图相关 ======================
+
     /** 播放器视图（ExoPlayer 的 PlayerView） */
     private PlayerView playerView;
 
     // ====================================================================
     // ✅ 防花屏：播放器占位图（退到后台时显示，盖住 SurfaceView）
     // ====================================================================
+
     /**
      * 播放器占位图
      * 【作用】退到后台时显示黑色背景，盖住 SurfaceView，防止 Surface 销毁时花屏
      * 【时机】onPause 时显示（在 super.onPause() 之前），onResume 后延迟 2000ms 隐藏
-     *
-     * 【2026-06-20 优化】
-     * 1. 显示时机：从 super.onPause() 之后 → 之前（先盖住再销毁）
-     * 2. 隐藏延迟：从 500ms → 2000ms（等 Surface 完全准备好）
      */
     private ImageView ivPlayerPlaceholder;
 
     // ====================== 管理器相关 ======================
+
     /** 播放器管理器（单例，基于 ExoPlayer 封装） */
     public TVPlayerManager mPlayerManager;
+
     /** 应用配置管理（SP 封装） */
     private AppConfig appConfig;
+
     /** 屏幕比例管理（全屏/填充/原始） */
     private ScreenRatioManager screenRatioManager;
+
     /** 手势管理（滑动、点击等手势处理） */
     private GestureManager gestureManager;
-    /** 按键事件管理（遥控器按键分发） */
-    private KeyEventManager keyEventManager;
+
     /** 播放器状态监听器（空实现，不弹 Toast） */
     private PlayerStateListenerImpl playerStateListener;
 
     // ====================================================================
     // 拆分新增：各个 Manager
     // ====================================================================
+
     /** 数字选台管理器 */
     private ChannelNumberManager channelNumberManager;
+
     /** 显示管理器（全面屏适配 + 加载动画） */
     private DisplayManager displayManager;
+
     /** 信息展示管理器（频道号 + 信息栏 + EPG 节目单） */
     private InfoDisplayManager infoDisplayManager;
-    /** 频道面板控制器（分组 + 频道切换 + 面板控制 + 焦点管理 + 反转） */
+
+    /**
+     * 频道面板控制器（分组 + 频道切换 + 面板控制 + 焦点管理 + 反转 + 按键）
+     * 
+     * 【2026-06-20 合并说明】
+     * 已合并 ChannelSwitchManager 和 KeyEventManager 的全部功能：
+     * - 频道切换（上/下切台、分组内循环、防抖、反转）
+     * - 按键处理（面板打开/关闭都能处理，统一入口）
+     */
     private ChannelPanelController channelPanelController;
+
     /** 应用核心管理器（数据加载 + 广播 + 生命周期） */
     private AppCoreManager appCoreManager;
 
     // ====================== 状态标志 ======================
+
     /**
      * 频道切换是否反向（上键=下一台，下键=上一台）
      *
-     * 【2026-06-20 优化说明】
+     * 【说明】
      * 保留这个变量是为了：
      * 1. 兼容旧代码直接访问这个变量
      * 2. 日志输出时用（显示"上键→下一台"还是"上键→上一台"）
@@ -211,12 +177,14 @@ public class MainActivity extends AppCompatActivity {
      * loadSettings() 时会同步到 channelPanelController.setReverse()。
      */
     private boolean channel_reverse;
+
     /** 数字选台是否启用 */
     private boolean number_channel_enable;
 
     // ====================================================================
     // ✅ 新增：打开设置页面的标志位
     // ====================================================================
+
     /**
      * 是否正在打开设置页面
      *
@@ -227,87 +195,54 @@ public class MainActivity extends AppCompatActivity {
      *
      * 【true = 正在打开设置，不显示占位图】
      * 【false = 正常退到后台，显示占位图防花屏】
-     *
-     * 【设置时机】
-     * - openSettings() 中设为 true（打开设置前）
-     * - onResume() 中重置为 false（从设置页面回来后）
-     *
-     * 【为什么需要这个标志位？】
-     * 如果没有这个标志位，打开设置页面时：
-     * 1. MainActivity.onPause() 被调用
-     * 2. showPlayerPlaceholder() 显示黑色占位图
-     * 3. 设置页面透明背景透过来 → 看到的是黑色占位图，不是播放画面
-     *
-     * 有了这个标志位后：
-     * 1. openSettings() 设 isOpeningSettings = true
-     * 2. MainActivity.onPause() 被调用
-     * 3. 判断 !isOpeningSettings → 不显示占位图
-     * 4. 设置页面透明背景透过来 → 能看到播放画面 ✅
      */
     private boolean isOpeningSettings = false;
 
     // ====================================================================
     // ✅ 新增：频道面板自动隐藏
     // ====================================================================
+
     /**
      * Handler 用于延迟隐藏面板
-     *
-     * 【作用】
-     * 用 postDelayed 实现 3 秒后自动隐藏面板的功能。
-     *
-     * 【为什么用 Handler？】
-     * 因为需要在主线程更新 UI（隐藏面板），
-     * Handler 可以方便地实现延迟执行和取消任务。
      */
     private Handler mPanelAutoHideHandler = new Handler(Looper.getMainLooper());
+
     /**
      * 自动隐藏面板的 Runnable
-     *
-     * 【作用】
-     * 延迟 3 秒后执行，调用 channelPanelController.hidePanel() 隐藏面板。
-     *
-     * 【什么时候执行？】
-     * 只有首次打开 app 时才会 post 这个 Runnable。
-     * 用户手动打开面板时不会自动隐藏。
      */
     private Runnable mPanelAutoHideRunnable = new Runnable() {
         @Override
         public void run() {
-            // 3 秒后自动隐藏频道面板
             if (channelPanelController != null) {
                 channelPanelController.hidePanel();
             }
         }
     };
+
     /**
      * 是否是首次打开 app
      *
-     * 【作用】
-     * 标记是否是首次打开 app，只有首次打开时才自动隐藏面板。
-     * 用户手动打开面板时不自动隐藏。
-     *
      * 【true = 首次打开，3 秒后自动隐藏】
      * 【false = 非首次，不自动隐藏】
-     *
-     * 【为什么只在首次打开时自动隐藏？】
-     * 因为用户手动打开面板时，说明用户想操作，不应该自动隐藏。
-     * 只有首次打开 app 时，面板是默认显示的，才需要自动隐藏。
      */
     private boolean mIsFirstLaunch = true;
 
     // ====================== 其他 ======================
+
     /** 本地日志列表（保留最近 100 条，供其他类访问） */
     public static List<String> logList = new ArrayList<>();
 
     // ====================== onCreate 生命周期 ======================
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         log("【主页】onCreate -> 页面创建");
         SettingsActivity.logOperation("【系统】APP启动");
+
         mInstance = this;
 
-        // ===== 自动旋转横屏 =====
+        // 自动旋转横屏
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
 
         // 全面屏适配
@@ -351,27 +286,8 @@ public class MainActivity extends AppCompatActivity {
         // ====================================================================
         // ✅ 新增：首次打开时，3 秒后自动隐藏面板
         // ====================================================================
-        //
-        // 【需求来源】
-        // 用户希望首次打开 app 时，频道面板显示 3 秒后自动隐藏，
-        // 让用户能先看到频道列表，然后自动进入全屏播放状态。
-        //
-        // 【实现方式】
-        // 1. 用 Handler postDelayed 延迟 3 秒
-        // 2. 延迟时间到了就调用 channelPanelController.hidePanel() 隐藏面板
-        // 3. 如果用户有操作（按键、点击等），就取消自动隐藏
-        //
-        // 【为什么只在首次打开时自动隐藏？】
-        // 因为用户手动打开面板时，说明用户想操作，不应该自动隐藏。
-        // 只有首次打开 app 时，面板是默认显示的，才需要自动隐藏。
-        //
-        // 【为什么放在这里？】
-        // 因为 initChannelPanelController() 刚执行完，面板已经初始化完成，
-        // 这时候启动自动隐藏计时最合适。
         if (mIsFirstLaunch) {
-            // 延迟 3 秒后自动隐藏面板
             mPanelAutoHideHandler.postDelayed(mPanelAutoHideRunnable, 3000);
-            // 标记为非首次，下次手动打开时不自动隐藏
             mIsFirstLaunch = false;
         }
 
@@ -393,8 +309,14 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        // 按键事件管理
-        keyEventManager = new KeyEventManager(this);
+        // ====================================================================
+        // ✅ 合并 KeyEventManager 后：删除 KeyEventManager 初始化
+        // ====================================================================
+        // 【原来的代码】keyEventManager = new KeyEventManager(this);
+        // 【为什么删除？】
+        // KeyEventManager 的功能已经全部合并到 ChannelPanelController 里了，
+        // 所有按键统一走 channelPanelController.dispatchKeyEvent()，
+        // 不需要单独的 KeyEventManager 了。
 
         // 恢复上次播放的频道索引
         currentPlayIndex = appConfig.getLastPlayIndex();
@@ -417,6 +339,7 @@ public class MainActivity extends AppCompatActivity {
     // ====================================================================
     // 信息展示管理器初始化
     // ====================================================================
+
     private void initInfoDisplayManager() {
         TextView tv_channel_num = findViewById(R.id.tv_channel_num);
         View info_bar = findViewById(R.id.info_bar);
@@ -451,86 +374,48 @@ public class MainActivity extends AppCompatActivity {
     // ====================================================================
     // 频道面板控制器初始化
     // ====================================================================
+
     /**
      * 初始化频道面板控制器
      *
      * 【两个完整面板切换】
-     * 原左右面板切换模式（只有日期+EPG）改为两个完整面板切换：
      * - 左侧面板：分组 + 频道列表 + 节目单按钮
      * - 右侧面板：返回按钮 + 频道列表 + 日期 + EPG
      *
-     * 【新增内容】
-     * 1. 新增节目单页面的频道列表（lv_channel_list_epg）
-     * 2. 新增返回分组按钮（btn_back_group）
-     * 3. 新增节目单页面的频道列表管理器（channelListManagerEpg）
-     * 4. ChannelPanelController 构造函数新增 3 个参数
+     * 【2026-06-20 新增：设置面板动作监听器】
+     * 【作用】
+     * ChannelPanelController 合并 KeyEventManager 后，
+     * Menu 键打开设置的功能也移到了 ChannelPanelController 里，
+     * 通过回调接口通知 MainActivity 打开设置页面。
+     *
+     * 【为什么用回调而不是直接引用？】
+     * 解耦：ChannelPanelController 不需要知道 MainActivity 的存在，
+     * 只需要通过回调通知外部，外部自己决定怎么处理。
      */
     private void initChannelPanelController() {
-        // ===== 面板根布局 =====
+        // 面板根布局
         View panel_layout = findViewById(R.id.panel_layout);
 
-        // ================================================================
         // 左右面板容器
-        // ================================================================
         View ll_left_panel = findViewById(R.id.ll_left_panel);
         View ll_right_panel = findViewById(R.id.ll_right_panel);
 
-        // ================================================================
         // 列表控件
-        // ================================================================
         ListView lvGroup = findViewById(R.id.lv_group);
         ListView lvChannelList = findViewById(R.id.lv_channel_list);
-
-        // ================================================================
-        // ✅ 新增：节目单页面的频道列表
-        // ================================================================
-        // 【作用】
-        // 右侧面板（节目单页面）也有一个频道列表，用户在看节目单时
-        // 可以直接切换频道，不用切回左侧面板。
-        //
-        // 【布局 ID】
-        // lv_channel_list_epg：节目单页面的频道列表，在 ll_right_panel 里面
         ListView lvChannelListEpg = findViewById(R.id.lv_channel_list_epg);
-
         ListView lvDate = findViewById(R.id.lv_date);
         ListView lvEpg = findViewById(R.id.lv_epg);
 
-        // ================================================================
         // 按钮控件
-        // ================================================================
         TextView btn_show_epg = findViewById(R.id.btn_show_epg);
-
-        // ================================================================
-        // ✅ 新增：返回分组按钮
-        // ================================================================
-        // 【作用】
-        // 右侧面板（节目单页面）最左边的返回按钮，点击后切回左侧面板。
-        // 文字是竖排的"频道组"。
-        //
-        // 【布局 ID】
-        // btn_back_group：返回按钮，在 ll_right_panel 最左边
         TextView btn_back_group = findViewById(R.id.btn_back_group);
 
-        // ================================================================
         // 子管理器初始化
-        // ================================================================
         EpgManager.getInstance(this);
 
-        // 主页面频道列表管理器（左侧面板用）
         ChannelListManager channelListManager = new ChannelListManager(this, lvChannelList);
-
-        // ================================================================
-        // ✅ 新增：节目单页面频道列表管理器
-        // ================================================================
-        // 【作用】
-        // 管理右侧面板的频道列表，和左侧面板的频道列表管理器是两个独立的实例，
-        // 分别管理各自的 ListView，但数据保持同步。
-        //
-        // 【为什么需要两个管理器？】
-        // 因为有两个 ListView，每个 ListView 需要自己的 Adapter 和选中状态管理。
-        // 两个管理器的数据来源相同，切台时同时更新两边的选中状态。
         ChannelListManager channelListManagerEpg = new ChannelListManager(this, lvChannelListEpg);
-
         GroupListManager groupListManager = new GroupListManager(this, lvGroup);
         DateListManager dateListManager = new DateListManager(this, lvDate);
         EpgManagerWrapper epgManagerWrapper = new EpgManagerWrapper(this, lvEpg);
@@ -542,9 +427,7 @@ public class MainActivity extends AppCompatActivity {
             channelPanelController.setCurrentDateIndex(pos);
         });
 
-        // ================================================================
         // 创建频道面板控制器
-        // ================================================================
         channelPanelController = new ChannelPanelController(
                 this,
                 panel_layout,
@@ -552,14 +435,14 @@ public class MainActivity extends AppCompatActivity {
                 ll_right_panel,
                 lvGroup,
                 lvChannelList,
-                lvChannelListEpg,        // ✅ 新增：节目单页面频道列表
+                lvChannelListEpg,
                 lvDate,
                 lvEpg,
                 btn_show_epg,
-                btn_back_group,          // ✅ 新增：返回分组按钮
+                btn_back_group,
                 groupListManager,
                 channelListManager,
-                channelListManagerEpg,   // ✅ 新增：节目单页面频道管理器
+                channelListManagerEpg,
                 dateListManager,
                 epgManagerWrapper,
                 panelManager
@@ -572,11 +455,36 @@ public class MainActivity extends AppCompatActivity {
                 playChannel(channel, index);
             }
         });
+
+        // ====================================================================
+        // ✅ 新增：设置面板动作监听器（处理打开设置等回调）
+        // ====================================================================
+        //
+        // 【为什么要新增这个监听器？】
+        // KeyEventManager 合并到 ChannelPanelController 后，
+        // Menu 键打开设置的功能也移到了 ChannelPanelController 里。
+        // 但是 ChannelPanelController 不能直接启动 SettingsActivity，
+        // 需要通过回调通知 MainActivity 来处理。
+        //
+        // 【回调时机】
+        // 用户按 Menu 键时，ChannelPanelController 会调用 onOpenSettings()。
+        //
+        // 【处理逻辑】
+        // 直接调用 MainActivity 自己的 openSettings() 方法，
+        // 保持和原来的行为一致。
+        channelPanelController.setOnPanelActionListener(new ChannelPanelController.OnPanelActionListener() {
+            @Override
+            public void onOpenSettings() {
+                // 调用 MainActivity 自己的 openSettings() 方法
+                openSettings();
+            }
+        });
     }
 
     // ====================================================================
     // 播放器初始化
     // ====================================================================
+
     private void initPlayer() {
         mPlayerManager = TVPlayerManager.getInstance(this);
         mPlayerManager.attachPlayerView(playerView);
@@ -595,6 +503,7 @@ public class MainActivity extends AppCompatActivity {
     // ====================================================================
     // 数字选台管理器初始化
     // ====================================================================
+
     private void initChannelNumberManager() {
         channelNumberManager = new ChannelNumberManager(
                 new ChannelNumberManager.OnChannelNumberListener() {
@@ -620,6 +529,7 @@ public class MainActivity extends AppCompatActivity {
     // ====================================================================
     // 应用核心管理器初始化
     // ====================================================================
+
     private void initAppCoreManager() {
         appCoreManager = new AppCoreManager(this, mPlayerManager, appConfig);
 
@@ -629,7 +539,7 @@ public class MainActivity extends AppCompatActivity {
                 runOnUiThread(new Runnable() {
                     @Override
                     public void run() {
-                        // ✅ 同步到兼容变量 channelSourceList
+                        // 同步到兼容变量 channelSourceList
                         channelSourceList.clear();
                         channelSourceList.addAll(channels);
 
@@ -704,6 +614,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // ====================== 设置加载 ======================
+
     /**
      * 加载设置
      *
@@ -713,18 +624,9 @@ public class MainActivity extends AppCompatActivity {
      * 3. 数字选台
      * 4. 自动更新源
      *
-     * 【2026-06-20 优化：同步反转设置到 ChannelPanelController】
-     * 【问题原因】
-     * 之前反转逻辑只在 MainActivity 的 handleDirectionKey() 里，
-     * ChannelPanelController 不知道反转状态，容易出现不同步的问题。
-     *
-     * 【解决方案】
+     * 【同步反转设置到 ChannelPanelController】
      * 统一由 ChannelPanelController 管理反转，
      * loadSettings() 时把反转设置同步过去。
-     *
-     * 【效果】
-     * 所有地方调用 channelPanelController.switchUp()/switchDown() 时，
-     * 都会自动考虑反转设置，不会出现不同步的问题。
      */
     private void loadSettings() {
         SharedPreferences sp = getSharedPreferences("app_settings", MODE_PRIVATE);
@@ -739,23 +641,7 @@ public class MainActivity extends AppCompatActivity {
 
         if (channelPanelController != null) {
             channelPanelController.setEpgEnable(epg_enable);
-
-            // ====================================================================
-            // ✅ 新增：同步反转设置到 ChannelPanelController
-            // ====================================================================
-            //
-            // 【为什么要同步？】
-            // 之前反转逻辑只在 MainActivity 的 handleDirectionKey() 里，
-            // ChannelPanelController 不知道反转状态。
-            // 现在统一由 ChannelPanelController 管理反转，需要把设置同步过去。
-            //
-            // 【同步后效果】
-            // 所有地方调用 channelPanelController.switchUp()/switchDown() 时，
-            // 都会自动考虑反转设置，不会出现不同步的问题。
-            //
-            // 【调用时机】
-            // 1. App 启动时，onCreate() 里调用 loadSettings()
-            // 2. 从设置页面返回时，onResume() 里调用 loadSettings()
+            // 同步反转设置到 ChannelPanelController
             channelPanelController.setReverse(channel_reverse);
         }
 
@@ -768,6 +654,7 @@ public class MainActivity extends AppCompatActivity {
     // ====================================================================
     // ✅ 兼容层：旧的 playChannel(int) 方法，供其他类调用
     // ====================================================================
+
     /**
      * 播放指定索引的频道（兼容旧接口）
      *
@@ -781,6 +668,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // ====================== 播放频道（内部方法） ======================
+
     /**
      * 播放指定频道（内部实现）
      *
@@ -790,7 +678,7 @@ public class MainActivity extends AppCompatActivity {
     private void playChannel(Channel channel, int index) {
         if (channel == null || channel.getPlayUrl() == null) return;
 
-        // ✅ 同步到兼容变量
+        // 同步到兼容变量
         currentPlayIndex = index;
 
         log("========================================");
@@ -809,13 +697,14 @@ public class MainActivity extends AppCompatActivity {
         TVPlayerManager.LiveInfo live = mPlayerManager.getLiveInfo();
         infoDisplayManager.showInfoBar(channel, live);
 
-        // ✅ 显示频道号（从 1 开始，用户看到的是 1、2、3...）
+        // 显示频道号（从 1 开始，用户看到的是 1、2、3...）
         infoDisplayManager.showChannelNum(index + 1);
     }
 
     // ====================================================================
     // ✅ 兼容层：旧的 togglePanel() 方法，供 GestureManager 等调用
     // ====================================================================
+
     /**
      * 切换频道面板显示/隐藏（兼容旧接口）
      */
@@ -826,6 +715,7 @@ public class MainActivity extends AppCompatActivity {
     // ====================================================================
     // ✅ 兼容层：旧的 playPrev() 方法，供 GestureManager 等调用
     // ====================================================================
+
     /**
      * 播放上一个频道（兼容旧接口）
      *
@@ -839,6 +729,7 @@ public class MainActivity extends AppCompatActivity {
     // ====================================================================
     // ✅ 兼容层：旧的 playNext() 方法，供 GestureManager 等调用
     // ====================================================================
+
     /**
      * 播放下一个频道（兼容旧接口）
      *
@@ -850,6 +741,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // ====================== 返回键处理 ======================
+
     @Override
     public void onBackPressed() {
         if (channelNumberManager.isInputting()) {
@@ -865,23 +757,22 @@ public class MainActivity extends AppCompatActivity {
         super.onBackPressed();
     }
 
-    // ====================== 方向键处理 ======================
+    // ====================== 方向键处理（保留，兼容旧代码） ======================
+
     /**
      * 处理方向键（面板关闭时切台）
      *
-     * 【2026-06-20 优化：改用 ChannelPanelController 统一方法】
-     * 【问题原因】
-     * 之前反转逻辑在 MainActivity 里判断，然后调用 playPrev() 或 playNext()，
-     * 这样反转逻辑分散在两个地方，容易出现不同步。
+     * 【2026-06-20 说明】
+     * 合并 KeyEventManager 后，这个方法理论上可以删掉了，
+     * 因为 ChannelPanelController.dispatchKeyEvent() 已经能处理所有情况。
      *
-     * 【解决方案】
-     * 统一由 ChannelPanelController 管理反转，
-     * 直接调用 switchUp() 和 switchDown() 方法，内部自动考虑反转。
+     * 【为什么保留？】
+     * 为了兼容其他可能直接调用 handleDirectionKey() 的地方，
+     * 比如 GestureManager 或者其他类。
      *
-     * 【好处】
-     * 1. 反转逻辑统一管理，不会出现不同步
-     * 2. 外部调用简单，不用每次都判断 channel_reverse
-     * 3. 以后修改反转逻辑，只需要改 ChannelPanelController 一个地方
+     * 【实际使用】
+     * 合并后，onKeyDown() 里不会再调用这个方法了，
+     * 所有按键都走 channelPanelController.dispatchKeyEvent()。
      *
      * @param keyCode 按键码
      * @return 是否处理了按键
@@ -889,14 +780,12 @@ public class MainActivity extends AppCompatActivity {
     private boolean handleDirectionKey(int keyCode) {
         switch (keyCode) {
             case KeyEvent.KEYCODE_DPAD_UP:
-                // ✅ 直接调用统一方法，内部自动考虑反转
                 channelPanelController.switchUp();
                 SettingsActivity.logOperation("【切台】上键 → "
                         + (channel_reverse ? "下一台" : "上一台"));
                 return true;
 
             case KeyEvent.KEYCODE_DPAD_DOWN:
-                // ✅ 直接调用统一方法，内部自动考虑反转
                 channelPanelController.switchDown();
                 SettingsActivity.logOperation("【切台】下键 → "
                         + (channel_reverse ? "上一台" : "下一台"));
@@ -921,112 +810,118 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // ====================== 按键分发 ======================
+    // ====================== 按键分发（合并 KeyEventManager 后简化版） ======================
+
     /**
      * 按键事件分发
      *
-     * 【按键分发优先级】
-     * 1. 数字选台（ChannelNumberManager）- 数字键 0-9
-     * 2. 频道面板（ChannelPanelController）- 左右键、OK键（面板打开时）
-     * 3. 方向键切台（handleDirectionKey）- 上下键（面板关闭时）
-     * 4. 按键事件管理（KeyEventManager）- 其他按键
+     * 【2026-06-20 优化：合并 KeyEventManager 后简化】
+     * 原来的按键分发有 4 层：
+     * 1. 数字选台
+     * 2. 频道面板（面板打开时）
+     * 3. 方向键切台（面板关闭时）
+     * 4. KeyEventManager（其他按键）
      *
-     * 【为什么要先让频道面板处理？】
-     * 因为频道面板打开时，左右键应该在面板内移动焦点，
-     * 而不是切换频道面板的显示/隐藏。
-     * 如果频道面板处理了这个按键，就直接返回 true，不再往下分发。
+     * 合并后简化为 2 层：
+     * 1. 数字选台（ChannelNumberManager）- 数字键 0-9
+     * 2. 频道面板（ChannelPanelController）- 所有按键（面板打开/关闭都能处理）
+     *    - 面板打开时：左右键移焦点、OK键选中、Menu键打开设置
+     *    - 面板关闭时：上下键切台（带反转）、OK键打开面板、Menu键打开设置
+     *
+     * 【为什么简化？】
+     * 因为 KeyEventManager 的功能已经全部合并到 ChannelPanelController 里了，
+     * ChannelPanelController 的 dispatchKeyEvent() 方法面板打开/关闭都能处理，
+     * 不需要再分多层了。
+     *
+     * 【好处】
+     * 1. 代码更简洁：onKeyDown() 里只有 2 个 if 判断
+     * 2. 逻辑更清晰：所有按键逻辑都在 ChannelPanelController 里
+     * 3. 反转更可靠：所有切台入口都走 switchUp()/switchDown()，反转肯定生效
+     *
+     * @param keyCode 按键码
+     * @param event   按键事件
+     * @return 是否处理了按键
      */
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         // ====================================================================
-        // ✅ 新增：用户有按键操作时，取消自动隐藏
+        // ✅ 用户有按键操作时，取消自动隐藏
         // ====================================================================
-        //
-        // 【为什么要取消？】
-        // 如果用户在 3 秒内按了键，说明用户想操作面板，
-        // 这时候不应该自动隐藏，应该保持面板显示。
-        //
-        // 【什么时候取消？】
-        // 用户按任何键都取消，包括：
-        // - 上下左右键（切换频道/分组）
-        // - OK 键（选中频道）
-        // - 数字键（数字选台）
-        // - 其他按键
-        // 只要用户有任何操作，就取消自动隐藏。
-        //
-        // 【为什么放在最前面？】
-        // 因为不管是数字选台、频道面板、还是方向键处理，
-        // 只要用户按了键，就说明用户在操作，都应该取消自动隐藏。
         cancelPanelAutoHide();
 
-        // 1. 先处理数字选台
+        // 1. 先处理数字选台（优先级最高）
         if (channelNumberManager.handleNumberKey(keyCode)) return true;
 
-        // ================================================================
-        // ✅ 新增：再让频道面板处理按键（左右键、OK键）
-        // ================================================================
-        // 【为什么要在这里加？】
-        // 因为频道面板有自己的焦点管理逻辑，需要处理左右键在面板内的焦点移动，
-        // 以及OK键选中当前项。
+        // ====================================================================
+        // ✅ 合并后：统一交给 ChannelPanelController 处理所有按键
+        // ====================================================================
         //
-        // 【什么时候生效？】
-        // 只有面板打开时才会处理，面板关闭时直接返回 false，
-        // 不会影响正常的切台逻辑。
+        // 【为什么只需要这一个调用？】
+        // 因为 KeyEventManager 的功能已经全部合并到 ChannelPanelController 里了，
+        // dispatchKeyEvent() 方法面板打开/关闭都能处理：
         //
-        // 【如果频道面板处理了按键】
-        // 直接返回 true，不再往下分发（不会再触发 handleDirectionKey）。
+        // 面板打开时：
+        //   - 左右键：移动焦点
+        //   - OK键：选中当前项
+        //   - Menu键：打开设置
+        //   - 上下键：ListView 自己处理（返回 false，让系统处理）
+        //
+        // 面板关闭时：
+        //   - 上下键：切台（带反转）
+        //   - OK键：打开面板
+        //   - 左右键：打开面板
+        //   - Menu键：打开设置
+        //
+        // 【如果 ChannelPanelController 处理了按键】
+        // 直接返回 true，不再往下分发。
+        //
+        // 【如果 ChannelPanelController 没处理】
+        // 继续往下走，交给系统默认处理。
         if (channelPanelController != null && channelPanelController.dispatchKeyEvent(keyCode)) {
             return true;
         }
 
-        // 3. 再处理方向键切台（面板关闭时）
-        if (handleDirectionKey(keyCode)) return true;
+        // ====================================================================
+        // ✅ 合并后：删除 handleDirectionKey 和 keyEventManager 的调用
+        // ====================================================================
+        // 【原来的代码】
+        // if (handleDirectionKey(keyCode)) return true;
+        // if (keyEventManager.dispatchKey(keyCode)) return true;
+        //
+        // 【为什么删除？】
+        // 因为这些功能都已经合并到 ChannelPanelController.dispatchKeyEvent() 里了，
+        // 不需要再单独调用了。
 
-        // 4. 最后交给按键事件管理
-        if (keyEventManager.dispatchKey(keyCode)) return true;
-
+        // 其他按键交给系统处理
         return super.onKeyDown(keyCode, event);
     }
 
     // ====================================================================
-    // ✅ 新增：取消频道面板自动隐藏
+    // ✅ 取消频道面板自动隐藏
     // ====================================================================
+
     /**
      * 取消频道面板自动隐藏
      *
      * 【调用时机】
      * 用户有任何操作时调用，比如按键、点击面板等。
-     *
-     * 【作用】
-     * 取消之前 postDelayed 的自动隐藏任务，
-     * 让面板保持显示状态，不会突然自动隐藏。
-     *
-     * 【为什么需要这个方法？】
-     * 如果用户在 3 秒内按了键，说明用户想操作面板，
-     * 这时候不应该自动隐藏，应该保持面板显示。
-     * 所以需要一个方法来取消之前的延迟任务。
-     *
-     * 【实现原理】
-     * 调用 Handler.removeCallbacks() 移除之前 post 的 Runnable，
-     * 这样延迟任务就不会执行了，面板也就不会自动隐藏了。
      */
     private void cancelPanelAutoHide() {
         if (mPanelAutoHideHandler != null && mPanelAutoHideRunnable != null) {
-            // 移除延迟的隐藏任务
             mPanelAutoHideHandler.removeCallbacks(mPanelAutoHideRunnable);
         }
     }
 
     // ====================== 打开设置页面 ======================
+
     /**
      * 打开设置页面
      *
-     * 【2026-06-20 修改：设置 isOpeningSettings 标志位】
+     * 【设置 isOpeningSettings 标志位】
      * 打开设置前设为 true，这样 onPause() 时就不会显示占位图，
      * 设置页面透明背景透过来就能看到播放画面了。
      */
     public void openSettings() {
-        // ✅ 设置标志位：正在打开设置，不显示占位图
         isOpeningSettings = true;
         log("【设置】打开设置页面，不显示占位图");
         appCoreManager.beforeOpenSettings();
@@ -1034,18 +929,21 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // ====================== 接收远程配置 ======================
+
     public void onReceiveConfig(final String liveUrl, final String epgUrl) {
         appCoreManager.onReceiveConfig(liveUrl, epgUrl);
     }
 
     // ====================== 生命周期方法 ======================
+
     // ====================================================================
     // ✅ 防花屏优化：退到后台前先显示占位图（先盖住再销毁）
     // ====================================================================
+
     /**
      * 页面暂停回调（退到后台时调用）
      *
-     * 【2026-06-20 优化】
+     * 【优化】
      * 把 showPlayerPlaceholder() 移到 super.onPause() 前面执行。
      *
      * 【为什么要移到前面？】
@@ -1057,30 +955,10 @@ public class MainActivity extends AppCompatActivity {
      * 先显示占位图，盖住 SurfaceView，
      * 然后再调用 super.onPause() 销毁 Surface，
      * 这样销毁过程完全被占位图盖住，用户看不到花屏。
-     *
-     * 【打开设置页面的特殊处理】
-     * 打开设置页面时，isOpeningSettings = true，
-     * 这时候不显示占位图，因为设置页面是透明的，用户要看播放画面。
      */
     @Override
     protected void onPause() {
-        // ====================================================================
-        // ✅ 优化：在 super.onPause() 之前就显示占位图（关键！）
-        // ====================================================================
-        //
-        // 【执行顺序】
-        // 1. 先判断是否需要显示占位图
-        // 2. 显示占位图（盖住 SurfaceView）
-        // 3. 再调用 super.onPause()（触发 Surface 销毁）
-        //
-        // 【为什么这个顺序很重要？】
-        // 如果先销毁再显示：
-        //   Surface 开始销毁 → 花屏 → 占位图显示 → 花屏结束
-        //   用户能看到一瞬间的花屏 ❌
-        //
-        // 如果先显示再销毁：
-        //   占位图显示 → Surface 开始销毁 → 销毁完成
-        //   整个过程都被占位图盖住，用户看不到花屏 ✅
+        // 先判断是否需要显示占位图
         if (!isOpeningSettings) {
             // 正常退到后台 → 显示占位图，防花屏
             showPlayerPlaceholder();
@@ -1094,27 +972,20 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // ====================================================================
-    // ✅ 防花屏优化：回到前台后延迟 2000ms 隐藏占位图（等 Surface 完全准备好）
+    // ✅ 防花屏优化：回到前台后延迟 2000ms 隐藏占位图
     // ====================================================================
+
     /**
      * 页面恢复回调（从后台回到前台时调用）
      *
-     * 【2026-06-20 优化】
+     * 【优化】
      * 把隐藏占位图的延迟从 500ms 改成 2000ms。
      *
      * 【为什么改成 2000ms？】
      * 原来的 500ms 可能不够，Surface 还没完全准备好第一帧，
      * 这时候隐藏占位图就会看到短暂的花屏/黑屏。
      *
-     * 【改成 2000ms 的效果】
-     * 等 2 秒，Surface 完全创建好，第一帧也渲染出来了，
-     * 这时候再隐藏占位图，过渡非常平滑，完全看不到花屏。
-     *
-     * 【如果 2000ms 还不够？】
-     * 可以改成 3000（3秒），绝对够了。
-     * 但 2 秒通常已经足够了，太长会让用户觉得卡顿。
-     *
-     * 【2026-06-20 修复：换台反转 + 屏幕比例失效】
+     * 【修复：换台反转 + 屏幕比例失效】
      * 把 loadSettings() 和 screenRatioManager.apply() 移到 if (resumed) 外面，
      * 确保每次 onResume 都重新加载设置和应用屏幕比例。
      */
@@ -1122,57 +993,25 @@ public class MainActivity extends AppCompatActivity {
     protected void onResume() {
         super.onResume();
 
-        // ====================================================================
-        // 【2026-06-20 修改：重置打开设置的标志位】
-        // ====================================================================
-        // 从设置页面回来后，重置标志位。
-        // 下次退到后台（按 Home 键）还是会正常显示占位图。
+        // 重置打开设置的标志位
         isOpeningSettings = false;
         log("【设置】从设置页面返回，重置标志位");
 
         boolean resumed = appCoreManager.onResume();
 
-        // ====================================================================
-        // ✅ 修复：每次 onResume 都重新加载设置和应用屏幕比例
-        // ====================================================================
-        //
-        // 【问题原因】
-        // 原来的代码只有 resumed == true 时才重新加载设置，
-        // 但从设置页面返回时，appCoreManager.onResume() 可能返回 false，
-        // 导致设置没有重新加载，改了换台反转/屏幕比例不生效。
-        //
-        // 【修复后效果】
-        // 每次从后台/设置页面回到前台，都会：
-        // 1. 重新读取所有设置（换台反转、数字选台、EPG开关等）
-        // 2. 重新应用屏幕比例
-        // 确保设置修改后立即生效。
+        // 每次 onResume 都重新加载设置和应用屏幕比例
         loadSettings();
         screenRatioManager.apply();
 
         displayManager.reapplyFullScreen();
 
-        // ====================================================================
-        // ✅ 优化：延迟 2000ms 再隐藏占位图（从 500ms 改成 2000ms）
-        // ====================================================================
-        //
-        // 【为什么要延迟？】
-        // Surface 的创建是异步的，onResume 时 Surface 可能还没准备好。
-        // 如果这时候立刻隐藏占位图，可能会看到短暂的黑屏/花屏。
-        //
-        // 【为什么从 500ms 改成 2000ms？】
-        // 500ms 对于某些设备来说不够，特别是低端电视盒子，
-        // Surface 创建和第一帧渲染可能需要 1-2 秒。
-        // 改成 2000ms 更保险，确保 Surface 完全准备好再隐藏。
-        //
-        // 【如果觉得 2 秒太长？】
-        // 可以改成 1000（1秒），大部分设备应该够了。
-        // 或者改成 1500（1.5秒），折中方案。
+        // 延迟 2000ms 再隐藏占位图
         new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
             @Override
             public void run() {
                 hidePlayerPlaceholder();
             }
-        }, 2000);  // ✅ 从 500 改成 2000（2秒）
+        }, 2000);
     }
 
     @Override
@@ -1189,20 +1028,7 @@ public class MainActivity extends AppCompatActivity {
         super.onDestroy();
         log("【主页】onDestroy -> 页面销毁");
 
-        // ====================================================================
-        // ✅ 新增：清理自动隐藏的 Handler，防止内存泄漏
-        // ====================================================================
-        //
-        // 【为什么要清理？】
-        // Handler 持有 Activity 的引用，如果 Activity 销毁了，
-        // 但 Handler 还有未处理的消息，就会导致内存泄漏。
-        //
-        // 【清理方式】
-        // 1. 移除所有延迟的 Runnable
-        // 2. Handler 置为 null
-        //
-        // 【什么时候清理？】
-        // Activity 销毁时（onDestroy）清理。
+        // 清理自动隐藏的 Handler，防止内存泄漏
         if (mPanelAutoHideHandler != null) {
             mPanelAutoHideHandler.removeCallbacks(mPanelAutoHideRunnable);
             mPanelAutoHideHandler = null;
@@ -1220,24 +1046,12 @@ public class MainActivity extends AppCompatActivity {
     // ====================================================================
     // ✅ 防花屏：占位图显示/隐藏方法
     // ====================================================================
+
     /**
      * 显示播放器占位图
      *
      * 【作用】用黑色背景盖住 SurfaceView，防止退到后台时 Surface 销毁导致花屏
      * 【调用时机】onPause() 时调用，在 super.onPause() 之前
-     *
-     * 【为什么能防花屏？】
-     * SurfaceView 的 Surface 销毁是异步的，在销毁过程中可能出现：
-     * 1. 花屏（显示垃圾数据）
-     * 2. 绿屏（Surface 未初始化）
-     * 3. 撕裂（部分显示旧帧，部分显示新帧）
-     *
-     * 用一个 ImageView 盖在 SurfaceView 上面，退到后台时显示黑色背景，
-     * 这样用户看到的就是平滑的黑色过渡，而不是花屏。
-     *
-     * 【2026-06-20 优化】
-     * 调用时机从 super.onPause() 之后 → 之前，
-     * 先盖住再销毁，完全看不到花屏。
      */
     private void showPlayerPlaceholder() {
         if (ivPlayerPlaceholder != null) {
@@ -1251,14 +1065,6 @@ public class MainActivity extends AppCompatActivity {
      *
      * 【作用】回到前台后，等 Surface 准备好再隐藏占位图
      * 【调用时机】onResume() 后延迟 2000ms 调用
-     *
-     * 【为什么要延迟？】
-     * Surface 的创建是异步的，onResume 时 Surface 可能还没准备好。
-     * 如果这时候立刻隐藏占位图，可能会看到短暂的黑屏/花屏。
-     *
-     * 【2026-06-20 优化】
-     * 延迟从 500ms → 2000ms，
-     * 等 Surface 完全创建好、第一帧渲染出来再隐藏，过渡更平滑。
      */
     private void hidePlayerPlaceholder() {
         if (ivPlayerPlaceholder != null) {
@@ -1268,6 +1074,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // ====================== 日志方法 ======================
+
     /**
      * 记录日志
      *

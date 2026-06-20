@@ -15,7 +15,9 @@ import android.widget.ImageView;
 import android.widget.ListView;
 import android.widget.ProgressBar;
 import android.widget.TextView;
+
 import androidx.appcompat.app.AppCompatActivity;
+
 import com.google.android.exoplayer2.ui.PlayerView;
 import com.tv.live.config.AppConfig;
 import com.tv.live.listener.PlayerStateListenerImpl;
@@ -24,6 +26,7 @@ import com.tv.live.widget.ChannelListManager;
 import com.tv.live.widget.DateListManager;
 import com.tv.live.widget.EpgManagerWrapper;
 import com.tv.live.widget.GroupListManager;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -61,6 +64,20 @@ import java.util.List;
  * 2. 频道面板（ChannelPanelController）- 左右键、OK键（面板打开时）
  * 3. 方向键切台（handleDirectionKey）- 上下键（面板关闭时）
  * 4. 按键事件管理（KeyEventManager）- 其他按键
+ *
+ * 【2026-06-20 修改：打开设置页面时不显示占位图】
+ * 【问题原因】
+ * 打开设置页面时，MainActivity 会走 onPause()，然后显示黑色占位图。
+ * 但设置页面是透明主题，背景透过来就会看到黑色占位图，看不到播放画面。
+ *
+ * 【解决方案】
+ * 新增 isOpeningSettings 标志位：
+ * - 打开设置前设为 true → onPause 时不显示占位图
+ * - onResume 时重置为 false → 下次退到后台还是会显示占位图
+ *
+ * 【效果】
+ * - 按 Home 键退到后台 → 显示占位图，防花屏 ✅
+ * - 打开设置页面 → 不显示占位图，能看到播放画面 ✅
  */
 public class MainActivity extends AppCompatActivity {
 
@@ -76,6 +93,7 @@ public class MainActivity extends AppCompatActivity {
      * 【兼容说明】内部数据来自 appCoreManager，外部访问方式不变
      */
     public List<Channel> channelSourceList = new ArrayList<>();
+
     /**
      * 当前正在播放的频道索引（全局索引，对应 channelSourceList）
      * 【兼容说明】内部数据来自 channelPanelController，外部访问方式不变
@@ -129,6 +147,38 @@ public class MainActivity extends AppCompatActivity {
     private boolean channel_reverse;
     /** 数字选台是否启用 */
     private boolean number_channel_enable;
+
+    // ====================================================================
+    // ✅ 新增：打开设置页面的标志位
+    // ====================================================================
+    /**
+     * 是否正在打开设置页面
+     *
+     * 【作用】
+     * 打开设置页面时，MainActivity 会走 onPause() 生命周期，
+     * 但这时候不应该显示占位图，因为设置页面是透明主题，
+     * 用户需要看到后面的播放画面。
+     *
+     * 【true = 正在打开设置，不显示占位图】
+     * 【false = 正常退到后台，显示占位图防花屏】
+     *
+     * 【设置时机】
+     * - openSettings() 中设为 true（打开设置前）
+     * - onResume() 中重置为 false（从设置页面回来后）
+     *
+     * 【为什么需要这个标志位？】
+     * 如果没有这个标志位，打开设置页面时：
+     * 1. MainActivity.onPause() 被调用
+     * 2. showPlayerPlaceholder() 显示黑色占位图
+     * 3. 设置页面透明背景透过来 → 看到的是黑色占位图，不是播放画面
+     *
+     * 有了这个标志位后：
+     * 1. openSettings() 设 isOpeningSettings = true
+     * 2. MainActivity.onPause() 被调用
+     * 3. 判断 !isOpeningSettings → 不显示占位图
+     * 4. 设置页面透明背景透过来 → 能看到播放画面 ✅
+     */
+    private boolean isOpeningSettings = false;
 
     // ====================== 其他 ======================
     /** 本地日志列表（保留最近 100 条，供其他类访问） */
@@ -688,7 +738,18 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // ====================== 打开设置页面 ======================
+    /**
+     * 打开设置页面
+     *
+     * 【2026-06-20 修改：设置 isOpeningSettings 标志位】
+     * 打开设置前设为 true，这样 onPause() 时就不会显示占位图，
+     * 设置页面透明背景透过来就能看到播放画面了。
+     */
     public void openSettings() {
+        // ✅ 设置标志位：正在打开设置，不显示占位图
+        isOpeningSettings = true;
+        log("【设置】打开设置页面，不显示占位图");
+
         appCoreManager.beforeOpenSettings();
         startActivity(new Intent(this, SettingsActivity.class));
     }
@@ -705,9 +766,32 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onPause() {
         super.onPause();
-        // 【防花屏】退到后台前显示黑色占位图，盖住 SurfaceView
-        // 防止 Surface 销毁过程中出现花屏、绿屏、撕裂等问题
-        showPlayerPlaceholder();
+
+        // ====================================================================
+        // 【2026-06-20 修改：打开设置页面时不显示占位图】
+        // ====================================================================
+        //
+        // 【为什么要判断？】
+        // 1. 正常退到后台（按 Home 键/切到其他应用）→ 显示占位图，防花屏
+        // 2. 打开设置页面 → 不显示占位图，因为设置页面是透明的，用户要看播放画面
+        //
+        // 【怎么区分？】
+        // 用 isOpeningSettings 标志位：
+        // - 打开设置前设为 true → onPause 时不显示占位图
+        // - onResume 时重置为 false → 下次退到后台还是会显示
+        //
+        // 【如果没有这个判断会怎样？】
+        // 打开设置页面时，MainActivity 走 onPause()，然后显示黑色占位图。
+        // 设置页面是透明主题，背景透过来就会看到黑色占位图，看不到播放画面。
+        // 用户就会觉得"被占位图黑屏盖住了"。
+        if (!isOpeningSettings) {
+            // 正常退到后台 → 显示占位图，防花屏
+            showPlayerPlaceholder();
+        } else {
+            // 打开设置页面 → 不显示占位图，让设置页面能看到播放画面
+            log("【防花屏】打开设置页面，不显示占位图");
+        }
+
         appCoreManager.onPause();
     }
 
@@ -717,12 +801,22 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
+
+        // ====================================================================
+        // 【2026-06-20 修改：重置打开设置的标志位】
+        // ====================================================================
+        // 从设置页面回来后，重置标志位。
+        // 下次退到后台（按 Home 键）还是会正常显示占位图。
+        isOpeningSettings = false;
+        log("【设置】从设置页面返回，重置标志位");
+
         boolean resumed = appCoreManager.onResume();
         if (resumed) {
             loadSettings();
             screenRatioManager.apply();
         }
         displayManager.reapplyFullScreen();
+
         // 【防花屏】延迟 100ms 再隐藏占位图
         // 等 Surface 重新创建并准备好第一帧后，再隐藏占位图
         // 避免 Surface 还没准备好就隐藏，导致短暂黑屏/花屏

@@ -15,11 +15,13 @@ import android.widget.ArrayAdapter;
 import android.widget.ListView;
 import android.widget.TextView;
 import android.widget.Toast;
+
 import com.tv.live.Channel;
 import com.tv.live.EpgManager;
 import com.tv.live.MainActivity;
 import com.tv.live.R;
 import com.tv.live.SettingsActivity;
+
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
@@ -32,13 +34,36 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
+/**
+ * EPG 节目单包装器
+ * 
+ * 【职责】
+ * 1. 按日期筛选 EPG 节目单
+ * 2. 计算每个节目的结束时间
+ * 3. 标记当前正在播放的节目
+ * 4. 处理节目单的选中状态和焦点
+ * 5. 处理回看、预约等按钮点击事件
+ * 
+ * 【2026-06-20 修改说明】
+ * 修改了回看按钮的点击事件里获取播放器的方式
+ * 
+ * 【为什么要改？】
+ * 原来的代码直接访问 ((MainActivity) ctx).mPlayerManager，
+ * 但是 mPlayerManager 是 private 的，外部类不能直接访问，会编译报错。
+ * 
+ * 【修改方案】
+ * 通过 MainActivity.getInstance().getPlayerManager() 来获取播放器管理器，
+ * 这是标准的封装写法，不直接暴露 private 成员变量。
+ */
 public class EpgManagerWrapper {
+
     private final ListView lvEpg;
     private final Context context;
     private EpgAdapter adapter;
     private final Set<String> bookedSet = new HashSet<>();
     private final Map<Channel.EpgItem, String> epgEndTimeMap = new HashMap<>();
     private static final String ACTION_REMINDER = "com.tv.live.EPG_REMINDER";
+
     private int selectedPosition = 0;
     private int playingIndex = -1;
     private int selectDayIndex = 0;
@@ -46,6 +71,7 @@ public class EpgManagerWrapper {
     public EpgManagerWrapper(Context context, ListView lvEpg) {
         this.context = context;
         this.lvEpg = lvEpg;
+
         // ✅ 改成 false，item 不需要获取焦点
         lvEpg.setItemsCanFocus(false);
         lvEpg.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
@@ -58,8 +84,10 @@ public class EpgManagerWrapper {
                     ((ArrayAdapter<?>) parent.getAdapter()).notifyDataSetChanged();
                 }
             }
+
             @Override
-            public void onNothingSelected(AdapterView<?> parent) {}
+            public void onNothingSelected(AdapterView<?> parent) {
+            }
         });
 
         registerReminderReceiver();
@@ -67,13 +95,20 @@ public class EpgManagerWrapper {
 
     /**
      * 刷新指定日期的节目单
+     * 
+     * @param currentChannel 当前频道
+     * @param channelSourceList 所有频道列表
+     * @param dateIndex 日期索引（0=今天，1=明天，以此类推）
      */
     public void refresh(Channel currentChannel, List<Channel> channelSourceList, int dateIndex) {
         if (currentChannel == null) {
             SettingsActivity.log("【EPG包装】❌ refresh被调用，但currentChannel为空");
             return;
         }
-        SettingsActivity.log("【EPG包装】🔄 开始刷新，频道：" + currentChannel.getName() + "，日期索引：" + dateIndex);
+
+        SettingsActivity.log("【EPG包装】🔄 开始刷新，频道：" + currentChannel.getName() 
+                + "，日期索引：" + dateIndex);
+
         playingIndex = -1;
         selectDayIndex = dateIndex;
         epgEndTimeMap.clear();
@@ -86,7 +121,9 @@ public class EpgManagerWrapper {
                 SettingsActivity.log("【EPG包装】获取EPG异常：" + e.getMessage());
                 epgList = new ArrayList<>();
             }
+
             SettingsActivity.log("【EPG包装】📋 原始节目数：" + epgList.size());
+
             if (epgList.size() > 0) {
                 Set<String> dayNames = new HashSet<>();
                 for (Channel.EpgItem item : epgList) {
@@ -96,15 +133,18 @@ public class EpgManagerWrapper {
             }
 
             List<Channel.EpgItem> data = new ArrayList<>();
+
             if (epgList != null && !epgList.isEmpty()) {
                 // ✅ 计算目标日期 + 对应的周几（全部双重兼容）
                 String targetDay;
                 String targetWeekDay = null;
+
                 Calendar cal = Calendar.getInstance();
                 cal.add(Calendar.DAY_OF_YEAR, dateIndex);
                 int w = cal.get(Calendar.DAY_OF_WEEK);
                 String[] weekMap = {"周日", "周一", "周二", "周三", "周四", "周五", "周六"};
                 String weekDay = weekMap[w - 1];
+
                 if (dateIndex == 0) {
                     targetDay = "今天";
                     targetWeekDay = weekDay;
@@ -117,6 +157,7 @@ public class EpgManagerWrapper {
                 } else {
                     targetDay = weekDay;
                 }
+
                 SettingsActivity.log("【EPG包装】🎯 目标日期：" + targetDay
                         + "，对应周几：" + weekDay
                         + (targetWeekDay != null ? "，兼容匹配：" + targetDay + " 或 " + targetWeekDay : ""));
@@ -135,6 +176,7 @@ public class EpgManagerWrapper {
                         matchCount++;
                     }
                 }
+
                 SettingsActivity.log("【EPG包装】✅ 筛选后节目数：" + matchCount);
 
                 // 按时间排序
@@ -143,19 +185,24 @@ public class EpgManagerWrapper {
                 // 计算结束时间 + 标记播放中
                 String now = getNow();
                 Channel.EpgItem playing = null;
+
                 for (int i = 0; i < data.size(); i++) {
                     Channel.EpgItem curr = data.get(i);
+
                     if (!TextUtils.isEmpty(curr.time) && curr.time.contains("-")) {
                         curr.time = curr.time.split("-")[0].trim();
                     }
+
                     if (TextUtils.isEmpty(epgEndTimeMap.get(curr))) {
                         if (i + 1 < data.size()) {
                             Channel.EpgItem next = data.get(i + 1);
-                            epgEndTimeMap.put(curr, next.time.contains("-") ? next.time.split("-")[0].trim() : next.time);
+                            epgEndTimeMap.put(curr, next.time.contains("-") 
+                                    ? next.time.split("-")[0].trim() : next.time);
                         } else {
                             epgEndTimeMap.put(curr, addOneHour(curr.time));
                         }
                     }
+
                     curr.isPlaying = false;
                     String currEnd = epgEndTimeMap.get(curr);
                     if (isTimeBetween(now, curr.time, currEnd)) {
@@ -164,6 +211,8 @@ public class EpgManagerWrapper {
                         playingIndex = i;
                     }
                 }
+
+                // 把正在播放的节目移到最前面
                 if (playing != null && playingIndex > 0) {
                     data.remove(playing);
                     data.add(0, playing);
@@ -174,14 +223,17 @@ public class EpgManagerWrapper {
             // 主线程更新UI
             final List<Channel.EpgItem> finalData = data;
             final Channel finalChannel = currentChannel;
+
             ((MainActivity) context).runOnUiThread(() -> {
                 SettingsActivity.log("【EPG包装】📱 主线程更新UI，节目数：" + finalData.size());
+
                 if (adapter == null) {
                     adapter = new EpgAdapter(context, finalChannel, finalData, selectDayIndex);
                     lvEpg.setAdapter(adapter);
                 } else {
                     adapter.setData(finalChannel, finalData, selectDayIndex);
                 }
+
                 if (playingIndex >= 0) {
                     lvEpg.setSelection(playingIndex);
                     selectedPosition = playingIndex;
@@ -189,12 +241,16 @@ public class EpgManagerWrapper {
                     lvEpg.setSelection(0);
                     selectedPosition = 0;
                 }
+
                 adapter.notifyDataSetChanged();
                 SettingsActivity.log("【EPG包装】✅ UI更新完成");
             });
         }).start();
     }
 
+    /**
+     * 判断当前时间是否在开始时间和结束时间之间
+     */
     private boolean isTimeBetween(String now, String start, String end) {
         try {
             if (now == null || start == null || end == null) return false;
@@ -205,30 +261,42 @@ public class EpgManagerWrapper {
         }
     }
 
+    /**
+     * 给时间加一小时（用于计算最后一个节目的结束时间）
+     */
     private String addOneHour(String hm) {
         try {
             if (hm == null || !hm.contains(":")) return "23:59";
             hm = hm.trim();
             if (hm.contains("-")) hm = hm.split("-")[0].trim();
+
             String[] arr = hm.split(":");
             int h = Integer.parseInt(arr[0].trim());
             int m = Integer.parseInt(arr[1].trim());
+
             Calendar c = Calendar.getInstance();
             c.set(Calendar.HOUR_OF_DAY, h);
             c.set(Calendar.MINUTE, m);
             c.add(Calendar.MINUTE, 60);
+
             return String.format("%02d:%02d", c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE));
         } catch (Exception e) {
             return "23:59";
         }
     }
 
+    /**
+     * 获取当前时间（HH:mm 格式）
+     */
     private String getNow() {
         return String.format("%02d:%02d",
                 Calendar.getInstance().get(Calendar.HOUR_OF_DAY),
                 Calendar.getInstance().get(Calendar.MINUTE));
     }
 
+    /**
+     * 注册节目提醒广播接收器
+     */
     private void registerReminderReceiver() {
         BroadcastReceiver receiver = new BroadcastReceiver() {
             @Override
@@ -242,7 +310,12 @@ public class EpgManagerWrapper {
         context.registerReceiver(receiver, new IntentFilter(ACTION_REMINDER));
     }
 
+    // ====================================================================
+    // EPG 列表适配器
+    // ====================================================================
+
     private class EpgAdapter extends ArrayAdapter<Channel.EpgItem> {
+
         private final Context ctx;
         private Channel currentChannel;
         private List<Channel.EpgItem> list;
@@ -270,6 +343,7 @@ public class EpgManagerWrapper {
         @Override
         public View getView(int position, View convertView, ViewGroup parent) {
             ViewHolder holder;
+
             if (convertView == null) {
                 convertView = inflater.inflate(R.layout.item_epg, parent, false);
                 holder = new ViewHolder();
@@ -284,10 +358,15 @@ public class EpgManagerWrapper {
 
             Channel.EpgItem item = list.get(position);
             String endTime = epgEndTimeMap.get(item);
+
+            // 设置节目信息
             holder.tv_dayName.setText(item.dayName);
             holder.tv_time.setText(item.time + "-" + endTime);
             holder.tv_title.setText(item.title);
 
+            // ================================================================
+            // 选中状态和焦点状态的 UI 样式
+            // ================================================================
             boolean isSelected = (position == selectedPosition || item.isPlaying);
 
             if (isSelected) {
@@ -313,18 +392,25 @@ public class EpgManagerWrapper {
                 convertView.setBackgroundColor(Color.TRANSPARENT);
             }
 
+            // ================================================================
+            // 节目状态按钮（播放中/回看/预约）
+            // ================================================================
             String key = currentChannel.getName() + "_" + position;
             boolean isPast = false;
             try { isPast = item.time.compareTo(getNow()) < 0; } catch (Exception ignored) {}
 
             if (item.isPlaying) {
+                // 正在播放：橙色按钮，不可点击
                 holder.tv_action.setText("播放中");
                 holder.tv_action.setBackgroundColor(0xFFFF9800);
                 holder.tv_action.setEnabled(false);
+
             } else if (isPast) {
+                // 已过的节目：灰色按钮，点击回看
                 holder.tv_action.setText("回看");
                 holder.tv_action.setBackgroundColor(0xFF607D8B);
                 holder.tv_action.setEnabled(true);
+
                 holder.tv_action.setOnClickListener(v -> {
                     try {
                         String liveUrl = currentChannel.getPlayUrl();
@@ -332,6 +418,8 @@ public class EpgManagerWrapper {
                             Toast.makeText(ctx, "无播放地址", Toast.LENGTH_SHORT).show();
                             return;
                         }
+
+                        // 计算回看的开始时间
                         Calendar playDay = Calendar.getInstance();
                         playDay.add(Calendar.DAY_OF_YEAR, dayIndex);
                         String[] startHm = item.time.split(":");
@@ -339,25 +427,61 @@ public class EpgManagerWrapper {
                         startCal.set(Calendar.HOUR_OF_DAY, Integer.parseInt(startHm[0].trim()));
                         startCal.set(Calendar.MINUTE, Integer.parseInt(startHm[1].trim()));
                         startCal.set(Calendar.SECOND, 0);
+
+                        // 计算回看的结束时间
                         String[] endHm = endTime.split(":");
                         Calendar endCal = (Calendar) playDay.clone();
                         endCal.set(Calendar.HOUR_OF_DAY, Integer.parseInt(endHm[0].trim()));
                         endCal.set(Calendar.MINUTE, Integer.parseInt(endHm[1].trim()));
                         endCal.set(Calendar.SECOND, 0);
+
+                        // 格式化成完整时间字符串
                         String startStr = sdfFull.format(startCal.getTime());
                         String endStr = sdfFull.format(endCal.getTime());
-                        String catchUrl = liveUrl.contains("PLTV") ? liveUrl.replace("PLTV", "TVOD") : liveUrl;
-                        catchUrl += catchUrl.contains("?") ? "&playseek=" + startStr + "-" + endStr : "?playseek=" + startStr + "-" + endStr;
-                        ((MainActivity) ctx).mPlayerManager.playUrl(catchUrl);
+
+                        // 拼接回看地址（PLTV 换成 TVOD，加上 playseek 参数）
+                        String catchUrl = liveUrl.contains("PLTV") 
+                                ? liveUrl.replace("PLTV", "TVOD") : liveUrl;
+                        catchUrl += catchUrl.contains("?") 
+                                ? "&playseek=" + startStr + "-" + endStr 
+                                : "?playseek=" + startStr + "-" + endStr;
+
+                        // ============================================================
+                        // ✅ 修改：获取播放器管理器并播放回看地址
+                        // 【原来的代码】
+                        // ((MainActivity) ctx).mPlayerManager.playUrl(catchUrl);
+                        //
+                        // 【为什么报错？】
+                        // mPlayerManager 是 MainActivity 的 private 成员变量，
+                        // 外部类不能直接访问 private 变量，会编译报错。
+                        //
+                        // 【修改方案】
+                        // 1. 通过 MainActivity.getInstance() 获取 MainActivity 单例
+                        // 2. 调用 public 的 getPlayerManager() 方法获取播放器管理器
+                        // 3. 调用 playUrl() 播放回看地址
+                        //
+                        // 【好处】
+                        // 1. 符合封装原则：private 变量不直接暴露给外部
+                        // 2. 更安全：可以在 getPlayerManager() 里加 null 判断
+                        // 3. 更灵活：以后实现变了，只需要改 getPlayerManager()
+                        //
+                        // 【修改后的代码】
+                        // MainActivity.getInstance().getPlayerManager().playUrl(catchUrl);
+                        // ============================================================
+                        MainActivity.getInstance().getPlayerManager().playUrl(catchUrl);
+
                         Toast.makeText(ctx, "回看：" + item.title, Toast.LENGTH_SHORT).show();
                     } catch (Exception e) {
                         Toast.makeText(ctx, "回看失败", Toast.LENGTH_SHORT).show();
                     }
                 });
+
             } else {
+                // 未来的节目：绿色按钮，点击预约/取消预约
                 holder.tv_action.setText(bookedSet.contains(key) ? "已预约" : "预约");
                 holder.tv_action.setBackgroundColor(bookedSet.contains(key) ? 0xFF607D8B : 0xFF4CAF50);
                 holder.tv_action.setEnabled(true);
+
                 holder.tv_action.setOnClickListener(v -> {
                     if (bookedSet.contains(key)) {
                         bookedSet.remove(key);
@@ -369,6 +493,7 @@ public class EpgManagerWrapper {
                     notifyDataSetChanged();
                 });
             }
+
             return convertView;
         }
 

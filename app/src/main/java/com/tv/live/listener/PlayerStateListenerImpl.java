@@ -1,6 +1,7 @@
 package com.tv.live.listener;
 
 import android.content.Context;
+
 import com.tv.live.TVPlayerManager;
 
 /**
@@ -80,5 +81,28 @@ public class PlayerStateListenerImpl implements TVPlayerManager.OnPlayStateListe
     @Override
     public void onPlayError(String msg) {
         // 已屏蔽播放错误提示
+    }
+
+    // ====================================================================
+    // ✅ 新增：第一帧渲染回调（必须实现，否则编译报错）
+    // ====================================================================
+    /**
+     * 第一帧渲染完成回调
+     *
+     * 【为什么加这个？】
+     * 因为 TVPlayerManager.OnPlayStateListener 接口新增了这个方法，
+     * 作为实现类，这里必须实现，否则编译报错。
+     *
+     * 【作用】
+     * 播放器渲染出第一帧画面时调用，
+     * 可以用来判断切台花屏是否是因为第一帧没渲染出来。
+     *
+     * 【空实现说明】
+     * 遵循你的设计风格：空实现，不弹Toast，不加日志。
+     * 如果需要看花屏日志，可以在 TVPlayerManager 里看。
+     */
+    @Override
+    public void onFirstFrameRendered() {
+        // 第一帧渲染完成，无额外UI操作
     }
 }

@@ -51,7 +51,7 @@ public class UpdateManager {
      * 版本配置文件地址
      * 【修改为你自己的地址】
      */
-    private static final String UPDATE_JSON_URL = "https://你的服务器地址/update.json";
+    private static final String UPDATE_JSON_URL = "https://raw.githubusercontent.com/cuicanrensheng/AH/main/update.json";
 
     /** 下载文件名称 */
     private static final String APK_FILE_NAME = "tv_live_update.apk";

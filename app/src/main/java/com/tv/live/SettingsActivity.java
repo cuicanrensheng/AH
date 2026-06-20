@@ -18,7 +18,7 @@ import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 
 /**
- * 设置页面
+ * 设置页面 Activity
  *
  * 【功能清单】
  * 1. 开机自启开关（委托给 BootStartManager）
@@ -57,17 +57,33 @@ import androidx.appcompat.app.AppCompatActivity;
  * 【修改内容】
  * 删除了 FLAG_DIM_BEHIND 和 dimAmount 的设置，
  * 让窗口背景完全透明，能清楚看到后面的播放画面。
+ *
+ * 【2026-06-20 修改：添加点击空白区域关闭功能】
+ * 【需求来源】
+ * 用户希望设置页面和频道面板一样，点击播放界面（空白区域）就退出设置。
+ *
+ * 【实现方式】
+ * 1. 布局中添加 view_outside（全屏透明 View）
+ * 2. Java 代码中设置点击事件，点击就调用 finish() 关闭页面
+ * 3. 因为 view_outside 在 ScrollView 下面，所以点击面板区域不会触发关闭
+ *
+ * 【为什么不用 Dialog？】
+ * 1. 设置页面功能复杂，用 Activity 更容易管理生命周期
+ * 2. 透明主题 + 透明背景 = 浮层效果，和 Dialog 体验一样
+ * 3. 代码改动小，不需要重构现有逻辑
  */
 public class SettingsActivity extends AppCompatActivity {
 
     // ====================== 控件声明 ======================
+
     /** 5个开关控件 */
     private Switch sw_boot, sw_epg, sw_auto_update, sw_reverse, sw_num_channel;
+
     /** 纯文本点击项 */
     private TextView tv_screen_ratio, tv_custom_source, tv_custom_epg, tv_multi_source, tv_multi_epg, tv_qr_code;
 
     // ====================================================================
-    // ✅ 开机自启状态显示
+    // 开机自启状态显示
     // ====================================================================
     /**
      * 开机自启状态描述文本（显示在开关下面）
@@ -75,11 +91,12 @@ public class SettingsActivity extends AppCompatActivity {
     private TextView tv_boot_status;
 
     // ====================== 配置相关 ======================
+
     /** SharedPreferences 配置存储 */
     private SharedPreferences sp;
 
     // ====================================================================
-    // ✅ 管理器相关（全部拆分后）
+    // 管理器相关（全部拆分后）
     // ====================================================================
     /**
      * 开机自启管理器
@@ -117,13 +134,15 @@ public class SettingsActivity extends AppCompatActivity {
     private String currentWebUrl;
 
     // ====================== SP Key 常量 ======================
+
     /** 自定义直播源地址 */
     private static final String KEY_CUSTOM_LIVE = "custom_live_url";
+
     /** 自定义节目单地址 */
     private static final String KEY_CUSTOM_EPG = "custom_epg_url";
 
     // ====================================================================
-    // ✅ 全局日志系统（加回兼容层）
+    // 全局日志系统（加回兼容层）
     // ====================================================================
     /**
      * 解析&播放日志
@@ -178,16 +197,17 @@ public class SettingsActivity extends AppCompatActivity {
     }
 
     // ====================== onCreate 生命周期 ======================
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         // ===== 窗口设置 =====
         // 保持屏幕常亮
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        // 窗口背景设为透明
+        // 窗口背景设为透明（关键：让后面的播放界面能透过来）
         getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
 
         // ====================================================================
-        // ✅ 【2026-06-19 修改：删除背景变暗遮罩】
+        // 【2026-06-19 修改：删除背景变暗遮罩】
         // ====================================================================
         //
         // 【删除的代码】
@@ -208,11 +228,40 @@ public class SettingsActivity extends AppCompatActivity {
 
         super.onCreate(savedInstanceState);
 
-        // 强制横屏
+        // 强制横屏（和 MainActivity 保持一致）
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
 
         // 加载布局
         setContentView(R.layout.activity_settings);
+
+        // ====================================================================
+        // ✅ 新增：点击左侧空白区域关闭设置
+        // ====================================================================
+        //
+        // 【需求来源】
+        // 用户希望设置页面和频道面板一样，点击播放界面（空白区域）就退出设置。
+        //
+        // 【实现原理】
+        // 1. 布局中有一个 view_outside（全屏透明 View），占满整个屏幕
+        // 2. 设置面板（ScrollView）盖在 view_outside 上面（右侧）
+        // 3. 点击左侧空白区域 → 触发 view_outside 的点击事件 → 关闭设置
+        // 4. 点击右侧面板区域 → 点击的是 ScrollView → 不触发关闭（因为盖在上面）
+        //
+        // 【为什么不用 onBackPressed()？】
+        // 因为用户想要的是"点击空白区域关闭"，不是按返回键关闭。
+        // 按返回键关闭是默认行为，这个是额外的交互方式。
+        //
+        // 【为什么不用 setFinishOnTouchOutside(true)？】
+        // 因为那是 Dialog 的方法，Activity 没有这个方法。
+        // 用透明 View 模拟是最通用的方案。
+        View viewOutside = findViewById(R.id.view_outside);
+        viewOutside.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                // 关闭设置页面
+                finish();
+            }
+        });
 
         // ===== 初始化 SharedPreferences =====
         sp = getSharedPreferences("app_settings", MODE_PRIVATE);
@@ -232,12 +281,12 @@ public class SettingsActivity extends AppCompatActivity {
         tv_qr_code = findViewById(R.id.tv_qr_code);
 
         // ====================================================================
-        // ✅ 绑定开机自启状态文本
+        // 绑定开机自启状态文本
         // ====================================================================
         tv_boot_status = findViewById(R.id.tv_boot_status);
 
         // ====================================================================
-        // ✅ 初始化所有管理器
+        // 初始化所有管理器
         // ====================================================================
         // 开机自启管理器
         bootStartManager = new BootStartManager(this, sp);
@@ -254,16 +303,16 @@ public class SettingsActivity extends AppCompatActivity {
         findViewById(R.id.log_viewer).setOnClickListener(v -> {
             showLogDialog();
         });
+
         findViewById(R.id.log_operation).setOnClickListener(v -> {
             showOperationLogDialog();
         });
 
         // ====================================================================
-        // ✅ 开机自启（委托给 BootStartManager）
+        // 开机自启（委托给 BootStartManager）
         // ====================================================================
         // 设置开关状态
         sw_boot.setChecked(sp.getBoolean("boot_auto_start", false));
-
         // 更新状态显示
         bootStartManager.updateBootStatusText(tv_boot_status);
 
@@ -293,7 +342,7 @@ public class SettingsActivity extends AppCompatActivity {
         });
 
         // ====================================================================
-        // ✅ 自动更新源（委托给 AutoUpdateManager）
+        // 自动更新源（委托给 AutoUpdateManager）
         // ====================================================================
         sw_auto_update.setChecked(sp.getBoolean("auto_update_source", true));
         findViewById(R.id.item_auto_update).setOnClickListener(v -> {
@@ -350,6 +399,7 @@ public class SettingsActivity extends AppCompatActivity {
     }
 
     // ====================== 其他点击事件初始化 ======================
+
     /**
      * 初始化纯文本项的点击事件
      */
@@ -373,7 +423,7 @@ public class SettingsActivity extends AppCompatActivity {
         });
 
         // ====================================================================
-        // ✅ 多订阅源（委托给 SourceDialogManager）
+        // 多订阅源（委托给 SourceDialogManager）
         // ====================================================================
         tv_multi_source.setOnClickListener(v -> {
             sourceDialogManager.showHistoryDialog("直播源历史", "live_history");
@@ -386,7 +436,7 @@ public class SettingsActivity extends AppCompatActivity {
         });
 
         // ====================================================================
-        // ✅ 扫码添加（委托给 QRCodeManager）
+        // 扫码添加（委托给 QRCodeManager）
         // ====================================================================
         tv_qr_code.setOnClickListener(v -> {
             qrCodeManager.showQRCodeDialog(currentWebUrl);
@@ -395,6 +445,7 @@ public class SettingsActivity extends AppCompatActivity {
     }
 
     // ====================== 屏幕比例对话框 ======================
+
     /**
      * 显示屏幕比例选择对话框
      *
@@ -414,6 +465,7 @@ public class SettingsActivity extends AppCompatActivity {
     }
 
     // ====================== 输入对话框（自定义源/节目单） ======================
+
     /**
      * 显示输入对话框
      * 用于自定义直播源和自定义节目单
@@ -448,8 +500,9 @@ public class SettingsActivity extends AppCompatActivity {
     }
 
     // ====================================================================
-    // ✅ 日志对话框（加回兼容层）
+    // 日志对话框（加回兼容层）
     // ====================================================================
+
     /**
      * 显示操作日志对话框
      * 最新的日志显示在最上面（倒序）
@@ -543,14 +596,16 @@ public class SettingsActivity extends AppCompatActivity {
     }
 
     // ====================== onDestroy 生命周期 ======================
+
     @Override
     protected void onDestroy() {
         super.onDestroy();
+
         logOperation("【设置】关闭设置页面");
+
         // 停止网页后台
         if (webServerManager != null) {
             webServerManager.stop();
         }
     }
-
 }

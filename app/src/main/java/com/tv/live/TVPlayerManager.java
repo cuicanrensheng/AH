@@ -1,5 +1,4 @@
 package com.tv.live;
-
 import com.tv.live.RedirectLoggingHttpDataSource;
 import android.content.Context;
 import android.os.Handler;
@@ -26,25 +25,18 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
-
 /**
  * 播放器管理类（单例模式）
  * 基于ExoPlayer封装，提供直播播放、状态监听、画质切换、Header设置等功能
  *
- * 【防卡优化版 + 切台优化版 + 真实数据版 + 花屏日志版】
- *
- * 【2026-06-20 修改：去掉双渲染模式，强制用 TextureView】
- * 移除了 SurfaceView / TextureView 双渲染模式自动切换的逻辑，
- * 简化代码，减少出问题的可能性。
- *
- * 【为什么去掉？】
- * 1. 双渲染模式的反射逻辑可能干扰布局文件的设置
- * 2. 自动选择逻辑可能判断不准确，导致选到 SurfaceView 而花屏
- * 3. TextureView 已经能满足需求，不需要复杂的切换逻辑
- * 4. 老版本没有双渲染模式，反而更稳定
- *
- * 【使用方式】
- * 在布局文件中设置 app:surface_type="texture_view" 即可。
+ * 【防卡优化版 + 切台优化版 + 真实数据版】
+ * 1. 增大缓冲（从15秒→50秒），抗网络波动
+ * 2. 检测播放卡住，自动重新加载
+ * 3. 换回 DefaultHttpDataSource，稳定可靠
+ * 4. 支持硬解码/软解码切换
+ * 5. 切台保持最后一帧，避免黑屏
+ * 6. 优化缓冲参数，更快出画
+ * 7. 显示真实画质、音频、码率
  */
 public class TVPlayerManager {
     private static final String TAG = "TVPlayerLog";
@@ -52,83 +44,45 @@ public class TVPlayerManager {
     private ExoPlayer player;
     private Context context;
     private PlayerView playerView;
-
     // 屏幕缩放模式枚举
     public enum ScaleMode { FIT, FILL, ZOOM }
-
     // 播放状态监听器
     private OnPlayStateListener listener;
-
     // 当前播放地址
     private String currentUrl = "";
-
     // 是否正在播放
     private boolean isPlaying = false;
-
     // 当前频道号
     private int currentChannelNumber = 0;
-
     // 频道号显示TextView
     private TextView channelNumText;
-
     // 主线程Handler，用于UI操作
     private final Handler mHandler = new Handler(Looper.getMainLooper());
-
     // 频道号显示时长（3秒）
     private static final long CHANNEL_SHOW_DURATION = 3000L;
-
     // 日志时间格式化
     private final SimpleDateFormat logSdf = new SimpleDateFormat("HH:mm:ss", Locale.getDefault());
-
     // 直播信息更新监听器
     private OnLiveInfoUpdateListener infoUpdateListener;
-
     // 播放状态监听器（成员变量，只添加一次）
     private Player.Listener playerListener;
-
     // ================================================
     // ✅ 防卡优化相关成员变量
     // ================================================
     // 是否使用软解码（默认硬解码，硬解码有问题再切软解码）
     private boolean useSoftwareDecoder = false;
-
     // 卡住检测：记录上次播放位置的时间
     private long lastPositionUpdateTime = 0;
     private long lastPosition = 0;
-
     // 卡住检测超时时间（5秒没动就算卡住了）
     private static final long STUCK_TIMEOUT = 5000;
-
     // 自动重试次数限制（防止无限重试）
     private int retryCount = 0;
     private static final int MAX_RETRY_COUNT = 3;
-
     // 卡住检测的Handler
     private final Handler stuckHandler = new Handler(Looper.getMainLooper());
-
     // 是否正在重试中
     private boolean isRetrying = false;
-
-    // ====================================================================
-    // ✅ 花屏分析：切台开始时间（用于计算切台耗时）
-    // ====================================================================
-    /** 切台开始时间戳 */
-    private long switchStartTime = 0;
-    /** 第一帧是否已渲染 */
-    private boolean firstFrameRendered = false;
-
-    // ====================================================================
-    // ✅ 花屏日志工具方法
-    // ====================================================================
-    /**
-     * 记录花屏相关的日志
-     *
-     * @param msg 日志内容
-     */
-    private void logScreenDebug(String msg) {
-        SettingsActivity.log("【花屏分析】" + msg);
-    }
-
     /**
      * 直播信息实体类
      * 所有数据都从播放器实时获取，不再写死
@@ -141,19 +95,16 @@ public class TVPlayerManager {
         public int videoWidth;      // 视频宽度（真实分辨率）
         public int videoHeight;     // 视频高度（真实分辨率）
     }
-
     public interface OnLiveInfoUpdateListener {
         void onLiveInfoUpdate(LiveInfo info);
     }
-
     public void setOnLiveInfoUpdateListener(OnLiveInfoUpdateListener listener) {
         this.infoUpdateListener = listener;
     }
-
     public LiveInfo getLiveInfo() {
         LiveInfo info = new LiveInfo();
         info.channelNum = currentChannelNumber;
-
+        
         // ====================================================================
         // ✅ 从播放器获取真实的视频/音频信息
         // ====================================================================
@@ -166,7 +117,7 @@ public class TVPlayerManager {
                 if (videoFormat != null && videoFormat.width != Format.NO_VALUE) {
                     info.videoWidth = videoFormat.width;
                     info.videoHeight = videoFormat.height;
-
+                    
                     // 根据分辨率判断画质等级
                     if (videoFormat.width >= 1920 || videoFormat.height >= 1080) {
                         info.quality = "FHD";  // 全高清
@@ -175,7 +126,7 @@ public class TVPlayerManager {
                     } else {
                         info.quality = "SD";   // 标清
                     }
-
+                    
                     // ========================================
                     // 2. 码率（从视频格式获取，单位 MB/s）
                     // ========================================
@@ -192,7 +143,7 @@ public class TVPlayerManager {
                     info.videoWidth = 0;
                     info.videoHeight = 0;
                 }
-
+                
                 // ========================================
                 // 3. 音频（根据真实声道数判断）
                 // ========================================
@@ -222,25 +173,21 @@ public class TVPlayerManager {
             info.audio = "—";
             info.bitrate = "—";
         }
-
+        
         return info;
     }
-
     public void setCurrentChannelNumber(int num) {
         this.currentChannelNumber = num;
     }
-
     private void notifyLiveInfoUpdate() {
         if (infoUpdateListener != null) {
             new Handler(Looper.getMainLooper()).post(() ->
                     infoUpdateListener.onLiveInfoUpdate(getLiveInfo()));
         }
     }
-
     public void bindChannelText(TextView textView) {
         this.channelNumText = textView;
     }
-
     private void showChannelAndAutoHide() {
         if (channelNumText == null) return;
         mHandler.removeCallbacks(hideChannelRunnable);
@@ -248,7 +195,6 @@ public class TVPlayerManager {
         channelNumText.setVisibility(View.VISIBLE);
         mHandler.postDelayed(hideChannelRunnable, CHANNEL_SHOW_DURATION);
     }
-
     private final Runnable hideChannelRunnable = new Runnable() {
         @Override
         public void run() {
@@ -257,19 +203,16 @@ public class TVPlayerManager {
             }
         }
     };
-
     public static TVPlayerManager getInstance(Context ctx) {
         if (instance == null) {
             instance = new TVPlayerManager(ctx);
         }
         return instance;
     }
-
     private TVPlayerManager(Context ctx) {
         context = ctx.getApplicationContext();
         initPlayer();
     }
-
     /**
      * ✅ 初始化播放器
      * 单独抽出来，方便重试时重新创建
@@ -285,16 +228,36 @@ public class TVPlayerManager {
                 renderersFactory.setEnableDecoderFallback(true);
             } catch (Exception e) {
                 Log.e(TAG, "设置软解码失败", e);
-                logScreenDebug("设置软解码失败：" + e.getMessage());
             }
         } else {
             // 硬解码模式：启用解码器降级
             renderersFactory.setEnableDecoderFallback(true);
         }
-
         // ================================================
         // ✅ 优化1：缓冲配置（快速出画 + 大缓冲防卡）
         // ================================================
+        /**
+         * 【参数说明】
+         *
+         * minBufferMs：最小缓冲，低于这个值就继续加载
+         * maxBufferMs：最大缓冲，超过这个值就停止加载
+         * bufferForPlaybackMs：开始播放所需的最小缓冲量
+         * bufferForPlaybackAfterRebufferMs：重缓冲后开始播放所需的最小缓冲量
+         *
+         * 【优化思路】
+         * - 把 bufferForPlaybackMs 从 1000ms 改成 300ms
+         *   意思是：只要有 300ms 的数据，就开始播放
+         *   这样首帧出来得更快，用户等待时间更短
+         *
+         * - maxBufferMs 保持 50000ms（50秒）
+         *   大缓冲可以抵抗网络波动，防止卡顿
+         *
+         * - 这是"快速出画 + 稳定播放"的平衡方案
+         *
+         * 【注意】
+         * minBufferMs 必须 >= bufferForPlaybackAfterRebufferMs
+         * 否则 ExoPlayer 会崩溃
+         */
         DefaultLoadControl loadControl = new DefaultLoadControl.Builder()
                 .setBufferDurationsMs(
                         2000,      // minBufferMs - 最小缓冲 2秒
@@ -304,24 +267,17 @@ public class TVPlayerManager {
                 )
                 .setPrioritizeTimeOverSizeThresholds(true) // 优先保证时间缓冲
                 .build();
-
         // 创建ExoPlayer实例
         player = new ExoPlayer.Builder(context)
                 .setRenderersFactory(renderersFactory)
                 .setLoadControl(loadControl)
                 .build();
-
         // 初始化播放监听器
         initPlayerListener();
-
         // 初始化Cookie管理器
         CookieSyncManager.createInstance(context);
         CookieManager.getInstance().setAcceptCookie(true);
-
-        logScreenDebug("播放器初始化完成（" + (useSoftwareDecoder ? "软解码" : "硬解码") + "）");
-        logScreenDebug("渲染模式：TextureView（布局文件设置）");
     }
-
     /**
      * ✅ 初始化播放状态监听器
      */
@@ -330,38 +286,14 @@ public class TVPlayerManager {
             @Override
             public void onPlayerError(PlaybackException error) {
                 Log.e(TAG, "播放异常: " + error.getMessage());
-                logScreenDebug("❌ 播放错误：" + error.getMessage());
-                logScreenDebug("错误类型：" + (error.errorCode != 0 ? error.errorCode : "未知"));
                 if (listener != null) {
                     listener.onPlayError(error.getMessage());
                 }
                 // ✅ 播放错误时自动重试
                 autoRetry("播放错误");
             }
-
             @Override
             public void onPlaybackStateChanged(int state) {
-                String stateName;
-                switch (state) {
-                    case Player.STATE_IDLE:
-                        stateName = "IDLE(空闲)";
-                        break;
-                    case Player.STATE_BUFFERING:
-                        stateName = "BUFFERING(缓冲中)";
-                        break;
-                    case Player.STATE_READY:
-                        stateName = "READY(就绪)";
-                        break;
-                    case Player.STATE_ENDED:
-                        stateName = "ENDED(结束)";
-                        break;
-                    default:
-                        stateName = "UNKNOWN(" + state + ")";
-                        break;
-                }
-
-                logScreenDebug("播放状态变化：" + stateName);
-
                 if (state == Player.STATE_READY) {
                     updateWakeLock(true);
                     notifyLiveInfoUpdate();
@@ -372,9 +304,6 @@ public class TVPlayerManager {
                     isRetrying = false;
                     // 开始卡住检测
                     startStuckDetection();
-
-                    // ✅ 花屏日志：播放就绪
-                    logScreenDebug("✅ 播放就绪，等待第一帧渲染...");
                 } else if (state == Player.STATE_BUFFERING) {
                     if (listener != null) listener.onBuffering();
                     // 缓冲中也重置卡住检测
@@ -389,56 +318,33 @@ public class TVPlayerManager {
                     updateWakeLock(false);
                 }
             }
-
             @Override
             public void onIsPlayingChanged(boolean isPlaying) {
                 // 播放状态变化时更新卡住检测
                 if (isPlaying) {
                     lastPositionUpdateTime = System.currentTimeMillis();
-                    logScreenDebug("开始播放（isPlaying=true）");
-                } else {
-                    logScreenDebug("暂停播放（isPlaying=false）");
                 }
             }
-
             // ====================================================================
             // ✅ 视频分辨率变化时触发（新版本 ExoPlayer 签名）
             // ====================================================================
+            /**
+             * 为什么需要这个？
+             * 有些直播流刚开始时分辨率还没确定，
+             * 等视频解码器初始化完成后，才会回调真实的分辨率。
+             * 这时候我们需要更新一下信息栏的画质标签。
+             */
             @Override
             public void onVideoSizeChanged(VideoSize videoSize) {
                 int width = videoSize.width;
                 int height = videoSize.height;
                 Log.d(TAG, "视频分辨率变化：" + width + "×" + height);
-
-                // ✅ 花屏日志：视频尺寸变化
-                logScreenDebug("📐 视频尺寸变化：" + width + " × " + height);
-
                 // 分辨率变化时，通知 UI 更新
                 notifyLiveInfoUpdate();
-            }
-
-            // ====================================================================
-            // ✅ 第一帧渲染回调（关键！切台加载动画隐藏的时机）
-            // ====================================================================
-            @Override
-            public void onRenderedFirstFrame() {
-                long cost = System.currentTimeMillis() - switchStartTime;
-                firstFrameRendered = true;
-
-                Log.d(TAG, "第一帧渲染完成，耗时：" + cost + "ms");
-
-                // ✅ 花屏日志：第一帧渲染（最重要的日志）
-                logScreenDebug("✅✅✅ 第一帧渲染完成！耗时：" + cost + "ms");
-
-                // 通知监听器
-                if (listener != null) {
-                    listener.onFirstFrameRendered();
-                }
             }
         };
         player.addListener(playerListener);
     }
-
     // ================================================
     // ✅ 优化2：卡住检测 + 自动重试
     // ================================================
@@ -452,14 +358,12 @@ public class TVPlayerManager {
         lastPosition = 0;
         stuckHandler.postDelayed(stuckCheckRunnable, 2000);
     }
-
     /**
      * 停止卡住检测
      */
     private void stopStuckDetection() {
         stuckHandler.removeCallbacks(stuckCheckRunnable);
     }
-
     /**
      * 卡住检测Runnable
      */
@@ -483,7 +387,6 @@ public class TVPlayerManager {
                     if (now - lastPositionUpdateTime > STUCK_TIMEOUT) {
                         // 卡住了，自动重试
                         Log.w(TAG, "检测到播放卡住，自动重试...");
-                        logScreenDebug("⚠️ 检测到播放卡住，自动重试...");
                         autoRetry("播放卡住");
                         return; // 重试后不再继续检测
                     }
@@ -495,7 +398,6 @@ public class TVPlayerManager {
             stuckHandler.postDelayed(this, 2000);
         }
     };
-
     /**
      * ✅ 自动重试
      * @param reason 重试原因（用于日志）
@@ -504,13 +406,11 @@ public class TVPlayerManager {
         if (isRetrying) return; // 已经在重试中，避免重复
         if (retryCount >= MAX_RETRY_COUNT) {
             Log.w(TAG, "重试次数已达上限：" + MAX_RETRY_COUNT);
-            logScreenDebug("❌ 重试次数已达上限：" + MAX_RETRY_COUNT + "次");
             return;
         }
         isRetrying = true;
         retryCount++;
         Log.w(TAG, "自动重试（第" + retryCount + "次），原因：" + reason);
-        logScreenDebug("🔄 自动重试（第" + retryCount + "次），原因：" + reason);
         // 延迟1秒后重新加载
         mHandler.postDelayed(new Runnable() {
             @Override
@@ -522,7 +422,6 @@ public class TVPlayerManager {
             }
         }, 1000);
     }
-
     /**
      * 切换软解码/硬解码
      * @param useSoftware true=软解码，false=硬解码
@@ -531,7 +430,6 @@ public class TVPlayerManager {
         if (useSoftwareDecoder == useSoftware) return;
         useSoftwareDecoder = useSoftware;
         Log.d(TAG, "切换解码器：" + (useSoftware ? "软解码" : "硬解码"));
-        logScreenDebug("切换解码器：" + (useSoftware ? "软解码" : "硬解码"));
         // 重新创建播放器
         if (player != null) {
             try {
@@ -556,59 +454,39 @@ public class TVPlayerManager {
             playUrlInternal(currentUrl);
         }
     }
-
     public void onForeground() {
         try {
             if (player != null && playerView != null) {
                 playerView.setPlayer(player);
                 player.play();
-                logScreenDebug("切回前台，恢复播放");
             }
         } catch (Exception e) {
             Log.e(TAG, "切前台异常", e);
-            logScreenDebug("切前台异常：" + e.getMessage());
         }
     }
-
     public void onBackground() {
         try {
             if (player != null) {
                 player.pause();
-                logScreenDebug("切到后台，暂停播放");
             }
         } catch (Exception e) {
             Log.e(TAG, "切后台异常", e);
-            logScreenDebug("切后台异常：" + e.getMessage());
         }
     }
-
-    /**
-     * 绑定播放器视图
-     *
-     * 【2026-06-20 修改：去掉 applyRenderTypeToView() 调用】
-     * 不再通过反射设置渲染类型，完全依赖布局文件的设置。
-     * 布局文件中设置 app:surface_type="texture_view" 即可。
-     */
     public void attachPlayerView(PlayerView view) {
         playerView = view;
         playerView.setPlayer(player);
         playerView.setUseController(false);
-
-        logScreenDebug("播放器视图已绑定");
-        logScreenDebug("渲染模式：TextureView（由布局文件设置）");
     }
-
     private void updateWakeLock(boolean enable) {
         isPlaying = enable;
         if (playerView != null) {
             playerView.setKeepScreenOn(enable);
         }
     }
-
     private String getLogTime() {
         return "[" + logSdf.format(new Date()) + "]";
     }
-
     private Map<String, String> getHeaders(String url) {
         Map<String, String> headers = new HashMap<>();
         headers.put("User-Agent", "ExoPlayer");
@@ -634,11 +512,9 @@ public class TVPlayerManager {
         }
         return headers;
     }
-
     public void play(String url) {
         playUrl(url);
     }
-
     /**
      * 播放指定URL（对外接口）
      * 切换频道时调用，重置重试计数
@@ -647,16 +523,8 @@ public class TVPlayerManager {
         // 切换频道，重置重试计数
         retryCount = 0;
         isRetrying = false;
-        firstFrameRendered = false;
-        switchStartTime = System.currentTimeMillis();
-
-        logScreenDebug("========================================");
-        logScreenDebug("🎬 开始切台：" + url);
-        logScreenDebug("========================================");
-
         playUrlInternal(url);
     }
-
     /**
      * ✅ 内部播放方法
      *
@@ -668,21 +536,37 @@ public class TVPlayerManager {
      * 去掉 player.stop() 和 player.clearMediaItems()
      * 直接用 setMediaSource 切换，旧画面会保留到新画面出来
      * 这样就完全避免了切台黑屏的问题
-     *
-     * 【2026-06-20 说明】
-     * 虽然 setMediaSource 无缝切换在 SurfaceView 下可能花屏，
-     * 但我们已经强制用 TextureView 了，所以不会有花屏问题。
-     * TextureView 会保持最后一帧，直到新的第一帧渲染出来。
      */
     private void playUrlInternal(String url) {
         try {
             if (player == null || url == null || url.trim().isEmpty()) return;
             currentUrl = url.trim();
             Log.d(TAG, "开始播放：" + currentUrl);
-
-            // ✅ 花屏日志：创建 MediaSource
-            logScreenDebug("创建 MediaSource...");
-
+            // ====================================================================
+            // ✅ 关键修改：去掉 player.stop() 和 player.clearMediaItems()
+            // ====================================================================
+            /**
+             * 【为什么去掉 stop() 就能保持最后一帧？】
+             *
+             * 调用 player.stop() 会立刻清空渲染器的画面，导致黑屏。
+             * 直接调用 setMediaSource() + prepare()，旧画面会保留到新画面渲染出来。
+             *
+             * 用户看到的效果：旧画面静止不动 → 新画面突然出现
+             * 而不是：黑屏 → 新画面出现
+             *
+             * 这样就完全避免了切台黑屏的问题。
+             *
+             * 【为什么去掉 clearMediaItems()？】
+             * setMediaSource(mediaSource, true) 会自动替换所有媒体源，
+             * 不需要先 clear 再 set。
+             *
+             * 【第二个参数 true 是什么意思？】
+             * setMediaSource(mediaSource, resetPosition = true)
+             * true = 重置播放位置到开头（直播流必须用 true）
+             * false = 保持当前播放位置（点播连播时用 false）
+             */
+            // player.stop();          // ✅ 注释掉，保持最后一帧
+            // player.clearMediaItems(); // ✅ 注释掉，保持最后一帧
             // ===== 创建数据源（带重定向日志版） =====
             // 每一重定向都会打印详细日志，方便调试直播源
             RedirectLoggingHttpDataSource.Factory httpFactory =
@@ -693,42 +577,24 @@ public class TVPlayerManager {
             com.google.android.exoplayer2.source.MediaSource mediaSource;
             if (currentUrl.toLowerCase().contains("m3u8")) {
                 Log.d(TAG, "流格式：HLS (m3u8)");
-                logScreenDebug("流格式：HLS (m3u8)");
                 mediaSource = new HlsMediaSource.Factory(httpFactory).createMediaSource(mediaItem);
             } else {
                 Log.d(TAG, "流格式：普通流 (Progressive)");
-                logScreenDebug("流格式：普通流 (Progressive)");
                 mediaSource = new ProgressiveMediaSource.Factory(httpFactory).createMediaSource(mediaItem);
             }
-
-            logScreenDebug("MediaSource 创建完成，开始 prepare...");
-
             // ====================================================================
-            // ✅ 直接设置新的媒体源，第二个参数 true = 重置到开头
+            // ✅ 关键修改：直接设置新的媒体源，第二个参数 true = 重置到开头
             // ====================================================================
-            // 【为什么不用 stop() + clearMediaItems()？】
-            // 老版本用 stop() + clearMediaItems()，切台时是黑屏，不是花屏。
-            // 新版本用 setMediaSource() 无缝切换，TextureView 下会保持最后一帧，
-            // 直到新的第一帧渲染出来，体验更好。
-            //
-            // 【TextureView 的优势】
-            // TextureView 不会有 Surface 销毁/重建的问题，
-            // 切台时会保持旧画面，直到新画面出来，完全没有花屏。
             player.setMediaSource(mediaSource, true);
             player.prepare();
             player.play();
-
-            logScreenDebug("调用 player.play()，等待第一帧...");
-
             // 开始卡住检测
             startStuckDetection();
         } catch (Exception e) {
             Log.e(TAG, "播放异常", e);
-            logScreenDebug("❌ 播放异常：" + e.getMessage());
             autoRetry("播放异常：" + e.getMessage());
         }
     }
-
     public void setScaleMode(ScaleMode mode) {
         try {
             if (playerView == null) return;
@@ -747,33 +613,26 @@ public class TVPlayerManager {
             Log.e(TAG, "设置缩放模式异常", e);
         }
     }
-
     public interface OnPlayStateListener {
         void onIdle();
         void onBuffering();
         void onPlayReady();
         void onPlayEnd();
         void onPlayError(String msg);
-        // ✅ 第一帧渲染回调（切台加载动画隐藏的时机）
-        void onFirstFrameRendered();
     }
-
     public void setOnPlayStateListener(OnPlayStateListener l) {
         listener = l;
     }
-
     public void pause() {
         try { if (player != null) player.pause(); } catch (Exception e) {
             Log.e(TAG, "暂停异常", e);
         }
     }
-
     public void resume() {
         try { if (player != null) player.play(); } catch (Exception e) {
             Log.e(TAG, "恢复异常", e);
         }
     }
-
     public void release() {
         try {
             stopStuckDetection();
@@ -787,7 +646,6 @@ public class TVPlayerManager {
                 player = null;
             }
             instance = null;
-            logScreenDebug("播放器已释放");
         } catch (Exception e) {
             Log.e(TAG, "释放异常", e);
         }

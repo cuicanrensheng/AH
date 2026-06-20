@@ -67,10 +67,19 @@ import androidx.appcompat.app.AppCompatActivity;
  * 2. Java 代码中设置点击事件，点击就调用 finish() 关闭页面
  * 3. 因为 view_outside 在 ScrollView 下面，所以点击面板区域不会触发关闭
  *
- * 【为什么不用 Dialog？】
- * 1. 设置页面功能复杂，用 Activity 更容易管理生命周期
- * 2. 透明主题 + 透明背景 = 浮层效果，和 Dialog 体验一样
- * 3. 代码改动小，不需要重构现有逻辑
+ * 【2026-06-20 修改：全面屏 + 刘海屏适配】
+ * 【问题原因】
+ * 打开设置页面后，后面的播放画面左侧有黑边，没有延伸到屏幕边缘。
+ * 因为 SettingsActivity 没有设置刘海屏适配，系统以为这个窗口不需要延伸到刘海区域，
+ * 导致下面的 MainActivity 播放画面也被限制了显示区域。
+ *
+ * 【解决方案】
+ * 1. 沉浸式全屏（SYSTEM_UI_FLAG_FULLSCREEN）- 隐藏状态栏
+ * 2. 刘海屏适配（LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES）- 内容延伸到刘海区域
+ * 3. onWindowFocusChanged 中重新设置 - 防止被系统恢复
+ *
+ * 【效果】
+ * 设置页面打开后，后面的播放画面和频道面板时一样，都是全屏的，没有黑边。
  */
 public class SettingsActivity extends AppCompatActivity {
 
@@ -200,25 +209,57 @@ public class SettingsActivity extends AppCompatActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-    // ====================================================================
-    // ✅ 全面屏设置（隐藏状态栏 + 导航栏）
-    // ====================================================================
-    // 【为什么还要加这个？】
-    // 透明主题的 windowFullscreen 有时候不生效，
-    // 用代码设置 System UI Visibility 更保险。
-    //
-    // 【效果】
-    // 1. 隐藏状态栏（顶部）
-    // 2. 隐藏导航栏（底部虚拟按键）
-    // 3. 内容延伸到刘海/挖孔区域
-    // 4. 和主页面完全一样的显示效果
-    int uiOptions = View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-            | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-            | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-            | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION       // 隐藏导航栏
-            | View.SYSTEM_UI_FLAG_FULLSCREEN            // 隐藏状态栏
-            | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY;     // 沉浸式，滑动后自动隐藏
-    getWindow().getDecorView().setSystemUiVisibility(uiOptions);
+
+        // ====================================================================
+        // ✅ 全面屏设置（隐藏状态栏 + 导航栏）
+        // ====================================================================
+        //
+        // 【为什么还要加这个？】
+        // 透明主题的 windowFullscreen 有时候不生效，
+        // 用代码设置 System UI Visibility 更保险。
+        //
+        // 【效果】
+        // 1. 隐藏状态栏（顶部）
+        // 2. 隐藏导航栏（底部虚拟按键）
+        // 3. 和主页面完全一样的显示效果
+        int uiOptions = View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION       // 隐藏导航栏
+                | View.SYSTEM_UI_FLAG_FULLSCREEN            // 隐藏状态栏
+                | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY;     // 沉浸式，滑动后自动隐藏
+        getWindow().getDecorView().setSystemUiVisibility(uiOptions);
+
+        // ====================================================================
+        // ✅ 新增：刘海屏/挖孔屏适配（让内容延伸到刘海区域）
+        // ====================================================================
+        //
+        // 【作用】
+        // 让页面内容延伸到刘海/挖孔区域，消除左右两侧的黑边。
+        // 只对 Android 9.0 (API 28) 及以上版本生效。
+        //
+        // 【为什么需要这个？】
+        // 光设置 FLAG_FULLSCREEN 只能隐藏状态栏，
+        // 但内容不会延伸到刘海/挖孔区域，还是会有黑边。
+        //
+        // 【更重要的原因】
+        // 当 SettingsActivity（透明）覆盖在 MainActivity 上面时，
+        // 如果 SettingsActivity 没有设置刘海屏适配，
+        // 系统会以为这个窗口不需要延伸到刘海区域，
+        // 导致下面的 MainActivity 播放画面也被限制了显示区域，出现黑边。
+        //
+        // 【解决方案】
+        // 设置 LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES，
+        // 让系统知道这个窗口也是全屏的，
+        // 这样下面的 MainActivity 就能保持全屏显示了。
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+            WindowManager.LayoutParams lp = getWindow().getAttributes();
+            // 让内容延伸到刘海区域（短边模式，兼容性最好）
+            lp.layoutInDisplayCutoutMode =
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+            getWindow().setAttributes(lp);
+        }
+
         // ===== 窗口设置 =====
         // 保持屏幕常亮
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -254,7 +295,7 @@ public class SettingsActivity extends AppCompatActivity {
         setContentView(R.layout.activity_settings);
 
         // ====================================================================
-        // ✅ 新增：点击左侧空白区域关闭设置
+        // ✅ 点击左侧空白区域关闭设置
         // ====================================================================
         //
         // 【需求来源】
@@ -613,14 +654,27 @@ public class SettingsActivity extends AppCompatActivity {
         });
         builder.show();
     }
-    
+
     // ====================================================================
     // ✅ 窗口焦点变化时，重新隐藏状态栏（防止被系统恢复）
     // ====================================================================
+    /**
+     * 窗口焦点变化回调
+     *
+     * 【作用】
+     * 有时候系统会自动恢复状态栏（比如弹出通知、切换应用后回来），
+     * 在获得焦点时重新设置沉浸式和刘海屏适配，确保一直是全屏状态。
+     *
+     * 【什么时候调用？】
+     * - 页面打开时获得焦点 → 调用
+     * - 从后台回到前台 → 调用
+     * - 关闭弹窗后重新获得焦点 → 调用
+     */
     @Override
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
         if (hasFocus) {
+            // 重新设置沉浸式全屏
             int uiOptions = View.SYSTEM_UI_FLAG_LAYOUT_STABLE
                     | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
                     | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
@@ -628,6 +682,17 @@ public class SettingsActivity extends AppCompatActivity {
                     | View.SYSTEM_UI_FLAG_FULLSCREEN
                     | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY;
             getWindow().getDecorView().setSystemUiVisibility(uiOptions);
+
+            // ====================================================================
+            // ✅ 新增：刘海屏适配（重新设置）
+            // ====================================================================
+            // 防止系统恢复后，刘海屏适配失效
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                WindowManager.LayoutParams lp = getWindow().getAttributes();
+                lp.layoutInDisplayCutoutMode =
+                        WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+                getWindow().setAttributes(lp);
+            }
         }
     }
 

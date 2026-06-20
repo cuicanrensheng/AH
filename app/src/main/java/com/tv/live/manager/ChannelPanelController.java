@@ -40,9 +40,11 @@ import java.util.List;
  * 3. 所有切台相关方法都加上详细的操作日志
  * 4. 日志包括：入口、反转状态、实际方向、索引变化、频道名称
  *
- * 【日志效果】
- * 在设置页面的"操作日志"里可以看到完整的切台流程，
- * 方便分析反转是否生效、是从哪个入口触发的、为什么失效。
+ * 【2026-06-20 新增：isRightPanelOpen() 方法】
+ * 【为什么加这个方法？】
+ * TvRemoteManager 需要知道当前是左侧面板还是右侧面板，
+ * 才能正确处理左右键的列切换逻辑。
+ * 所以新增这个 public 方法，供外部调用。
  */
 public class ChannelPanelController {
 
@@ -92,7 +94,7 @@ public class ChannelPanelController {
     private boolean epgEnable = true;
 
     // ====================================================================
-    // ✅ 换台反转相关
+    // 换台反转相关
     // ====================================================================
 
     /**
@@ -397,7 +399,6 @@ public class ChannelPanelController {
                 break;
             }
         }
-
         if (groupIndex == -1) return;
 
         // 计算上一个频道的索引（分组内循环）
@@ -458,7 +459,6 @@ public class ChannelPanelController {
                 break;
             }
         }
-
         if (groupIndex == -1) return;
 
         // 计算下一个频道的索引（分组内循环）
@@ -475,7 +475,7 @@ public class ChannelPanelController {
     }
 
     // ====================================================================
-    // ✅ 带反转的切台方法（统一入口）
+    // 带反转的切台方法（统一入口）
     // ====================================================================
 
     /**
@@ -525,7 +525,6 @@ public class ChannelPanelController {
 
         index = Math.max(0, Math.min(index, channelSourceList.size() - 1));
         currentPlayIndex = index;
-
         Channel ch = channelSourceList.get(index);
         if (ch == null) return;
 
@@ -594,7 +593,6 @@ public class ChannelPanelController {
         } else {
             channelListManager.setChannels(channelSourceList, currentPlayIndex);
         }
-
         channelListManagerEpg.setChannels(channelSourceList, currentPlayIndex);
 
         boolean isOpen = isPanelOpen();
@@ -631,6 +629,31 @@ public class ChannelPanelController {
 
     public boolean isPanelOpen() {
         return panelLayout.getVisibility() == View.VISIBLE;
+    }
+
+    // ====================================================================
+    // ✅ 新增：右侧面板是否打开（供 TvRemoteManager 使用）
+    // ====================================================================
+
+    /**
+     * 右侧面板是否打开
+     *
+     * @return true=右侧面板打开，false=右侧面板关闭
+     *
+     * 【为什么需要这个方法？】
+     * TvRemoteManager 需要知道当前是左侧面板还是右侧面板，
+     * 才能正确处理左右键的列切换逻辑。
+     *
+     * 【状态来源】
+     * 直接返回成员变量 rightPanelOpen，
+     * 这个变量在 onEpgButtonClicked() 和 onBackGroupClicked() 中更新。
+     *
+     * 【什么时候调用？】
+     * MainActivity 的 syncRemoteMode() 中会调用，
+     * 用来同步遥控器管理器的面板状态。
+     */
+    public boolean isRightPanelOpen() {
+        return rightPanelOpen;
     }
 
     private void onEpgButtonClicked() {

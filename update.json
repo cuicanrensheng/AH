@@ -1,7 +1,7 @@
 {
   "versionCode": 2,
   "versionName": "1.1.0",
-  "downloadUrl": "https://你的服务器地址/app-release.apk",
+  "downloadUrl": "https://github.com/cuicanrensheng/AH/releases/download/v1.1.0/app-release.apk",
   "updateLog": "1. 修复换台反转失效问题\n2. 修复屏幕比例失效问题\n3. 新增检查更新功能\n4. 优化播放流畅度",
   "forceUpdate": false
 }

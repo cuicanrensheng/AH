@@ -223,7 +223,7 @@ public class SettingsActivity extends AppCompatActivity {
         tv_boot_status = findViewById(R.id.tv_boot_status);
 
         // 获取 ScrollView（用于滚动到可见区域）
-        scrollView = findViewById(R.id.scroll_view);
+        scrollView = findViewById(R.id.settings_content);
 
         // ====================================================================
         // 初始化所有管理器

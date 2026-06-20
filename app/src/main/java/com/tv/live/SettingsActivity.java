@@ -546,19 +546,28 @@ public class SettingsActivity extends AppCompatActivity {
 
         return super.onKeyDown(keyCode, event);
     }
-
-    // ====================================================================
-    // ✅ 新增：辅助方法 - 更新设置项焦点高亮
+        // ====================================================================
+    // ✅ 2026-06-20 优化：统一高亮样式，只用 setSelected 一种
     // ====================================================================
 
     /**
      * 更新设置项焦点高亮显示
      *
-     * 【说明】
-     * 1. 获取当前焦点位置
-     * 2. 清除所有项的高亮
-     * 3. 给当前焦点项设置高亮
-     * 4. 滚动到可见区域
+     * 【2026-06-20 优化：统一高亮，只用 setSelected 一种】
+     *
+     * 【原来的问题】
+     * 同时设置了 setSelected(true) 和 setActivated(true)，
+     * 和系统默认的焦点框叠加，导致有多个光标/高亮，很乱。
+     *
+     * 【优化方案】
+     * 只用 setSelected 一种高亮方式，去掉 setActivated，
+     * 保留 requestFocus（电视上必须有焦点，不然按键有问题）。
+     *
+     * 【效果】
+     * - 只有一种高亮，清晰明了
+     * - 遥控器移动到哪哪就亮
+     * - 手机点击哪个哪个亮
+     * - 不会有多个光标叠加的问题
      */
     private void updateSettingsFocus() {
         int position = remoteManager.getSettingsFocusPosition();
@@ -567,8 +576,10 @@ public class SettingsActivity extends AppCompatActivity {
         for (int i = 0; i < settingsItemList.size(); i++) {
             View item = settingsItemList.get(i);
             if (item != null) {
+                // ✅ 只用 setSelected 一种高亮方式
                 item.setSelected(false);
-                item.setActivated(false);
+                // ❌ 已删除：item.setActivated(false);
+                // 去掉 setActivated，减少一种高亮叠加
             }
         }
 
@@ -576,25 +587,23 @@ public class SettingsActivity extends AppCompatActivity {
         if (position >= 0 && position < settingsItemList.size()) {
             View currentItem = settingsItemList.get(position);
             if (currentItem != null) {
+                // ✅ 只用 setSelected 一种高亮方式
                 currentItem.setSelected(true);
-                currentItem.setActivated(true);
 
-                // 3. 请求焦点（让系统知道焦点在哪）
+                // ❌ 已删除：currentItem.setActivated(true);
+                // 去掉 setActivated，减少一种高亮叠加
+
+                // ✅ 保留 requestFocus，电视上必须有焦点
+                // 不然遥控器按键事件分发可能有问题
                 currentItem.requestFocus();
 
-                // 4. 滚动到可见区域
+                // 3. 滚动到可见区域
                 scrollToView(currentItem);
             }
         }
 
         logOperation("【设置遥控】焦点移动到第 " + (position + 1) + " 项");
     }
-
-    /**
-     * 滚动到指定 View 可见区域
-     *
-     * @param view 要滚动到的 View
-     */
     private void scrollToView(View view) {
         if (scrollView == null || view == null) return;
 

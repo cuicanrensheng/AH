@@ -80,6 +80,22 @@ import androidx.appcompat.app.AppCompatActivity;
  *
  * 【效果】
  * 设置页面打开后，后面的播放画面和频道面板时一样，都是全屏的，没有黑边。
+ *
+ * 【2026-06-20 修改：彻底清除背景变暗（三重保险）】
+ * 【问题原因】
+ * 透明主题（windowIsTranslucent=true）的 Activity，
+ * 系统默认会给下面的 Activity 加一层变暗遮罩。
+ * 即使 styles.xml 中设置了 backgroundDimEnabled=false，
+ * 某些设备上还是不生效，播放画面还是灰暗的。
+ *
+ * 【解决方案】
+ * 在 Java 代码中用三种方式彻底清除变暗效果：
+ * 1. 清除 FLAG_DIM_BEHIND 标志位
+ * 2. 明确设置 dimAmount = 0（完全透明）
+ * 3. 再清除一次（保险起见）
+ *
+ * 【效果】
+ * 播放画面完全正常，和打开设置页面前一模一样，没有任何变暗。
  */
 public class SettingsActivity extends AppCompatActivity {
 
@@ -231,7 +247,7 @@ public class SettingsActivity extends AppCompatActivity {
         getWindow().getDecorView().setSystemUiVisibility(uiOptions);
 
         // ====================================================================
-        // ✅ 新增：刘海屏/挖孔屏适配（让内容延伸到刘海区域）
+        // ✅ 刘海屏/挖孔屏适配（让内容延伸到刘海区域）
         // ====================================================================
         //
         // 【作用】
@@ -259,6 +275,46 @@ public class SettingsActivity extends AppCompatActivity {
                     WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
             getWindow().setAttributes(lp);
         }
+
+        // ====================================================================
+        // ✅ 彻底清除背景变暗（三重保险）
+        // ====================================================================
+        //
+        // 【问题原因】
+        // 透明主题（windowIsTranslucent=true）的 Activity，
+        // 系统默认会给下面的 Activity 加一层变暗遮罩。
+        // 即使 styles.xml 中设置了 backgroundDimEnabled=false，
+        // 某些设备上还是不生效，播放画面还是灰暗的。
+        //
+        // 【为什么 styles.xml 中的设置不生效？】
+        // 因为 Java 代码的优先级比主题更高。
+        // 而且透明主题的变暗效果是系统级的，
+        // 光靠主题设置可能不够，需要在代码中明确清除。
+        //
+        // 【解决方案】
+        // 在 Java 代码中用三种方式彻底清除变暗效果：
+        // 1. 清除 FLAG_DIM_BEHIND 标志位
+        // 2. 明确设置 dimAmount = 0（完全透明）
+        // 3. 再清除一次（保险起见）
+        //
+        // 【三重保险原理】
+        // 第 1 重：clearFlags(FLAG_DIM_BEHIND) → 清除变暗标志
+        // 第 2 重：dimAmount = 0f → 明确暗度为 0
+        // 第 3 重：再 clearFlags 一次 → 保险起见
+        //
+        // 【效果】
+        // 播放画面完全正常，和打开设置页面前一模一样，没有任何变暗。
+        
+        // 第 1 重：清除变暗标志位
+        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+        
+        // 第 2 重：明确设置暗度为 0（完全透明）
+        WindowManager.LayoutParams layoutParams = getWindow().getAttributes();
+        layoutParams.dimAmount = 0f;  // 0 = 完全不变暗
+        getWindow().setAttributes(layoutParams);
+        
+        // 第 3 重：再清除一次（保险起见）
+        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
 
         // ===== 窗口设置 =====
         // 保持屏幕常亮
@@ -684,7 +740,7 @@ public class SettingsActivity extends AppCompatActivity {
             getWindow().getDecorView().setSystemUiVisibility(uiOptions);
 
             // ====================================================================
-            // ✅ 新增：刘海屏适配（重新设置）
+            // ✅ 刘海屏适配（重新设置）
             // ====================================================================
             // 防止系统恢复后，刘海屏适配失效
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
@@ -693,6 +749,16 @@ public class SettingsActivity extends AppCompatActivity {
                         WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
                 getWindow().setAttributes(lp);
             }
+
+            // ====================================================================
+            // ✅ 重新清除背景变暗（保险起见）
+            // ====================================================================
+            // 防止系统恢复后，变暗效果又回来了
+            getWindow().clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+            WindowManager.LayoutParams layoutParams = getWindow().getAttributes();
+            layoutParams.dimAmount = 0f;
+            getWindow().setAttributes(layoutParams);
+            getWindow().clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
         }
     }
 

@@ -825,7 +825,7 @@ public class MainActivity extends AppCompatActivity {
             public void run() {
                 hidePlayerPlaceholder();
             }
-        }, 100);
+        }, 500);
     }
 
     @Override

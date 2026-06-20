@@ -3,6 +3,7 @@ package com.tv.live.manager;
 import android.view.KeyEvent;
 
 import com.tv.live.MainActivity;
+import com.tv.live.SettingsActivity;
 
 /**
  * 按键事件管理器
@@ -13,18 +14,20 @@ import com.tv.live.MainActivity;
  * 2. OK键/确认键：打开/关闭频道面板
  * 3. Menu键：打开设置页面
  *
- * 【2026-06-20 修复：换台反转失效】
+ * 【2026-06-20 修复：换台反转失效 + 详细操作日志】
  * 【问题原因】
  * 之前直接调用 activity.playPrev() 和 activity.playNext()，
- * 这两个是底层方法，不考虑反转设置，导致反转失效。
+ * 这两个是底层方法，不考虑反转设置，导致反转失效，而且没有日志很难排查。
  *
- * 【修复方案】
- * 加上反转判断：调用 activity.isChannelReverse() 获取反转状态，
- * 根据反转状态决定调用 playPrev() 还是 playNext()。
+ * 【解决方案】
+ * 1. 加上反转判断：调用 activity.isChannelReverse() 获取反转状态
+ * 2. 加上详细的操作日志，记录是从 KeyEventManager 入口触发的
  *
- * 【效果】
- * KeyEventManager 里的切台也会考虑反转设置，
- * 和 handleDirectionKey()、ChannelPanelController 保持一致。
+ * 【日志效果】
+ * 在设置页面的"操作日志"里可以看到：
+ * - 按键是从哪个入口处理的（KeyEventManager / handleDirectionKey）
+ * - 反转状态是什么
+ * - 实际切台方向是什么
  */
 public class KeyEventManager {
 
@@ -39,29 +42,17 @@ public class KeyEventManager {
      *
      * @param keyCode 按键码
      * @return 是否处理了按键（true=已处理）
-     *
-     * 【2026-06-20 修复：上下键加上反转判断】
-     * 【原来的代码】
-     * case KeyEvent.KEYCODE_DPAD_UP:
-     *     activity.playPrev();
-     *     return true;
-     * case KeyEvent.KEYCODE_DPAD_DOWN:
-     *     activity.playNext();
-     *     return true;
-     *
-     * 【问题】
-     * 直接调用 playPrev()/playNext()，不考虑反转设置，导致反转失效。
-     *
-     * 【修复后】
-     * 先调用 activity.isChannelReverse() 判断反转状态，
-     * 再决定调用 playPrev() 还是 playNext()。
      */
     public boolean dispatchKey(int keyCode) {
         switch (keyCode) {
             // ====================================================================
-            // ✅ 修复：上键加上反转判断
+            // ✅ 上键：加上反转判断 + 操作日志
             // ====================================================================
             case KeyEvent.KEYCODE_DPAD_UP:
+                // 记录入口日志：是 KeyEventManager 处理的上键
+                SettingsActivity.logOperation("【按键】KeyEventManager 上键 → 反转状态：" 
+                        + (activity.isChannelReverse() ? "开启" : "关闭"));
+                
                 if (activity.isChannelReverse()) {
                     // 反转开启：上键 = 下一台
                     activity.playNext();
@@ -72,9 +63,13 @@ public class KeyEventManager {
                 return true;
 
             // ====================================================================
-            // ✅ 修复：下键加上反转判断
+            // ✅ 下键：加上反转判断 + 操作日志
             // ====================================================================
             case KeyEvent.KEYCODE_DPAD_DOWN:
+                // 记录入口日志：是 KeyEventManager 处理的下键
+                SettingsActivity.logOperation("【按键】KeyEventManager 下键 → 反转状态：" 
+                        + (activity.isChannelReverse() ? "开启" : "关闭"));
+                
                 if (activity.isChannelReverse()) {
                     // 反转开启：下键 = 上一台
                     activity.playPrev();
@@ -86,10 +81,12 @@ public class KeyEventManager {
 
             case KeyEvent.KEYCODE_DPAD_CENTER:
             case KeyEvent.KEYCODE_ENTER:
+                SettingsActivity.logOperation("【按键】KeyEventManager OK键 → 切换面板");
                 activity.togglePanel();
                 return true;
 
             case KeyEvent.KEYCODE_MENU:
+                SettingsActivity.logOperation("【按键】KeyEventManager Menu键 → 打开设置");
                 activity.openSettings();
                 return true;
         }

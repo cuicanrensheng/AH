@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+     <?xml version="1.0" encoding="utf-8"?>
 <!--
   主页面布局
   【作用】直播应用的主页面，包含播放器、频道面板、信息栏等
@@ -23,8 +23,8 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#000000">
-  
-      <!-- ==================================================================== -->
+
+    <!-- ==================================================================== -->
     <!-- 主播放器视图（ExoPlayer 的 PlayerView）                              -->
     <!-- ==================================================================== -->
     <!--
@@ -43,7 +43,7 @@
         app:resize_mode="fit"
         app:keep_content_on_player_reset="true"
         app:surface_type="surface_view" />
-  
+
     <!-- ==================================================================== -->
     <!-- 防花屏占位图（退到后台时显示，黑色背景盖住 SurfaceView）            -->
     <!-- ==================================================================== -->
@@ -52,7 +52,8 @@
       【时机】onPause 时显示，onResume 后延迟 100ms 隐藏
       【原理】SurfaceView 的 Surface 销毁是异步的，销毁过程中可能出现花屏、绿屏，
              用一个 ImageView 盖在上面，用户看到的就是平滑的黑色过渡。
-      <ImageView
+    -->
+    <ImageView
         android:id="@+id/iv_player_placeholder"
         android:layout_width="match_parent"
         android:layout_height="match_parent"

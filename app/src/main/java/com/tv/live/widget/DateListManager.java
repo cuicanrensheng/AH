@@ -9,19 +9,52 @@ import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.ListView;
 import android.widget.TextView;
+
 import com.tv.live.R;
 import com.tv.live.SettingsActivity;
+
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.List;
 
+/**
+ * 日期列表管理器
+ *
+ * 【职责】
+ * 统一管理日期列表的显示、选中状态、点击事件等。
+ *
+ * 【2026-06-20 优化：统一高亮样式，解决多个光标问题】
+ *
+ * 【原来的问题】
+ * 原来有三种状态：选中状态、焦点状态、未选中状态，
+ * 当焦点和选中位置不在同一个项时，就会有两个项同时亮着，
+ * 看起来像有多个光标，很乱。
+ *
+ * 【优化方案】
+ * 去掉"焦点状态"的单独判断，统一成两种状态：
+ * 1. 高亮状态（选中=焦点，用同一种样式）
+ * 2. 普通状态
+ */
 public class DateListManager {
+
+    /** 日期列表 ListView */
     private final ListView lvDate;
+
+    /** 上下文 */
     private final Context context;
+
+    /** 当前选中位置 */
     private int selectedPosition = 0;
+
+    /** 日期选中监听器 */
     private OnDateSelectedListener listener;
+
+    /** 列表适配器 */
     private ArrayAdapter<String> adapter;
 
+    /**
+     * 日期选中监听器接口
+     */
     public interface OnDateSelectedListener {
         void onDateSelected(int position);
     }
@@ -30,14 +63,21 @@ public class DateListManager {
         this.listener = listener;
     }
 
+    /**
+     * 构造函数
+     *
+     * @param context 上下文
+     * @param lvDate 日期列表 ListView
+     */
     public DateListManager(Context context, ListView lvDate) {
         this.context = context;
         this.lvDate = lvDate;
-        // ✅ item 不需要获取焦点
+
+        // item 不需要获取焦点，由 ListView 统一管理
         lvDate.setItemsCanFocus(false);
         lvDate.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
 
-        // ✅ 遥控器焦点选中时同步更新位置
+        // 遥控器焦点选中时同步更新位置
         lvDate.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int pos, long id) {
@@ -46,15 +86,20 @@ public class DateListManager {
                     adapter.notifyDataSetChanged();
                 }
             }
+
             @Override
             public void onNothingSelected(AdapterView<?> parent) {}
         });
     }
 
+    /**
+     * 初始化日期列表（8天）
+     */
     public void initDate() {
         List<String> dates = new ArrayList<>();
         Calendar cal = Calendar.getInstance();
         String[] week = {"周日", "周一", "周二", "周三", "周四", "周五", "周六"};
+
         for (int i = 0; i < 8; i++) {
             String display;
             if (i == 0) {
@@ -70,6 +115,7 @@ public class DateListManager {
             dates.add(display);
             cal.add(Calendar.DAY_OF_YEAR, 1);
         }
+
         SettingsActivity.log("【日期列表】初始化：" + dates);
 
         adapter = new ArrayAdapter<String>(context, R.layout.item_date, dates) {
@@ -77,27 +123,47 @@ public class DateListManager {
             public View getView(int position, View convertView, ViewGroup parent) {
                 TextView tv = (TextView) super.getView(position, convertView, parent);
 
+                // ====================================================================
+                // ✅ 2026-06-20 优化：统一高亮，只有两种状态
+                // ====================================================================
+
                 if (position == selectedPosition) {
-                    // ✅ 选中状态：蓝色文字 + 加粗 + 浅蓝色背景
+                    // ✅ 高亮状态（选中和焦点都用这一种样式）
+                    // 样式：蓝色文字 + 加粗 + 浅蓝色背景
                     tv.setTextColor(Color.parseColor("#40A9FF"));
                     tv.setTypeface(null, Typeface.BOLD);
                     tv.setBackgroundColor(0x3340A9FF);
-                } else if (tv.isFocused()) {
-                    // ✅ 焦点状态：蓝色文字 + 稍深一点的蓝色背景
-                    tv.setTextColor(Color.parseColor("#40A9FF"));
-                    tv.setTypeface(null, Typeface.NORMAL);
-                    tv.setBackgroundColor(0x4440A9FF);
                 } else {
-                    // ✅ 未选中状态：白色文字 + 常规 + 透明背景
+                    // ✅ 普通状态
+                    // 样式：白色文字 + 常规 + 透明背景
                     tv.setTextColor(Color.WHITE);
                     tv.setTypeface(null, Typeface.NORMAL);
                     tv.setBackgroundColor(Color.TRANSPARENT);
                 }
+
+                /*
+                 * ❌ 已删除：原来的焦点状态判断
+                 *
+                 * 原来的代码：
+                 * else if (tv.isFocused()) {
+                 *     // 焦点状态：蓝色文字 + 稍深一点的蓝色背景
+                 *     ...
+                 * }
+                 *
+                 * 【为什么删除？】
+                 * 原来有三种状态，当焦点和选中位置不在同一个项时，
+                 * 就会有两个项同时亮着，看起来像有多个光标。
+                 *
+                 * 现在统一成两种状态，同一个列表里永远只有一个项亮着。
+                 */
+
                 return tv;
             }
         };
+
         lvDate.setAdapter(adapter);
 
+        // 点击事件
         lvDate.setOnItemClickListener((parent, view, position, id) -> {
             selectedPosition = position;
             adapter.notifyDataSetChanged();
@@ -111,6 +177,11 @@ public class DateListManager {
         });
     }
 
+    /**
+     * 设置选中位置
+     *
+     * @param position 选中位置
+     */
     public void setSelectedPosition(int position) {
         selectedPosition = position;
         if (adapter != null) {

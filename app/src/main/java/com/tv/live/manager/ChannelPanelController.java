@@ -6,12 +6,14 @@ import android.view.View;
 import android.widget.AdapterView;
 import android.widget.ListView;
 import android.widget.TextView;
+
 import com.tv.live.Channel;
 import com.tv.live.SettingsActivity;
 import com.tv.live.widget.ChannelListManager;
 import com.tv.live.widget.DateListManager;
 import com.tv.live.widget.EpgManagerWrapper;
 import com.tv.live.widget.GroupListManager;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -21,15 +23,28 @@ import java.util.List;
  * 【职责】
  * 统一管理所有和频道面板相关的逻辑，包括：
  * 1. 分组管理（分组列表、选中状态、分组筛选）
- * 2. 频道切换（上/下切台、分组内循环、防抖）
+ * 2. 频道切换（上/下切台、分组内循环、防抖、反转）← ✅ 合并了 ChannelSwitchManager 的功能
  * 3. 面板控制（显示/隐藏、EPG 展开/收起、列表点击）
  * 4. 焦点管理（手机触屏 + 电视遥控器）
  * 5. 按键处理（左右键移动焦点、OK键选中）
  *
+ * 【合并说明】
+ * 原 ChannelSwitchManager 的功能已全部合并到本类中：
+ * - 频道列表管理
+ * - 当前索引管理
+ * - 切换防抖
+ * - 换台反转
+ * - switchUp() / switchDown() 统一入口
+ *
+ * 【为什么合并？】
+ * ChannelSwitchManager 功能比较单一，和 ChannelPanelController 功能高度重叠。
+ * 合并后职责更清晰，所有频道切换相关的逻辑都在一个类里，
+ * 避免出现两个管理器状态不同步的问题。
+ *
  * 【拆分来源】
  * 从 MainActivity 拆分合并而来，原分散在三个地方：
  * - GroupListManager 增强：分组选中、筛选逻辑
- * - ChannelController：频道切换逻辑
+ * - ChannelController / ChannelSwitchManager：频道切换逻辑
  * - PanelManager 增强：面板交互、列表点击逻辑
  *
  * 【五层逻辑闭环】
@@ -51,9 +66,22 @@ import java.util.List;
  * - 电视端：通过遥控器左右键移动焦点，OK键选中
  * - 切换面板时：焦点自动转移到新面板的频道列表
  * - 打开面板时：焦点自动给到左侧面板的频道列表
+ *
+ * 【2026-06-20 新增：换台反转功能（统一管理）】
+ * 【问题原因】
+ * 之前反转逻辑分散在多个地方，容易出现不同步的问题。
+ *
+ * 【解决方案】
+ * 统一由本类管理反转：
+ * 1. isReverse 变量，保存反转状态
+ * 2. setReverse() 方法，设置反转状态
+ * 3. switchUp() 和 switchDown() 方法，内部自动考虑反转
+ *
+ * 【效果】
+ * 所有地方调用 switchUp()/switchDown() 时，都会自动考虑反转设置，
+ * 不会出现不同步的问题，换台反转功能稳定生效。
  */
 public class ChannelPanelController {
-
     // ====================== 常量 ======================
     /** 频道切换冷却时间（毫秒），300ms 内不允许连续切台 */
     private static final long CHANNEL_COOLDOWN = 300;
@@ -182,6 +210,34 @@ public class ChannelPanelController {
     /** EPG 功能是否启用 */
     private boolean epgEnable = true;
 
+    // ====================================================================
+    // ✅ 频道切换相关（合并自 ChannelSwitchManager）
+    // ====================================================================
+    /**
+     * 是否开启换台反转
+     * 默认 false = 不反转
+     *
+     * 【反转说明】
+     * 反转关闭（默认）：
+     *   - 上键 = 上一台（prev）= 索引-1
+     *   - 下键 = 下一台（next）= 索引+1
+     *
+     * 反转开启：
+     *   - 上键 = 下一台（next）= 索引+1
+     *   - 下键 = 上一台（prev）= 索引-1
+     *
+     * 【为什么把反转逻辑放在这里？】
+     * 所有频道切换相关的逻辑都统一在本类管理，
+     * 反转是切换行为的一部分，应该放在这里统一管理。
+     * 这样外部只需要调用 switchUp() 和 switchDown()，
+     * 不用关心内部是加还是减。
+     *
+     * 【什么时候设置？】
+     * 1. App 启动时，MainActivity.loadSettings() 读取设置后调用 setReverse()
+     * 2. 从设置页面返回时，MainActivity.onResume() 重新加载设置后调用 setReverse()
+     */
+    private boolean isReverse = false;
+
     // ====================== 切台防抖 ======================
     /** 上次频道切换时间 */
     private long lastChannelChangeTime = 0;
@@ -198,7 +254,6 @@ public class ChannelPanelController {
      * 处理左右键时，根据当前焦点在哪个面板，决定焦点往哪移。
      */
     private String currentFocusPanel = "left";
-
     /**
      * 当前焦点在左侧面板的哪个视图
      *
@@ -212,7 +267,6 @@ public class ChannelPanelController {
      * 比如当前在分组列表，按右键就移到频道列表。
      */
     private String leftFocusView = "channel";
-
     /**
      * 当前焦点在右侧面板的哪个视图
      *
@@ -320,7 +374,6 @@ public class ChannelPanelController {
         this.dateListManager = dateListManager;
         this.epgManagerWrapper = epgManagerWrapper;
         this.panelManager = panelManager;
-
         // 初始化点击事件
         initClickListeners();
         // 初始化焦点监听
@@ -384,7 +437,7 @@ public class ChannelPanelController {
     }
 
     // ====================================================================
-    // ✅ 新增：初始化焦点变化监听
+    // ✅ 初始化焦点变化监听
     // ====================================================================
     /**
      * 初始化所有焦点变化监听
@@ -487,13 +540,10 @@ public class ChannelPanelController {
     public void setChannels(List<Channel> channels) {
         if (channels == null) return;
         this.channelSourceList = channels;
-
         // 更新分组列表
         groupListManager.setGroups(channels);
-
         // 更新主页面频道列表（全部频道）
         channelListManager.setChannels(channels, currentPlayIndex);
-
         // 同步更新节目单页面的频道列表
         // 【为什么要同步更新？】
         // 因为有两个频道列表，数据必须保持一致。
@@ -512,11 +562,9 @@ public class ChannelPanelController {
         groupListManager.setSelectedPosition(position);
         lvGroup.setItemChecked(position, true);
         lvGroup.setSelection(position);
-
         // 保存当前分组名称
         String groupName = groupListManager.getCurrentGroup(position);
         currentGroupName = groupName;
-
         // 筛选当前分组的频道
         currentGroupChannelList.clear();
         for (Channel c : channelSourceList) {
@@ -524,16 +572,13 @@ public class ChannelPanelController {
                 currentGroupChannelList.add(c);
             }
         }
-
         // 更新主页面频道列表（按分组筛选）
         channelListManager.setChannelsByGroup(channelSourceList, groupName, currentPlayIndex);
-
         // 说明：节目单页面的频道列表不筛选分组
         // 【为什么不筛选？】
         // 因为右侧面板（节目单页面）没有分组列表，用户无法切换分组，
         // 所以节目单页面的频道列表一直显示全部频道，方便用户查看任意频道的节目单。
         // 如果用户想看某个分组的频道，可以切回左侧面板筛选。
-
         SettingsActivity.logOperation("【分组】选中分组：" + groupName
                 + "，频道数：" + currentGroupChannelList.size());
     }
@@ -566,10 +611,53 @@ public class ChannelPanelController {
     }
 
     // ====================================================================
-    // 3. 频道切换相关
+    // ✅ 换台反转设置（合并自 ChannelSwitchManager）
+    // ====================================================================
+    /**
+     * 设置是否开启换台反转
+     *
+     * @param reverse true = 开启反转，false = 关闭反转
+     *
+     * 【调用时机】
+     * 1. App 启动时，MainActivity.loadSettings() 读取设置后调用
+     * 2. 从设置页面返回时，MainActivity.onResume() 重新加载设置后调用
+     *
+     * 【为什么需要这个方法？】
+     * 反转状态保存在本类内部，
+     * 外部（MainActivity）读取设置后，需要通过这个方法同步进来。
+     *
+     * 【同步后效果】
+     * 调用 switchUp() 和 switchDown() 时，会自动考虑反转设置。
+     */
+    public void setReverse(boolean reverse) {
+        this.isReverse = reverse;
+    }
+
+    /**
+     * 获取当前反转状态
+     *
+     * @return true = 已开启反转
+     */
+    public boolean isReverse() {
+        return isReverse;
+    }
+
+    // ====================================================================
+    // 3. 频道切换相关（核心，合并自 ChannelSwitchManager）
     // ====================================================================
     /**
      * 播放上一个频道（分组内循环）
+     *
+     * 【注意】这是底层方法，直接切换到上一台，不考虑反转。
+     * 如果需要考虑反转，请调用 switchUp() 或 switchDown()。
+     *
+     * 【逻辑说明】
+     * 1. 防抖检查：300ms 内不允许连续切台
+     * 2. 获取当前频道所在的分组
+     * 3. 筛选出当前分组的所有频道
+     * 4. 找到当前频道在分组中的索引
+     * 5. 计算上一个频道的索引（分组内循环）
+     * 6. 转换成全局索引，调用 playChannel() 播放
      */
     public void playPrev() {
         // 防抖检查
@@ -616,6 +704,17 @@ public class ChannelPanelController {
 
     /**
      * 播放下一个频道（分组内循环）
+     *
+     * 【注意】这是底层方法，直接切换到下一台，不考虑反转。
+     * 如果需要考虑反转，请调用 switchUp() 或 switchDown()。
+     *
+     * 【逻辑说明】
+     * 1. 防抖检查：300ms 内不允许连续切台
+     * 2. 获取当前频道所在的分组
+     * 3. 筛选出当前分组的所有频道
+     * 4. 找到当前频道在分组中的索引
+     * 5. 计算下一个频道的索引（分组内循环）
+     * 6. 转换成全局索引，调用 playChannel() 播放
      */
     public void playNext() {
         // 防抖检查
@@ -660,6 +759,59 @@ public class ChannelPanelController {
         }
     }
 
+    // ====================================================================
+    // ✅ 带反转的切台方法（统一入口，合并自 ChannelSwitchManager）
+    // ====================================================================
+    /**
+     * 按上键时调用（自动考虑反转）
+     *
+     * 【逻辑】
+     * - 反转关闭：上键 = 上一台（playPrev）
+     * - 反转开启：上键 = 下一台（playNext）
+     *
+     * 【为什么新增这个方法？】
+     * 原来的 playPrev() 和 playNext() 是固定的，prev 就是上一台。
+     * 现在新增 switchUp() 和 switchDown()，内部自动考虑反转设置，
+     * 外部调用时不用关心反转逻辑，直接调用这两个方法就行。
+     *
+     * 【好处】
+     * 1. 反转逻辑统一管理，不会出现不同步
+     * 2. 外部调用简单，不用每次都判断 isReverse
+     * 3. 以后修改反转逻辑，只需要改这一个地方
+     *
+     * 【调用示例】
+     * MainActivity 的 handleDirectionKey() 里：
+     * case KEYCODE_DPAD_UP:
+     *     channelPanelController.switchUp();
+     *     break;
+     */
+    public void switchUp() {
+        if (isReverse) {
+            // 反转开启：上键 = 下一台
+            playNext();
+        } else {
+            // 反转关闭：上键 = 上一台
+            playPrev();
+        }
+    }
+
+    /**
+     * 按下键时调用（自动考虑反转）
+     *
+     * 【逻辑】
+     * - 反转关闭：下键 = 下一台（playNext）
+     * - 反转开启：下键 = 上一台（playPrev）
+     */
+    public void switchDown() {
+        if (isReverse) {
+            // 反转开启：下键 = 上一台
+            playPrev();
+        } else {
+            // 反转关闭：下键 = 下一台
+            playNext();
+        }
+    }
+
     /**
      * 播放指定索引的频道
      *
@@ -667,11 +819,9 @@ public class ChannelPanelController {
      */
     public void playChannel(int index) {
         if (channelSourceList == null || channelSourceList.isEmpty()) return;
-
         // 索引越界保护
         index = Math.max(0, Math.min(index, channelSourceList.size() - 1));
         currentPlayIndex = index;
-
         Channel ch = channelSourceList.get(index);
         if (ch == null) return;
 
@@ -793,7 +943,7 @@ public class ChannelPanelController {
         panelManager.toggle(channelSourceList, currentPlayIndex, dateListManager);
 
         // ================================================================
-        // ✅ 新增：打开面板时自动请求焦点
+        // ✅ 打开面板时自动请求焦点
         // ================================================================
         // 【为什么要自动请求焦点？】
         // 电视端用遥控器操作时，必须有一个视图获取焦点，否则按键没反应。
@@ -889,7 +1039,7 @@ public class ChannelPanelController {
             channelListManagerEpg.setChannels(channelSourceList, currentPlayIndex);
 
             // ============================================================
-            // ✅ 新增：切换面板后，自动把焦点移到右侧面板的频道列表
+            // ✅ 切换面板后，自动把焦点移到右侧面板的频道列表
             // ============================================================
             // 【为什么要自动移焦点？】
             // 电视端用遥控器操作时，切换面板后焦点还在旧面板的视图上，
@@ -927,7 +1077,7 @@ public class ChannelPanelController {
             epgPanelOpen = false;
 
             // ============================================================
-            // ✅ 新增：切换面板后，自动把焦点移回左侧面板的频道列表
+            // ✅ 切换面板后，自动把焦点移回左侧面板的频道列表
             // ============================================================
             llLeftPanel.post(new Runnable() {
                 @Override
@@ -971,7 +1121,7 @@ public class ChannelPanelController {
             epgPanelOpen = false;
 
             // ============================================================
-            // ✅ 新增：返回左侧面板后，自动把焦点移到左侧面板的频道列表
+            // ✅ 返回左侧面板后，自动把焦点移到左侧面板的频道列表
             // ============================================================
             llLeftPanel.post(new Runnable() {
                 @Override
@@ -1005,7 +1155,6 @@ public class ChannelPanelController {
     public void setCurrentDateIndex(int index) {
         this.currentSelectedDateIndex = index;
         panelManager.setCurrentDateIndex(index);
-
         // 如果有数据，刷新 EPG
         if (!channelSourceList.isEmpty()
                 && currentPlayIndex >= 0 && currentPlayIndex < channelSourceList.size()) {
@@ -1024,7 +1173,7 @@ public class ChannelPanelController {
     }
 
     // ====================================================================
-    // ✅ 新增：辅助方法 - 获取频道列表选中位置
+    // ✅ 辅助方法 - 获取频道列表选中位置
     // ====================================================================
     /**
      * 获取当前频道列表应该选中的位置
@@ -1084,7 +1233,7 @@ public class ChannelPanelController {
     }
 
     // ====================================================================
-    // ✅ 新增：按键事件分发（处理遥控器左右键、OK键）
+    // ✅ 按键事件分发（处理遥控器左右键、OK键）
     // ====================================================================
     /**
      * 分发按键事件
@@ -1099,6 +1248,10 @@ public class ChannelPanelController {
      * 【按键逻辑】
      * 左侧面板（从左到右）：分组列表 → 频道列表 → 节目单按钮
      * 右侧面板（从左到右）：返回按钮 → 频道列表 → 日期列表 → EPG列表
+     *
+     * 【注意】
+     * 这个方法只处理左右键和 OK 键，不处理上下键。
+     * 上下键由 ListView 自己处理（在列表内移动焦点）。
      *
      * @param keyCode 按键码
      * @return 是否处理了按键（true=已处理）

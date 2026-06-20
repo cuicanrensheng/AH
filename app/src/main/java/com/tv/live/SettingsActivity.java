@@ -8,6 +8,7 @@ import android.graphics.drawable.ColorDrawable;
 import android.os.Bundle;
 import android.view.KeyEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.widget.EditText;
 import android.widget.ScrollView;
@@ -57,6 +58,15 @@ import java.util.List;
  * - 完整的操作日志
  * - 焦点位置记忆
  * - 易于扩展（新增设置项只需要加到列表里）
+ *
+ * 【2026-06-20 优化：设置项高亮改成代码动态设置，肯定生效】
+ * 【优化原因】
+ * 原来用 setSelected() + background drawable 的方式，
+ * 但是布局里文字颜色是写死的白色，背景用的是 setting_item_bg.xml，
+ * 导致遥控器操作时看不到焦点高亮在哪里。
+ * 【优化方案】
+ * 改成代码动态设置背景色和文字颜色，不依赖布局里的 drawable 和 color selector，
+ * 肯定能看到焦点，而且和频道面板的高亮样式完全统一。
  */
 public class SettingsActivity extends AppCompatActivity {
 
@@ -546,64 +556,211 @@ public class SettingsActivity extends AppCompatActivity {
 
         return super.onKeyDown(keyCode, event);
     }
-        // ====================================================================
-    // ✅ 2026-06-20 优化：统一高亮样式，只用 setSelected 一种
+
+    // ====================================================================
+    // ✅ 2026-06-20 优化：统一高亮样式，代码动态设置，肯定生效
     // ====================================================================
 
     /**
      * 更新设置项焦点高亮显示
      *
-     * 【2026-06-20 优化：统一高亮，只用 setSelected 一种】
+     * 【2026-06-20 优化：改成代码动态设置，肯定能看到焦点】
      *
      * 【原来的问题】
-     * 同时设置了 setSelected(true) 和 setActivated(true)，
-     * 和系统默认的焦点框叠加，导致有多个光标/高亮，很乱。
+     * 1. 布局里文字颜色是写死的白色（#FFFFFF），就算获得焦点也不会变
+     * 2. 背景用的是 setting_item_bg.xml，不确定里面有没有定义选中/焦点状态
+     * 3. 导致遥控器操作时看不到焦点在哪里，体验很差
      *
      * 【优化方案】
-     * 只用 setSelected 一种高亮方式，去掉 setActivated，
-     * 保留 requestFocus（电视上必须有焦点，不然按键有问题）。
+     * 像 EPG 列表那样，在代码里动态设置背景色和文字颜色，
+     * 不依赖布局里的 drawable 和 color selector，肯定能生效。
      *
-     * 【效果】
-     * - 只有一种高亮，清晰明了
-     * - 遥控器移动到哪哪就亮
-     * - 手机点击哪个哪个亮
-     * - 不会有多个光标叠加的问题
+     * 【高亮样式】
+     * 和频道面板完全统一：
+     * - 背景：浅蓝色（0x3340A9FF，20% 透明度的蓝色）
+     * - 文字：蓝色（#40A9FF）
+     * - 普通状态：透明背景 + 白色文字
+     *
+     * 【处理两种类型的设置项】
+     * 1. TextView 类型：比如"屏幕比例"、"自定义订阅源"等
+     * 2. ViewGroup 类型：比如"开机自启"、"检查更新"等（LinearLayout 包裹文字和开关）
+     *
+     * @param 无
+     * @return 无
      */
     private void updateSettingsFocus() {
+        // 获取当前焦点位置
         int position = remoteManager.getSettingsFocusPosition();
 
-        // 1. 清除所有项的高亮
+        SettingsActivity.logOperation("【设置遥控】准备更新焦点，位置：" + (position + 1));
+
+        // ====================================================================
+        // 第一步：清除所有项的高亮，恢复成普通状态
+        // ====================================================================
+        // 【为什么要先全部清除？】
+        // 因为焦点移动后，上一个焦点项需要恢复成普通状态，
+        // 如果不清除，就会有多个项同时亮着，看起来像多个光标。
+        // 先全部清除，再给当前项设置高亮，保证永远只有一个高亮。
+
         for (int i = 0; i < settingsItemList.size(); i++) {
             View item = settingsItemList.get(i);
-            if (item != null) {
-                // ✅ 只用 setSelected 一种高亮方式
-                item.setSelected(false);
-                // ❌ 已删除：item.setActivated(false);
-                // 去掉 setActivated，减少一种高亮叠加
+            if (item == null) continue;
+
+            // ------------------------------------------------------------
+            // 1.1 设置背景：透明背景（普通状态）
+            // ------------------------------------------------------------
+            item.setBackgroundColor(Color.TRANSPARENT);
+
+            // ------------------------------------------------------------
+            // 1.2 设置文字颜色：白色（普通状态）
+            // ------------------------------------------------------------
+            // 【为什么要分两种情况？】
+            // 因为设置项有两种类型：
+            // - 简单项：直接是 TextView（比如"屏幕比例"）
+            // - 复杂项：是 LinearLayout，里面包含文字和开关（比如"开机自启"）
+            // 需要分别处理。
+
+            if (item instanceof TextView) {
+                // 情况 A：当前项就是 TextView（简单项，比如"屏幕比例"）
+                ((TextView) item).setTextColor(Color.WHITE);
+                SettingsActivity.logOperation("【设置遥控】第 " + (i + 1) + " 项恢复普通状态（TextView）");
+
+            } else if (item instanceof ViewGroup) {
+                // 情况 B：当前项是 ViewGroup（复杂项，比如"开机自启"，里面有文字和开关）
+                // 找第一个 TextView，设置成白色
+                // 【为什么找第一个？】
+                // 因为布局里第一个子 View 通常就是标题文字。
+                TextView tv = findFirstTextView((ViewGroup) item);
+                if (tv != null) {
+                    tv.setTextColor(Color.WHITE);
+                    SettingsActivity.logOperation("【设置遥控】第 " + (i + 1) + " 项恢复普通状态（ViewGroup）");
+                }
             }
         }
 
-        // 2. 给当前焦点项设置高亮
+        // ====================================================================
+        // 第二步：给当前焦点项设置高亮
+        // ====================================================================
+        // 【为什么要做边界检查？】
+        // 防止 position 越界（比如 -1 或者超出列表范围），导致崩溃。
+
         if (position >= 0 && position < settingsItemList.size()) {
             View currentItem = settingsItemList.get(position);
             if (currentItem != null) {
-                // ✅ 只用 setSelected 一种高亮方式
-                currentItem.setSelected(true);
 
-                // ❌ 已删除：currentItem.setActivated(true);
-                // 去掉 setActivated，减少一种高亮叠加
+                // ------------------------------------------------------------
+                // 2.1 设置背景：浅蓝色背景（高亮状态）
+                // ------------------------------------------------------------
+                // 【颜色值说明】
+                // 0x3340A9FF
+                // - 0x：十六进制前缀
+                // - 33：透明度（20%，00=完全透明，FF=完全不透明）
+                // - 40A9FF：蓝色（和频道面板统一）
+                // 【为什么用 20% 透明度？】
+                // 太亮了会刺眼，太暗了看不清，20% 是比较舒服的透明度。
+                currentItem.setBackgroundColor(0x3340A9FF);
 
-                // ✅ 保留 requestFocus，电视上必须有焦点
-                // 不然遥控器按键事件分发可能有问题
+                // ------------------------------------------------------------
+                // 2.2 设置文字颜色：蓝色（高亮状态）
+                // ------------------------------------------------------------
+                if (currentItem instanceof TextView) {
+                    // 情况 A：当前项就是 TextView
+                    ((TextView) currentItem).setTextColor(Color.parseColor("#40A9FF"));
+
+                } else if (currentItem instanceof ViewGroup) {
+                    // 情况 B：当前项是 ViewGroup
+                    TextView tv = findFirstTextView((ViewGroup) currentItem);
+                    if (tv != null) {
+                        tv.setTextColor(Color.parseColor("#40A9FF"));
+                    }
+                }
+
+                // ------------------------------------------------------------
+                // 2.3 请求焦点（让系统知道焦点在哪）
+                // ------------------------------------------------------------
+                // 【为什么必须 requestFocus？】
+                // 1. 电视上必须有焦点，不然遥控器按键事件分发可能有问题
+                // 2. 虽然我们自己控制高亮样式，但系统还是需要知道焦点在哪
+                // 3. 不然下一次按方向键，系统不知道从哪个位置开始移动
                 currentItem.requestFocus();
 
-                // 3. 滚动到可见区域
+                // ------------------------------------------------------------
+                // 2.4 滚动到可见区域
+                // ------------------------------------------------------------
+                // 【为什么要滚动？】
+                // 如果当前焦点项在屏幕外面（上面或下面），
+                // 用户按了键但看不到焦点在哪，体验很差。
+                // 滚动到可见区域，保证用户总能看到焦点在哪里。
                 scrollToView(currentItem);
+
+                SettingsActivity.logOperation("【设置遥控】✅ 第 " + (position + 1) + " 项设置为高亮状态");
+            }
+        } else {
+            SettingsActivity.logOperation("【设置遥控】⚠️ 焦点位置越界：" + position);
+        }
+
+        SettingsActivity.logOperation("【设置遥控】焦点更新完成，当前位置：" + (position + 1));
+    }
+
+    // ====================================================================
+    // ✅ 2026-06-20 新增：辅助方法 - 在 ViewGroup 中找到第一个 TextView
+    // ====================================================================
+
+    /**
+     * 在 ViewGroup 中递归查找第一个 TextView
+     *
+     * 【作用】
+     * 对于复杂的设置项（比如开机自启，LinearLayout 里有文字和开关），
+     * 找到里面的标题 TextView，用来设置文字颜色。
+     *
+     * 【为什么用递归？】
+     * 因为有的布局可能嵌套多层（比如 LinearLayout 里又套了一个 LinearLayout），
+     * 递归查找能确保找到第一个 TextView。
+     *
+     * @param viewGroup 要查找的 ViewGroup
+     * @return 找到的第一个 TextView，如果没找到返回 null
+     */
+    private TextView findFirstTextView(ViewGroup viewGroup) {
+        if (viewGroup == null) return null;
+
+        // 遍历所有子 View
+        for (int i = 0; i < viewGroup.getChildCount(); i++) {
+            View child = viewGroup.getChildAt(i);
+
+            if (child instanceof TextView) {
+                // 找到了，直接返回
+                return (TextView) child;
+
+            } else if (child instanceof ViewGroup) {
+                // 子 View 也是 ViewGroup，递归查找
+                TextView result = findFirstTextView((ViewGroup) child);
+                if (result != null) {
+                    return result;
+                }
             }
         }
 
-        logOperation("【设置遥控】焦点移动到第 " + (position + 1) + " 项");
+        // 没找到
+        return null;
     }
+
+    // ====================================================================
+    // 辅助方法：滚动到指定 View 可见
+    // ====================================================================
+
+    /**
+     * 滚动到指定 View，让它显示在可见区域内
+     *
+     * 【作用】
+     * 当焦点移动到屏幕外的项时，自动滚动，让用户能看到焦点在哪里。
+     *
+     * 【滚动规则】
+     * - 如果 View 在可见区域上方：滚动到顶部（留 50dp 边距）
+     * - 如果 View 在可见区域下方：滚动到底部（留 50dp 边距）
+     * - 如果 View 已经在可见区域内：不滚动
+     *
+     * @param view 要滚动到的 View
+     */
     private void scrollToView(View view) {
         if (scrollView == null || view == null) return;
 

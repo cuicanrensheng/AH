@@ -14,9 +14,7 @@ import android.view.WindowManager;
 import android.widget.ListView;
 import android.widget.ProgressBar;
 import android.widget.TextView;
-
 import androidx.appcompat.app.AppCompatActivity;
-
 import com.google.android.exoplayer2.ui.PlayerView;
 import com.tv.live.config.AppConfig;
 import com.tv.live.listener.PlayerStateListenerImpl;
@@ -25,7 +23,6 @@ import com.tv.live.widget.ChannelListManager;
 import com.tv.live.widget.DateListManager;
 import com.tv.live.widget.EpgManagerWrapper;
 import com.tv.live.widget.GroupListManager;
-
 import java.util.ArrayList;
 import java.util.List;
 
@@ -45,6 +42,15 @@ import java.util.List;
  * 【为什么去掉？】
  * 占位图方案会导致一些问题（如抢焦点、遮挡画面等），
  * 改用 TextureView 方案来解决花屏问题，不再需要占位图。
+ *
+ * 【2026-06-20 修改：添加切台加载动画】
+ * 切台开始时显示加载动画，第一帧渲染后隐藏。
+ * 这样完全看不到花屏，体验更好。
+ *
+ * 【加载动画时机】
+ * 1. playChannel() 中：切台开始 → 显示加载动画
+ * 2. onFirstFrameRendered() 回调：第一帧渲染完成 → 隐藏加载动画
+ * 3. onPlayError() 回调：播放错误 → 隐藏加载动画（避免一直转）
  */
 public class MainActivity extends AppCompatActivity {
 
@@ -207,6 +213,7 @@ public class MainActivity extends AppCompatActivity {
         // 恢复上次播放的频道索引
         currentPlayIndex = appConfig.getLastPlayIndex();
         channelPanelController.setCurrentPlayIndex(currentPlayIndex);
+
         log("【播放】记录上次播放索引：" + currentPlayIndex);
 
         // 数字选台管理器初始化
@@ -349,13 +356,95 @@ public class MainActivity extends AppCompatActivity {
     // ====================================================================
     // 播放器初始化
     // ====================================================================
+    /**
+     * 初始化播放器
+     *
+     * 【2026-06-20 修改：添加切台加载动画】
+     * 设置自定义的 OnPlayStateListener，在第一帧渲染完成时隐藏加载动画。
+     *
+     * 【为什么不用 PlayerStateListenerImpl？】
+     * PlayerStateListenerImpl 是空实现，我们需要自己处理加载动画的逻辑。
+     * 但保留 playerStateListener 的引用，在新的监听器中调用它的方法，
+     * 这样以后如果 PlayerStateListenerImpl 有了实际逻辑，也不会丢失。
+     */
     private void initPlayer() {
         mPlayerManager = TVPlayerManager.getInstance(this);
         mPlayerManager.attachPlayerView(playerView);
 
+        // 创建 PlayerStateListenerImpl（保留原有引用，供其他地方使用）
         playerStateListener = new PlayerStateListenerImpl(this);
-        mPlayerManager.setOnPlayStateListener(playerStateListener);
 
+        // ====================================================================
+        // ✅ 设置播放状态监听器（处理切台加载动画）
+        // ====================================================================
+        mPlayerManager.setOnPlayStateListener(new TVPlayerManager.OnPlayStateListener() {
+            @Override
+            public void onIdle() {
+                // 空闲状态：转发给 PlayerStateListenerImpl
+                if (playerStateListener != null) {
+                    playerStateListener.onIdle();
+                }
+            }
+
+            @Override
+            public void onBuffering() {
+                // 缓冲中：转发给 PlayerStateListenerImpl
+                if (playerStateListener != null) {
+                    playerStateListener.onBuffering();
+                }
+            }
+
+            @Override
+            public void onPlayReady() {
+                // 播放就绪：转发给 PlayerStateListenerImpl
+                if (playerStateListener != null) {
+                    playerStateListener.onPlayReady();
+                }
+            }
+
+            @Override
+            public void onPlayEnd() {
+                // 播放结束：转发给 PlayerStateListenerImpl
+                if (playerStateListener != null) {
+                    playerStateListener.onPlayEnd();
+                }
+            }
+
+            @Override
+            public void onPlayError(String msg) {
+                // 播放错误：隐藏加载动画（避免一直转）
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        displayManager.hideLoading();
+                    }
+                });
+                // 转发给 PlayerStateListenerImpl
+                if (playerStateListener != null) {
+                    playerStateListener.onPlayError(msg);
+                }
+            }
+
+            // ====================================================================
+            // ✅ 第一帧渲染完成：隐藏加载动画（关键！）
+            // ====================================================================
+            @Override
+            public void onFirstFrameRendered() {
+                // 第一帧渲染出来了，隐藏加载动画
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        displayManager.hideLoading();
+                    }
+                });
+                // 转发给 PlayerStateListenerImpl
+                if (playerStateListener != null) {
+                    playerStateListener.onFirstFrameRendered();
+                }
+            }
+        });
+
+        // 直播信息更新监听
         mPlayerManager.setOnLiveInfoUpdateListener(new TVPlayerManager.OnLiveInfoUpdateListener() {
             @Override
             public void onLiveInfoUpdate(TVPlayerManager.LiveInfo info) {
@@ -519,6 +608,13 @@ public class MainActivity extends AppCompatActivity {
     /**
      * 播放指定频道（内部实现）
      *
+     * 【2026-06-20 修改：添加切台加载动画】
+     * 切台开始时显示加载动画，盖住画面，完全看不到花屏。
+     *
+     * 【加载动画时机】
+     * 显示：切台开始时（playChannel 调用时）
+     * 隐藏：第一帧渲染完成时（onFirstFrameRendered 回调）
+     *
      * @param channel 频道
      * @param index   全局索引
      */
@@ -536,6 +632,19 @@ public class MainActivity extends AppCompatActivity {
 
         playerStateListener.setCurrentChannelName(channel.getName());
         appConfig.setLastPlayIndex(index);
+
+        // ====================================================================
+        // ✅ 切台开始：显示加载动画（盖住画面，看不到花屏）
+        // ====================================================================
+        // 【为什么要显示加载动画？】
+        // 虽然我们已经用 TextureView 了，理论上不会花屏，
+        // 但加上加载动画可以让切台体验更好，用户看到的是"正在切换"，
+        // 而不是旧画面突然变成新画面，感觉更流畅。
+        //
+        // 【双重保险】
+        // 即使 TextureView 有某些极端情况会花屏，加载动画也能盖住，
+        // 完全看不到花屏，体验最好。
+        displayManager.showLoading("正在切换频道...");
 
         // 先播放
         mPlayerManager.playUrl(channel.getPlayUrl());
@@ -585,12 +694,10 @@ public class MainActivity extends AppCompatActivity {
             channelNumberManager.cancelInput();
             return;
         }
-
         if (channelPanelController.handleBackPressed()) {
             playerView.requestFocus();
             return;
         }
-
         super.onBackPressed();
     }
 
@@ -606,7 +713,6 @@ public class MainActivity extends AppCompatActivity {
                 SettingsActivity.logOperation("【切台】上键 → "
                         + (channel_reverse ? "下一台" : "上一台"));
                 return true;
-
             case KeyEvent.KEYCODE_DPAD_DOWN:
                 if (channel_reverse) {
                     playPrev();
@@ -616,7 +722,6 @@ public class MainActivity extends AppCompatActivity {
                 SettingsActivity.logOperation("【切台】下键 → "
                         + (channel_reverse ? "上一台" : "下一台"));
                 return true;
-
             case KeyEvent.KEYCODE_DPAD_CENTER:
             case KeyEvent.KEYCODE_ENTER:
                 if (channelNumberManager.isInputting()) {
@@ -625,12 +730,10 @@ public class MainActivity extends AppCompatActivity {
                 }
                 togglePanel();
                 return true;
-
             case KeyEvent.KEYCODE_DPAD_LEFT:
             case KeyEvent.KEYCODE_DPAD_RIGHT:
                 togglePanel();
                 return true;
-
             default:
                 return false;
         }
@@ -737,6 +840,7 @@ public class MainActivity extends AppCompatActivity {
         if (hasFocus) {
             displayManager.reapplyFullScreen();
         }
+
         appCoreManager.onWindowFocusChanged(hasFocus);
     }
 
@@ -769,12 +873,10 @@ public class MainActivity extends AppCompatActivity {
     public static void log(String msg) {
         // 添加到本地列表（最新的在最前面）
         logList.add(0, msg);
-
         // 只保留最近 100 条
         while (logList.size() > 100) {
             logList.remove(logList.size() - 1);
         }
-
         // 同步到 SettingsActivity，供日志查看器显示
         SettingsActivity.log(msg);
     }

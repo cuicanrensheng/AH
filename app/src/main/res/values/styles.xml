@@ -53,6 +53,10 @@
         <item name="android:windowAnimationStyle">@style/RightSlideAnimation</item>
         <!-- 去掉窗口内容覆盖 -->
         <item name="android:windowContentOverlay">@null</item>
+        <!-- ✅ 新增：刘海屏适配（和主主题一致） -->
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+        <!-- ✅ 新增：内容延伸到系统栏后面（和主主题一致） -->
+        <item name="android:fitsSystemWindows">false</item>
     </style>
 
     <!-- ================================================ -->

@@ -38,127 +38,75 @@ import java.util.List;
  * 3. 按键事件分发
  * 4. 播放器视图绑定
  *
- * 【2026-06-20 修复：换台反转失效】
+ * 【2026-06-20 修复：换台反转失效 + 详细操作日志】
  * 【问题原因】
  * 之前反转逻辑只在 handleDirectionKey() 里，
  * KeyEventManager 等其他切台入口直接调用 playPrev()/playNext()，
- * 不考虑反转设置，导致反转在某些场景下失效。
+ * 不考虑反转设置，导致反转在某些场景下失效，而且没有日志很难排查。
  *
  * 【解决方案】
  * 1. 在 ChannelPanelController 里统一管理反转逻辑
  * 2. 新增 switchUp() / switchDown() 带反转的统一入口
  * 3. handleDirectionKey() 改用统一入口
  * 4. loadSettings() 同步反转设置到 ChannelPanelController
- * 5. KeyEventManager 也加上反转判断
+ * 5. 所有切台入口都加上详细的操作日志
  *
- * 【效果】
- * 所有切台入口都走统一的反转逻辑，反转肯定生效，不会不同步。
+ * 【日志效果】
+ * 在设置页面的"操作日志"里可以看到完整的切台流程：
+ * 1. 按键是从哪个入口触发的（handleDirectionKey / KeyEventManager）
+ * 2. 反转状态是什么
+ * 3. 实际切台方向是什么
+ * 4. 从哪个频道切到哪个频道
+ * 方便分析反转为什么失效。
  */
 public class MainActivity extends AppCompatActivity {
 
     // ====================== 单例 ======================
 
-    /** Activity 单例，供其他类访问 */
     public static MainActivity mInstance;
 
     // ====================================================================
-    // ✅ 兼容层：保留旧的 public 变量，供其他类直接访问
+    // 兼容层：保留旧的 public 变量
     // ====================================================================
 
-    /** 所有频道数据源列表（全部频道，未筛选） */
     public List<Channel> channelSourceList = new ArrayList<>();
-
-    /** 当前正在播放的频道索引（全局索引，对应 channelSourceList） */
     public int currentPlayIndex = 0;
 
     // ====================== 视图相关 ======================
 
-    /** 播放器视图（ExoPlayer 的 PlayerView） */
     private PlayerView playerView;
-
-    // ====================================================================
-    // ✅ 防花屏：播放器占位图（退到后台时显示，盖住 SurfaceView）
-    // ====================================================================
-
-    /** 播放器占位图 */
     private ImageView ivPlayerPlaceholder;
 
     // ====================== 管理器相关 ======================
 
-    /** 播放器管理器（单例，基于 ExoPlayer 封装） */
     public TVPlayerManager mPlayerManager;
-
-    /** 应用配置管理（SP 封装） */
     private AppConfig appConfig;
-
-    /** 屏幕比例管理（全屏/填充/原始） */
     private ScreenRatioManager screenRatioManager;
-
-    /** 手势管理（滑动、点击等手势处理） */
     private GestureManager gestureManager;
-
-    /** 按键事件管理（遥控器按键分发） */
     private KeyEventManager keyEventManager;
-
-    /** 播放器状态监听器（空实现，不弹 Toast） */
     private PlayerStateListenerImpl playerStateListener;
 
     // ====================================================================
     // 拆分新增：各个 Manager
     // ====================================================================
 
-    /** 数字选台管理器 */
     private ChannelNumberManager channelNumberManager;
-
-    /** 显示管理器（全面屏适配 + 加载动画） */
     private DisplayManager displayManager;
-
-    /** 信息展示管理器（频道号 + 信息栏 + EPG 节目单） */
     private InfoDisplayManager infoDisplayManager;
-
-    /** 频道面板控制器（分组 + 频道切换 + 面板控制 + 焦点管理 + 反转） */
     private ChannelPanelController channelPanelController;
-
-    /** 应用核心管理器（数据加载 + 广播 + 生命周期） */
     private AppCoreManager appCoreManager;
 
     // ====================== 状态标志 ======================
 
-    /**
-     * 频道切换是否反向（上键=下一台，下键=上一台）
-     *
-     * 【说明】
-     * 保留这个变量是为了：
-     * 1. 兼容旧代码直接访问这个变量
-     * 2. 日志输出时用
-     *
-     * 实际的反转逻辑已经统一由 ChannelPanelController 管理，
-     * loadSettings() 时会同步到 channelPanelController.setReverse()。
-     */
     private boolean channel_reverse;
-
-    /** 数字选台是否启用 */
     private boolean number_channel_enable;
-
-    // ====================================================================
-    // ✅ 新增：打开设置页面的标志位
-    // ====================================================================
-
-    /**
-     * 是否正在打开设置页面
-     * true = 正在打开设置，不显示占位图
-     * false = 正常退到后台，显示占位图防花屏
-     */
     private boolean isOpeningSettings = false;
 
     // ====================================================================
-    // ✅ 新增：频道面板自动隐藏
+    // 频道面板自动隐藏
     // ====================================================================
 
-    /** Handler 用于延迟隐藏面板 */
     private Handler mPanelAutoHideHandler = new Handler(Looper.getMainLooper());
-
-    /** 自动隐藏面板的 Runnable */
     private Runnable mPanelAutoHideRunnable = new Runnable() {
         @Override
         public void run() {
@@ -167,13 +115,10 @@ public class MainActivity extends AppCompatActivity {
             }
         }
     };
-
-    /** 是否是首次打开 app */
     private boolean mIsFirstLaunch = true;
 
     // ====================== 其他 ======================
 
-    /** 本地日志列表（保留最近 100 条，供其他类访问） */
     public static List<String> logList = new ArrayList<>();
 
     // ====================== onCreate 生命周期 ======================
@@ -186,27 +131,20 @@ public class MainActivity extends AppCompatActivity {
 
         mInstance = this;
 
-        // 自动旋转横屏
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
 
-        // 全面屏适配
         displayManager = new DisplayManager(this);
         displayManager.applyFullScreen();
 
-        // 加载布局
         setContentView(R.layout.activity_main);
 
-        // 保持屏幕常亮
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
-        // 信息展示管理器初始化
         initInfoDisplayManager();
 
-        // 初始化配置
         appConfig = AppConfig.getInstance(this);
         loadSettings();
 
-        // 应用自定义直播源/EPG 地址
         String customLive = appConfig.getCustomLiveUrl();
         String customEpg = appConfig.getCustomEpgUrl();
         if (customLive != null) UrlConfig.LIVE_URL = customLive;
@@ -214,31 +152,24 @@ public class MainActivity extends AppCompatActivity {
         log("【配置】直播源地址：" + UrlConfig.LIVE_URL);
         log("【配置】EPG地址：" + UrlConfig.EPG_URL);
 
-        // 绑定播放器视图 + 占位图
         playerView = findViewById(R.id.player_view);
         playerView.setUseController(false);
         playerView.setControllerVisibilityListener(null);
 
-        // 绑定防花屏占位图
         ivPlayerPlaceholder = findViewById(R.id.iv_player_placeholder);
 
-        // 频道面板控制器初始化
         initChannelPanelController();
 
-        // 首次打开时，3 秒后自动隐藏面板
         if (mIsFirstLaunch) {
             mPanelAutoHideHandler.postDelayed(mPanelAutoHideRunnable, 3000);
             mIsFirstLaunch = false;
         }
 
-        // 播放器初始化
         initPlayer();
 
-        // 屏幕比例
         screenRatioManager = new ScreenRatioManager(mPlayerManager, appConfig);
         screenRatioManager.apply();
 
-        // 手势管理
         gestureManager = new GestureManager(this);
         final PlayerGestureHelper gestureHelper = gestureManager.create();
         playerView.setOnTouchListener(new View.OnTouchListener() {
@@ -249,24 +180,18 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        // 按键事件管理
         keyEventManager = new KeyEventManager(this);
 
-        // 恢复上次播放的频道索引
         currentPlayIndex = appConfig.getLastPlayIndex();
         channelPanelController.setCurrentPlayIndex(currentPlayIndex);
         log("【播放】记录上次播放索引：" + currentPlayIndex);
 
-        // 数字选台管理器初始化
         initChannelNumberManager();
 
-        // 应用核心管理器初始化
         initAppCoreManager();
 
-        // 显示加载动画
         displayManager.showLoading("正在加载直播源...");
 
-        // 加载直播源和 EPG
         appCoreManager.loadLiveAndEpg();
     }
 
@@ -310,27 +235,20 @@ public class MainActivity extends AppCompatActivity {
     // ====================================================================
 
     private void initChannelPanelController() {
-        // 面板根布局
         View panel_layout = findViewById(R.id.panel_layout);
-
-        // 左右面板容器
         View ll_left_panel = findViewById(R.id.ll_left_panel);
         View ll_right_panel = findViewById(R.id.ll_right_panel);
 
-        // 列表控件
-        ListView lvGroup = findViewById(R.id.lv_group);
+                ListView lvGroup = findViewById(R.id.lv_group);
         ListView lvChannelList = findViewById(R.id.lv_channel_list);
         ListView lvChannelListEpg = findViewById(R.id.lv_channel_list_epg);
         ListView lvDate = findViewById(R.id.lv_date);
         ListView lvEpg = findViewById(R.id.lv_epg);
 
-        // 按钮控件
         TextView btn_show_epg = findViewById(R.id.btn_show_epg);
         TextView btn_back_group = findViewById(R.id.btn_back_group);
 
-        // 子管理器初始化
         EpgManager.getInstance(this);
-
         ChannelListManager channelListManager = new ChannelListManager(this, lvChannelList);
         ChannelListManager channelListManagerEpg = new ChannelListManager(this, lvChannelListEpg);
         GroupListManager groupListManager = new GroupListManager(this, lvGroup);
@@ -338,13 +256,11 @@ public class MainActivity extends AppCompatActivity {
         EpgManagerWrapper epgManagerWrapper = new EpgManagerWrapper(this, lvEpg);
         PanelManager panelManager = new PanelManager(panel_layout, channelListManager, epgManagerWrapper);
 
-        // 日期列表初始化
         dateListManager.initDate();
         dateListManager.setOnDateSelectedListener(pos -> {
             channelPanelController.setCurrentDateIndex(pos);
         });
 
-        // 创建频道面板控制器
         channelPanelController = new ChannelPanelController(
                 this,
                 panel_layout,
@@ -365,7 +281,6 @@ public class MainActivity extends AppCompatActivity {
                 panelManager
         );
 
-        // 设置频道切换监听器
         channelPanelController.setOnChannelChangeListener(new ChannelPanelController.OnChannelChangeListener() {
             @Override
             public void onChannelChanged(Channel channel, int index) {
@@ -432,17 +347,13 @@ public class MainActivity extends AppCompatActivity {
                 runOnUiThread(new Runnable() {
                     @Override
                     public void run() {
-                        // 同步到兼容变量 channelSourceList
                         channelSourceList.clear();
                         channelSourceList.addAll(channels);
 
-                        // 更新频道面板
                         channelPanelController.setChannels(channels);
 
-                        // 设置数字选台的总频道数
                         channelNumberManager.setTotalChannelCount(channels.size());
 
-                        // 如果还没用缓存播放过，就播放
                         if (!appCoreManager.hasPlayedWithCache()) {
                             if (currentPlayIndex >= 0 && currentPlayIndex < channels.size()) {
                                 Channel ch = channels.get(currentPlayIndex);
@@ -451,7 +362,6 @@ public class MainActivity extends AppCompatActivity {
                             }
                         }
 
-                        // 隐藏加载动画
                         displayManager.hideLoading();
                         log("【" + (fromCache ? "缓存" : "网络") + "】直播源加载完成，频道数：" + channels.size());
                     }
@@ -512,13 +422,6 @@ public class MainActivity extends AppCompatActivity {
      * 加载设置
      *
      * 【2026-06-20 修复：同步反转设置到 ChannelPanelController】
-     * 【问题原因】
-     * 之前只同步了 EPG 开关，没同步反转设置，
-     * 导致 ChannelPanelController 里的反转状态一直是默认值 false。
-     *
-     * 【修复方案】
-     * 新增 channelPanelController.setReverse(channel_reverse)，
-     * 把反转设置同步到 ChannelPanelController。
      */
     private void loadSettings() {
         SharedPreferences sp = getSharedPreferences("app_settings", MODE_PRIVATE);
@@ -527,23 +430,13 @@ public class MainActivity extends AppCompatActivity {
         number_channel_enable = sp.getBoolean("number_channel_enable", true);
         boolean auto_update_source = sp.getBoolean("auto_update_source", true);
 
-                if (channelNumberManager != null) {
+        if (channelNumberManager != null) {
             channelNumberManager.setEnable(number_channel_enable);
         }
 
         if (channelPanelController != null) {
             channelPanelController.setEpgEnable(epg_enable);
-            // ====================================================================
-            // ✅ 新增：同步反转设置到 ChannelPanelController
-            // ====================================================================
-            //
-            // 【为什么要同步？】
-            // 反转逻辑现在统一由 ChannelPanelController 管理，
-            // 需要把设置同步过去，否则 switchUp()/switchDown() 不知道反转状态。
-            //
-            // 【同步后效果】
-            // 所有地方调用 channelPanelController.switchUp()/switchDown() 时，
-            // 都会自动考虑反转设置，不会出现不同步的问题。
+            // 同步反转设置到 ChannelPanelController
             channelPanelController.setReverse(channel_reverse);
         }
 
@@ -554,25 +447,18 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // ====================================================================
-    // ✅ 新增：获取反转状态（供 KeyEventManager 等外部类调用）
+    // ✅ 获取反转状态（供 KeyEventManager 等外部类调用）
     // ====================================================================
 
     /**
      * 获取换台反转状态
-     *
-     * @return true = 开启反转，false = 关闭反转
-     *
-     * 【为什么需要这个方法？】
-     * KeyEventManager 等外部类需要知道反转状态，
-     * 但是 channel_reverse 是 private 的，不能直接访问。
-     * 所以提供一个 public 的 getter 方法。
      */
     public boolean isChannelReverse() {
         return channel_reverse;
     }
 
     // ====================================================================
-    // ✅ 兼容层：旧的 playChannel(int) 方法，供其他类调用
+    // 兼容层：旧的 playChannel(int) 方法
     // ====================================================================
 
     /**
@@ -593,7 +479,6 @@ public class MainActivity extends AppCompatActivity {
     private void playChannel(Channel channel, int index) {
         if (channel == null || channel.getPlayUrl() == null) return;
 
-        // 同步到兼容变量
         currentPlayIndex = index;
 
         log("========================================");
@@ -605,19 +490,16 @@ public class MainActivity extends AppCompatActivity {
         playerStateListener.setCurrentChannelName(channel.getName());
         appConfig.setLastPlayIndex(index);
 
-        // 先播放
         mPlayerManager.playUrl(channel.getPlayUrl());
 
-        // 显示信息栏
         TVPlayerManager.LiveInfo live = mPlayerManager.getLiveInfo();
         infoDisplayManager.showInfoBar(channel, live);
 
-        // 显示频道号（从 1 开始）
         infoDisplayManager.showChannelNum(index + 1);
     }
 
     // ====================================================================
-    // ✅ 兼容层：旧的 togglePanel() 方法，供 GestureManager 等调用
+    // 兼容层：旧的 togglePanel() 方法
     // ====================================================================
 
     /**
@@ -628,28 +510,22 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // ====================================================================
-    // ✅ 兼容层：旧的 playPrev() 方法，供 GestureManager 等调用
+    // 兼容层：旧的 playPrev() 方法
     // ====================================================================
 
     /**
      * 播放上一个频道（兼容旧接口）
-     *
-     * 【注意】这是底层方法，直接切换到上一台，不考虑反转。
-     * 如果需要考虑反转，请调用 channelPanelController.switchUp()。
      */
     public void playPrev() {
         channelPanelController.playPrev();
     }
 
     // ====================================================================
-    // ✅ 兼容层：旧的 playNext() 方法，供 GestureManager 等调用
+    // 兼容层：旧的 playNext() 方法
     // ====================================================================
 
     /**
      * 播放下一个频道（兼容旧接口）
-     *
-     * 【注意】这是底层方法，直接切换到下一台，不考虑反转。
-     * 如果需要考虑反转，请调用 channelPanelController.switchDown()。
      */
     public void playNext() {
         channelPanelController.playNext();
@@ -677,42 +553,24 @@ public class MainActivity extends AppCompatActivity {
     /**
      * 处理方向键（面板关闭时切台）
      *
-     * 【2026-06-20 修复：改用 ChannelPanelController 统一方法】
-     * 【问题原因】
-     * 之前反转逻辑在 MainActivity 里判断，然后调用 playPrev() 或 playNext()，
-     * 这样反转逻辑分散在两个地方，容易出现不同步。
-     *
-     * 【修复方案】
-     * 统一由 ChannelPanelController 管理反转，
-     * 直接调用 switchUp() 和 switchDown() 方法，内部自动考虑反转。
+     * 【2026-06-20 修复：改用 ChannelPanelController 统一方法 + 详细日志】
      */
     private boolean handleDirectionKey(int keyCode) {
         switch (keyCode) {
             case KeyEvent.KEYCODE_DPAD_UP:
-                // ====================================================================
-                // ✅ 修复：改用统一方法，内部自动考虑反转
-                // ====================================================================
-                // 【原来的代码】
-                // if (channel_reverse) {
-                //     playNext();
-                // } else {
-                //     playPrev();
-                // }
-                //
-                // 【为什么改成这样？】
-                // 反转逻辑现在统一由 ChannelPanelController 管理，
-                // 直接调用 switchUp() 就行，内部会自动判断 isReverse。
-                // 这样反转逻辑只有一份，不会出现不同步的问题。
+                // 记录入口日志：是 handleDirectionKey 处理的上键
+                SettingsActivity.logOperation("【按键】handleDirectionKey 上键 → 反转状态：" 
+                        + (channel_reverse ? "开启" : "关闭"));
+                // 调用统一方法，内部自动考虑反转
                 channelPanelController.switchUp();
-                SettingsActivity.logOperation("【切台】上键 → "
-                        + (channel_reverse ? "下一台" : "上一台"));
                 return true;
 
             case KeyEvent.KEYCODE_DPAD_DOWN:
-                // ✅ 修复：改用统一方法，内部自动考虑反转
+                // 记录入口日志：是 handleDirectionKey 处理的下键
+                SettingsActivity.logOperation("【按键】handleDirectionKey 下键 → 反转状态：" 
+                        + (channel_reverse ? "开启" : "关闭"));
+                // 调用统一方法，内部自动考虑反转
                 channelPanelController.switchDown();
-                SettingsActivity.logOperation("【切台】下键 → "
-                        + (channel_reverse ? "上一台" : "下一台"));
                 return true;
 
             case KeyEvent.KEYCODE_DPAD_CENTER:
@@ -740,35 +598,34 @@ public class MainActivity extends AppCompatActivity {
      * 按键事件分发
      *
      * 【按键分发优先级】
-     * 1. 数字选台（ChannelNumberManager）- 数字键 0-9
-     * 2. 频道面板（ChannelPanelController）- 左右键、OK键（面板打开时）
-     * 3. 方向键切台（handleDirectionKey）- 上下键（面板关闭时，带反转）
-     * 4. 按键事件管理（KeyEventManager）- 其他按键（也带反转）
+     * 1. 数字选台（ChannelNumberManager）
+     * 2. 频道面板（ChannelPanelController）- 面板打开时
+     * 3. 方向键切台（handleDirectionKey）- 面板关闭时
+     * 4. 按键事件管理（KeyEventManager）- 其他按键
      */
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
-        // 用户有按键操作时，取消自动隐藏
         cancelPanelAutoHide();
 
         // 1. 先处理数字选台
         if (channelNumberManager.handleNumberKey(keyCode)) return true;
 
-        // 2. 再让频道面板处理按键（左右键、OK键）
+        // 2. 再让频道面板处理按键
         if (channelPanelController != null && channelPanelController.dispatchKeyEvent(keyCode)) {
             return true;
         }
 
-        // 3. 再处理方向键切台（面板关闭时，带反转）
+        // 3. 再处理方向键切台
         if (handleDirectionKey(keyCode)) return true;
 
-        // 4. 最后交给按键事件管理（也带反转）
+        // 4. 最后交给按键事件管理
         if (keyEventManager.dispatchKey(keyCode)) return true;
 
         return super.onKeyDown(keyCode, event);
     }
 
     // ====================================================================
-    // ✅ 取消频道面板自动隐藏
+    // 取消频道面板自动隐藏
     // ====================================================================
 
     /**
@@ -800,18 +657,11 @@ public class MainActivity extends AppCompatActivity {
 
     // ====================== 生命周期方法 ======================
 
-    // ====================================================================
-    // ✅ 防花屏优化：退到后台前先显示占位图
-    // ====================================================================
-
     @Override
     protected void onPause() {
-        // 先判断是否需要显示占位图
         if (!isOpeningSettings) {
-            // 正常退到后台 → 显示占位图，防花屏
             showPlayerPlaceholder();
         } else {
-            // 打开设置页面 → 不显示占位图，让设置页面能看到播放画面
             log("【防花屏】打开设置页面，不显示占位图");
         }
 
@@ -819,21 +669,15 @@ public class MainActivity extends AppCompatActivity {
         appCoreManager.onPause();
     }
 
-    // ====================================================================
-    // ✅ 防花屏优化：回到前台后延迟 2000ms 隐藏占位图
-    // ====================================================================
-
     @Override
     protected void onResume() {
         super.onResume();
 
-        // 重置打开设置的标志位
         isOpeningSettings = false;
         log("【设置】从设置页面返回，重置标志位");
 
         boolean resumed = appCoreManager.onResume();
 
-        // 每次 onResume 都重新加载设置和应用屏幕比例
         loadSettings();
         screenRatioManager.apply();
 
@@ -862,7 +706,6 @@ public class MainActivity extends AppCompatActivity {
         super.onDestroy();
         log("【主页】onDestroy -> 页面销毁");
 
-        // 清理自动隐藏的 Handler，防止内存泄漏
         if (mPanelAutoHideHandler != null) {
             mPanelAutoHideHandler.removeCallbacks(mPanelAutoHideRunnable);
             mPanelAutoHideHandler = null;
@@ -878,7 +721,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // ====================================================================
-    // ✅ 防花屏：占位图显示/隐藏方法
+    // 防花屏：占位图显示/隐藏方法
     // ====================================================================
 
     /**
@@ -908,7 +751,6 @@ public class MainActivity extends AppCompatActivity {
      */
     private void log(String msg) {
         logList.add(msg);
-        // 只保留最近 100 条
         if (logList.size() > 100) {
             logList.remove(0);
         }

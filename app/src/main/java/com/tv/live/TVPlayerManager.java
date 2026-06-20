@@ -2,7 +2,6 @@ package com.tv.live;
 
 import com.tv.live.RedirectLoggingHttpDataSource;
 import android.content.Context;
-import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.TextUtils;
@@ -32,27 +31,20 @@ import java.util.Map;
  * 播放器管理类（单例模式）
  * 基于ExoPlayer封装，提供直播播放、状态监听、画质切换、Header设置等功能
  *
- * 【防卡优化版 + 切台优化版 + 真实数据版 + 花屏日志版 + 双渲染模式版】
+ * 【防卡优化版 + 切台优化版 + 真实数据版 + 花屏日志版】
  *
- * 【2026-06-20 新增：双渲染模式（SurfaceView / TextureView）】
- * 支持 SurfaceView 和 TextureView 两种渲染方式，可动态切换。
+ * 【2026-06-20 修改：去掉双渲染模式，强制用 TextureView】
+ * 移除了 SurfaceView / TextureView 双渲染模式自动切换的逻辑，
+ * 简化代码，减少出问题的可能性。
  *
- * 【两种渲染方式对比】
- * ┌─────────────┬──────────────────┬──────────────────┐
- * │    特性     │    SurfaceView   │    TextureView   │
- * ├─────────────┼──────────────────┼──────────────────┤
- * │ 性能        │ ✅ 更好（独立图层）│ ⚠️ 略差（和UI同层）│
- * │ 花屏问题    │ ❌ 切台容易花屏  │ ✅ 无花屏问题    │
- * │ 透明度/动画 │ ❌ 不支持        │ ✅ 支持          │
- * │ 内存占用    │ ✅ 更低          │ ⚠️ 略高          │
- * │ 适用场景    │ 性能优先、无花屏 │ 体验优先、防花屏 │
- * └─────────────┴──────────────────┴──────────────────┘
+ * 【为什么去掉？】
+ * 1. 双渲染模式的反射逻辑可能干扰布局文件的设置
+ * 2. 自动选择逻辑可能判断不准确，导致选到 SurfaceView 而花屏
+ * 3. TextureView 已经能满足需求，不需要复杂的切换逻辑
+ * 4. 老版本没有双渲染模式，反而更稳定
  *
- * 【自动模式逻辑】
- * 1. Android 7.0 以下：强制使用 SurfaceView（TextureView 兼容性差）
- * 2. Android 7.0 ~ 9.0：默认 TextureView（防花屏）
- * 3. Android 10+：默认 TextureView（防花屏，性能也足够）
- * 4. 电视设备：默认 TextureView（电视切台花屏更明显）
+ * 【使用方式】
+ * 在布局文件中设置 app:surface_type="texture_view" 即可。
  */
 public class TVPlayerManager {
     private static final String TAG = "TVPlayerLog";
@@ -60,173 +52,6 @@ public class TVPlayerManager {
     private ExoPlayer player;
     private Context context;
     private PlayerView playerView;
-
-    // ====================================================================
-    // ✅ 双渲染模式相关
-    // ====================================================================
-    /** 渲染类型枚举 */
-    public enum RenderType {
-        SURFACE_VIEW,   // SurfaceView 模式（性能好，可能花屏）
-        TEXTURE_VIEW,   // TextureView 模式（无花屏，性能略差）
-        AUTO            // 自动模式（根据设备情况自动选择）
-    }
-
-    /** 当前渲染类型 */
-    private RenderType currentRenderType = RenderType.AUTO;
-
-    /**
-     * 获取当前实际使用的渲染类型
-     * （如果是 AUTO 模式，返回实际选择的类型）
-     *
-     * @return 实际渲染类型（SURFACE_VIEW 或 TEXTURE_VIEW）
-     */
-    public RenderType getActualRenderType() {
-        if (currentRenderType == RenderType.AUTO) {
-            return autoSelectRenderType();
-        }
-        return currentRenderType;
-    }
-
-    /**
-     * 自动选择渲染类型
-     *
-     * 【自动选择逻辑】
-     * 1. 电视设备 → TextureView（切台花屏更明显，优先保证体验）
-     * 2. Android 7.0 以下 → SurfaceView（TextureView 兼容性差）
-     * 3. 其他情况 → TextureView（防花屏优先）
-     *
-     * @return 推荐的渲染类型
-     */
-    private RenderType autoSelectRenderType() {
-        // 电视设备：用 TextureView，防花屏
-        if (isTvDevice()) {
-            Log.d(TAG, "自动选择：电视设备 → 使用 TextureView");
-            return RenderType.TEXTURE_VIEW;
-        }
-
-        // Android 7.0 以下：用 SurfaceView，兼容性更好
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
-            Log.d(TAG, "自动选择：Android 7.0 以下 → 使用 SurfaceView");
-            return RenderType.SURFACE_VIEW;
-        }
-
-        // 其他情况：用 TextureView，防花屏
-        Log.d(TAG, "自动选择：默认 → 使用 TextureView");
-        return RenderType.TEXTURE_VIEW;
-    }
-
-    /**
-     * 判断是否是电视设备
-     *
-     * @return true=电视设备，false=手机/平板
-     */
-    private boolean isTvDevice() {
-        try {
-            // 方法1：通过 UiModeManager 判断
-            android.app.UiModeManager uiModeManager =
-                    (android.app.UiModeManager) context.getSystemService(Context.UI_MODE_SERVICE);
-            if (uiModeManager != null) {
-                int mode = uiModeManager.getCurrentModeType();
-                if (mode == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION) {
-                    return true;
-                }
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "判断电视设备异常", e);
-        }
-
-        // 方法2：通过 PackageManager 判断是否是电视
-        try {
-            android.content.pm.PackageManager pm = context.getPackageManager();
-            if (pm != null) {
-                return pm.hasSystemFeature("android.hardware.type.television");
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "判断电视设备异常2", e);
-        }
-
-        return false;
-    }
-
-    /**
-     * 设置渲染类型
-     *
-     * 【说明】
-     * 可以动态切换渲染方式，切换后会重新绑定播放器视图。
-     *
-     * @param renderType 渲染类型
-     */
-    public void setRenderType(RenderType renderType) {
-        if (renderType == null) return;
-        if (this.currentRenderType == renderType) return;
-
-        Log.d(TAG, "切换渲染类型：" + this.currentRenderType + " → " + renderType);
-        logScreenDebug("切换渲染类型：" + renderType.name());
-
-        this.currentRenderType = renderType;
-
-        // 如果已经绑定了 PlayerView，重新应用渲染类型
-        if (playerView != null) {
-            applyRenderTypeToView();
-        }
-    }
-
-    /**
-     * 获取当前渲染类型
-     *
-     * @return 当前渲染类型
-     */
-    public RenderType getRenderType() {
-        return currentRenderType;
-    }
-
-    /**
-     * 将渲染类型应用到 PlayerView
-     *
-     * 【说明】
-     * ExoPlayer 的 PlayerView 支持通过 setSurfaceType() 动态切换渲染方式。
-     * 但不同版本的 ExoPlayer API 可能不一样，这里做兼容性处理。
-     */
-    private void applyRenderTypeToView() {
-        if (playerView == null) return;
-
-        try {
-            RenderType actualType = getActualRenderType();
-
-            // 方法1：通过反射调用 setSurfaceType（如果有的话）
-            try {
-                java.lang.reflect.Method method = PlayerView.class.getMethod(
-                        "setSurfaceType", int.class);
-                // 0 = SURFACE_VIEW, 1 = TEXTURE_VIEW, 2 = SPHERICAL_GL_SURFACE_VIEW
-                int surfaceType = (actualType == RenderType.SURFACE_VIEW) ? 0 : 1;
-                method.invoke(playerView, surfaceType);
-                Log.d(TAG, "通过反射设置渲染类型成功：" + actualType);
-                return;
-            } catch (Exception e) {
-                Log.d(TAG, "反射 setSurfaceType 失败，尝试其他方法");
-            }
-
-            // 方法2：通过 setUseTextureView（如果有的话）
-            try {
-                java.lang.reflect.Method method = PlayerView.class.getMethod(
-                        "setUseTextureView", boolean.class);
-                boolean useTexture = (actualType == RenderType.TEXTURE_VIEW);
-                method.invoke(playerView, useTexture);
-                Log.d(TAG, "通过反射 setUseTextureView 成功：" + actualType);
-                return;
-            } catch (Exception e) {
-                Log.d(TAG, "反射 setUseTextureView 失败");
-            }
-
-            // 方法3：如果都不支持，就记录日志（布局文件中已经设置了）
-            Log.w(TAG, "当前 ExoPlayer 版本不支持动态切换渲染类型，请在布局文件中设置");
-            logScreenDebug("⚠️ 当前 ExoPlayer 版本不支持动态切换渲染类型");
-
-        } catch (Exception e) {
-            Log.e(TAG, "应用渲染类型异常", e);
-            logScreenDebug("❌ 应用渲染类型失败：" + e.getMessage());
-        }
-    }
 
     // 屏幕缩放模式枚举
     public enum ScaleMode { FIT, FILL, ZOOM }
@@ -494,7 +319,7 @@ public class TVPlayerManager {
         CookieManager.getInstance().setAcceptCookie(true);
 
         logScreenDebug("播放器初始化完成（" + (useSoftwareDecoder ? "软解码" : "硬解码") + "）");
-        logScreenDebug("渲染模式：" + getActualRenderType().name());
+        logScreenDebug("渲染模式：TextureView（布局文件设置）");
     }
 
     /**
@@ -593,7 +418,7 @@ public class TVPlayerManager {
             }
 
             // ====================================================================
-            // ✅ 第一帧渲染回调（关键！判断花屏的核心）
+            // ✅ 第一帧渲染回调（关键！切台加载动画隐藏的时机）
             // ====================================================================
             @Override
             public void onRenderedFirstFrame() {
@@ -757,16 +582,20 @@ public class TVPlayerManager {
         }
     }
 
+    /**
+     * 绑定播放器视图
+     *
+     * 【2026-06-20 修改：去掉 applyRenderTypeToView() 调用】
+     * 不再通过反射设置渲染类型，完全依赖布局文件的设置。
+     * 布局文件中设置 app:surface_type="texture_view" 即可。
+     */
     public void attachPlayerView(PlayerView view) {
         playerView = view;
         playerView.setPlayer(player);
         playerView.setUseController(false);
 
-        // ✅ 应用渲染类型
-        applyRenderTypeToView();
-
         logScreenDebug("播放器视图已绑定");
-        logScreenDebug("当前渲染模式：" + getActualRenderType().name());
+        logScreenDebug("渲染模式：TextureView（由布局文件设置）");
     }
 
     private void updateWakeLock(boolean enable) {
@@ -839,6 +668,11 @@ public class TVPlayerManager {
      * 去掉 player.stop() 和 player.clearMediaItems()
      * 直接用 setMediaSource 切换，旧画面会保留到新画面出来
      * 这样就完全避免了切台黑屏的问题
+     *
+     * 【2026-06-20 说明】
+     * 虽然 setMediaSource 无缝切换在 SurfaceView 下可能花屏，
+     * 但我们已经强制用 TextureView 了，所以不会有花屏问题。
+     * TextureView 会保持最后一帧，直到新的第一帧渲染出来。
      */
     private void playUrlInternal(String url) {
         try {
@@ -870,8 +704,16 @@ public class TVPlayerManager {
             logScreenDebug("MediaSource 创建完成，开始 prepare...");
 
             // ====================================================================
-            // ✅ 关键修改：直接设置新的媒体源，第二个参数 true = 重置到开头
+            // ✅ 直接设置新的媒体源，第二个参数 true = 重置到开头
             // ====================================================================
+            // 【为什么不用 stop() + clearMediaItems()？】
+            // 老版本用 stop() + clearMediaItems()，切台时是黑屏，不是花屏。
+            // 新版本用 setMediaSource() 无缝切换，TextureView 下会保持最后一帧，
+            // 直到新的第一帧渲染出来，体验更好。
+            //
+            // 【TextureView 的优势】
+            // TextureView 不会有 Surface 销毁/重建的问题，
+            // 切台时会保持旧画面，直到新画面出来，完全没有花屏。
             player.setMediaSource(mediaSource, true);
             player.prepare();
             player.play();
@@ -912,7 +754,7 @@ public class TVPlayerManager {
         void onPlayReady();
         void onPlayEnd();
         void onPlayError(String msg);
-        // ✅ 新增：第一帧渲染回调
+        // ✅ 第一帧渲染回调（切台加载动画隐藏的时机）
         void onFirstFrameRendered();
     }
 

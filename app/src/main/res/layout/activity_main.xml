@@ -8,14 +8,9 @@
   - 上下各 20dp 边距
   - 和设置面板风格统一，一个在左一个在右，对称
 
-  【2026-06-20 修改：防花屏方案】
-  1. 使用 TextureView 渲染（app:surface_type="texture_view"）
-     - 切台时保持最后一帧，不会花屏
-     - 和 UI 在同一层，没有 Surface 销毁的问题
-  2. 保留占位图方案（退到后台时显示）
-     - 退到后台时显示黑色占位图，盖住播放器
-     - 防止 Surface 销毁过程中出现短暂花屏
-     - 回到前台后延迟 100ms 隐藏，等 Surface 准备好
+  【2026-06-20 修改：去掉占位图】
+  移除了 iv_player_placeholder 占位图，
+  改用 TextureView 方案解决花屏问题。
 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
@@ -27,7 +22,7 @@
     <!-- 主播放器视图（ExoPlayer 的 PlayerView）                              -->
     <!-- ==================================================================== -->
     <!--
-      ✅ 已设置 texture_view，解决切台花屏问题
+      ✅ 已设置 texture_view，解决花屏问题
       - surface_type="texture_view"：使用 TextureView，不会有 Surface 销毁的花屏
       - keep_content_on_player_reset="true"：切台时保持最后一帧，避免黑屏
     -->
@@ -40,21 +35,6 @@
         app:resize_mode="fit"
         app:keep_content_on_player_reset="true"
         app:surface_type="texture_view" />
-
-    <!-- ==================================================================== -->
-    <!-- 防花屏占位图（退到后台时显示，盖住播放器）                          -->
-    <!-- ==================================================================== -->
-    <!--
-      【作用】退到后台时显示黑色背景，盖住播放器，防止 Surface 销毁时花屏
-      【时机】onPause 时显示，onResume 后延迟 100ms 隐藏
-      【默认状态】gone，正常播放时不显示
-    -->
-    <ImageView
-        android:id="@+id/iv_player_placeholder"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:background="@android:color/black"
-        android:visibility="gone" />
 
     <!-- ==================================================================== -->
     <!-- 频道号显示（右上角大数字，切台时显示）                              -->

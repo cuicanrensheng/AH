@@ -8,7 +8,7 @@
     android:shape="rectangle">
 
     <!-- 半透明深色背景（深蓝黑色，70% 不透明度） -->
-    <solid android:color="#B30A0A1A" />
+    <solid android:color="#33000000" />
 
     <!-- 四个角都是圆角，半径 20dp -->
     <corners android:radius="20dp" />

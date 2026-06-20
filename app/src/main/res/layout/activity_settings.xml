@@ -13,16 +13,19 @@
   4. 上下各 20dp 边距
   5. 背景：settings_panel_bg（四个角圆角，半透明深色）
   6. 和频道面板风格完全统一，一个在左一个在右，对称
-
   【2026-06-20 修改：添加点击空白区域关闭功能】
   新增 view_outside（左侧空白区域），点击它就关闭设置页面。
   和频道面板的交互方式一致：点击面板外的区域就退出。
+
+  【2026-06-20 修改：背景改成和频道面板一样的 panel_bg】
+  【修改原因】
+  原来用的是 settings_panel_bg，和频道面板的 panel_bg 可能颜色/透明度不一样。
+  现在统一用 panel_bg，两个面板的背景颜色、透明度、圆角完全一致。
 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@android:color/transparent">
-
     <!-- ================================================================ -->
     <!-- 左侧空白区域（点击关闭设置）                                    -->
     <!-- ================================================================ -->
@@ -30,14 +33,12 @@
       【作用】
       1. 占满左侧空间，让后面的播放界面能透过来（因为背景是透明的）
       2. 点击这个区域就关闭设置页面（类似点击弹窗外部关闭）
-
       【为什么放在 ScrollView 前面？】
       FrameLayout 的特点是：后面的子 View 会盖在前面的子 View 上面。
       把 view_outside 放在前面，ScrollView 放在后面，
       这样：
       - 点击左侧空白区域 → 触发 view_outside 的点击事件 → 关闭设置
       - 点击右侧面板区域 → 点击的是 ScrollView（盖在上面）→ 不触发关闭
-
       【为什么不用 setFinishOnTouchOutside(true)？】
       因为那是 Dialog 的方法，Activity 没有这个方法。
       用透明 View 模拟是最通用的方案。
@@ -49,7 +50,6 @@
         android:background="@android:color/transparent"
         android:clickable="true"
         android:focusable="true" />
-
     <!-- ================================================================ -->
     <!-- 设置面板：靠右显示，离右边有 20dp 距离，四个角圆角半透明背景  -->
     <!-- ================================================================ -->
@@ -58,9 +58,8 @@
       - layout_gravity="end"：靠右显示
       - layout_marginEnd="20dp"：离右边 20dp，让右侧圆角能看到
       - layout_marginTop/Bottom="20dp"：上下各 20dp 边距
-      - background="@drawable/settings_panel_bg"：四个角圆角 + 半透明深色背景
+      - background="@drawable/panel_bg"：✅ 改成和频道面板一样的背景
       - 和频道面板（左侧）完全对称，一个左一个右
-
       【为什么用 ScrollView？】
       因为设置项比较多，小屏幕可能显示不下，
       用 ScrollView 可以上下滚动查看所有设置项。
@@ -73,17 +72,15 @@
         android:layout_marginEnd="20dp"
         android:layout_marginTop="20dp"
         android:layout_marginBottom="20dp"
-        android:background="@drawable/settings_panel_bg"
+        android:background="@drawable/panel_bg"
         android:paddingTop="20dp"
         android:paddingBottom="20dp"
         android:paddingStart="16dp"
         android:paddingEnd="16dp">
-
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical">
-
             <!-- ============================================================ -->
             <!-- 开机自启（两行布局：文字+开关 + 状态文本）                  -->
             <!-- ============================================================ -->
@@ -104,13 +101,11 @@
                 android:background="@drawable/setting_item_bg"
                 android:focusable="true"
                 android:clickable="true">
-
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="horizontal"
                     android:gravity="center_vertical">
-
                     <TextView
                         android:layout_width="0dp"
                         android:layout_weight="1"
@@ -118,16 +113,13 @@
                         android:text="开机自启"
                         android:textColor="#FFFFFF"
                         android:textSize="16sp" />
-
                     <Switch
                         android:id="@+id/sw_boot"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:focusable="false"
                         android:clickable="false" />
-
                 </LinearLayout>
-
                 <!-- 开机自启状态文本（显示在开关下面） -->
                 <TextView
                     android:id="@+id/tv_boot_status"
@@ -137,9 +129,7 @@
                     android:text="未开启"
                     android:textColor="#80FFFFFF"
                     android:textSize="12sp" />
-
             </LinearLayout>
-
             <!-- ============================================================ -->
             <!-- 节目单开关                                                  -->
             <!-- ============================================================ -->
@@ -153,7 +143,6 @@
                 android:background="@drawable/setting_item_bg"
                 android:focusable="true"
                 android:clickable="true">
-
                 <TextView
                     android:layout_width="0dp"
                     android:layout_weight="1"
@@ -161,16 +150,13 @@
                     android:text="节目单开关"
                     android:textColor="#FFFFFF"
                     android:textSize="16sp" />
-
                 <Switch
                     android:id="@+id/sw_epg"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:focusable="false"
                     android:clickable="false" />
-
             </LinearLayout>
-
             <!-- ============================================================ -->
             <!-- 自动更新源                                                  -->
             <!-- ============================================================ -->
@@ -184,7 +170,6 @@
                 android:background="@drawable/setting_item_bg"
                 android:focusable="true"
                 android:clickable="true">
-
                 <TextView
                     android:layout_width="0dp"
                     android:layout_weight="1"
@@ -192,16 +177,13 @@
                     android:text="自动更新源"
                     android:textColor="#FFFFFF"
                     android:textSize="16sp" />
-
                 <Switch
                     android:id="@+id/sw_auto_update"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:focusable="false"
                     android:clickable="false" />
-
             </LinearLayout>
-
             <!-- ============================================================ -->
             <!-- 换台反转                                                    -->
             <!-- ============================================================ -->
@@ -215,7 +197,6 @@
                 android:background="@drawable/setting_item_bg"
                 android:focusable="true"
                 android:clickable="true">
-
                 <TextView
                     android:layout_width="0dp"
                     android:layout_weight="1"
@@ -223,16 +204,13 @@
                     android:text="换台反转"
                     android:textColor="#FFFFFF"
                     android:textSize="16sp" />
-
                 <Switch
                     android:id="@+id/sw_reverse"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:focusable="false"
                     android:clickable="false" />
-
             </LinearLayout>
-
             <!-- ============================================================ -->
             <!-- 数字选台                                                    -->
             <!-- ============================================================ -->
@@ -246,7 +224,6 @@
                 android:background="@drawable/setting_item_bg"
                 android:focusable="true"
                 android:clickable="true">
-
                 <TextView
                     android:layout_width="0dp"
                     android:layout_weight="1"
@@ -254,16 +231,13 @@
                     android:text="数字选台"
                     android:textColor="#FFFFFF"
                     android:textSize="16sp" />
-
                 <Switch
                     android:id="@+id/sw_num_channel"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:focusable="false"
                     android:clickable="false" />
-
             </LinearLayout>
-
             <!-- ============================================================ -->
             <!-- 分隔线                                                      -->
             <!-- ============================================================ -->
@@ -273,7 +247,6 @@
                 android:background="#33FFFFFF"
                 android:layout_marginTop="8dp"
                 android:layout_marginBottom="8dp" />
-
             <!-- ============================================================ -->
             <!-- 屏幕比例                                                    -->
             <!-- ============================================================ -->
@@ -290,7 +263,6 @@
                 android:background="@drawable/setting_item_bg"
                 android:focusable="true"
                 android:clickable="true" />
-
             <!-- ============================================================ -->
             <!-- 自定义订阅源                                                -->
             <!-- ============================================================ -->
@@ -307,7 +279,6 @@
                 android:background="@drawable/setting_item_bg"
                 android:focusable="true"
                 android:clickable="true" />
-
             <!-- ============================================================ -->
             <!-- 自定义节目单                                                -->
             <!-- ============================================================ -->
@@ -324,7 +295,6 @@
                 android:background="@drawable/setting_item_bg"
                 android:focusable="true"
                 android:clickable="true" />
-
             <!-- ============================================================ -->
             <!-- 多订阅源                                                    -->
             <!-- ============================================================ -->
@@ -341,7 +311,6 @@
                 android:background="@drawable/setting_item_bg"
                 android:focusable="true"
                 android:clickable="true" />
-
             <!-- ============================================================ -->
             <!-- 多节目单                                                    -->
             <!-- ============================================================ -->
@@ -358,7 +327,6 @@
                 android:background="@drawable/setting_item_bg"
                 android:focusable="true"
                 android:clickable="true" />
-
             <!-- ============================================================ -->
             <!-- 扫码添加                                                    -->
             <!-- ============================================================ -->
@@ -375,7 +343,6 @@
                 android:background="@drawable/setting_item_bg"
                 android:focusable="true"
                 android:clickable="true" />
-
             <!-- ============================================================ -->
             <!-- 分隔线                                                      -->
             <!-- ============================================================ -->
@@ -385,7 +352,6 @@
                 android:background="#33FFFFFF"
                 android:layout_marginTop="8dp"
                 android:layout_marginBottom="8dp" />
-
             <!-- ============================================================ -->
             <!-- 查看解析日志                                                -->
             <!-- ============================================================ -->
@@ -402,7 +368,6 @@
                 android:background="@drawable/setting_item_bg"
                 android:focusable="true"
                 android:clickable="true" />
-
             <!-- ============================================================ -->
             <!-- 操作崩溃日志                                                -->
             <!-- ============================================================ -->
@@ -419,7 +384,6 @@
                 android:background="@drawable/setting_item_bg"
                 android:focusable="true"
                 android:clickable="true" />
-
             <!-- ============================================================ -->
             <!-- 检查更新                                                    -->
             <!-- ============================================================ -->
@@ -433,7 +397,6 @@
                 android:background="@drawable/setting_item_bg"
                 android:focusable="true"
                 android:clickable="true">
-
                 <TextView
                     android:layout_width="0dp"
                     android:layout_weight="1"
@@ -441,7 +404,6 @@
                     android:text="检查更新"
                     android:textColor="#FFFFFF"
                     android:textSize="16sp" />
-
                 <Button
                     android:id="@+id/btn_check_update"
                     android:layout_width="wrap_content"
@@ -449,9 +411,7 @@
                     android:text="检查更新"
                     android:focusable="false"
                     android:clickable="false" />
-
             </LinearLayout>
-
             <!-- ============================================================ -->
             <!-- 网页设置提示                                                -->
             <!-- ============================================================ -->
@@ -463,9 +423,6 @@
                 android:text="网页设置：http://设备IP:10481"
                 android:textColor="#80FFFFFF"
                 android:textSize="12sp" />
-
         </LinearLayout>
-
     </ScrollView>
-
 </FrameLayout>

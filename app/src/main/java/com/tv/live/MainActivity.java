@@ -44,13 +44,18 @@ import java.util.List;
  * 2. 退到后台时显示黑色占位图，盖住 SurfaceView，防止花屏
  * 3. 回到前台后延迟 100ms 隐藏占位图，等 Surface 准备好
  *
- * 【2026-06-20 新增：花屏分析日志】
- * 在生命周期、切台、按键、前后台切换等关键节点加入详细日志，
- * 帮助定位切台花屏的根本原因。
+ * 【2026-06-20 修复：打开设置页面不显示占位图】
+ * 【问题原因】
+ * 打开设置页面时，MainActivity 会调用 onPause()，然后显示黑色占位图。
+ * 但设置页面是透明主题（TransparentTheme），应该能看到后面的播放画面。
+ * 黑色占位图挡住了播放画面，导致设置页面后面是黑色的。
+ * 而且占位图如果设置了 focusable，还可能抢焦点。
  *
- * 【日志接入说明】
- * 所有花屏日志都通过 log() 方法输出，最终存入 SettingsActivity.PLAY_LOG，
- * 可以在设置页面点击「📄 解析&播放日志」查看。
+ * 【修复方案】
+ * 1. 新增 isOpeningSettings 标志位，打开设置页面前设为 true
+ * 2. onPause() 中检查标志位，如果是打开设置页面，就不显示占位图
+ * 3. onResume() 中重置标志位
+ * 4. 确保占位图设置 focusable="false" 和 clickable="false"，不抢焦点
  */
 public class MainActivity extends AppCompatActivity {
 
@@ -83,9 +88,27 @@ public class MainActivity extends AppCompatActivity {
     /**
      * 播放器占位图
      * 【作用】退到后台时显示黑色背景，盖住 SurfaceView，防止 Surface 销毁时花屏
-     * 【时机】onPause 时显示，onResume 后延迟 100ms 隐藏
+     * 【时机】onPause 时显示（但打开设置页面时不显示），onResume 后延迟 100ms 隐藏
      */
     private ImageView ivPlayerPlaceholder;
+
+    // ====================================================================
+    // ✅ 新增：标志位 - 是否正在打开设置页面
+    // ====================================================================
+    /**
+     * 是否正在打开设置页面
+     *
+     * 【作用】
+     * 区分"打开设置页面"和"真正退到后台"两种情况：
+     * - 打开设置页面：不显示占位图（设置页面是透明的，需要看到播放画面）
+     * - 真正退到后台：显示占位图（防止花屏）
+     *
+     * 【为什么需要这个？】
+     * 因为这两种情况都会触发 onPause()，但我们需要区别对待：
+     * 1. 打开设置页面 → MainActivity 还在任务栈中，Surface 不会销毁 → 不需要占位图
+     * 2. 按 Home 键/切到其他应用 → 整个应用退到后台，Surface 可能销毁 → 需要占位图
+     */
+    private boolean isOpeningSettings = false;
 
     // ====================== 管理器相关 ======================
     /** 播放器管理器（单例，基于 ExoPlayer 封装） */
@@ -185,6 +208,19 @@ public class MainActivity extends AppCompatActivity {
         // 绑定防花屏占位图
         ivPlayerPlaceholder = findViewById(R.id.iv_player_placeholder);
 
+        // ====================================================================
+        // ✅ 确保占位图不抢焦点
+        // ====================================================================
+        // 【为什么要设置这些？】
+        // 如果占位图设置了 focusable="true" 或 clickable="true"，
+        // 它可能会抢焦点，导致其他控件无法获取焦点。
+        // 这里强制设置为 false，确保占位图只做显示用，不参与交互。
+        if (ivPlayerPlaceholder != null) {
+            ivPlayerPlaceholder.setFocusable(false);
+            ivPlayerPlaceholder.setClickable(false);
+            ivPlayerPlaceholder.setFocusableInTouchMode(false);
+        }
+
         log("【花屏分析】播放器视图绑定完成");
         log("【花屏分析】占位图初始状态：" + (ivPlayerPlaceholder != null ? "已绑定" : "未找到"));
 
@@ -274,12 +310,6 @@ public class MainActivity extends AppCompatActivity {
      * 原左右面板切换模式（只有日期+EPG）改为两个完整面板切换：
      * - 左侧面板：分组 + 频道列表 + 节目单按钮
      * - 右侧面板：返回按钮 + 频道列表 + 日期 + EPG
-     *
-     * 【新增内容】
-     * 1. 新增节目单页面的频道列表（lv_channel_list_epg）
-     * 2. 新增返回分组按钮（btn_back_group）
-     * 3. 新增节目单页面的频道列表管理器（channelListManagerEpg）
-     * 4. ChannelPanelController 构造函数新增 3 个参数
      */
     private void initChannelPanelController() {
         // ===== 面板根布局 =====
@@ -296,13 +326,6 @@ public class MainActivity extends AppCompatActivity {
         // ================================================================
         ListView lvGroup = findViewById(R.id.lv_group);
         ListView lvChannelList = findViewById(R.id.lv_channel_list);
-
-        // ================================================================
-        // ✅ 新增：节目单页面的频道列表
-        // ================================================================
-        // 【作用】
-        // 右侧面板（节目单页面）也有一个频道列表，用户在看节目单时
-        // 可以直接切换频道，不用切回左侧面板。
         ListView lvChannelListEpg = findViewById(R.id.lv_channel_list_epg);
         ListView lvDate = findViewById(R.id.lv_date);
         ListView lvEpg = findViewById(R.id.lv_epg);
@@ -311,12 +334,6 @@ public class MainActivity extends AppCompatActivity {
         // 按钮控件
         // ================================================================
         TextView btn_show_epg = findViewById(R.id.btn_show_epg);
-
-        // ================================================================
-        // ✅ 新增：返回分组按钮
-        // ================================================================
-        // 【作用】
-        // 右侧面板（节目单页面）最左边的返回按钮，点击后切回左侧面板。
         TextView btn_back_group = findViewById(R.id.btn_back_group);
 
         // ================================================================
@@ -327,10 +344,7 @@ public class MainActivity extends AppCompatActivity {
         // 主页面频道列表管理器（左侧面板用）
         ChannelListManager channelListManager = new ChannelListManager(this, lvChannelList);
 
-        // ================================================================
-        // ✅ 新增：节目单页面频道列表管理器
-        // ================================================================
-        // 管理右侧面板的频道列表，和左侧面板的频道列表管理器是两个独立的实例
+        // 节目单页面频道列表管理器
         ChannelListManager channelListManagerEpg = new ChannelListManager(this, lvChannelListEpg);
 
         GroupListManager groupListManager = new GroupListManager(this, lvGroup);
@@ -699,9 +713,24 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // ====================== 打开设置页面 ======================
+    /**
+     * 打开设置页面
+     *
+     * 【2026-06-20 修改：设置标志位】
+     * 打开设置页面前设置 isOpeningSettings = true，
+     * 这样 onPause() 中就不会显示占位图了。
+     *
+     * 【为什么？】
+     * 设置页面是透明主题（TransparentTheme），应该能看到后面的播放画面。
+     * 如果 onPause() 中显示了黑色占位图，就会挡住播放画面。
+     */
     public void openSettings() {
+        // ✅ 设置标志位：正在打开设置页面
+        isOpeningSettings = true;
+
+        log("【花屏分析】打开设置页面（不显示占位图）");
+
         appCoreManager.beforeOpenSettings();
-        log("【花屏分析】打开设置页面");
         startActivity(new Intent(this, SettingsActivity.class));
     }
 
@@ -712,18 +741,41 @@ public class MainActivity extends AppCompatActivity {
 
     // ====================== 生命周期方法 ======================
     // ====================================================================
-    // ✅ 防花屏：退到后台前显示占位图
+    // ✅ 防花屏：退到后台前显示占位图（但打开设置页面时不显示）
     // ====================================================================
     @Override
     protected void onPause() {
         super.onPause();
 
-        // 【防花屏】退到后台前显示黑色占位图，盖住 SurfaceView
-        showPlayerPlaceholder();
+        log("【花屏分析】onPause 被调用");
+
+        // ====================================================================
+        // ✅ 关键修改：判断是否是打开设置页面
+        // ====================================================================
+        //
+        // 【两种情况的区别】
+        // 1. 打开设置页面：
+        //    - MainActivity 还在任务栈中，只是被 SettingsActivity 盖住了
+        //    - Surface 不会销毁，不会花屏
+        //    - 设置页面是透明的，需要看到后面的播放画面
+        //    - → 不显示占位图
+        //
+        // 2. 真正退到后台（按 Home 键、切到其他应用）：
+        //    - 整个应用都退到后台了
+        //    - Surface 可能会被销毁，容易出现花屏
+        //    - → 显示占位图，防止花屏
+        //
+        if (isOpeningSettings) {
+            // 打开设置页面：不显示占位图
+            log("【花屏分析】打开设置页面，不显示占位图");
+            log("【主页】onPause -> 打开设置页面，继续播放");
+        } else {
+            // 真正退到后台：显示占位图，防止花屏
+            showPlayerPlaceholder();
+            log("【花屏分析】onPause -> 退到后台，显示占位图");
+        }
 
         appCoreManager.onPause();
-
-        log("【花屏分析】onPause -> 退到后台，显示占位图");
     }
 
     // ====================================================================
@@ -732,6 +784,13 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
+
+        // ====================================================================
+        // ✅ 重置标志位
+        // ====================================================================
+        // 不管之前是什么原因 onPause 的，
+        // 现在回到前台了，都把 isOpeningSettings 重置为 false。
+        isOpeningSettings = false;
 
         boolean resumed = appCoreManager.onResume();
         if (resumed) {
@@ -756,6 +815,9 @@ public class MainActivity extends AppCompatActivity {
     @Override
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
+
+        log("【花屏分析】窗口焦点变化：" + (hasFocus ? "获得焦点" : "失去焦点"));
+
         if (hasFocus) {
             displayManager.reapplyFullScreen();
         }
@@ -785,7 +847,7 @@ public class MainActivity extends AppCompatActivity {
      * 显示播放器占位图
      *
      * 【作用】用黑色背景盖住 SurfaceView，防止退到后台时 Surface 销毁导致花屏
-     * 【调用时机】onPause() 时调用
+     * 【调用时机】onPause() 时调用（但打开设置页面时不调用）
      *
      * 【为什么能防花屏？】
      * SurfaceView 的 Surface 销毁是异步的，在销毁过程中可能出现：

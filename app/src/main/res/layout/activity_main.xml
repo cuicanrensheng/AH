@@ -3,28 +3,36 @@
   主页面布局
   【作用】直播应用的主页面，包含播放器、频道面板、信息栏等
   【结构】FrameLayout 帧布局，子 View 按顺序叠加显示
-  【2026-06-19 修改：频道面板改成四个角圆角 + 半透明深色背景】
-  - 面板离左边 20dp 距离，让左侧圆角能看到
-  - 上下各 20dp 边距
-  - 和设置面板风格统一，一个在左一个在右，对称
 
-  【2026-06-20 修改：去掉占位图】
-  移除了 iv_player_placeholder 占位图，
-  改用 TextureView 方案解决花屏问题。
+  【2026-06-19 修改：修复频道列表点击无效问题】
+  给所有 ListView 加上 android:descendantFocusability="blocksDescendants"
+  - 作用：阻止子 View 抢焦点，让 ListView 自己统一处理焦点和点击
+  - 原因：item_channel.xml 的根布局之前设置了 focusable="true"，
+          导致 ListView 的焦点管理混乱，点击事件不触发
+
+  【descendantFocusability 三个值的区别】
+  1. beforeDescendants：父 View 优先获取焦点（默认值）
+  2. afterDescendants：子 View 优先获取焦点（如果子 View 能获取的话）
+  3. blocksDescendants：父 View 阻止子 View 获取焦点，完全由父 View 自己处理
+
+  对于 ListView，应该用 blocksDescendants，
+  这样 ListView 自己统一管理焦点和点击，item 只负责显示内容。
 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#000000">
-
-    <!-- ==================================================================== -->
+  
+      <!-- ==================================================================== -->
     <!-- 主播放器视图（ExoPlayer 的 PlayerView）                              -->
     <!-- ==================================================================== -->
     <!--
-      ✅ 已设置 texture_view，解决花屏问题
-      - surface_type="texture_view"：使用 TextureView，不会有 Surface 销毁的花屏
-      - keep_content_on_player_reset="true"：切台时保持最后一帧，避免黑屏
+      【属性说明】
+      - use_controller="false"：屏蔽原生播放器控制器，用自定义的
+      - resize_mode="fit"：等比例缩放，保持画面比例
+      - keep_content_on_player_reset="true"：暂停/切台时保持最后一帧，避免黑屏
+      - surface_type="surface_view"：使用 SurfaceView 渲染，性能更好
     -->
     <com.google.android.exoplayer2.ui.PlayerView
         android:id="@+id/player_view"
@@ -34,7 +42,23 @@
         app:use_controller="false"
         app:resize_mode="fit"
         app:keep_content_on_player_reset="true"
-        app:surface_type="texture_view" />
+        app:surface_type="surface_view" />
+  
+    <!-- ==================================================================== -->
+    <!-- 防花屏占位图（退到后台时显示，黑色背景盖住 SurfaceView）            -->
+    <!-- ==================================================================== -->
+    <!--
+      【作用】退到后台时显示黑色背景，盖住 SurfaceView，防止 Surface 销毁导致花屏
+      【时机】onPause 时显示，onResume 后延迟 100ms 隐藏
+      【原理】SurfaceView 的 Surface 销毁是异步的，销毁过程中可能出现花屏、绿屏，
+             用一个 ImageView 盖在上面，用户看到的就是平滑的黑色过渡。
+      <ImageView
+        android:id="@+id/iv_player_placeholder"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone"
+        android:scaleType="centerCrop"
+        android:background="@android:color/black" />
 
     <!-- ==================================================================== -->
     <!-- 频道号显示（右上角大数字，切台时显示）                              -->

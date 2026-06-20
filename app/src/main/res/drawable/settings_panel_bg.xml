@@ -7,7 +7,7 @@
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
 
-    <!-- 半透明深色背景（深蓝黑色，70% 不透明度） -->
+    <!-- 半透明深色背景（深蓝黑色，20% 不透明度） -->
     <solid android:color="#33000000" />
 
     <!-- 四个角都是圆角，半径 20dp -->

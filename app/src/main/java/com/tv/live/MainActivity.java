@@ -11,7 +11,6 @@ import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
-import android.widget.ImageView;
 import android.widget.ListView;
 import android.widget.ProgressBar;
 import android.widget.TextView;
@@ -39,23 +38,13 @@ import java.util.List;
  * 3. 按键事件分发
  * 4. 播放器视图绑定
  *
- * 【防花屏说明】
- * 1. PlayerView 设置 keep_content_on_player_reset="true"，暂停时保持最后一帧
- * 2. 退到后台时显示黑色占位图，盖住 SurfaceView，防止花屏
- * 3. 回到前台后延迟 100ms 隐藏占位图，等 Surface 准备好
+ * 【2026-06-20 修改：去掉占位图】
+ * 移除了 iv_player_placeholder 占位图相关的所有代码，
+ * 包括成员变量、显示/隐藏方法、onPause/onResume 中的调用。
  *
- * 【2026-06-20 修复：打开设置页面不显示占位图】
- * 【问题原因】
- * 打开设置页面时，MainActivity 会调用 onPause()，然后显示黑色占位图。
- * 但设置页面是透明主题（TransparentTheme），应该能看到后面的播放画面。
- * 黑色占位图挡住了播放画面，导致设置页面后面是黑色的。
- * 而且占位图如果设置了 focusable，还可能抢焦点。
- *
- * 【修复方案】
- * 1. 新增 isOpeningSettings 标志位，打开设置页面前设为 true
- * 2. onPause() 中检查标志位，如果是打开设置页面，就不显示占位图
- * 3. onResume() 中重置标志位
- * 4. 确保占位图设置 focusable="false" 和 clickable="false"，不抢焦点
+ * 【为什么去掉？】
+ * 占位图方案会导致一些问题（如抢焦点、遮挡画面等），
+ * 改用 TextureView 方案来解决花屏问题，不再需要占位图。
  */
 public class MainActivity extends AppCompatActivity {
 
@@ -83,30 +72,14 @@ public class MainActivity extends AppCompatActivity {
     private PlayerView playerView;
 
     // ====================================================================
-    // ✅ 防花屏：播放器占位图（退到后台时显示，盖住 SurfaceView）
-    // ====================================================================
-    /**
-     * 播放器占位图
-     * 【作用】退到后台时显示黑色背景，盖住 SurfaceView，防止 Surface 销毁时花屏
-     * 【时机】onPause 时显示（但打开设置页面时不显示），onResume 后延迟 100ms 隐藏
-     */
-    private ImageView ivPlayerPlaceholder;
-
-    // ====================================================================
-    // ✅ 新增：标志位 - 是否正在打开设置页面
+    // ✅ 标志位 - 是否正在打开设置页面
     // ====================================================================
     /**
      * 是否正在打开设置页面
      *
      * 【作用】
-     * 区分"打开设置页面"和"真正退到后台"两种情况：
-     * - 打开设置页面：不显示占位图（设置页面是透明的，需要看到播放画面）
-     * - 真正退到后台：显示占位图（防止花屏）
-     *
-     * 【为什么需要这个？】
-     * 因为这两种情况都会触发 onPause()，但我们需要区别对待：
-     * 1. 打开设置页面 → MainActivity 还在任务栈中，Surface 不会销毁 → 不需要占位图
-     * 2. 按 Home 键/切到其他应用 → 整个应用退到后台，Surface 可能销毁 → 需要占位图
+     * 区分"打开设置页面"和"真正退到后台"两种情况，
+     * 用于日志输出和后续可能的逻辑判断。
      */
     private boolean isOpeningSettings = false;
 
@@ -199,30 +172,13 @@ public class MainActivity extends AppCompatActivity {
         log("【配置】EPG地址：" + UrlConfig.EPG_URL);
 
         // ====================================================================
-        // ✅ 绑定播放器视图 + 占位图
+        // ✅ 绑定播放器视图
         // ====================================================================
         playerView = findViewById(R.id.player_view);
         playerView.setUseController(false);
         playerView.setControllerVisibilityListener(null);
 
-        // 绑定防花屏占位图
-        ivPlayerPlaceholder = findViewById(R.id.iv_player_placeholder);
-
-        // ====================================================================
-        // ✅ 确保占位图不抢焦点
-        // ====================================================================
-        // 【为什么要设置这些？】
-        // 如果占位图设置了 focusable="true" 或 clickable="true"，
-        // 它可能会抢焦点，导致其他控件无法获取焦点。
-        // 这里强制设置为 false，确保占位图只做显示用，不参与交互。
-        if (ivPlayerPlaceholder != null) {
-            ivPlayerPlaceholder.setFocusable(false);
-            ivPlayerPlaceholder.setClickable(false);
-            ivPlayerPlaceholder.setFocusableInTouchMode(false);
-        }
-
         log("【花屏分析】播放器视图绑定完成");
-        log("【花屏分析】占位图初始状态：" + (ivPlayerPlaceholder != null ? "已绑定" : "未找到"));
 
         // 频道面板控制器初始化
         initChannelPanelController();
@@ -715,20 +671,12 @@ public class MainActivity extends AppCompatActivity {
     // ====================== 打开设置页面 ======================
     /**
      * 打开设置页面
-     *
-     * 【2026-06-20 修改：设置标志位】
-     * 打开设置页面前设置 isOpeningSettings = true，
-     * 这样 onPause() 中就不会显示占位图了。
-     *
-     * 【为什么？】
-     * 设置页面是透明主题（TransparentTheme），应该能看到后面的播放画面。
-     * 如果 onPause() 中显示了黑色占位图，就会挡住播放画面。
      */
     public void openSettings() {
-        // ✅ 设置标志位：正在打开设置页面
+        // 设置标志位：正在打开设置页面
         isOpeningSettings = true;
 
-        log("【花屏分析】打开设置页面（不显示占位图）");
+        log("【花屏分析】打开设置页面");
 
         appCoreManager.beforeOpenSettings();
         startActivity(new Intent(this, SettingsActivity.class));
@@ -741,7 +689,7 @@ public class MainActivity extends AppCompatActivity {
 
     // ====================== 生命周期方法 ======================
     // ====================================================================
-    // ✅ 防花屏：退到后台前显示占位图（但打开设置页面时不显示）
+    // onPause
     // ====================================================================
     @Override
     protected void onPause() {
@@ -749,47 +697,24 @@ public class MainActivity extends AppCompatActivity {
 
         log("【花屏分析】onPause 被调用");
 
-        // ====================================================================
-        // ✅ 关键修改：判断是否是打开设置页面
-        // ====================================================================
-        //
-        // 【两种情况的区别】
-        // 1. 打开设置页面：
-        //    - MainActivity 还在任务栈中，只是被 SettingsActivity 盖住了
-        //    - Surface 不会销毁，不会花屏
-        //    - 设置页面是透明的，需要看到后面的播放画面
-        //    - → 不显示占位图
-        //
-        // 2. 真正退到后台（按 Home 键、切到其他应用）：
-        //    - 整个应用都退到后台了
-        //    - Surface 可能会被销毁，容易出现花屏
-        //    - → 显示占位图，防止花屏
-        //
         if (isOpeningSettings) {
-            // 打开设置页面：不显示占位图
-            log("【花屏分析】打开设置页面，不显示占位图");
+            log("【花屏分析】打开设置页面");
             log("【主页】onPause -> 打开设置页面，继续播放");
         } else {
-            // 真正退到后台：显示占位图，防止花屏
-            showPlayerPlaceholder();
-            log("【花屏分析】onPause -> 退到后台，显示占位图");
+            log("【花屏分析】onPause -> 退到后台");
         }
 
         appCoreManager.onPause();
     }
 
     // ====================================================================
-    // ✅ 防花屏：回到前台后延迟隐藏占位图
+    // onResume
     // ====================================================================
     @Override
     protected void onResume() {
         super.onResume();
 
-        // ====================================================================
-        // ✅ 重置标志位
-        // ====================================================================
-        // 不管之前是什么原因 onPause 的，
-        // 现在回到前台了，都把 isOpeningSettings 重置为 false。
+        // 重置标志位
         isOpeningSettings = false;
 
         boolean resumed = appCoreManager.onResume();
@@ -800,16 +725,7 @@ public class MainActivity extends AppCompatActivity {
 
         displayManager.reapplyFullScreen();
 
-        // 【防花屏】延迟 100ms 再隐藏占位图
-        // 等 Surface 重新创建并准备好第一帧后，再隐藏占位图
-        new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                hidePlayerPlaceholder();
-            }
-        }, 100);
-
-        log("【花屏分析】onResume -> 回到前台，100ms 后隐藏占位图");
+        log("【花屏分析】onResume -> 回到前台");
     }
 
     @Override
@@ -838,51 +754,6 @@ public class MainActivity extends AppCompatActivity {
         if (appCoreManager != null) appCoreManager.release();
 
         mInstance = null;
-    }
-
-    // ====================================================================
-    // ✅ 防花屏：占位图显示/隐藏方法
-    // ====================================================================
-    /**
-     * 显示播放器占位图
-     *
-     * 【作用】用黑色背景盖住 SurfaceView，防止退到后台时 Surface 销毁导致花屏
-     * 【调用时机】onPause() 时调用（但打开设置页面时不调用）
-     *
-     * 【为什么能防花屏？】
-     * SurfaceView 的 Surface 销毁是异步的，在销毁过程中可能出现：
-     * 1. 花屏（显示垃圾数据）
-     * 2. 绿屏（Surface 未初始化）
-     * 3. 撕裂（部分显示旧帧，部分显示新帧）
-     *
-     * 用一个 ImageView 盖在 SurfaceView 上面，退到后台时显示黑色背景，
-     * 这样用户看到的就是平滑的黑色过渡，而不是花屏。
-     */
-    private void showPlayerPlaceholder() {
-        if (ivPlayerPlaceholder != null) {
-            ivPlayerPlaceholder.setVisibility(View.VISIBLE);
-            log("【防花屏】显示占位图");
-            log("【花屏分析】占位图已显示（黑色背景覆盖 SurfaceView）");
-        }
-    }
-
-    /**
-     * 隐藏播放器占位图
-     *
-     * 【作用】回到前台后，等 Surface 准备好再隐藏占位图
-     * 【调用时机】onResume() 后延迟 100ms 调用
-     *
-     * 【为什么要延迟？】
-     * Surface 的创建是异步的，onResume 时 Surface 可能还没准备好。
-     * 如果这时候立刻隐藏占位图，可能会看到短暂的黑屏/花屏。
-     * 延迟 100ms 等 Surface 准备好第一帧再隐藏，过渡更平滑。
-     */
-    private void hidePlayerPlaceholder() {
-        if (ivPlayerPlaceholder != null) {
-            ivPlayerPlaceholder.setVisibility(View.GONE);
-            log("【防花屏】隐藏占位图");
-            log("【花屏分析】占位图已隐藏（Surface 应该已准备好）");
-        }
     }
 
     // ====================== 日志工具 ======================

@@ -14,18 +14,17 @@ public class KeyEventManager {
     public boolean dispatchKey(int keyCode) {
         switch (keyCode) {
             case KeyEvent.KEYCODE_DPAD_UP:
-                activity.playPrev();
+                // ✅ 改成带反转的统一方法
+                activity.getChannelPanelController().switchUp();
                 return true;
-
             case KeyEvent.KEYCODE_DPAD_DOWN:
-                activity.playNext();
+                // ✅ 改成带反转的统一方法
+                activity.getChannelPanelController().switchDown();
                 return true;
-
             case KeyEvent.KEYCODE_DPAD_CENTER:
             case KeyEvent.KEYCODE_ENTER:
                 activity.togglePanel();
                 return true;
-
             case KeyEvent.KEYCODE_MENU:
                 activity.openSettings();
                 return true;

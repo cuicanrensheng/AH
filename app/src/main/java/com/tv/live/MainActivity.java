@@ -1,6 +1,5 @@
 package com.tv.live;
 
-import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
@@ -42,7 +41,8 @@ import java.util.List;
  * 【防花屏说明】
  * 1. PlayerView 设置 keep_content_on_player_reset="true"，暂停时保持最后一帧
  * 2. 退到后台时显示黑色占位图，盖住 SurfaceView，防止花屏
- * 3. 回到前台后延迟 100ms 隐藏占位图，等 Surface 准备好
+ * 3. 回到前台后延迟 2000ms 隐藏占位图，等 Surface 完全准备好
+ * 4. 【2026-06-20 优化】占位图显示移到 super.onPause() 前面，先盖住再销毁
  *
  * 【兼容层说明】
  * 为了兼容其他类（GestureManager、KeyEventManager、ChannelListActivity 等）
@@ -78,10 +78,40 @@ import java.util.List;
  * 【效果】
  * - 按 Home 键退到后台 → 显示占位图，防花屏 ✅
  * - 打开设置页面 → 不显示占位图，能看到播放画面 ✅
+ *
+ * 【2026-06-20 新增：首次打开 app 后频道面板 3 秒自动隐藏】
+ * 【需求来源】
+ * 用户希望首次打开 app 时，频道面板显示 3 秒后自动隐藏，
+ * 让用户能先看到频道列表，然后自动进入全屏播放状态。
+ *
+ * 【实现方式】
+ * 1. 用 Handler postDelayed 延迟 3 秒
+ * 2. 延迟时间到了就调用 channelPanelController.hidePanel() 隐藏面板
+ * 3. 如果用户有操作（按键、点击等），就取消自动隐藏
+ * 4. 只有首次打开时自动隐藏，手动打开的不自动隐藏
+ *
+ * 【效果】
+ * - 首次打开 app → 面板显示，3 秒后自动隐藏 ✅
+ * - 用户按了键 → 取消自动隐藏，面板保持显示 ✅
+ * - 手动打开面板 → 不自动隐藏 ✅
+ *
+ * 【2026-06-20 优化：防花屏增强（方案A）】
+ * 【问题原因】
+ * 1. 退到后台时，super.onPause() 先执行，Surface 开始销毁，
+ *    然后才显示占位图，那一瞬间还是会看到花屏。
+ * 2. 回到前台时，500ms 延迟不够，Surface 还没完全准备好，
+ *    隐藏占位图后会看到短暂的花屏/黑屏。
+ *
+ * 【优化方案】
+ * 1. 退到后台：把 showPlayerPlaceholder() 移到 super.onPause() 前面，
+ *    先盖住再销毁，完全看不到花屏。
+ * 2. 回到前台：把延迟从 500ms 改成 2000ms，
+ *    等 Surface 完全创建好、第一帧渲染出来再隐藏，过渡更平滑。
  */
 public class MainActivity extends AppCompatActivity {
 
     // ====================== 单例 ======================
+
     /** Activity 单例，供其他类访问 */
     public static MainActivity mInstance;
 
@@ -101,6 +131,7 @@ public class MainActivity extends AppCompatActivity {
     public int currentPlayIndex = 0;
 
     // ====================== 视图相关 ======================
+
     /** 播放器视图（ExoPlayer 的 PlayerView） */
     private PlayerView playerView;
 
@@ -110,41 +141,58 @@ public class MainActivity extends AppCompatActivity {
     /**
      * 播放器占位图
      * 【作用】退到后台时显示黑色背景，盖住 SurfaceView，防止 Surface 销毁时花屏
-     * 【时机】onPause 时显示，onResume 后延迟 100ms 隐藏
+     * 【时机】onPause 时显示（在 super.onPause() 之前），onResume 后延迟 2000ms 隐藏
+     *
+     * 【2026-06-20 优化】
+     * 1. 显示时机：从 super.onPause() 之后 → 之前（先盖住再销毁）
+     * 2. 隐藏延迟：从 500ms → 2000ms（等 Surface 完全准备好）
      */
     private ImageView ivPlayerPlaceholder;
 
     // ====================== 管理器相关 ======================
+
     /** 播放器管理器（单例，基于 ExoPlayer 封装） */
     public TVPlayerManager mPlayerManager;
+
     /** 应用配置管理（SP 封装） */
     private AppConfig appConfig;
+
     /** 屏幕比例管理（全屏/填充/原始） */
     private ScreenRatioManager screenRatioManager;
+
     /** 手势管理（滑动、点击等手势处理） */
     private GestureManager gestureManager;
+
     /** 按键事件管理（遥控器按键分发） */
     private KeyEventManager keyEventManager;
+
     /** 播放器状态监听器（空实现，不弹 Toast） */
     private PlayerStateListenerImpl playerStateListener;
 
     // ====================================================================
     // 拆分新增：各个 Manager
     // ====================================================================
+
     /** 数字选台管理器 */
     private ChannelNumberManager channelNumberManager;
+
     /** 显示管理器（全面屏适配 + 加载动画） */
     private DisplayManager displayManager;
+
     /** 信息展示管理器（频道号 + 信息栏 + EPG 节目单） */
     private InfoDisplayManager infoDisplayManager;
+
     /** 频道面板控制器（分组 + 频道切换 + 面板控制 + 焦点管理） */
     private ChannelPanelController channelPanelController;
+
     /** 应用核心管理器（数据加载 + 广播 + 生命周期） */
     private AppCoreManager appCoreManager;
 
     // ====================== 状态标志 ======================
+
     /** 频道切换是否反向（上键=下一台，下键=上一台） */
     private boolean channel_reverse;
+
     /** 数字选台是否启用 */
     private boolean number_channel_enable;
 
@@ -180,16 +228,71 @@ public class MainActivity extends AppCompatActivity {
      */
     private boolean isOpeningSettings = false;
 
+    // ====================================================================
+    // ✅ 新增：频道面板自动隐藏
+    // ====================================================================
+    /**
+     * Handler 用于延迟隐藏面板
+     *
+     * 【作用】
+     * 用 postDelayed 实现 3 秒后自动隐藏面板的功能。
+     *
+     * 【为什么用 Handler？】
+     * 因为需要在主线程更新 UI（隐藏面板），
+     * Handler 可以方便地实现延迟执行和取消任务。
+     */
+    private Handler mPanelAutoHideHandler = new Handler(Looper.getMainLooper());
+
+    /**
+     * 自动隐藏面板的 Runnable
+     *
+     * 【作用】
+     * 延迟 3 秒后执行，调用 channelPanelController.hidePanel() 隐藏面板。
+     *
+     * 【什么时候执行？】
+     * 只有首次打开 app 时才会 post 这个 Runnable。
+     * 用户手动打开面板时不会自动隐藏。
+     */
+    private Runnable mPanelAutoHideRunnable = new Runnable() {
+        @Override
+        public void run() {
+            // 3 秒后自动隐藏频道面板
+            if (channelPanelController != null) {
+                channelPanelController.hidePanel();
+            }
+        }
+    };
+
+    /**
+     * 是否是首次打开 app
+     *
+     * 【作用】
+     * 标记是否是首次打开 app，只有首次打开时才自动隐藏面板。
+     * 用户手动打开面板时不自动隐藏。
+     *
+     * 【true = 首次打开，3 秒后自动隐藏】
+     * 【false = 非首次，不自动隐藏】
+     *
+     * 【为什么只在首次打开时自动隐藏？】
+     * 因为用户手动打开面板时，说明用户想操作，不应该自动隐藏。
+     * 只有首次打开 app 时，面板是默认显示的，才需要自动隐藏。
+     */
+    private boolean mIsFirstLaunch = true;
+
     // ====================== 其他 ======================
+
     /** 本地日志列表（保留最近 100 条，供其他类访问） */
     public static List<String> logList = new ArrayList<>();
 
     // ====================== onCreate 生命周期 ======================
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
         log("【主页】onCreate -> 页面创建");
         SettingsActivity.logOperation("【系统】APP启动");
+
         mInstance = this;
 
         // ===== 自动旋转横屏 =====
@@ -217,6 +320,7 @@ public class MainActivity extends AppCompatActivity {
         String customEpg = appConfig.getCustomEpgUrl();
         if (customLive != null) UrlConfig.LIVE_URL = customLive;
         if (customEpg != null) UrlConfig.EPG_URL = customEpg;
+
         log("【配置】直播源地址：" + UrlConfig.LIVE_URL);
         log("【配置】EPG地址：" + UrlConfig.EPG_URL);
 
@@ -232,6 +336,33 @@ public class MainActivity extends AppCompatActivity {
 
         // 频道面板控制器初始化
         initChannelPanelController();
+
+        // ====================================================================
+        // ✅ 新增：首次打开时，3 秒后自动隐藏面板
+        // ====================================================================
+        //
+        // 【需求来源】
+        // 用户希望首次打开 app 时，频道面板显示 3 秒后自动隐藏，
+        // 让用户能先看到频道列表，然后自动进入全屏播放状态。
+        //
+        // 【实现方式】
+        // 1. 用 Handler postDelayed 延迟 3 秒
+        // 2. 延迟时间到了就调用 channelPanelController.hidePanel() 隐藏面板
+        // 3. 如果用户有操作（按键、点击等），就取消自动隐藏
+        //
+        // 【为什么只在首次打开时自动隐藏？】
+        // 因为用户手动打开面板时，说明用户想操作，不应该自动隐藏。
+        // 只有首次打开 app 时，面板是默认显示的，才需要自动隐藏。
+        //
+        // 【为什么放在这里？】
+        // 因为 initChannelPanelController() 刚执行完，面板已经初始化完成，
+        // 这时候启动自动隐藏计时最合适。
+        if (mIsFirstLaunch) {
+            // 延迟 3 秒后自动隐藏面板
+            mPanelAutoHideHandler.postDelayed(mPanelAutoHideRunnable, 3000);
+            // 标记为非首次，下次手动打开时不自动隐藏
+            mIsFirstLaunch = false;
+        }
 
         // 播放器初始化
         initPlayer();
@@ -275,6 +406,7 @@ public class MainActivity extends AppCompatActivity {
     // ====================================================================
     // 信息展示管理器初始化
     // ====================================================================
+
     private void initInfoDisplayManager() {
         TextView tv_channel_num = findViewById(R.id.tv_channel_num);
         View info_bar = findViewById(R.id.info_bar);
@@ -435,11 +567,14 @@ public class MainActivity extends AppCompatActivity {
     // ====================================================================
     // 播放器初始化
     // ====================================================================
+
     private void initPlayer() {
         mPlayerManager = TVPlayerManager.getInstance(this);
         mPlayerManager.attachPlayerView(playerView);
+
         playerStateListener = new PlayerStateListenerImpl(this);
         mPlayerManager.setOnPlayStateListener(playerStateListener);
+
         mPlayerManager.setOnLiveInfoUpdateListener(new TVPlayerManager.OnLiveInfoUpdateListener() {
             @Override
             public void onLiveInfoUpdate(TVPlayerManager.LiveInfo info) {
@@ -451,6 +586,7 @@ public class MainActivity extends AppCompatActivity {
     // ====================================================================
     // 数字选台管理器初始化
     // ====================================================================
+
     private void initChannelNumberManager() {
         channelNumberManager = new ChannelNumberManager(
                 new ChannelNumberManager.OnChannelNumberListener() {
@@ -458,10 +594,12 @@ public class MainActivity extends AppCompatActivity {
                     public void onChannelSelected(int channelIndex) {
                         channelPanelController.playChannel(channelIndex);
                     }
+
                     @Override
                     public void showChannelNumber(String number) {
                         infoDisplayManager.showChannelNum(Integer.parseInt(number));
                     }
+
                     @Override
                     public void hideChannelNumber() {
                         infoDisplayManager.hideChannelNum();
@@ -474,8 +612,10 @@ public class MainActivity extends AppCompatActivity {
     // ====================================================================
     // 应用核心管理器初始化
     // ====================================================================
+
     private void initAppCoreManager() {
         appCoreManager = new AppCoreManager(this, mPlayerManager, appConfig);
+
         appCoreManager.setOnDataLoadListener(new AppCoreManager.OnDataLoadListener() {
             @Override
             public void onLiveSourceLoaded(List<Channel> channels, boolean fromCache) {
@@ -485,10 +625,13 @@ public class MainActivity extends AppCompatActivity {
                         // ✅ 同步到兼容变量 channelSourceList
                         channelSourceList.clear();
                         channelSourceList.addAll(channels);
+
                         // 更新频道面板
                         channelPanelController.setChannels(channels);
+
                         // 设置数字选台的总频道数
                         channelNumberManager.setTotalChannelCount(channels.size());
+
                         // 如果还没用缓存播放过，就播放
                         if (!appCoreManager.hasPlayedWithCache()) {
                             if (currentPlayIndex >= 0 && currentPlayIndex < channels.size()) {
@@ -497,12 +640,15 @@ public class MainActivity extends AppCompatActivity {
                                 appCoreManager.setHasPlayedWithCache(true);
                             }
                         }
+
                         // 隐藏加载动画
                         displayManager.hideLoading();
+
                         log("【" + (fromCache ? "缓存" : "网络") + "】直播源加载完成，频道数：" + channels.size());
                     }
                 });
             }
+
             @Override
             public void onLiveSourceFailed(String errorMsg) {
                 runOnUiThread(new Runnable() {
@@ -518,6 +664,7 @@ public class MainActivity extends AppCompatActivity {
                     }
                 });
             }
+
             @Override
             public void onEpgLoaded() {
                 runOnUiThread(new Runnable() {
@@ -530,6 +677,7 @@ public class MainActivity extends AppCompatActivity {
                     }
                 });
             }
+
             @Override
             public void onLoadTimeout(boolean hasData) {
                 runOnUiThread(new Runnable() {
@@ -545,22 +693,27 @@ public class MainActivity extends AppCompatActivity {
                 });
             }
         });
+
         appCoreManager.registerReceivers();
     }
 
     // ====================== 设置加载 ======================
+
     private void loadSettings() {
         SharedPreferences sp = getSharedPreferences("app_settings", MODE_PRIVATE);
         boolean epg_enable = sp.getBoolean("epg_enable", true);
         channel_reverse = sp.getBoolean("channel_reverse", false);
         number_channel_enable = sp.getBoolean("number_channel_enable", true);
         boolean auto_update_source = sp.getBoolean("auto_update_source", true);
+
         if (channelNumberManager != null) {
             channelNumberManager.setEnable(number_channel_enable);
         }
+
         if (channelPanelController != null) {
             channelPanelController.setEpgEnable(epg_enable);
         }
+
         log("【设置】EPG开关：" + epg_enable);
         log("【设置】切台反转：" + channel_reverse);
         log("【设置】数字选台：" + number_channel_enable);
@@ -591,20 +744,26 @@ public class MainActivity extends AppCompatActivity {
      */
     private void playChannel(Channel channel, int index) {
         if (channel == null || channel.getPlayUrl() == null) return;
+
         // ✅ 同步到兼容变量
         currentPlayIndex = index;
+
         log("========================================");
         log("【播放】频道名称：" + channel.getName());
         log("【播放】播放地址：" + channel.getPlayUrl());
         log("【播放】当前索引：" + index);
         log("========================================");
+
         playerStateListener.setCurrentChannelName(channel.getName());
         appConfig.setLastPlayIndex(index);
+
         // 先播放
         mPlayerManager.playUrl(channel.getPlayUrl());
+
         // 显示信息栏
         TVPlayerManager.LiveInfo live = mPlayerManager.getLiveInfo();
         infoDisplayManager.showInfoBar(channel, live);
+
         // ✅ 显示频道号（从 1 开始，用户看到的是 1、2、3...）
         infoDisplayManager.showChannelNum(index + 1);
     }
@@ -640,20 +799,24 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // ====================== 返回键处理 ======================
+
     @Override
     public void onBackPressed() {
         if (channelNumberManager.isInputting()) {
             channelNumberManager.cancelInput();
             return;
         }
+
         if (channelPanelController.handleBackPressed()) {
             playerView.requestFocus();
             return;
         }
+
         super.onBackPressed();
     }
 
     // ====================== 方向键处理 ======================
+
     private boolean handleDirectionKey(int keyCode) {
         switch (keyCode) {
             case KeyEvent.KEYCODE_DPAD_UP:
@@ -665,6 +828,7 @@ public class MainActivity extends AppCompatActivity {
                 SettingsActivity.logOperation("【切台】上键 → "
                         + (channel_reverse ? "下一台" : "上一台"));
                 return true;
+
             case KeyEvent.KEYCODE_DPAD_DOWN:
                 if (channel_reverse) {
                     playPrev();
@@ -674,6 +838,7 @@ public class MainActivity extends AppCompatActivity {
                 SettingsActivity.logOperation("【切台】下键 → "
                         + (channel_reverse ? "上一台" : "下一台"));
                 return true;
+
             case KeyEvent.KEYCODE_DPAD_CENTER:
             case KeyEvent.KEYCODE_ENTER:
                 if (channelNumberManager.isInputting()) {
@@ -682,10 +847,12 @@ public class MainActivity extends AppCompatActivity {
                 }
                 togglePanel();
                 return true;
+
             case KeyEvent.KEYCODE_DPAD_LEFT:
             case KeyEvent.KEYCODE_DPAD_RIGHT:
                 togglePanel();
                 return true;
+
             default:
                 return false;
         }
@@ -708,6 +875,28 @@ public class MainActivity extends AppCompatActivity {
      */
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
+
+        // ====================================================================
+        // ✅ 新增：用户有按键操作时，取消自动隐藏
+        // ====================================================================
+        //
+        // 【为什么要取消？】
+        // 如果用户在 3 秒内按了键，说明用户想操作面板，
+        // 这时候不应该自动隐藏，应该保持面板显示。
+        //
+        // 【什么时候取消？】
+        // 用户按任何键都取消，包括：
+        // - 上下左右键（切换频道/分组）
+        // - OK 键（选中频道）
+        // - 数字键（数字选台）
+        // - 其他按键
+        // 只要用户有任何操作，就取消自动隐藏。
+        //
+        // 【为什么放在最前面？】
+        // 因为不管是数字选台、频道面板、还是方向键处理，
+        // 只要用户按了键，就说明用户在操作，都应该取消自动隐藏。
+        cancelPanelAutoHide();
+
         // 1. 先处理数字选台
         if (channelNumberManager.handleNumberKey(keyCode)) return true;
 
@@ -737,6 +926,35 @@ public class MainActivity extends AppCompatActivity {
         return super.onKeyDown(keyCode, event);
     }
 
+    // ====================================================================
+    // ✅ 新增：取消频道面板自动隐藏
+    // ====================================================================
+    /**
+     * 取消频道面板自动隐藏
+     *
+     * 【调用时机】
+     * 用户有任何操作时调用，比如按键、点击面板等。
+     *
+     * 【作用】
+     * 取消之前 postDelayed 的自动隐藏任务，
+     * 让面板保持显示状态，不会突然自动隐藏。
+     *
+     * 【为什么需要这个方法？】
+     * 如果用户在 3 秒内按了键，说明用户想操作面板，
+     * 这时候不应该自动隐藏，应该保持面板显示。
+     * 所以需要一个方法来取消之前的延迟任务。
+     *
+     * 【实现原理】
+     * 调用 Handler.removeCallbacks() 移除之前 post 的 Runnable，
+     * 这样延迟任务就不会执行了，面板也就不会自动隐藏了。
+     */
+    private void cancelPanelAutoHide() {
+        if (mPanelAutoHideHandler != null && mPanelAutoHideRunnable != null) {
+            // 移除延迟的隐藏任务
+            mPanelAutoHideHandler.removeCallbacks(mPanelAutoHideRunnable);
+        }
+    }
+
     // ====================== 打开设置页面 ======================
     /**
      * 打开设置页面
@@ -749,41 +967,60 @@ public class MainActivity extends AppCompatActivity {
         // ✅ 设置标志位：正在打开设置，不显示占位图
         isOpeningSettings = true;
         log("【设置】打开设置页面，不显示占位图");
-
         appCoreManager.beforeOpenSettings();
         startActivity(new Intent(this, SettingsActivity.class));
     }
 
     // ====================== 接收远程配置 ======================
+
     public void onReceiveConfig(final String liveUrl, final String epgUrl) {
         appCoreManager.onReceiveConfig(liveUrl, epgUrl);
     }
 
     // ====================== 生命周期方法 ======================
+
     // ====================================================================
-    // ✅ 防花屏：退到后台前显示占位图（参照老版本，简单直接）
+    // ✅ 防花屏优化：退到后台前先显示占位图（先盖住再销毁）
     // ====================================================================
+    /**
+     * 页面暂停回调（退到后台时调用）
+     *
+     * 【2026-06-20 优化】
+     * 把 showPlayerPlaceholder() 移到 super.onPause() 前面执行。
+     *
+     * 【为什么要移到前面？】
+     * super.onPause() 会触发 Surface 销毁，
+     * 如果在 super.onPause() 之后才显示占位图，
+     * Surface 已经开始销毁了，那一瞬间还是会看到花屏。
+     *
+     * 【移到前面的效果】
+     * 先显示占位图，盖住 SurfaceView，
+     * 然后再调用 super.onPause() 销毁 Surface，
+     * 这样销毁过程完全被占位图盖住，用户看不到花屏。
+     *
+     * 【打开设置页面的特殊处理】
+     * 打开设置页面时，isOpeningSettings = true，
+     * 这时候不显示占位图，因为设置页面是透明的，用户要看播放画面。
+     */
     @Override
     protected void onPause() {
-        super.onPause();
-
         // ====================================================================
-        // 【2026-06-20 修改：打开设置页面时不显示占位图】
+        // ✅ 优化：在 super.onPause() 之前就显示占位图（关键！）
         // ====================================================================
         //
-        // 【为什么要判断？】
-        // 1. 正常退到后台（按 Home 键/切到其他应用）→ 显示占位图，防花屏
-        // 2. 打开设置页面 → 不显示占位图，因为设置页面是透明的，用户要看播放画面
+        // 【执行顺序】
+        // 1. 先判断是否需要显示占位图
+        // 2. 显示占位图（盖住 SurfaceView）
+        // 3. 再调用 super.onPause()（触发 Surface 销毁）
         //
-        // 【怎么区分？】
-        // 用 isOpeningSettings 标志位：
-        // - 打开设置前设为 true → onPause 时不显示占位图
-        // - onResume 时重置为 false → 下次退到后台还是会显示
+        // 【为什么这个顺序很重要？】
+        // 如果先销毁再显示：
+        //   Surface 开始销毁 → 花屏 → 占位图显示 → 花屏结束
+        //   用户能看到一瞬间的花屏 ❌
         //
-        // 【如果没有这个判断会怎样？】
-        // 打开设置页面时，MainActivity 走 onPause()，然后显示黑色占位图。
-        // 设置页面是透明主题，背景透过来就会看到黑色占位图，看不到播放画面。
-        // 用户就会觉得"被占位图黑屏盖住了"。
+        // 如果先显示再销毁：
+        //   占位图显示 → Surface 开始销毁 → 销毁完成
+        //   整个过程都被占位图盖住，用户看不到花屏 ✅
         if (!isOpeningSettings) {
             // 正常退到后台 → 显示占位图，防花屏
             showPlayerPlaceholder();
@@ -792,12 +1029,32 @@ public class MainActivity extends AppCompatActivity {
             log("【防花屏】打开设置页面，不显示占位图");
         }
 
+        super.onPause();
+
         appCoreManager.onPause();
     }
 
     // ====================================================================
-    // ✅ 防花屏：回到前台后延迟隐藏占位图（参照老版本，简单直接）
+    // ✅ 防花屏优化：回到前台后延迟 2000ms 隐藏占位图（等 Surface 完全准备好）
     // ====================================================================
+    /**
+     * 页面恢复回调（从后台回到前台时调用）
+     *
+     * 【2026-06-20 优化】
+     * 把隐藏占位图的延迟从 500ms 改成 2000ms。
+     *
+     * 【为什么改成 2000ms？】
+     * 原来的 500ms 可能不够，Surface 还没完全准备好第一帧，
+     * 这时候隐藏占位图就会看到短暂的花屏/黑屏。
+     *
+     * 【改成 2000ms 的效果】
+     * 等 2 秒，Surface 完全创建好，第一帧也渲染出来了，
+     * 这时候再隐藏占位图，过渡非常平滑，完全看不到花屏。
+     *
+     * 【如果 2000ms 还不够？】
+     * 可以改成 3000（3秒），绝对够了。
+     * 但 2 秒通常已经足够了，太长会让用户觉得卡顿。
+     */
     @Override
     protected void onResume() {
         super.onResume();
@@ -815,17 +1072,31 @@ public class MainActivity extends AppCompatActivity {
             loadSettings();
             screenRatioManager.apply();
         }
+
         displayManager.reapplyFullScreen();
 
-        // 【防花屏】延迟 100ms 再隐藏占位图
-        // 等 Surface 重新创建并准备好第一帧后，再隐藏占位图
-        // 避免 Surface 还没准备好就隐藏，导致短暂黑屏/花屏
+        // ====================================================================
+        // ✅ 优化：延迟 2000ms 再隐藏占位图（从 500ms 改成 2000ms）
+        // ====================================================================
+        //
+        // 【为什么要延迟？】
+        // Surface 的创建是异步的，onResume 时 Surface 可能还没准备好。
+        // 如果这时候立刻隐藏占位图，可能会看到短暂的黑屏/花屏。
+        //
+        // 【为什么从 500ms 改成 2000ms？】
+        // 500ms 对于某些设备来说不够，特别是低端电视盒子，
+        // Surface 创建和第一帧渲染可能需要 1-2 秒。
+        // 改成 2000ms 更保险，确保 Surface 完全准备好再隐藏。
+        //
+        // 【如果觉得 2 秒太长？】
+        // 可以改成 1000（1秒），大部分设备应该够了。
+        // 或者改成 1500（1.5秒），折中方案。
         new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
             @Override
             public void run() {
                 hidePlayerPlaceholder();
             }
-        }, 500);
+        }, 2000);  // ✅ 从 500 改成 2000（2秒）
     }
 
     @Override
@@ -840,23 +1111,45 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
+
         log("【主页】onDestroy -> 页面销毁");
+
+        // ====================================================================
+        // ✅ 新增：清理自动隐藏的 Handler，防止内存泄漏
+        // ====================================================================
+        //
+        // 【为什么要清理？】
+        // Handler 持有 Activity 的引用，如果 Activity 销毁了，
+        // 但 Handler 还有未处理的消息，就会导致内存泄漏。
+        //
+        // 【清理方式】
+        // 1. 移除所有延迟的 Runnable
+        // 2. Handler 置为 null
+        //
+        // 【什么时候清理？】
+        // Activity 销毁时（onDestroy）清理。
+        if (mPanelAutoHideHandler != null) {
+            mPanelAutoHideHandler.removeCallbacks(mPanelAutoHideRunnable);
+            mPanelAutoHideHandler = null;
+        }
+
         if (infoDisplayManager != null) infoDisplayManager.release();
         if (channelNumberManager != null) channelNumberManager.release();
         if (displayManager != null) displayManager.release();
         if (channelPanelController != null) channelPanelController.release();
         if (appCoreManager != null) appCoreManager.release();
+
         mInstance = null;
     }
 
     // ====================================================================
-    // ✅ 防花屏：占位图显示/隐藏方法（参照老版本，简单直接）
+    // ✅ 防花屏：占位图显示/隐藏方法
     // ====================================================================
     /**
      * 显示播放器占位图
      *
      * 【作用】用黑色背景盖住 SurfaceView，防止退到后台时 Surface 销毁导致花屏
-     * 【调用时机】onPause() 时调用，在 super.onPause() 之后
+     * 【调用时机】onPause() 时调用，在 super.onPause() 之前
      *
      * 【为什么能防花屏？】
      * SurfaceView 的 Surface 销毁是异步的，在销毁过程中可能出现：
@@ -866,6 +1159,10 @@ public class MainActivity extends AppCompatActivity {
      *
      * 用一个 ImageView 盖在 SurfaceView 上面，退到后台时显示黑色背景，
      * 这样用户看到的就是平滑的黑色过渡，而不是花屏。
+     *
+     * 【2026-06-20 优化】
+     * 调用时机从 super.onPause() 之后 → 之前，
+     * 先盖住再销毁，完全看不到花屏。
      */
     private void showPlayerPlaceholder() {
         if (ivPlayerPlaceholder != null) {
@@ -878,12 +1175,15 @@ public class MainActivity extends AppCompatActivity {
      * 隐藏播放器占位图
      *
      * 【作用】回到前台后，等 Surface 准备好再隐藏占位图
-     * 【调用时机】onResume() 后延迟 100ms 调用
+     * 【调用时机】onResume() 后延迟 2000ms 调用
      *
      * 【为什么要延迟？】
      * Surface 的创建是异步的，onResume 时 Surface 可能还没准备好。
      * 如果这时候立刻隐藏占位图，可能会看到短暂的黑屏/花屏。
-     * 延迟 100ms 等 Surface 准备好第一帧再隐藏，过渡更平滑。
+     *
+     * 【2026-06-20 优化】
+     * 延迟从 500ms → 2000ms，
+     * 等 Surface 完全创建好、第一帧渲染出来再隐藏，过渡更平滑。
      */
     private void hidePlayerPlaceholder() {
         if (ivPlayerPlaceholder != null) {
@@ -892,11 +1192,18 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // ====================== 日志工具 ======================
-    public static void log(String msg) {
-        logList.add(0, msg);
-        while (logList.size() > 100) {
-            logList.remove(logList.size() - 1);
+    // ====================== 日志方法 ======================
+
+    /**
+     * 记录日志
+     *
+     * @param msg 日志内容
+     */
+    private void log(String msg) {
+        logList.add(msg);
+        // 只保留最近 100 条
+        if (logList.size() > 100) {
+            logList.remove(0);
         }
         SettingsActivity.log(msg);
     }

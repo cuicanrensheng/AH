@@ -200,6 +200,25 @@ public class SettingsActivity extends AppCompatActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+    // ====================================================================
+    // ✅ 全面屏设置（隐藏状态栏 + 导航栏）
+    // ====================================================================
+    // 【为什么还要加这个？】
+    // 透明主题的 windowFullscreen 有时候不生效，
+    // 用代码设置 System UI Visibility 更保险。
+    //
+    // 【效果】
+    // 1. 隐藏状态栏（顶部）
+    // 2. 隐藏导航栏（底部虚拟按键）
+    // 3. 内容延伸到刘海/挖孔区域
+    // 4. 和主页面完全一样的显示效果
+    int uiOptions = View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+            | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+            | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+            | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION       // 隐藏导航栏
+            | View.SYSTEM_UI_FLAG_FULLSCREEN            // 隐藏状态栏
+            | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY;     // 沉浸式，滑动后自动隐藏
+    getWindow().getDecorView().setSystemUiVisibility(uiOptions);
         // ===== 窗口设置 =====
         // 保持屏幕常亮
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);

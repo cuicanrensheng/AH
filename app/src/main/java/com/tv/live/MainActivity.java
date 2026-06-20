@@ -38,26 +38,27 @@ import java.util.List;
  * 3. 按键事件分发
  * 4. 播放器视图绑定
  *
- * 【2026-06-20 修复：换台反转失效 + 详细操作日志】
- * 【问题原因】
- * 之前反转逻辑只在 handleDirectionKey() 里，
- * KeyEventManager 等其他切台入口直接调用 playPrev()/playNext()，
- * 不考虑反转设置，导致反转在某些场景下失效，而且没有日志很难排查。
+ * 【2026-06-20 新增：接入 TvRemoteManager 统一遥控器管理】
+ * 【集成说明】
+ * 1. 创建 TvRemoteManager 实例，统一管理所有遥控器按键
+ * 2. 根据面板状态自动切换模式（播放模式 / 频道面板模式）
+ * 3. 所有按键都走 remoteManager.dispatchKeyEvent() 统一入口
+ * 4. 通过回调接口调用现有的业务逻辑
  *
- * 【解决方案】
- * 1. 在 ChannelPanelController 里统一管理反转逻辑
- * 2. 新增 switchUp() / switchDown() 带反转的统一入口
- * 3. handleDirectionKey() 改用统一入口
- * 4. loadSettings() 同步反转设置到 ChannelPanelController
- * 5. 所有切台入口都加上详细的操作日志
+ * 【遥控器操作】
+ * 播放模式：
+ * - ↑/↓：切换频道（带反转）
+ * - OK/左右键：切换频道面板
+ * - 菜单：打开设置
+ * - 数字键：数字选台
  *
- * 【日志效果】
- * 在设置页面的"操作日志"里可以看到完整的切台流程：
- * 1. 按键是从哪个入口触发的（handleDirectionKey / KeyEventManager）
- * 2. 反转状态是什么
- * 3. 实际切台方向是什么
- * 4. 从哪个频道切到哪个频道
- * 方便分析反转为什么失效。
+ * 频道面板模式：
+ * - ↑/↓：列表上下移动
+ * - ←/→：切换列（分组/频道/节目单）
+ * - OK：选中当前项
+ * - 返回：返回/关闭面板
+ * - 菜单：关闭面板
+ * - 数字键：数字选台
  */
 public class MainActivity extends AppCompatActivity {
 
@@ -95,6 +96,30 @@ public class MainActivity extends AppCompatActivity {
     private InfoDisplayManager infoDisplayManager;
     private ChannelPanelController channelPanelController;
     private AppCoreManager appCoreManager;
+
+    // ====================================================================
+    // ✅ 新增：遥控器统一管理器
+    // ====================================================================
+
+    /**
+     * 遥控器统一管理器
+     *
+     * 【功能】
+     * 统一管理所有遥控器按键操作，支持两种模式：
+     * 1. PLAY_MODE（播放模式）- 全屏播放时
+     * 2. CHANNEL_PANEL_MODE（频道面板模式）- 面板打开时
+     *
+     * 【为什么用统一管理器？】
+     * 1. 所有按键逻辑集中管理，不分散在多个 Manager 里
+     * 2. 模式切换自动处理，不用手动判断
+     * 3. 自带完整的操作日志，方便排查问题
+     * 4. 和 SettingsActivity 用同一套体系
+     *
+     * 【什么时候切换模式？】
+     * - 打开频道面板 → 切换到 CHANNEL_PANEL_MODE
+     * - 关闭频道面板 → 切换到 PLAY_MODE
+     */
+    private TvRemoteManager remoteManager;
 
     // ====================== 状态标志 ======================
 
@@ -149,6 +174,7 @@ public class MainActivity extends AppCompatActivity {
         String customEpg = appConfig.getCustomEpgUrl();
         if (customLive != null) UrlConfig.LIVE_URL = customLive;
         if (customEpg != null) UrlConfig.EPG_URL = customEpg;
+
         log("【配置】直播源地址：" + UrlConfig.LIVE_URL);
         log("【配置】EPG地址：" + UrlConfig.EPG_URL);
 
@@ -159,6 +185,11 @@ public class MainActivity extends AppCompatActivity {
         ivPlayerPlaceholder = findViewById(R.id.iv_player_placeholder);
 
         initChannelPanelController();
+
+        // ====================================================================
+        // ✅ 新增：初始化遥控器管理器
+        // ====================================================================
+        initRemoteManager();
 
         if (mIsFirstLaunch) {
             mPanelAutoHideHandler.postDelayed(mPanelAutoHideRunnable, 3000);
@@ -187,12 +218,209 @@ public class MainActivity extends AppCompatActivity {
         log("【播放】记录上次播放索引：" + currentPlayIndex);
 
         initChannelNumberManager();
-
         initAppCoreManager();
 
         displayManager.showLoading("正在加载直播源...");
-
         appCoreManager.loadLiveAndEpg();
+    }
+
+    // ====================================================================
+    // ✅ 新增：初始化遥控器管理器
+    // ====================================================================
+
+    /**
+     * 初始化遥控器管理器
+     *
+     * 【集成说明】
+     * 1. 创建 TvRemoteManager 实例
+     * 2. 默认设置为播放模式
+     * 3. 设置回调监听器，调用现有的业务逻辑
+     * 4. 面板打开/关闭时自动切换模式
+     */
+    private void initRemoteManager() {
+        // 创建遥控器管理器
+        remoteManager = new TvRemoteManager();
+
+        // 默认播放模式
+        remoteManager.setMode(TvRemoteManager.Mode.PLAY_MODE);
+
+        // 设置回调监听器
+        remoteManager.setOnRemoteActionListener(new TvRemoteManager.OnRemoteActionListener() {
+
+            // ================== 播放模式回调 ==================
+
+            /**
+             * 上键（播放模式：上一台，带反转）
+             */
+            @Override
+            public void onPlayChannelUp() {
+                // 调用 ChannelPanelController 的统一入口，带反转
+                channelPanelController.switchUp();
+            }
+
+            /**
+             * 下键（播放模式：下一台，带反转）
+             */
+            @Override
+            public void onPlayChannelDown() {
+                // 调用 ChannelPanelController 的统一入口，带反转
+                channelPanelController.switchDown();
+            }
+
+            /**
+             * OK键（播放模式：切换面板）
+             */
+            @Override
+            public void onPlayTogglePanel() {
+                togglePanel();
+                // 切换面板后同步遥控器模式
+                syncRemoteMode();
+            }
+
+            /**
+             * 菜单键（播放模式：打开设置）
+             */
+            @Override
+            public void onPlayOpenSettings() {
+                openSettings();
+            }
+
+            /**
+             * 返回键（播放模式）
+             */
+            @Override
+            public boolean onPlayBack() {
+                // 交给系统处理（退出应用等）
+                return false;
+            }
+
+            // ================== 频道面板模式回调 ==================
+
+            /**
+             * 上键（面板模式：列表上移）
+             */
+            @Override
+            public void onPanelMoveUp() {
+                // 交给 ChannelPanelController 处理
+                channelPanelController.dispatchKeyEvent(KeyEvent.KEYCODE_DPAD_UP);
+            }
+
+            /**
+             * 下键（面板模式：列表下移）
+             */
+            @Override
+            public void onPanelMoveDown() {
+                // 交给 ChannelPanelController 处理
+                channelPanelController.dispatchKeyEvent(KeyEvent.KEYCODE_DPAD_DOWN);
+            }
+
+            /**
+             * 左键（面板模式：向左切换列）
+             */
+            @Override
+            public void onPanelMoveLeft() {
+                // 交给 ChannelPanelController 处理
+                channelPanelController.dispatchKeyEvent(KeyEvent.KEYCODE_DPAD_LEFT);
+            }
+
+            /**
+             * 右键（面板模式：向右切换列）
+             */
+            @Override
+            public void onPanelMoveRight() {
+                // 交给 ChannelPanelController 处理
+                channelPanelController.dispatchKeyEvent(KeyEvent.KEYCODE_DPAD_RIGHT);
+            }
+
+            /**
+             * OK键（面板模式：选中当前项）
+             */
+            @Override
+            public void onPanelConfirm() {
+                // 交给 ChannelPanelController 处理
+                channelPanelController.dispatchKeyEvent(KeyEvent.KEYCODE_DPAD_CENTER);
+            }
+
+            /**
+             * 返回键（面板模式：返回/关闭）
+             */
+            @Override
+            public boolean onPanelBack() {
+                // 交给 ChannelPanelController 处理
+                boolean handled = channelPanelController.handleBackPressed();
+                // 如果面板关闭了，同步遥控器模式
+                if (!channelPanelController.isPanelOpen()) {
+                    syncRemoteMode();
+                }
+                return handled;
+            }
+
+            /**
+             * 菜单键（面板模式：关闭面板）
+             */
+            @Override
+            public void onPanelMenu() {
+                channelPanelController.hidePanel();
+                syncRemoteMode();
+            }
+
+            /**
+             * 数字键（面板模式：数字选台）
+             */
+            @Override
+            public void onPanelNumber(int number) {
+                // 交给数字选台管理器处理
+                int keyCode = KeyEvent.KEYCODE_0 + number;
+                channelNumberManager.handleNumberKey(keyCode);
+            }
+
+            /**
+             * 焦点面板变化
+             */
+            @Override
+            public void onPanelFocusChanged(TvRemoteManager.PanelFocus newFocus) {
+                // 可以在这里做焦点高亮等处理
+                SettingsActivity.logOperation("【遥控】面板焦点切换：" + newFocus);
+            }
+
+            // ================== 设置模式回调（MainActivity 用不到，空实现） ==================
+
+            @Override public void onSettingsMoveUp() {}
+            @Override public void onSettingsMoveDown() {}
+            @Override public void onSettingsConfirm() {}
+            @Override public boolean onSettingsBack() { return false; }
+            @Override public void onSettingsMenu() {}
+            @Override public void onSettingsFocusChanged(int position) {}
+        });
+    }
+
+    // ====================================================================
+    // ✅ 新增：同步遥控器模式（根据面板状态）
+    // ====================================================================
+
+    /**
+     * 同步遥控器模式
+     *
+     * 【说明】
+     * 根据频道面板的打开/关闭状态，自动切换遥控器模式：
+     * - 面板打开 → CHANNEL_PANEL_MODE
+     * - 面板关闭 → PLAY_MODE
+     *
+     * 【什么时候调用？】
+     * 1. 切换面板后（togglePanel）
+     * 2. 关闭面板后（hidePanel / handleBackPressed）
+     * 3. 打开面板后（showPanel）
+     */
+    private void syncRemoteMode() {
+        if (channelPanelController != null && channelPanelController.isPanelOpen()) {
+            // 面板打开 → 频道面板模式
+            remoteManager.setMode(TvRemoteManager.Mode.CHANNEL_PANEL_MODE);
+            // 同步右侧面板状态
+            remoteManager.setRightPanelOpen(channelPanelController.isRightPanelOpen());
+        } else {
+            // 面板关闭 → 播放模式
+            remoteManager.setMode(TvRemoteManager.Mode.PLAY_MODE);
+        }
     }
 
     // ====================================================================
@@ -238,13 +466,11 @@ public class MainActivity extends AppCompatActivity {
         View panel_layout = findViewById(R.id.panel_layout);
         View ll_left_panel = findViewById(R.id.ll_left_panel);
         View ll_right_panel = findViewById(R.id.ll_right_panel);
-
-                ListView lvGroup = findViewById(R.id.lv_group);
+        ListView lvGroup = findViewById(R.id.lv_group);
         ListView lvChannelList = findViewById(R.id.lv_channel_list);
         ListView lvChannelListEpg = findViewById(R.id.lv_channel_list_epg);
         ListView lvDate = findViewById(R.id.lv_date);
         ListView lvEpg = findViewById(R.id.lv_epg);
-
         TextView btn_show_epg = findViewById(R.id.btn_show_epg);
         TextView btn_back_group = findViewById(R.id.btn_back_group);
 
@@ -349,9 +575,7 @@ public class MainActivity extends AppCompatActivity {
                     public void run() {
                         channelSourceList.clear();
                         channelSourceList.addAll(channels);
-
                         channelPanelController.setChannels(channels);
-
                         channelNumberManager.setTotalChannelCount(channels.size());
 
                         if (!appCoreManager.hasPlayedWithCache()) {
@@ -420,8 +644,6 @@ public class MainActivity extends AppCompatActivity {
 
     /**
      * 加载设置
-     *
-     * 【2026-06-20 修复：同步反转设置到 ChannelPanelController】
      */
     private void loadSettings() {
         SharedPreferences sp = getSharedPreferences("app_settings", MODE_PRIVATE);
@@ -447,7 +669,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // ====================================================================
-    // ✅ 获取反转状态（供 KeyEventManager 等外部类调用）
+    // 获取反转状态（供外部类调用）
     // ====================================================================
 
     /**
@@ -494,7 +716,6 @@ public class MainActivity extends AppCompatActivity {
 
         TVPlayerManager.LiveInfo live = mPlayerManager.getLiveInfo();
         infoDisplayManager.showInfoBar(channel, live);
-
         infoDisplayManager.showChannelNum(index + 1);
     }
 
@@ -507,6 +728,8 @@ public class MainActivity extends AppCompatActivity {
      */
     public void togglePanel() {
         channelPanelController.togglePanel();
+        // 切换面板后同步遥控器模式
+        syncRemoteMode();
     }
 
     // ====================================================================
@@ -540,39 +763,44 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
+        // 先交给遥控器管理器处理
+        if (remoteManager != null) {
+            if (remoteManager.dispatchKeyEvent(KeyEvent.KEYCODE_BACK)) {
+                return;
+            }
+        }
+
         if (channelPanelController.handleBackPressed()) {
             playerView.requestFocus();
+            // 面板关闭后同步遥控器模式
+            syncRemoteMode();
             return;
         }
 
         super.onBackPressed();
     }
 
-    // ====================== 方向键处理 ======================
+    // ====================== 方向键处理（保留，备用） ======================
 
     /**
      * 处理方向键（面板关闭时切台）
      *
-     * 【2026-06-20 修复：改用 ChannelPanelController 统一方法 + 详细日志】
+     * 【说明】
+     * 保留这个方法，作为备用。
+     * 实际按键处理已经交给 TvRemoteManager 统一管理了。
      */
     private boolean handleDirectionKey(int keyCode) {
         switch (keyCode) {
             case KeyEvent.KEYCODE_DPAD_UP:
-                // 记录入口日志：是 handleDirectionKey 处理的上键
                 SettingsActivity.logOperation("【按键】handleDirectionKey 上键 → 反转状态：" 
                         + (channel_reverse ? "开启" : "关闭"));
-                // 调用统一方法，内部自动考虑反转
                 channelPanelController.switchUp();
                 return true;
-
             case KeyEvent.KEYCODE_DPAD_DOWN:
-                // 记录入口日志：是 handleDirectionKey 处理的下键
                 SettingsActivity.logOperation("【按键】handleDirectionKey 下键 → 反转状态：" 
                         + (channel_reverse ? "开启" : "关闭"));
-                // 调用统一方法，内部自动考虑反转
                 channelPanelController.switchDown();
                 return true;
-
             case KeyEvent.KEYCODE_DPAD_CENTER:
             case KeyEvent.KEYCODE_ENTER:
                 if (channelNumberManager.isInputting()) {
@@ -581,44 +809,58 @@ public class MainActivity extends AppCompatActivity {
                 }
                 togglePanel();
                 return true;
-
             case KeyEvent.KEYCODE_DPAD_LEFT:
             case KeyEvent.KEYCODE_DPAD_RIGHT:
                 togglePanel();
                 return true;
-
             default:
                 return false;
         }
     }
 
-    // ====================== 按键分发 ======================
+    // ====================== 按键分发（核心：直接调用 TvRemoteManager） ======================
 
     /**
      * 按键事件分发
      *
+     * 【直接调用 TvRemoteManager】
+     * 所有按键都先交给 remoteManager.dispatchKeyEvent() 统一处理，
+     * 处理不了的再交给其他 Manager。
+     *
+     * 【为什么这么设计？】
+     * 1. 统一入口：所有按键都走一个地方，好管理
+     * 2. 模式自动切换：不用手动判断面板是否打开
+     * 3. 完整日志：每个按键都有操作日志
+     * 4. 向后兼容：TvRemoteManager 处理不了的，还是走原来的逻辑
+     *
      * 【按键分发优先级】
-     * 1. 数字选台（ChannelNumberManager）
-     * 2. 频道面板（ChannelPanelController）- 面板打开时
-     * 3. 方向键切台（handleDirectionKey）- 面板关闭时
-     * 4. 按键事件管理（KeyEventManager）- 其他按键
+     * 1. TvRemoteManager（统一遥控器管理器）
+     * 2. 数字选台（ChannelNumberManager）- 备用
+     * 3. 频道面板（ChannelPanelController）- 备用
+     * 4. 方向键切台（handleDirectionKey）- 备用
+     * 5. 按键事件管理（KeyEventManager）- 其他按键
      */
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         cancelPanelAutoHide();
 
-        // 1. 先处理数字选台
+        // 1. 先交给遥控器统一管理器处理
+        if (remoteManager != null && remoteManager.dispatchKeyEvent(keyCode)) {
+            return true;
+        }
+
+        // 2. 数字选台（备用，TvRemoteManager 已经处理了数字键）
         if (channelNumberManager.handleNumberKey(keyCode)) return true;
 
-        // 2. 再让频道面板处理按键
+        // 3. 频道面板（备用，TvRemoteManager 已经处理了面板按键）
         if (channelPanelController != null && channelPanelController.dispatchKeyEvent(keyCode)) {
             return true;
         }
 
-        // 3. 再处理方向键切台
+        // 4. 方向键切台（备用）
         if (handleDirectionKey(keyCode)) return true;
 
-        // 4. 最后交给按键事件管理
+        // 5. 最后交给按键事件管理
         if (keyEventManager.dispatchKey(keyCode)) return true;
 
         return super.onKeyDown(keyCode, event);
@@ -690,6 +932,9 @@ public class MainActivity extends AppCompatActivity {
                 hidePlayerPlaceholder();
             }
         }, 2000);
+
+        // 从设置页面回来后，同步遥控器模式
+        syncRemoteMode();
     }
 
     @Override
@@ -716,6 +961,9 @@ public class MainActivity extends AppCompatActivity {
         if (displayManager != null) displayManager.release();
         if (channelPanelController != null) channelPanelController.release();
         if (appCoreManager != null) appCoreManager.release();
+
+        // 释放遥控器管理器
+        remoteManager = null;
 
         mInstance = null;
     }
@@ -755,5 +1003,23 @@ public class MainActivity extends AppCompatActivity {
             logList.remove(0);
         }
         SettingsActivity.log(msg);
+    }
+
+    // ====================================================================
+    // 兼容方法：供外部获取播放器管理器
+    // ====================================================================
+
+    /**
+     * 获取播放器管理器
+     */
+    public TVPlayerManager getPlayerManager() {
+        return mPlayerManager;
+    }
+
+    /**
+     * 获取单例
+     */
+    public static MainActivity getInstance() {
+        return mInstance;
     }
 }

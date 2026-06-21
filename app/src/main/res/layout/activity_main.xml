@@ -3,43 +3,35 @@
   主页面布局
   【作用】直播应用的主页面，包含播放器、频道面板、信息栏等
   【结构】FrameLayout 帧布局，子 View 按顺序叠加显示
-
   【2026-06-19 修改：修复频道列表点击无效问题】
   给所有 ListView 加上 android:descendantFocusability="blocksDescendants"
   - 作用：阻止子 View 抢焦点，让 ListView 自己统一处理焦点和点击
-  - 原因：item_channel.xml 的根布局之前设置了 focusable="true"，
+  原因：item_channel.xml 的根布局之前设置了 focusable="true"，
           导致 ListView 的焦点管理混乱，点击事件不触发
-
   【descendantFocusability 三个值的区别】
   1. beforeDescendants：父 View 优先获取焦点（默认值）
   2. afterDescendants：子 View 优先获取焦点（如果子 View 能获取的话）
   3. blocksDescendants：父 View 阻止子 View 获取焦点，完全由父 View 自己处理
   对于 ListView，应该用 blocksDescendants，
   这样 ListView 自己统一管理焦点和点击，item 只负责显示内容。
-
   ====================================================================
   【2026-06-20 修改：去掉系统默认焦点框，解决多个光标叠加问题】
   ====================================================================
-
   【原来的问题】
   系统默认的焦点框（黄色/橙色边框）和我们自定义的选中高亮
   （Java 代码里动态设置的蓝色背景）叠加在一起，
   导致一个项上有两层高亮，看起来像有多个光标，很乱。
-
   【解决方案】
   给所有 ListView 和可聚焦的 TextView 加上：
       android:defaultFocusHighlightEnabled="false"
-
   【作用】
   去掉系统默认的焦点高亮框，只用我们自己的自定义高亮
   （Java 代码里通过 setSelected 控制的蓝色背景）。
-
   【效果】
   - 只有一种高亮，清晰明了
   - 不会有两层叠加的问题
   - 遥控器移动到哪，哪就亮（我们自己控制的高亮）
   - 手机点击哪个，哪个亮（我们自己控制的高亮）
-
   【需要加这个属性的 View】
   1. lv_group（分组列表）
   2. lv_channel_list（频道列表）
@@ -48,6 +40,23 @@
   5. lv_channel_list_epg（右侧频道列表）
   6. lv_date（日期列表）
   7. lv_epg（EPG节目列表）
+  ====================================================================
+  【2026-06-21 修改：去掉 ListView 默认的 listSelector，解决蓝色背景问题】
+  ====================================================================
+  【原来的问题】
+  ListView 自带的 listSelector（选中/焦点背景色）是蓝色的，
+  就算在 Java 代码里设置了 item 背景透明，这个 listSelector 还是会显示，
+  导致分组列表、频道列表等的焦点项总有一个蓝色背景，去不掉。
+  【解决方案】
+  给所有 ListView 加上：
+      android:listSelector="@android:color/transparent"
+  【作用】
+  把 ListView 自带的选中/焦点背景改成透明，
+  完全由我们自己在 Java 代码里控制高亮样式。
+  【和 defaultFocusHighlightEnabled 的区别】
+  - defaultFocusHighlightEnabled：控制焦点边框（黄色/橙色框）
+  - listSelector：控制选中/焦点的背景色（蓝色条）
+  两个都要去掉，才能完全由我们自己控制高亮。
 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
@@ -152,12 +161,21 @@
               系统默认的焦点框和我们自定义的选中高亮叠加在一起，
               导致有两层高亮，看起来像有多个光标，很乱。
               加上这个属性后，只用我们自己的自定义高亮（Java 代码控制）。
+
+              ✅ 【2026-06-21 新增】android:listSelector="@android:color/transparent"
+              【作用】去掉 ListView 默认的选中/焦点背景色
+              【为什么加？】
+              ListView 自带的 listSelector 是蓝色背景条，
+              就算 item 背景设成透明，这个 selector 还是会显示，
+              导致分组列表的焦点项总有一个蓝色背景，去不掉。
+              加上这个属性后，完全由 Java 代码控制高亮样式。
             -->
             <ListView
                 android:id="@+id/lv_group"
                 android:layout_width="130dp"
                 android:layout_height="match_parent"
                 android:background="@android:color/transparent"
+                android:listSelector="@android:color/transparent"
                 android:descendantFocusability="blocksDescendants"
                 android:defaultFocusHighlightEnabled="false"
                 android:paddingStart="16dp"
@@ -167,12 +185,16 @@
             <!--
               ✅ 【2026-06-20 新增】android:defaultFocusHighlightEnabled="false"
               【作用】去掉系统默认的焦点高亮框
+
+              ✅ 【2026-06-21 新增】android:listSelector="@android:color/transparent"
+              【作用】去掉 ListView 默认的选中/焦点背景色
             -->
             <ListView
                 android:id="@+id/lv_channel_list"
                 android:layout_width="200dp"
                 android:layout_height="match_parent"
                 android:background="@android:color/transparent"
+                android:listSelector="@android:color/transparent"
                 android:descendantFocusability="blocksDescendants"
                 android:defaultFocusHighlightEnabled="false"
                 android:paddingStart="8dp"
@@ -245,12 +267,16 @@
             <!--
               ✅ 【2026-06-20 新增】android:defaultFocusHighlightEnabled="false"
               【作用】去掉系统默认的焦点高亮框
+
+              ✅ 【2026-06-21 新增】android:listSelector="@android:color/transparent"
+              【作用】去掉 ListView 默认的选中/焦点背景色
             -->
             <ListView
                 android:id="@+id/lv_channel_list_epg"
                 android:layout_width="200dp"
                 android:layout_height="match_parent"
                 android:background="@android:color/transparent"
+                android:listSelector="@android:color/transparent"
                 android:descendantFocusability="blocksDescendants"
                 android:defaultFocusHighlightEnabled="false"
                 android:paddingStart="8dp"
@@ -260,12 +286,16 @@
             <!--
               ✅ 【2026-06-20 新增】android:defaultFocusHighlightEnabled="false"
               【作用】去掉系统默认的焦点高亮框
+
+              ✅ 【2026-06-21 新增】android:listSelector="@android:color/transparent"
+              【作用】去掉 ListView 默认的选中/焦点背景色
             -->
             <ListView
                 android:id="@+id/lv_date"
                 android:layout_width="60dp"
                 android:layout_height="match_parent"
                 android:background="@android:color/transparent"
+                android:listSelector="@android:color/transparent"
                 android:descendantFocusability="blocksDescendants"
                 android:defaultFocusHighlightEnabled="false"
                 android:paddingStart="8dp"
@@ -275,12 +305,16 @@
             <!--
               ✅ 【2026-06-20 新增】android:defaultFocusHighlightEnabled="false"
               【作用】去掉系统默认的焦点高亮框
+
+              ✅ 【2026-06-21 新增】android:listSelector="@android:color/transparent"
+              【作用】去掉 ListView 默认的选中/焦点背景色
             -->
             <ListView
                 android:id="@+id/lv_epg"
                 android:layout_width="360dp"
                 android:layout_height="match_parent"
                 android:background="@android:color/transparent"
+                android:listSelector="@android:color/transparent"
                 android:descendantFocusability="blocksDescendants"
                 android:defaultFocusHighlightEnabled="false"
                 android:paddingStart="8dp"
@@ -376,34 +410,15 @@
                 android:textSize="13sp" />
 
             <TextView
-                android:id="@+id/tv_current_program_name"
+                android:id="@+id/tv_program_name"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginLeft="8dp"
                 android:textColor="#FFFFFF"
-                android:textSize="13sp" />
-        </LinearLayout>
-
-        <!-- 第三行：下一个节目 -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="center_vertical"
-            android:layout_marginTop="4dp">
-
-            <TextView
-                android:id="@+id/tv_next_time_range"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:textColor="#AAAAAA"
-                android:textSize="12sp" />
-
-            <TextView
-                android:id="@+id/tv_next_program_name"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:textColor="#AAAAAA"
-                android:textSize="12sp" />
+                android:textSize="13sp"
+                android:maxLines="1"
+                android:ellipsize="end" />
         </LinearLayout>
     </LinearLayout>
+
 </FrameLayout>

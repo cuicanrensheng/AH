@@ -7,13 +7,12 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.AdapterView;
-import android.widget.BaseAdapter;
+import android.widget.ArrayAdapter;
 import android.widget.ListView;
 import android.widget.TextView;
 
 import com.tv.live.Channel;
 import com.tv.live.R;
-import com.tv.live.SettingsActivity;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -21,212 +20,250 @@ import java.util.List;
 /**
  * 频道列表管理器
  *
- * 【2026-06-21 修改：统一三种状态高亮样式（焦点优先）】
- * 【样式规则】
- * 焦点 > 选中 > 普通
- * - 焦点：白色文字 + 蓝色背景（最显眼，遥控器停在哪里）
- * - 选中：蓝色文字 + 透明背景（当前播放的频道）
- * - 普通：白色文字 + 透明背景
+ * 【职责】
+ * 统一管理频道列表的显示、选中状态、点击事件等。
+ *
+ * 【2026-06-21 优化：焦点优先样式 + 区分焦点和选中状态】
+ *
+ * 【三种状态说明】
+ * 1. 焦点状态：白色文字 + 蓝色背景（遥控器焦点所在的项，最显眼）
+ * 2. 选中状态：蓝色文字 + 透明背景（当前播放的频道）
+ * 3. 未选中状态：白色文字 + 透明背景（普通项）
+ *
+ * 【判断优先级】
+ * 焦点状态 > 选中状态 > 未选中状态
  */
 public class ChannelListManager {
-    private Context context;
-    private ListView listView;
-    private List<Channel> channelList = new ArrayList<>();
-    private ChannelAdapter adapter;
-
+    /** 频道列表 ListView */
+    private final ListView lvChannelList;
+    /** 当前选中位置（当前播放的频道） */
+    private int selectedPosition = 0;
     // ====================================================================
-    // ✅ 新增：焦点位置和选中位置分开记录
+    // ✅ 新增：焦点位置变量
     // ====================================================================
     /** 当前焦点位置（遥控器移动到的位置） */
     private int focusedPosition = 0;
-    /** 当前选中位置（当前播放的频道） */
-    private int selectedPosition = 0;
-
-    private OnChannelClickListener listener;
-
+    /** 频道点击监听器 */
     public interface OnChannelClickListener {
-        void onChannelClick(int position, Channel channel);
+        void onChannelClick(int position);
+    }
+    private OnChannelClickListener onChannelClickListener;
+
+    public void setOnChannelClickListener(OnChannelClickListener listener) {
+        this.onChannelClickListener = listener;
     }
 
-    public ChannelListManager(Context context, ListView listView) {
-        this.context = context;
-        this.listView = listView;
-        adapter = new ChannelAdapter();
-        listView.setAdapter(adapter);
-        initListeners();
-    }
+    /**
+     * 构造函数
+     *
+     * @param context 上下文
+     * @param lvChannelList 频道列表 ListView
+     */
+    public ChannelListManager(Context context, ListView lvChannelList) {
+        this.lvChannelList = lvChannelList;
+        // item 不需要获取焦点，由 ListView 统一管理
+        lvChannelList.setItemsCanFocus(false);
 
-    private void initListeners() {
         // 点击事件：点击才真正选中
-        listView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
-            @Override
-            public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
-                if (position >= 0 && position < channelList.size()) {
-                    SettingsActivity.logOperation("【频道】点击选中：" + position + " - " + channelList.get(position).getName());
-                    setSelectedPosition(position);
-                    if (listener != null) {
-                        listener.onChannelClick(position, channelList.get(position));
-                    }
-                }
+        lvChannelList.setOnItemClickListener((parent, view, position, id) -> {
+            setSelectedPosition(position);
+            if (onChannelClickListener != null) {
+                onChannelClickListener.onChannelClick(position);
             }
         });
 
-        // 选中事件：只移动焦点，不选中
-        listView.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+        // ================================================================
+        // ✅ 修改：遥控器焦点移动时只更新 focusedPosition，不更新 selectedPosition
+        // ================================================================
+        lvChannelList.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
-            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                SettingsActivity.logOperation("【频道】焦点移动：" + position);
-                // ✅ 只更新焦点位置，不更新选中位置
-                setFocusedPosition(position);
+            public void onItemSelected(AdapterView<?> parent, View view, int pos, long id) {
+                // 只更新焦点位置，不更新选中位置
+                setFocusedPosition(pos);
             }
-
             @Override
-            public void onNothingSelected(AdapterView<?> parent) {
-                // 不做处理
-            }
+            public void onNothingSelected(AdapterView<?> parent) {}
         });
     }
 
     // ====================================================================
-    // ✅ 新增：设置焦点位置
+    // ✅ 新增：焦点位置相关方法
     // ====================================================================
+    /**
+     * 设置焦点位置（遥控器移动时调用）
+     */
     public void setFocusedPosition(int position) {
-        if (position < 0 || position >= channelList.size()) return;
         this.focusedPosition = position;
-        adapter.notifyDataSetChanged();
+        if (lvChannelList.getAdapter() != null) {
+            ((ArrayAdapter<?>) lvChannelList.getAdapter()).notifyDataSetChanged();
+        }
     }
 
+    /**
+     * 获取当前焦点位置
+     */
     public int getFocusedPosition() {
         return focusedPosition;
     }
 
+    // ====================================================================
+    // 显示全部频道
+    // ====================================================================
+    /**
+     * 设置全部频道列表
+     *
+     * @param channelSourceList 全部频道列表
+     * @param currentPlayIndex 当前播放索引
+     */
+    public void setChannels(List<Channel> channelSourceList, int currentPlayIndex) {
+        if (channelSourceList == null || channelSourceList.isEmpty()) return;
+        List<String> names = new ArrayList<>();
+        for (Channel c : channelSourceList) names.add(c.getName());
+        selectedPosition = currentPlayIndex;
+        focusedPosition = currentPlayIndex;
+
+        // 使用自定义布局，显示序号 + 频道名
+        ArrayAdapter<String> adapter = new ArrayAdapter<String>(lvChannelList.getContext(),
+                R.layout.item_channel, names) {
+            @Override
+            public View getView(int position, View convertView, ViewGroup parent) {
+                // 使用自定义布局
+                if (convertView == null) {
+                    convertView = LayoutInflater.from(getContext())
+                            .inflate(R.layout.item_channel, parent, false);
+                }
+                // 找到序号和频道名称两个 TextView
+                TextView tvIndex = convertView.findViewById(R.id.tv_index);
+                TextView tvChannel = convertView.findViewById(R.id.tv_channel);
+                // 设置序号（从 1 开始）
+                tvIndex.setText(String.valueOf(position + 1));
+                // 设置频道名称
+                tvChannel.setText(getItem(position));
+                tvChannel.setTextSize(16);
+
+                // ====================================================================
+                // ✅ 2026-06-21 修改：统一三种状态样式（焦点优先）
+                // ====================================================================
+                // 判断优先级：焦点 > 选中 > 普通
+                if (position == focusedPosition) {
+                    // ── 焦点状态：白色文字 + 蓝色背景（最显眼）──
+                    tvChannel.setTextColor(Color.WHITE);
+                    tvChannel.setTypeface(null, Typeface.NORMAL);
+                    convertView.setBackgroundColor(Color.parseColor("#40A9FF"));
+                    // 序号也跟着变白色
+                    tvIndex.setTextColor(Color.WHITE);
+                } else if (position == selectedPosition) {
+                    // ── 选中状态：蓝色文字 + 透明背景（次之）──
+                    tvChannel.setTextColor(Color.parseColor("#40A9FF"));
+                    tvChannel.setTypeface(null, Typeface.NORMAL);
+                    convertView.setBackgroundColor(Color.TRANSPARENT);
+                    // 序号也跟着变蓝色
+                    tvIndex.setTextColor(Color.parseColor("#40A9FF"));
+                } else {
+                    // ── 普通状态：白色文字 + 透明背景 ──
+                    tvChannel.setTextColor(Color.WHITE);
+                    tvChannel.setTypeface(null, Typeface.NORMAL);
+                    convertView.setBackgroundColor(Color.TRANSPARENT);
+                    // 序号灰色
+                    tvIndex.setTextColor(Color.parseColor("#888888"));
+                }
+
+                return convertView;
+            }
+        };
+        lvChannelList.setAdapter(adapter);
+        lvChannelList.setSelection(selectedPosition);
+    }
+
+    // ====================================================================
+    // 按分组显示频道
+    // ====================================================================
+    /**
+     * 按分组显示频道
+     *
+     * @param channelSourceList 全部频道列表
+     * @param group 分组名称
+     * @param currentPlayIndex 当前播放索引
+     */
+    public void setChannelsByGroup(List<Channel> channelSourceList, String group, int currentPlayIndex) {
+        if (channelSourceList == null || channelSourceList.isEmpty()) return;
+        List<String> names = new ArrayList<>();
+        int realIndex = 0;
+        for (int i = 0; i < channelSourceList.size(); i++) {
+            Channel c = channelSourceList.get(i);
+            if (group == null || group.isEmpty() || group.equals(c.getGroup())) {
+                names.add(c.getName());
+                if (i == currentPlayIndex) {
+                    realIndex = names.size() - 1;
+                }
+            }
+        }
+        selectedPosition = realIndex;
+        focusedPosition = realIndex;
+
+        // 使用自定义布局，显示序号 + 频道名
+        ArrayAdapter<String> adapter = new ArrayAdapter<String>(lvChannelList.getContext(),
+                R.layout.item_channel, names) {
+            @Override
+            public View getView(int position, View convertView, ViewGroup parent) {
+                // 使用自定义布局
+                if (convertView == null) {
+                    convertView = LayoutInflater.from(getContext())
+                            .inflate(R.layout.item_channel, parent, false);
+                }
+                // 找到序号和频道名称两个 TextView
+                TextView tvIndex = convertView.findViewById(R.id.tv_index);
+                TextView tvChannel = convertView.findViewById(R.id.tv_channel);
+                // 设置序号（从 1 开始）
+                tvIndex.setText(String.valueOf(position + 1));
+                // 设置频道名称
+                tvChannel.setText(getItem(position));
+                tvChannel.setTextSize(16);
+
+                // ====================================================================
+                // ✅ 2026-06-21 修改：统一三种状态样式（焦点优先）
+                // ====================================================================
+                if (position == focusedPosition) {
+                    // ── 焦点状态：白色文字 + 蓝色背景（最显眼）──
+                    tvChannel.setTextColor(Color.WHITE);
+                    tvChannel.setTypeface(null, Typeface.NORMAL);
+                    convertView.setBackgroundColor(Color.parseColor("#40A9FF"));
+                    tvIndex.setTextColor(Color.WHITE);
+                } else if (position == selectedPosition) {
+                    // ── 选中状态：蓝色文字 + 透明背景（次之）──
+                    tvChannel.setTextColor(Color.parseColor("#40A9FF"));
+                    tvChannel.setTypeface(null, Typeface.NORMAL);
+                    convertView.setBackgroundColor(Color.TRANSPARENT);
+                    tvIndex.setTextColor(Color.parseColor("#40A9FF"));
+                } else {
+                    // ── 普通状态：白色文字 + 透明背景 ──
+                    tvChannel.setTextColor(Color.WHITE);
+                    tvChannel.setTypeface(null, Typeface.NORMAL);
+                    convertView.setBackgroundColor(Color.TRANSPARENT);
+                    tvIndex.setTextColor(Color.parseColor("#888888"));
+                }
+
+                return convertView;
+            }
+        };
+        lvChannelList.setAdapter(adapter);
+        lvChannelList.setSelection(selectedPosition);
+    }
+
+    /**
+     * 设置选中位置
+     *
+     * @param position 选中位置
+     */
     public void setSelectedPosition(int position) {
-        if (position < 0 || position >= channelList.size()) return;
-        this.selectedPosition = position;
+        selectedPosition = position;
         // 选中时也同步移动焦点到选中项
-        this.focusedPosition = position;
-        adapter.notifyDataSetChanged();
-    }
-
-    public int getSelectedPosition() {
-        return selectedPosition;
-    }
-
-    public void setChannels(List<Channel> channels, int currentIndex) {
-        channelList.clear();
-        if (channels != null) {
-            channelList.addAll(channels);
-        }
-        this.selectedPosition = Math.max(0, Math.min(currentIndex, channelList.size() - 1));
-        this.focusedPosition = this.selectedPosition;
-        adapter.notifyDataSetChanged();
-    }
-
-    public void setChannelsByGroup(List<Channel> allChannels, String groupName, int currentPlayIndex) {
-        channelList.clear();
-        if (allChannels != null && groupName != null) {
-            for (Channel c : allChannels) {
-                if (groupName.equals(c.getGroup())) {
-                    channelList.add(c);
-                }
-            }
-        }
-        // 找到当前播放频道在分组中的索引
-        int groupIndex = 0;
-        if (!channelList.isEmpty()) {
-            Channel currentChannel = null;
-            if (currentPlayIndex >= 0 && currentPlayIndex < allChannels.size()) {
-                currentChannel = allChannels.get(currentPlayIndex);
-            }
-            if (currentChannel != null) {
-                for (int i = 0; i < channelList.size(); i++) {
-                    if (channelList.get(i).getName().equals(currentChannel.getName())) {
-                        groupIndex = i;
-                        break;
-                    }
-                }
-            }
-        }
-        this.selectedPosition = groupIndex;
-        this.focusedPosition = groupIndex;
-        adapter.notifyDataSetChanged();
-    }
-
-    public void setOnChannelClickListener(OnChannelClickListener listener) {
-        this.listener = listener;
-    }
-
-    // ====================================================================
-    // 适配器
-    // ====================================================================
-    private class ChannelAdapter extends BaseAdapter {
-        @Override
-        public int getCount() {
-            return channelList.size();
-        }
-
-        @Override
-        public Object getItem(int position) {
-            return channelList.get(position);
-        }
-
-        @Override
-        public long getItemId(int position) {
-            return position;
-        }
-
-        @Override
-        public View getView(int position, View convertView, ViewGroup parent) {
-            ViewHolder holder;
-            if (convertView == null) {
-                convertView = LayoutInflater.from(context).inflate(R.layout.item_channel, parent, false);
-                holder = new ViewHolder();
-                holder.tvIndex = convertView.findViewById(R.id.tv_index);
-                holder.tvChannel = convertView.findViewById(R.id.tv_channel);
-                // 去掉系统默认焦点高亮
-                convertView.setDefaultFocusHighlightEnabled(false);
-                convertView.setTag(holder);
-            } else {
-                holder = (ViewHolder) convertView.getTag();
-            }
-
-            Channel channel = channelList.get(position);
-            holder.tvIndex.setText(String.valueOf(position + 1));
-            holder.tvChannel.setText(channel.getName());
-
-            // ====================================================================
-            // ✅ 修改：统一三种状态样式（焦点优先）
-            // ====================================================================
-            // 判断优先级：焦点 > 选中 > 普通
-            if (position == focusedPosition) {
-                // ── 焦点状态：白色文字 + 蓝色背景（最显眼）──
-                holder.tvChannel.setTextColor(Color.WHITE);
-                holder.tvIndex.setTextColor(Color.WHITE);
-                holder.tvChannel.setTypeface(Typeface.DEFAULT);
-                holder.tvIndex.setTypeface(Typeface.DEFAULT);
-                convertView.setBackgroundColor(Color.parseColor("#40A9FF"));
-            } else if (position == selectedPosition) {
-                // ── 选中状态：蓝色文字 + 透明背景（次之）──
-                holder.tvChannel.setTextColor(Color.parseColor("#40A9FF"));
-                holder.tvIndex.setTextColor(Color.parseColor("#40A9FF"));
-                holder.tvChannel.setTypeface(Typeface.DEFAULT);
-                holder.tvIndex.setTypeface(Typeface.DEFAULT);
-                convertView.setBackgroundColor(Color.TRANSPARENT);
-            } else {
-                // ── 普通状态：白色文字 + 透明背景 ──
-                holder.tvChannel.setTextColor(Color.WHITE);
-                holder.tvIndex.setTextColor(Color.WHITE);
-                holder.tvChannel.setTypeface(Typeface.DEFAULT);
-                holder.tvIndex.setTypeface(Typeface.DEFAULT);
-                convertView.setBackgroundColor(Color.TRANSPARENT);
-            }
-
-            return convertView;
-        }
-
-        class ViewHolder {
-            TextView tvIndex;
-            TextView tvChannel;
+        focusedPosition = position;
+        lvChannelList.setSelection(position);
+        if (lvChannelList.getAdapter() != null) {
+            ((ArrayAdapter<?>) lvChannelList.getAdapter()).notifyDataSetChanged();
         }
     }
+
+    public void onBackPressed() {}
 }

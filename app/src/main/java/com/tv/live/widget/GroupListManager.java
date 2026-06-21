@@ -23,16 +23,19 @@ import java.util.Set;
  * 【职责】
  * 统一管理频道分组列表的显示、选中状态、点击事件等。
  *
- * 【2026-06-21 优化：统一三种状态样式】
+ * 【2026-06-21 优化：区分焦点和选中状态】
  *
  * 【三种状态说明】
- * 1. 选中状态：蓝色文字 + 加粗 + 浅蓝色背景（当前选中的分组）
- * 2. 焦点状态：蓝色文字 + 常规 + 透明背景（遥控器焦点所在的项）
+ * 1. 选中状态：蓝色文字 + 加粗 + 浅蓝色背景（点击 OK 键后真正选中的分组）
+ * 2. 焦点状态：蓝色文字 + 常规 + 透明背景（遥控器焦点所在的项，还没点击确认）
  * 3. 未选中状态：白色文字 + 常规 + 透明背景（普通项）
  *
  * 【判断优先级】
  * 选中状态 > 焦点状态 > 未选中状态
- * 如果一个项既是选中又是焦点，显示选中样式
+ *
+ * 【交互变化】
+ * - 移动焦点：只改变焦点样式，不切换分组
+ * - 点击 OK 键：才真正选中，切换分组
  */
 public class GroupListManager {
 
@@ -47,6 +50,23 @@ public class GroupListManager {
     /** 列表适配器 */
     private ArrayAdapter<String> adapter;
 
+    /** 分组选中监听器（供外部回调） */
+    private OnGroupSelectedListener listener;
+
+    /**
+     * 分组选中监听器接口
+     */
+    public interface OnGroupSelectedListener {
+        void onGroupSelected(int position, String groupName);
+    }
+
+    /**
+     * 设置分组选中监听器
+     */
+    public void setOnGroupSelectedListener(OnGroupSelectedListener listener) {
+        this.listener = listener;
+    }
+
     /**
      * 构造函数
      *
@@ -59,11 +79,18 @@ public class GroupListManager {
         // item 不需要获取焦点，由 ListView 统一管理
         lvGroup.setItemsCanFocus(false);
         lvGroup.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
-        // 遥控器选择时同步更新选中状态
+
+        // ================================================================
+        // ✅ 修改：焦点移动时只刷新样式，不更新选中位置
+        // ================================================================
+        // 【说明】
+        // 原来的 onItemSelected 会更新 selectedPosition，导致焦点移动就变成选中状态。
+        // 现在改成只刷新列表，让 getView() 里的 view.isFocused() 生效，
+        // 这样焦点样式和选中样式就能区分开了。
         lvGroup.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int pos, long id) {
-                selectedPosition = pos;
+                // 只刷新列表，让焦点样式生效，不更新 selectedPosition
                 if (adapter != null) {
                     adapter.notifyDataSetChanged();
                 }
@@ -71,6 +98,19 @@ public class GroupListManager {
 
             @Override
             public void onNothingSelected(AdapterView<?> parent) {}
+        });
+
+        // ================================================================
+        // ✅ 新增：点击选中事件（按 OK 键时触发）
+        // ================================================================
+        // 【说明】
+        // 用户按 OK 键点击某个分组时，才真正更新选中位置，
+        // 并回调给外部，切换到该分组的频道列表。
+        lvGroup.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+            @Override
+            public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
+                setSelectedPosition(position);
+            }
         });
     }
 
@@ -96,14 +136,14 @@ public class GroupListManager {
                 tv.setPadding(20, 15, 20, 15);
 
                 // ====================================================================
-                // ✅ 2026-06-21 优化：统一三种状态样式
+                // ✅ 2026-06-21 优化：区分三种状态样式
                 // ====================================================================
 
                 if (position == selectedPosition) {
                     // ================================================================
                     // ✅ 选中状态：蓝色文字 + 加粗 + 浅蓝色背景
                     // ================================================================
-                    // 【说明】当前选中的分组，最明显的样式
+                    // 【说明】点击 OK 键真正选中的分组，最明显的样式
                     tv.setTextColor(Color.parseColor("#40A9FF"));
                     tv.setTypeface(null, Typeface.BOLD);
                     tv.setBackgroundColor(0x3340A9FF);
@@ -147,10 +187,16 @@ public class GroupListManager {
     public void setSelectedPosition(int position) {
         if (groupList == null || adapter == null) return;
         if (position < 0 || position >= groupList.size()) return;
+
         selectedPosition = position;
         lvGroup.setItemChecked(position, true);
         lvGroup.setSelection(position);
         adapter.notifyDataSetChanged();
+
+        // 回调通知外部，分组选中了
+        if (listener != null) {
+            listener.onGroupSelected(position, groupList.get(position));
+        }
     }
 
     /**

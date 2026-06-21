@@ -21,6 +21,7 @@ import com.tv.live.EpgManager;
 import com.tv.live.MainActivity;
 import com.tv.live.R;
 import com.tv.live.SettingsActivity;
+import com.tv.live.manager.PanelStyleManager;
 
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -44,15 +45,21 @@ import java.util.Set;
  * 4. 标记当前播放中的节目
  * 5. 管理 EPG 列表的显示和更新
  *
- * 【2026-06-21 优化：焦点优先样式 + 区分焦点和选中状态】
+ * 【2026-06-21 优化：接入 PanelStyleManager 统一管理样式】
+ * 【修改内容】
+ * 1. 样式不再硬编码在这个文件里，统一调用 PanelStyleManager
+ * 2. 注册模式变化监听器，遥控器/触屏模式切换时自动刷新
+ * 3. 以后改样式只改 PanelStyleManager.java 就行，不用改这个文件
  *
- * 【三种状态说明】
- * 1. 焦点状态：白色文字 + 蓝色背景（遥控器焦点所在的项，最显眼）
- * 2. 选中状态：蓝色文字 + 透明背景（当前播放中的节目）
- * 3. 未选中状态：白色文字 + 透明背景（普通项）
+ * 【两种模式说明】
+ * 1. 遥控器模式：
+ *    - 焦点：白色文字 + 浅蓝色背景（最显眼）
+ *    - 选中：蓝色文字 + 透明背景（次之，当前播放中的节目）
+ *    - 普通：白色文字 + 透明背景
  *
- * 【判断优先级】
- * 焦点状态 > 选中状态 > 未选中状态
+ * 2. 触屏模式：
+ *    - 选中：白色文字 + 深蓝色背景（明显的选中效果）
+ *    - 普通：白色文字 + 透明背景
  *
  * 【2026-06-21 优化：日志分类】
  * 【优化内容】
@@ -60,7 +67,7 @@ import java.util.Set;
  * 2. UI 更新相关的日志 → 操作日志（SettingsActivity.logOperation）
  * 3. 两种日志分开，互不混淆
  */
-public class EpgManagerWrapper {
+public class EpgManagerWrapper implements PanelStyleManager.OnModeChangedListener {
     private final ListView lvEpg;
     private final Context context;
     private EpgAdapter adapter;
@@ -68,39 +75,68 @@ public class EpgManagerWrapper {
     private final Map<Channel.EpgItem, String> epgEndTimeMap = new HashMap<>();
     private static final String ACTION_REMINDER = "com.tv.live.EPG_REMINDER";
     private int selectedPosition = 0;
+
     // ====================================================================
-    // ✅ 新增：焦点位置变量
+    // ✅ 焦点位置变量
     // ====================================================================
     /** 当前焦点位置（遥控器移动到的位置） */
     private int focusedPosition = 0;
+
     private int playingIndex = -1;
     private int selectDayIndex = 0;
 
     public EpgManagerWrapper(Context context, ListView lvEpg) {
         this.context = context;
         this.lvEpg = lvEpg;
+
         // ✅ 改成 false，item 不需要获取焦点
         lvEpg.setItemsCanFocus(false);
         lvEpg.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
 
         // ================================================================
-        // ✅ 修改：遥控器焦点移动时只更新 focusedPosition，不更新 selectedPosition
+        // ✅ 遥控器焦点移动时只更新 focusedPosition，不更新 selectedPosition
         // ================================================================
         lvEpg.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int pos, long id) {
                 // 只更新焦点位置，不更新选中位置
                 setFocusedPosition(pos);
+
+                // ====================================================================
+                // ✅ 2026-06-21 新增：遥控器操作 → 切换到遥控器模式
+                // ====================================================================
+                PanelStyleManager.getInstance().setMode(PanelStyleManager.MODE_REMOTE);
             }
+
             @Override
             public void onNothingSelected(AdapterView<?> parent) {}
         });
+
+        // ====================================================================
+        // ✅ 2026-06-21 新增：注册样式变化监听器
+        // ====================================================================
+        PanelStyleManager.getInstance().addOnModeChangedListener(this);
 
         registerReminderReceiver();
     }
 
     // ====================================================================
-    // ✅ 新增：焦点位置相关方法
+    // ✅ 2026-06-21 新增：模式变化回调
+    // ====================================================================
+    /**
+     * 模式变化回调
+     *
+     * @param newMode 新模式
+     */
+    @Override
+    public void onModeChanged(int newMode) {
+        if (adapter != null) {
+            adapter.notifyDataSetChanged();
+        }
+    }
+
+    // ====================================================================
+    // ✅ 焦点位置相关方法
     // ====================================================================
     /**
      * 设置焦点位置（遥控器移动时调用）
@@ -136,8 +172,10 @@ public class EpgManagerWrapper {
             SettingsActivity.log("【EPG包装】❌ refresh被调用，但currentChannel为空");
             return;
         }
+
         // ✅ 保留：数据处理开始 → 播放日志
         SettingsActivity.log("【EPG包装】🔄 开始刷新，频道：" + currentChannel.getName() + "，日期索引：" + dateIndex);
+
         playingIndex = -1;
         selectDayIndex = dateIndex;
         epgEndTimeMap.clear();
@@ -151,6 +189,7 @@ public class EpgManagerWrapper {
                 SettingsActivity.log("【EPG包装】获取EPG异常：" + e.getMessage());
                 epgList = new ArrayList<>();
             }
+
             // ✅ 保留：数据统计 → 播放日志
             SettingsActivity.log("【EPG包装】📋 原始节目数：" + epgList.size());
 
@@ -348,7 +387,8 @@ public class EpgManagerWrapper {
         };
         context.registerReceiver(receiver, new IntentFilter(ACTION_REMINDER));
     }
-        // ====================================================================
+
+    // ====================================================================
     // EPG 列表适配器
     // ====================================================================
     /**
@@ -373,75 +413,88 @@ public class EpgManagerWrapper {
             this.inflater = LayoutInflater.from(ctx);
             this.dayIndex = dayIndex;
         }
+
         @Override
-public View getView(int position, View convertView, ViewGroup parent) {
-    ViewHolder holder;
-    if (convertView == null) {
-        convertView = inflater.inflate(R.layout.item_epg, parent, false);
-        holder = new ViewHolder();
-        holder.tv_dayName = convertView.findViewById(R.id.tv_dayName);
-        holder.tv_time = convertView.findViewById(R.id.tv_time);
-        holder.tv_title = convertView.findViewById(R.id.tv_title);
-        holder.tv_action = convertView.findViewById(R.id.tv_action);
-        convertView.setTag(holder);
-    } else {
-        holder = (ViewHolder) convertView.getTag();
-    }
+        public View getView(int position, View convertView, ViewGroup parent) {
+            ViewHolder holder;
+            if (convertView == null) {
+                convertView = inflater.inflate(R.layout.item_epg, parent, false);
+                holder = new ViewHolder();
+                holder.tv_dayName = convertView.findViewById(R.id.tv_dayName);
+                holder.tv_time = convertView.findViewById(R.id.tv_time);
+                holder.tv_title = convertView.findViewById(R.id.tv_title);
+                holder.tv_action = convertView.findViewById(R.id.tv_action);
+                convertView.setTag(holder);
+            } else {
+                holder = (ViewHolder) convertView.getTag();
+            }
 
-    Channel.EpgItem item = list.get(position);
-    String endTime = epgEndTimeMap.get(item);
-    holder.tv_dayName.setText(item.dayName);
-    holder.tv_time.setText(item.time + "-" + endTime);
-    holder.tv_title.setText(item.title);
+            Channel.EpgItem item = list.get(position);
+            String endTime = epgEndTimeMap.get(item);
+            holder.tv_dayName.setText(item.dayName);
+            holder.tv_time.setText(item.time + "-" + endTime);
+            holder.tv_title.setText(item.title);
 
-    // 判断是否是选中/播放中的节目
-    boolean isPlayingOrSelected = (position == selectedPosition || item.isPlaying);
+            // 判断是否是选中/播放中的节目
+            boolean isPlayingOrSelected = (position == selectedPosition || item.isPlaying);
 
-    // ====================================================================
-    // ✅ 2026-06-21 修改：统一三种状态样式（焦点优先）
-    // ====================================================================
-    // 【判断优先级】焦点 > 选中 > 普通
+            // ====================================================================
+            // ✅ 2026-06-21 修改：统一调用 PanelStyleManager 应用样式
+            // ====================================================================
+            // 【判断优先级】焦点 > 选中 > 普通
+            if (position == focusedPosition) {
+                // ── 焦点状态 ──
+                PanelStyleManager.getInstance().applyFocusStyle(convertView);
+                // 所有文字都改成白色（焦点样式）
+                holder.tv_dayName.setTextColor(Color.WHITE);
+                holder.tv_time.setTextColor(Color.WHITE);
+                holder.tv_title.setTextColor(Color.WHITE);
+                holder.tv_title.setTypeface(null, Typeface.NORMAL);
+                holder.tv_action.setTextColor(Color.WHITE);
+            } else if (isPlayingOrSelected) {
+                // ── 选中状态 ──
+                PanelStyleManager.getInstance().applySelectedStyle(convertView);
+                // 根据模式设置文字颜色
+                if (PanelStyleManager.getInstance().isRemoteMode()) {
+                    // 遥控器模式：蓝色文字
+                    int blueColor = Color.parseColor("#40A9FF");
+                    holder.tv_dayName.setTextColor(blueColor);
+                    holder.tv_time.setTextColor(blueColor);
+                    holder.tv_title.setTextColor(blueColor);
+                    holder.tv_title.setTypeface(null, Typeface.NORMAL);
+                    holder.tv_action.setTextColor(blueColor);
+                } else {
+                    // 触屏模式：白色文字（深蓝色背景上白色最清晰）
+                    holder.tv_dayName.setTextColor(Color.WHITE);
+                    holder.tv_time.setTextColor(Color.WHITE);
+                    holder.tv_title.setTextColor(Color.WHITE);
+                    holder.tv_title.setTypeface(null, Typeface.NORMAL);
+                    holder.tv_action.setTextColor(Color.WHITE);
+                }
+            } else {
+                // ── 普通状态 ──
+                PanelStyleManager.getInstance().applyNormalStyle(convertView);
+                holder.tv_dayName.setTextColor(Color.WHITE);
+                holder.tv_time.setTextColor(Color.WHITE);
+                holder.tv_title.setTextColor(Color.WHITE);
+                holder.tv_title.setTypeface(null, Typeface.NORMAL);
+                holder.tv_action.setTextColor(Color.WHITE);
+            }
 
-    if (position == focusedPosition) {
-        // ── 焦点状态：白色文字 + 浅蓝色背景（最显眼）──
-        holder.tv_dayName.setTextColor(Color.WHITE);
-        holder.tv_time.setTextColor(Color.WHITE);
-        holder.tv_title.setTextColor(Color.WHITE);
-        holder.tv_title.setTypeface(null, Typeface.NORMAL);
-        holder.tv_action.setTextColor(Color.WHITE);
-        convertView.setBackgroundColor(0x3340A9FF); // 20% 透明度的蓝色
-    } else if (isPlayingOrSelected) {
-        // ── 选中状态：蓝色文字 + 透明背景（次之）──
-        holder.tv_dayName.setTextColor(Color.parseColor("#40A9FF"));
-        holder.tv_time.setTextColor(Color.parseColor("#40A9FF"));
-        holder.tv_title.setTextColor(Color.parseColor("#40A9FF"));
-        holder.tv_title.setTypeface(null, Typeface.NORMAL);
-        holder.tv_action.setTextColor(Color.parseColor("#40A9FF"));
-        convertView.setBackgroundColor(Color.TRANSPARENT);
-    } else {
-        // ── 普通状态：白色文字 + 透明背景 ──
-        holder.tv_dayName.setTextColor(Color.WHITE);
-        holder.tv_time.setTextColor(Color.WHITE);
-        holder.tv_title.setTextColor(Color.WHITE);
-        holder.tv_title.setTypeface(null, Typeface.NORMAL);
-        holder.tv_action.setTextColor(Color.WHITE);
-        convertView.setBackgroundColor(Color.TRANSPARENT);
-    }
+            // 操作按钮文字（回看/预约/播放中）
+            if (item.isPlaying) {
+                holder.tv_action.setText("播放中");
+                holder.tv_action.setVisibility(View.VISIBLE);
+            } else if (bookedSet.contains(item.title)) {
+                holder.tv_action.setText("已预约");
+                holder.tv_action.setVisibility(View.VISIBLE);
+            } else {
+                holder.tv_action.setText("回看");
+                holder.tv_action.setVisibility(View.VISIBLE);
+            }
 
-    // 操作按钮文字（回看/预约/播放中）
-    if (item.isPlaying) {
-        holder.tv_action.setText("播放中");
-        holder.tv_action.setVisibility(View.VISIBLE);
-    } else if (bookedSet.contains(item.title)) {
-        holder.tv_action.setText("已预约");
-        holder.tv_action.setVisibility(View.VISIBLE);
-    } else {
-        holder.tv_action.setText("回看");
-        holder.tv_action.setVisibility(View.VISIBLE);
-    }
-
-    return convertView;
-}
+            return convertView;
+        }
 
         /**
          * 更新数据
@@ -458,13 +511,21 @@ public View getView(int position, View convertView, ViewGroup parent) {
             notifyDataSetChanged();
         }
 
-
-
         class ViewHolder {
             TextView tv_dayName;
             TextView tv_time;
             TextView tv_title;
             TextView tv_action;
         }
+    }
+
+    // ====================================================================
+    // ✅ 2026-06-21 新增：资源释放
+    // ====================================================================
+    /**
+     * 释放资源
+     */
+    public void release() {
+        PanelStyleManager.getInstance().removeOnModeChangedListener(this);
     }
 }

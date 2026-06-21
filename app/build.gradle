@@ -24,26 +24,20 @@ android {
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
-    }
-
-    buildFeatures {
-        buildConfig true
-    }
-
-    defaultConfig {
-        applicationId "com.tv.live"
-        minSdk 21
-        targetSdk 34
-        versionCode 20
-        versionName "2.0"
-        multiDexEnabled true
 
         // ====================================================================
-        // ✅ 2026-06-20 新增：启用核心库脱糖（Core Library Desugaring）
+        // ✅ 2026-06-20 修改：把 coreLibraryDesugaringEnabled 移到这里
         // ====================================================================
         // 【作用】
+        // 启用核心库脱糖（Core Library Desugaring），
         // 让低版本 Android 系统（比如 Android 5.0/6.0，API 21）
         // 也能使用 Java 8 的核心库特性（比如 Lambda 表达式、Stream API 等）。
+        //
+        // 【为什么移到这里？】
+        // 不同版本的 Android Gradle Plugin（AGP），这个属性的位置不一样：
+        // - AGP 4.0+：放在 compileOptions 里（兼容性最好）
+        // - AGP 7.0+：可以放在 defaultConfig 里
+        // 放在 compileOptions 里兼容性更好，所有 AGP 4.0+ 版本都支持。
         //
         // 【为什么需要？】
         // 1. 你的 minSdk 是 21（Android 5.0），这个版本不原生支持 Java 8
@@ -59,6 +53,22 @@ android {
         // 【注意】
         // 这个配置需要配合 dependencies 里的 coreLibraryDesugaring 依赖一起使用。
         coreLibraryDesugaringEnabled true
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    defaultConfig {
+        applicationId "com.tv.live"
+        minSdk 21
+        targetSdk 34
+        versionCode 20
+        versionName "2.0"
+        multiDexEnabled true
+
+        // ❌ 注意：coreLibraryDesugaringEnabled 不在这里！
+        // 已经移到上面的 compileOptions 里了
 
         buildConfigField "int", "VERSION_CODE", "${versionCode}"
         buildConfigField "String", "VERSION_NAME", "\"${versionName}\""
@@ -116,8 +126,8 @@ dependencies {
     // 用 coreLibraryDesugaring 更高效，APK 体积更小。
     //
     // 【版本说明】
-    // 2.0.4 是比较新的稳定版本，支持 Android Gradle Plugin 7.0+。
-    // 如果你的 AGP 版本比较老，可以用 1.2.2 版本。
+    // 2.0.4 是比较新的稳定版本，支持 Android Gradle Plugin 4.0+。
+    // 如果还是有问题，可以试试 1.2.2 版本（更老但更稳定）。
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'
 
     implementation "androidx.appcompat:appcompat:1.6.1"

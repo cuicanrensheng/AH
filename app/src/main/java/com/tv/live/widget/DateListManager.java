@@ -23,12 +23,16 @@ import java.util.List;
  * 【职责】
  * 统一管理日期列表的显示、选中状态、点击事件等。
  *
- * 【2026-06-21 优化：统一三种状态样式】
+ * 【2026-06-21 优化 V2：统一三种状态样式 + 准确焦点判断】
  *
  * 【三种状态说明】
- * 1. 选中状态：蓝色文字 + 加粗 + 浅蓝色背景（当前选中的日期）
+ * 1. 选中状态：蓝色文字 + 加粗 + 浅蓝色背景（点击 OK 键后真正选中的日期）
  * 2. 焦点状态：蓝色文字 + 常规 + 透明背景（遥控器焦点所在的项）
  * 3. 未选中状态：白色文字 + 常规 + 透明背景（普通项）
+ *
+ * 【交互逻辑】
+ * - 移动焦点：只改变焦点样式，不切换日期
+ * - 点击 OK 键：才真正选中，切换日期
  */
 public class DateListManager {
 
@@ -36,8 +40,10 @@ public class DateListManager {
     private final ListView lvDate;
     /** 上下文 */
     private final Context context;
-    /** 当前选中位置 */
+    /** 当前选中位置（点击后才更新） */
     private int selectedPosition = 0;
+    /** 当前焦点位置（移动遥控器就更新） */
+    private int focusedPosition = 0;
     /** 日期选中监听器 */
     private OnDateSelectedListener listener;
     /** 列表适配器 */
@@ -66,16 +72,18 @@ public class DateListManager {
         // item 不需要获取焦点，由 ListView 统一管理
         lvDate.setItemsCanFocus(false);
         lvDate.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
-        // 遥控器焦点选中时同步更新位置
+
+        // ================================================================
+        // ✅ 焦点移动：只更新焦点位置，不更新选中位置
+        // ================================================================
         lvDate.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int pos, long id) {
-                selectedPosition = pos;
+                focusedPosition = pos;  // 只更新焦点位置
                 if (adapter != null) {
                     adapter.notifyDataSetChanged();
                 }
             }
-
             @Override
             public void onNothingSelected(AdapterView<?> parent) {}
         });
@@ -104,7 +112,7 @@ public class DateListManager {
             cal.add(Calendar.DAY_OF_YEAR, 1);
         }
 
-        SettingsActivity.log("【日期列表】初始化：" + dates);
+        SettingsActivity.logOperation("【日期列表】初始化：" + dates);
 
         adapter = new ArrayAdapter<String>(context, R.layout.item_date, dates) {
             @Override
@@ -112,29 +120,23 @@ public class DateListManager {
                 TextView tv = (TextView) super.getView(position, convertView, parent);
 
                 // ====================================================================
-                // ✅ 2026-06-21 优化：统一三种状态样式
+                // ✅ 2026-06-21 优化 V2：统一三种状态样式
                 // ====================================================================
 
                 if (position == selectedPosition) {
-                    // ================================================================
                     // ✅ 选中状态：蓝色文字 + 加粗 + 浅蓝色背景
-                    // ================================================================
                     tv.setTextColor(Color.parseColor("#40A9FF"));
                     tv.setTypeface(null, Typeface.BOLD);
                     tv.setBackgroundColor(0x3340A9FF);
 
-                } else if (tv.isFocused()) {
-                    // ================================================================
+                } else if (position == focusedPosition) {
                     // ✅ 焦点状态：蓝色文字 + 常规 + 透明背景
-                    // ================================================================
                     tv.setTextColor(Color.parseColor("#40A9FF"));
                     tv.setTypeface(null, Typeface.NORMAL);
                     tv.setBackgroundColor(Color.TRANSPARENT);
 
                 } else {
-                    // ================================================================
                     // ✅ 未选中状态：白色文字 + 常规 + 透明背景
-                    // ================================================================
                     tv.setTextColor(Color.WHITE);
                     tv.setTypeface(null, Typeface.NORMAL);
                     tv.setBackgroundColor(Color.TRANSPARENT);
@@ -146,18 +148,24 @@ public class DateListManager {
 
         lvDate.setAdapter(adapter);
 
-        // 点击事件
+        // ================================================================
+        // ✅ 点击选中：才更新选中位置，触发回调
+        // ================================================================
         lvDate.setOnItemClickListener((parent, view, position, id) -> {
-            selectedPosition = position;
-            adapter.notifyDataSetChanged();
-            SettingsActivity.log("【日期列表】👆 点击：位置" + position + "，" + dates.get(position));
+            setSelectedPosition(position);
+            SettingsActivity.logOperation("【日期列表】👆 点击：位置" + position + "，" + dates.get(position));
             if (listener != null) {
-                SettingsActivity.log("【日期列表】✅ 触发回调");
+                SettingsActivity.logOperation("【日期列表】✅ 触发回调");
                 listener.onDateSelected(position);
             } else {
-                SettingsActivity.log("【日期列表】❌ listener为空，未触发回调");
+                SettingsActivity.logOperation("【日期列表】❌ listener为空，未触发回调");
             }
         });
+
+        // 默认选中第一个
+        selectedPosition = 0;
+        focusedPosition = 0;
+        adapter.notifyDataSetChanged();
     }
 
     /**
@@ -167,6 +175,7 @@ public class DateListManager {
      */
     public void setSelectedPosition(int position) {
         selectedPosition = position;
+        focusedPosition = position;  // 选中后焦点也移过去
         if (adapter != null) {
             adapter.notifyDataSetChanged();
         }

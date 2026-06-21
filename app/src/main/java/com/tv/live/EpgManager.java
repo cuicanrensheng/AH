@@ -10,9 +10,7 @@ import org.xmlpull.v1.XmlPullParser;
 import org.xmlpull.v1.XmlPullParserFactory;
 
 import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
+import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
@@ -24,19 +22,20 @@ import java.util.zip.GZIPInputStream;
 /**
  * ✅ EPG节目单管理器（带缓存 + 智能匹配 + 内存优化版）
  *
- * 【2026-06-21 内存优化】
+ * 【2026-06-21 内存优化 V2】
  * 【优化原因】
- * 原来的实现会把整个 EPG 文件读到内存里，然后转 String、再转 byte 数组，
- * 峰值时内存里同时存在 4 份相同数据，大文件时容易 OOM。
+ * V1 版虽然改成了流式读写，但是自己管理文件路径，
+ * 没有复用 CacheManager 的缓存有效期逻辑，路径也不统一。
  *
- * 【优化方案】
- * 1. 下载时直接流式写入缓存文件，不全部读到内存
- * 2. 解析时直接从文件流式读取，不全部读到内存
- * 3. 内存占用减少 90% 以上，彻底解决 OOM 问题
+ * 【V2 优化方案】
+ * 1. 使用 CacheManager 的流式方法保存和读取缓存
+ * 2. 自动复用 CacheManager 的 24 小时有效期逻辑
+ * 3. 缓存路径统一，和直播源等其他缓存保持一致
+ * 4. 内存占用仍然只有几 KB，彻底解决 OOM
  *
  * 【缓存策略】
  * 1. 加载成功后，自动保存原始XML文本到本地缓存
- * 2. 缓存有效期24小时
+ * 2. 缓存有效期24小时（由 CacheManager 统一管理）
  * 3. 进入APP时先读缓存快速显示，后台再刷新最新的
  *
  * 【频道匹配策略】
@@ -57,6 +56,9 @@ public class EpgManager {
     private CacheManager cacheManager;
     // 上下文
     private Context context;
+
+    // 缓存 key
+    private static final String CACHE_KEY_EPG = "epg";
 
     /**
      * 获取单例（带Context初始化）
@@ -157,43 +159,32 @@ public class EpgManager {
     }
 
     // ====================================================================
-    // ✅ 优化版：加载EPG（流式写入 + 流式解析，彻底解决OOM）
+    // ✅ V2 优化版：加载EPG（CacheManager 流式保存 + 流式解析）
     // ====================================================================
 
     /**
-     * ✅ 加载EPG节目单（带缓存 + 内存优化版）
+     * ✅ 加载EPG节目单（带缓存 + 内存优化版 V2）
      *
-     * 【2026-06-21 内存优化】
-     * 原来：先把整个文件读到 StringBuilder → 转 String → 转 byte[] → 保存缓存 → 解析
-     * 现在：下载时直接流式写入文件 → 从文件流式解析
+     * 【V2 优化】
+     * 使用 CacheManager 的流式方法保存缓存，统一管理，自动支持有效期。
      *
      * 【流程】
-     * 1. 从网络下载，直接流式写入缓存文件（不全部读到内存）
-     * 2. 从缓存文件流式解析XML（不全部读到内存）
-     * 3. 回调通知
+     * 1. 从网络下载，解压（如果是 gz）
+     * 2. 用 CacheManager 流式保存到缓存文件
+     * 3. 从 CacheManager 流式读取缓存，解析 XML
+     * 4. 回调通知
      *
-     * 【内存对比】
-     * 原来：峰值约 64MB（16MB文件）
-     * 现在：峰值约 2-3MB（只有缓冲区大小）
+     * 【内存占用】
+     * 峰值只有几 KB（缓冲区大小），彻底解决 OOM
      */
     public void loadEpg(Runnable callback) {
         new Thread(() -> {
             HttpURLConnection conn = null;
             InputStream in = null;
-            FileOutputStream fos = null;
 
             try {
                 // ================================================================
-                // 第一步：获取缓存文件路径
-                // ================================================================
-                File cacheFile = getEpgCacheFile();
-                if (cacheFile == null) {
-                    SettingsActivity.log("【EPG】❌ 获取缓存文件路径失败");
-                    return;
-                }
-
-                // ================================================================
-                // 第二步：从网络下载，直接流式写入缓存文件
+                // 第一步：从网络下载
                 // ================================================================
                 URL url = new URL(epgUrl);
                 conn = (HttpURLConnection) url.openConnection();
@@ -207,31 +198,38 @@ public class EpgManager {
                     in = new GZIPInputStream(in);
                 }
 
-                // 流式写入文件（边下边写，不全部读到内存）
-                fos = new FileOutputStream(cacheFile);
-                byte[] buffer = new byte[8192]; // 8KB 缓冲区
-                int bytesRead;
-                long totalBytes = 0;
-                while ((bytesRead = in.read(buffer)) != -1) {
-                    fos.write(buffer, 0, bytesRead);
-                    totalBytes += bytesRead;
+                // ================================================================
+                // 第二步：用 CacheManager 流式保存到缓存
+                // ================================================================
+                // 【注意】
+                // InputStream 只能读一次，所以这里我们需要先把数据保存到缓存，
+                // 然后再从缓存读取出来解析。
+                // 虽然读了两次（一次写磁盘，一次读磁盘），但是内存占用仍然很小。
+                long savedBytes = cacheManager.saveFileCache(CACHE_KEY_EPG, in);
+                if (savedBytes <= 0) {
+                    SettingsActivity.log("【EPG】❌ 保存缓存失败");
+                    return;
                 }
-                fos.flush();
 
-                SettingsActivity.log("【EPG】下载完成，大小：" + (totalBytes / 1024) + " KB");
-                SettingsActivity.log("【EPG】缓存已保存到：" + cacheFile.getAbsolutePath());
+                SettingsActivity.log("【EPG】下载完成，大小：" + (savedBytes / 1024) + " KB");
+                SettingsActivity.log("【EPG】缓存已保存（有效期24小时）");
 
                 // ================================================================
-                // 第三步：从文件流式解析XML（边读边解析，不全部读到内存）
+                // 第三步：从 CacheManager 流式读取缓存，解析 XML
                 // ================================================================
                 hasPrintedSample = false;
                 channelEpgMap.clear();
 
-                FileInputStream fis = new FileInputStream(cacheFile);
+                InputStream cacheIs = cacheManager.getFileCacheStream(CACHE_KEY_EPG);
+                if (cacheIs == null) {
+                    SettingsActivity.log("【EPG】❌ 读取缓存失败");
+                    return;
+                }
+
                 try {
-                    parseXml(fis);
+                    parseXml(cacheIs);
                 } finally {
-                    fis.close();
+                    cacheIs.close();
                 }
 
                 SettingsActivity.log("【EPG】✅ 加载完成，共" + channelEpgMap.size() + "个频道");
@@ -241,7 +239,6 @@ public class EpgManager {
                 e.printStackTrace();
             } finally {
                 try {
-                    if (fos != null) fos.close();
                     if (in != null) in.close();
                     if (conn != null) conn.disconnect();
                 } catch (Exception ignored) {}
@@ -254,32 +251,35 @@ public class EpgManager {
     }
 
     // ====================================================================
-    // ✅ 优化版：从缓存加载EPG（流式解析）
+    // ✅ V2 优化版：从缓存加载EPG（CacheManager 流式读取）
     // ====================================================================
 
     /**
      * 从缓存加载EPG（内存优化版）
      * 用于进入APP时快速显示
      *
+     * 【说明】
+     * 使用 CacheManager 的流式读取方法，
+     * CacheManager 会自动判断缓存是否过期（24小时）。
+     *
      * @return 是否加载成功
      */
     public boolean loadEpgFromCache() {
         try {
-            File cacheFile = getEpgCacheFile();
-            if (cacheFile == null || !cacheFile.exists()) {
-                return false;
+            // 用 CacheManager 的流式方法读取，自动判断有效期
+            InputStream cacheIs = cacheManager.getFileCacheStream(CACHE_KEY_EPG);
+            if (cacheIs == null) {
+                return false; // 缓存不存在或已过期
             }
 
             SettingsActivity.log("【EPG】从缓存加载...");
             hasPrintedSample = false;
             channelEpgMap.clear();
 
-            // 直接从文件流式解析，不全部读到内存
-            FileInputStream fis = new FileInputStream(cacheFile);
             try {
-                parseXml(fis);
+                parseXml(cacheIs);
             } finally {
-                fis.close();
+                cacheIs.close();
             }
 
             SettingsActivity.log("【EPG】缓存加载完成，共" + channelEpgMap.size() + "个频道");
@@ -288,35 +288,6 @@ public class EpgManager {
         } catch (Exception e) {
             SettingsActivity.log("【EPG】缓存加载失败：" + e.getMessage());
             return false;
-        }
-    }
-
-    // ====================================================================
-    // ✅ 辅助方法：获取EPG缓存文件
-    // ====================================================================
-
-    /**
-     * 获取EPG缓存文件
-     *
-     * 【说明】
-     * 优先使用 CacheManager 的缓存目录，
-     * 如果获取失败就用应用自己的缓存目录。
-     *
-     * @return 缓存文件对象
-     */
-    private File getEpgCacheFile() {
-        try {
-            // 尝试从 CacheManager 获取缓存目录
-            // （如果 CacheManager 有公开的 getCacheDir 方法的话）
-            // 这里直接用应用的缓存目录，更可靠
-            File cacheDir = new File(context.getFilesDir(), "epg_cache");
-            if (!cacheDir.exists()) {
-                cacheDir.mkdirs();
-            }
-            return new File(cacheDir, "epg.xml");
-        } catch (Exception e) {
-            SettingsActivity.log("【EPG】获取缓存目录失败：" + e.getMessage());
-            return null;
         }
     }
 

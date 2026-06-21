@@ -34,13 +34,13 @@ import java.util.Map;
  * 播放器管理类（单例模式）
  * 基于ExoPlayer封装，提供直播播放、状态监听、画质切换、Header设置等功能
  *
- * 【防卡优化版 + 切台优化版 + 真实数据版 + 多平台增强版】
+ * 【防卡优化版 + 切台优化版 + 真实数据版 + UA增强版】
  * 1. 增大缓冲（从15秒→50秒），抗网络波动
  * 2. 检测播放卡住，自动重新加载
  * 3. 支持硬解码/软解码切换
  * 4. 切台保持最后一帧，避免黑屏
  * 5. 显示真实画质、音频、码率
- * 6. ✅ 2026-06-21 新增：浏览器 UA + 多平台自动识别 + 智能 Referer
+ * 6. ✅ 2026-06-21 修改：User-Agent 改成浏览器 UA，兼容更多直播源
  */
 public class TVPlayerManager {
     private static final String TAG = "TVPlayerLog";
@@ -90,20 +90,6 @@ public class TVPlayerManager {
     // ====================================================================
     private static final String BROWSER_USER_AGENT = 
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
-
-    // ====================================================================
-    // ✅ 2026-06-21 新增：各平台 Referer 配置
-    // ====================================================================
-    private static final String REFERER_HUYA = "https://www.huya.com/";
-    private static final String REFERER_DOUYU = "https://www.douyu.com/";
-    private static final String REFERER_DOUYIN = "https://live.douyin.com/";
-    private static final String REFERER_BILIBILI = "https://live.bilibili.com/";
-    private static final String REFERER_KUAISHOU = "https://live.kuaishou.com/";
-    private static final String REFERER_IQIYI = "https://www.iqiyi.com/";
-    private static final String REFERER_TENCENT = "https://v.qq.com/";
-    private static final String REFERER_YOUKU = "https://www.youku.com/";
-    private static final String REFERER_MIGU = "https://www.miguvideo.com/";
-    private static final String REFERER_CCTV = "https://tv.cctv.com/";
 
     /**
      * 直播信息实体类
@@ -260,7 +246,8 @@ public class TVPlayerManager {
             @Override
             public void onPlayerError(PlaybackException error) {
                 Log.e(TAG, "播放异常: " + error.getMessage());
-                Log.e(TAG, "错误类型: " + error.errorCode);
+                // ✅ 打印详细错误信息，方便排查
+                Log.e(TAG, "错误码: " + error.errorCode);
                 if (error.getCause() != null) {
                     Log.e(TAG, "根本原因: " + error.getCause().getMessage());
                 }
@@ -434,162 +421,45 @@ public class TVPlayerManager {
     }
 
     // ====================================================================
-    // ✅ 2026-06-21 重写：多平台自动识别 + 智能请求头
+    // ✅ 2026-06-21 修改：只改了 User-Agent，其他逻辑 100% 保持原来的
     //
-    // 【支持的平台】
-    // 1. 虎牙直播
-    // 2. 斗鱼直播
-    // 3. 抖音直播
-    // 4. B站直播
-    // 5. 快手直播
-    // 6. 爱奇艺
-    // 7. 腾讯视频
-    // 8. 优酷
-    // 9. 咪咕视频
-    // 10. CCTV央视
-    // 11. 其他普通源（默认）
+    // 【为什么不改 Referer 逻辑？】
+    // 因为很多源是通过第三方解析接口的（比如 huya.php），URL 里不包含 huya.com
+    // 如果只判断域名，会漏掉这些源，导致不加 Referer 而播放失败
+    // 所以保持原来的逻辑：默认都加虎牙 Referer，最稳妥
     // ====================================================================
     private Map<String, String> getHeaders(String url) {
         Map<String, String> headers = new HashMap<>();
 
-        // ✅ 1. 统一用浏览器 User-Agent（最重要！）
+        // ✅ 只改了这一行：把 "ExoPlayer" 改成浏览器 UA
         headers.put("User-Agent", BROWSER_USER_AGENT);
 
-        // ✅ 2. 标准浏览器请求头
         headers.put("Accept", "*/*");
-        headers.put("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8");
         headers.put("Connection", "keep-alive");
         headers.put("Icy-MetaData", "1");
 
-        // ✅ 3. 多平台自动识别，设置对应 Referer
-        String platform = detectPlatform(url);
-        String referer = getRefererForPlatform(platform);
-        
-        if (referer != null) {
-            headers.put("Referer", referer);
-            Log.d(TAG, "识别到平台：" + platform + "，设置 Referer");
-        } else {
-            Log.d(TAG, "普通直播源，不设置 Referer");
+        boolean isHuya = url.contains("huya.com") || url.contains("huya.cn");
+        boolean isDouyu = url.contains("douyu.com") || url.contains("douyucdn.cn");
+
+        if (isHuya) {
+            headers.put("Referer", "https://www.huya.com/");
+            Log.d(TAG, "虎牙直播，设置虎牙Referer");
+        }
+        else if (isDouyu) {
+            headers.put("Referer", "https://www.douyu.com/");
+            Log.d(TAG, "斗鱼直播，设置斗鱼Referer");
+        }
+        else {
+            // ✅ 保持原来的逻辑：其他源默认也加虎牙 Referer（最稳妥）
+            headers.put("Referer", "https://www.huya.com/");
         }
 
-        // ✅ 4. 部分平台需要特殊的 Origin 头
-        String origin = getOriginForPlatform(platform);
-        if (origin != null) {
-            headers.put("Origin", origin);
-        }
-
-        // 5. Cookie
         String cookies = CookieManager.getInstance().getCookie(url);
         if (cookies != null) {
             headers.put("Cookie", cookies);
         }
 
         return headers;
-    }
-
-    // ====================================================================
-    // ✅ 平台识别：根据 URL 判断是哪个平台
-    // ====================================================================
-    private String detectPlatform(String url) {
-        if (url == null) return "unknown";
-        String lowerUrl = url.toLowerCase();
-
-        // 虎牙
-        if (lowerUrl.contains("huya.com") || lowerUrl.contains("huya.cn")) {
-            return "huya";
-        }
-        // 斗鱼
-        if (lowerUrl.contains("douyu.com") || lowerUrl.contains("douyucdn.cn")) {
-            return "douyu";
-        }
-        // 抖音
-        if (lowerUrl.contains("douyin.com") || lowerUrl.contains("douyincdn.com") 
-                || lowerUrl.contains("bytecdn.cn") || lowerUrl.contains("toutiao.com")) {
-            return "douyin";
-        }
-        // B站
-        if (lowerUrl.contains("bilibili.com") || lowerUrl.contains("bilivideo.com")
-                || lowerUrl.contains("hdslb.com")) {
-            return "bilibili";
-        }
-        // 快手
-        if (lowerUrl.contains("kuaishou.com") || lowerUrl.contains("kslive.com")
-                || lowerUrl.contains("ksyun.com")) {
-            return "kuaishou";
-        }
-        // 爱奇艺
-        if (lowerUrl.contains("iqiyi.com") || lowerUrl.contains("qiyi.com")
-                || lowerUrl.contains("iqiyipic.com")) {
-            return "iqiyi";
-        }
-        // 腾讯视频
-        if (lowerUrl.contains("qq.com") || lowerUrl.contains("video.qq.com")
-                || lowerUrl.contains("tencentvideo.com")) {
-            return "tencent";
-        }
-        // 优酷
-        if (lowerUrl.contains("youku.com") || lowerUrl.contains("ykimg.com")) {
-            return "youku";
-        }
-        // 咪咕视频
-        if (lowerUrl.contains("miguvideo.com") || lowerUrl.contains("migu.cn")) {
-            return "migu";
-        }
-        // CCTV央视
-        if (lowerUrl.contains("cctv.com") || lowerUrl.contains("cctv.cn")
-                || lowerUrl.contains("cntv.cn")) {
-            return "cctv";
-        }
-
-        // 其他普通源
-        return "normal";
-    }
-
-    // ====================================================================
-    // ✅ 根据平台获取对应的 Referer
-    // ====================================================================
-    private String getRefererForPlatform(String platform) {
-        switch (platform) {
-            case "huya":
-                return REFERER_HUYA;
-            case "douyu":
-                return REFERER_DOUYU;
-            case "douyin":
-                return REFERER_DOUYIN;
-            case "bilibili":
-                return REFERER_BILIBILI;
-            case "kuaishou":
-                return REFERER_KUAISHOU;
-            case "iqiyi":
-                return REFERER_IQIYI;
-            case "tencent":
-                return REFERER_TENCENT;
-            case "youku":
-                return REFERER_YOUKU;
-            case "migu":
-                return REFERER_MIGU;
-            case "cctv":
-                return REFERER_CCTV;
-            default:
-                // 普通源不设置 Referer，避免加错了反效果
-                return null;
-        }
-    }
-
-    // ====================================================================
-    // ✅ 根据平台获取对应的 Origin（部分平台需要）
-    // ====================================================================
-    private String getOriginForPlatform(String platform) {
-        switch (platform) {
-            case "douyin":
-                return "https://live.douyin.com";
-            case "bilibili":
-                return "https://live.bilibili.com";
-            case "kuaishou":
-                return "https://live.kuaishou.com";
-            default:
-                return null;
-        }
     }
 
     public void play(String url) {
@@ -602,19 +472,12 @@ public class TVPlayerManager {
         playUrlInternal(url);
     }
 
-    /**
-     * 内部播放方法
-     * 
-     * 【注意】Factory 保持原来的用法，不调用不存在的方法
-     */
     private void playUrlInternal(String url) {
         try {
             if (player == null || url == null || url.trim().isEmpty()) return;
             currentUrl = url.trim();
             Log.d(TAG, "开始播放：" + currentUrl);
 
-            // ===== 创建数据源（带重定向日志版） =====
-            // 保持原来的用法，只设置 headers 和允许跨协议重定向
             RedirectLoggingHttpDataSource.Factory httpFactory =
                     new RedirectLoggingHttpDataSource.Factory();
             httpFactory.setDefaultRequestProperties(getHeaders(currentUrl));

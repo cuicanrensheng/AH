@@ -1,5 +1,7 @@
 package com.tv.live.manager;
+
 import com.tv.live.TVPlayerManager;
+
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -28,26 +30,21 @@ import java.util.List;
  * 2. 广播管理（注册/注销广播接收器、处理广播事件）
  * 3. 生命周期管理（前后台切换、播放器暂停/恢复、进入设置不暂停）
  *
- * 【拆分来源】
- * 从 MainActivity 拆分合并而来，原分散在三个地方：
- * - LiveSourceManager：直播源加载、缓存、解析
- * - BroadcastManager：广播接收器、配置刷新
- * - LifecycleManager：前后台切换、生命周期管理
- *
- * 【五层逻辑闭环】
- * 1. 状态管理层：加载状态、前后台状态、广播注册状态
- * 2. 数据筛选层：M3U 解析、EPG 筛选、缓存过滤
- * 3. 状态同步层：加载完成→UI 更新、配置刷新→重新加载
- * 4. 异常兜底层：加载失败兜底、超时保护、空数据处理
- * 5. 交互闭环层：广播触发→配置更新→数据重新加载
+ * 【2026-06-21 优化：日志分类】
+ * 【优化内容】
+ * 1. 生命周期/焦点/广播相关的日志 → 操作日志（logOperation）
+ * 2. 数据加载/解析相关的日志 → 播放日志（log）
+ * 3. 两种日志分开，互不混淆
  */
 public class AppCoreManager {
 
     // ====================== 常量 ======================
+
     /** 加载超时时间（15 秒） */
     private static final long LOAD_TIMEOUT = 15000;
 
     // ====================== 上下文与管理器 ======================
+
     private Context context;
     /** 播放器管理器 */
     private TVPlayerManager playerManager;
@@ -57,6 +54,7 @@ public class AppCoreManager {
     private CacheManager cacheManager;
 
     // ====================== 数据相关 ======================
+
     /** 全部频道列表 */
     private List<Channel> channelSourceList = new ArrayList<>();
     /** 是否已用缓存播放过（防止重复播放） */
@@ -67,6 +65,7 @@ public class AppCoreManager {
     private boolean isLoading = false;
 
     // ====================== 广播相关 ======================
+
     /** 切换控制器的广播接收器 */
     private BroadcastReceiver toggleControllerReceiver;
     /** 刷新直播源/EPG 的广播接收器 */
@@ -75,18 +74,21 @@ public class AppCoreManager {
     private boolean receiversRegistered = false;
 
     // ====================== 生命周期相关 ======================
+
     /** 是否正在打开设置页面（用于区分 onPause 场景） */
     private boolean isOpeningSettings = false;
     /** 播放器控制器是否可见 */
     private boolean isControllerVisible = false;
 
     // ====================== 回调监听器 ======================
+
     /** 数据加载监听器 */
     private OnDataLoadListener dataLoadListener;
     /** 配置刷新监听器 */
     private OnRefreshListener refreshListener;
 
     // ====================== 接口定义 ======================
+
     /**
      * 数据加载监听器
      */
@@ -131,6 +133,7 @@ public class AppCoreManager {
     }
 
     // ====================== 构造函数 ======================
+
     /**
      * 构造函数
      *
@@ -162,6 +165,7 @@ public class AppCoreManager {
      * 15 秒还没加载完自动触发超时回调，避免一直卡在加载界面
      */
     public void loadLiveAndEpg() {
+        // ✅ 保留：数据加载相关 → 播放日志
         log("【直播源】开始加载直播源...");
         isLoading = true;
 
@@ -173,6 +177,7 @@ public class AppCoreManager {
             @Override
             public void run() {
                 if (isLoading) {
+                    // ✅ 保留：数据加载相关 → 播放日志
                     log("【加载】超时，自动隐藏加载动画");
                     boolean hasData = !channelSourceList.isEmpty();
                     if (dataLoadListener != null) {
@@ -186,64 +191,59 @@ public class AppCoreManager {
         // ===== 第一步：先读缓存，快速显示 =====
         String cacheContent = cacheManager.getFileCache("live_source");
         if (cacheContent != null && !cacheContent.isEmpty()) {
+            // ✅ 保留：数据加载相关 → 播放日志
             log("【缓存】找到直播源缓存，快速显示");
             List<Channel> cacheChannels = parseLiveSource(cacheContent);
             if (cacheChannels != null && !cacheChannels.isEmpty()) {
                 // 更新频道列表
                 channelSourceList.clear();
                 channelSourceList.addAll(cacheChannels);
-
                 // 回调加载成功（来自缓存）
                 if (dataLoadListener != null) {
                     dataLoadListener.onLiveSourceLoaded(cacheChannels, true);
                 }
-
                 // 同时加载 EPG 缓存
                 loadEpgCache();
-
+                // ✅ 保留：数据加载相关 → 播放日志
                 log("【缓存】直播源缓存加载完成，频道数：" + cacheChannels.size());
             }
         }
 
         // ===== 第二步：后台网络加载最新数据 =====
+        // ✅ 保留：数据加载相关 → 播放日志
         log("【网络】后台加载最新直播源...");
         LiveSourceLoader.getInstance(context).load(new LiveSourceLoader.LoadCallback() {
             @Override
             public void onSuccess(List<Channel> channels) {
+                // ✅ 保留：数据加载相关 → 播放日志
                 log("【网络】直播源加载成功，频道总数：" + channels.size());
-
                 // 更新频道列表
                 channelSourceList.clear();
                 channelSourceList.addAll(channels);
-
                 // 取消超时
                 isLoading = false;
                 timeoutHandler.removeCallbacksAndMessages(null);
-
                 // 回调加载成功（来自网络）
                 if (dataLoadListener != null) {
                     dataLoadListener.onLiveSourceLoaded(channels, false);
                 }
-
+                // ✅ 保留：数据加载相关 → 播放日志
                 log("【网络】直播源列表已更新");
-
                 // 加载最新 EPG
                 loadEpg();
             }
 
             @Override
             public void onError(String errorMsg) {
+                // ✅ 保留：数据加载相关 → 播放日志
                 log("【网络】直播源加载失败：" + errorMsg);
-
                 // 取消超时
                 isLoading = false;
                 timeoutHandler.removeCallbacksAndMessages(null);
-
                 // 回调加载失败
                 if (dataLoadListener != null) {
                     dataLoadListener.onLiveSourceFailed(errorMsg);
                 }
-
                 // 尝试加载 EPG 缓存
                 loadEpgCache();
             }
@@ -259,6 +259,7 @@ public class AppCoreManager {
         if (dataLoadListener != null) {
             dataLoadListener.onEpgLoaded();
         }
+        // ✅ 保留：数据加载相关 → 播放日志
         log("【EPG】尝试从缓存加载...");
     }
 
@@ -266,6 +267,7 @@ public class AppCoreManager {
      * 从网络加载 EPG 节目单
      */
     private void loadEpg() {
+        // ✅ 保留：数据加载相关 → 播放日志
         log("【EPG】开始加载节目单...");
         EpgManager.getInstance(context).setEpgUrl(UrlConfig.EPG_URL);
         EpgManager.getInstance(context).loadEpg(new Runnable() {
@@ -275,6 +277,7 @@ public class AppCoreManager {
                 new Handler(Looper.getMainLooper()).post(new Runnable() {
                     @Override
                     public void run() {
+                        // ✅ 保留：数据加载相关 → 播放日志
                         log("【EPG】最新节目单加载完成");
                         if (dataLoadListener != null) {
                             dataLoadListener.onEpgLoaded();
@@ -296,23 +299,19 @@ public class AppCoreManager {
         if (TextUtils.isEmpty(content)) {
             return channels;
         }
-
         String[] lines = content.split("\n");
         String currentName = "";
         String currentGroup = "";
         String currentLogo = "";
         String currentTvgId = "";
-
         for (String line : lines) {
             line = line.trim();
-
             if (line.startsWith("#EXTINF:")) {
                 // #EXTINF 行：包含频道名称、分组、logo 等信息
                 int commaIndex = line.indexOf(",");
                 if (commaIndex > 0 && commaIndex < line.length() - 1) {
                     currentName = line.substring(commaIndex + 1).trim();
                 }
-
                 // 提取分组名称
                 int groupIndex = line.indexOf("group-title=\"");
                 if (groupIndex > 0) {
@@ -321,7 +320,6 @@ public class AppCoreManager {
                         currentGroup = line.substring(groupIndex + 13, groupEnd);
                     }
                 }
-
                 // 提取 tvg-id
                 int tvgIndex = line.indexOf("tvg-id=\"");
                 if (tvgIndex > 0) {
@@ -330,7 +328,6 @@ public class AppCoreManager {
                         currentTvgId = line.substring(tvgIndex + 8, tvgEnd);
                     }
                 }
-
             } else if (!line.startsWith("#") && !line.isEmpty()) {
                 // 播放地址行
                 String playUrl = line;
@@ -344,7 +341,7 @@ public class AppCoreManager {
                 currentTvgId = "";
             }
         }
-
+        // ✅ 保留：数据解析相关 → 播放日志
         log("【缓存】解析完成，共 " + channels.size() + " 个频道");
         return channels;
     }
@@ -409,18 +406,14 @@ public class AppCoreManager {
                     String customEpg = appConfig.getCustomEpgUrl();
                     if (customLive != null) UrlConfig.LIVE_URL = customLive;
                     if (customEpg != null) UrlConfig.EPG_URL = customEpg;
-
                     // 重置缓存播放标志，让新数据重新播放
                     hasPlayedWithCache = false;
-
                     // 回调刷新
                     if (refreshListener != null) {
                         refreshListener.onRefreshNeeded();
                     }
-
                     // 重新加载直播源和 EPG
                     loadLiveAndEpg();
-
                     SettingsActivity.logOperation("【系统】自动刷新直播源/EPG");
                 }
             }
@@ -433,10 +426,13 @@ public class AppCoreManager {
             context.registerReceiver(refreshReceiver,
                     new IntentFilter("com.tv.live.REFRESH_LIVE_AND_EPG"));
             receiversRegistered = true;
-            log("【广播】广播接收器已注册");
+
+            // ✅ 修改：广播注册 → 操作日志
+            SettingsActivity.logOperation("【广播】广播接收器已注册");
         } catch (Exception e) {
             e.printStackTrace();
-            log("【广播】广播注册失败：" + e.getMessage());
+            // ✅ 修改：广播注册失败 → 操作日志
+            SettingsActivity.logOperation("【广播】广播注册失败：" + e.getMessage());
         }
     }
 
@@ -445,7 +441,6 @@ public class AppCoreManager {
      */
     public void unregisterReceivers() {
         if (!receiversRegistered) return;
-
         try {
             if (toggleControllerReceiver != null) {
                 context.unregisterReceiver(toggleControllerReceiver);
@@ -454,10 +449,13 @@ public class AppCoreManager {
                 context.unregisterReceiver(refreshReceiver);
             }
             receiversRegistered = false;
-            log("【广播】广播接收器已注销");
+
+            // ✅ 修改：广播注销 → 操作日志
+            SettingsActivity.logOperation("【广播】广播接收器已注销");
         } catch (Exception e) {
             e.printStackTrace();
-            log("【广播】广播注销失败：" + e.getMessage());
+            // ✅ 修改：广播注销失败 → 操作日志
+            SettingsActivity.logOperation("【广播】广播注销失败：" + e.getMessage());
         }
     }
 
@@ -485,17 +483,16 @@ public class AppCoreManager {
      */
     public boolean onPause() {
         if (isOpeningSettings) {
-            log("【主页】onPause -> 打开设置页面，继续播放");
+            // ✅ 修改：生命周期 → 操作日志
+            SettingsActivity.logOperation("【主页】onPause -> 打开设置页面，继续播放");
             return false;
         }
-
-        log("【主页】onPause -> 切到后台");
+        // ✅ 修改：生命周期 → 操作日志
+        SettingsActivity.logOperation("【主页】onPause -> 切到后台");
         SettingsActivity.logOperation("【系统】APP切到后台");
-
         if (playerManager != null) {
             playerManager.onBackground();
         }
-
         return true;
     }
 
@@ -511,17 +508,16 @@ public class AppCoreManager {
     public boolean onResume() {
         if (isOpeningSettings) {
             isOpeningSettings = false;
-            log("【主页】onResume -> 从设置页面回来");
+            // ✅ 修改：生命周期 → 操作日志
+            SettingsActivity.logOperation("【主页】onResume -> 从设置页面回来");
             return false;
         }
-
-        log("【主页】onResume -> 回到前台");
+        // ✅ 修改：生命周期 → 操作日志
+        SettingsActivity.logOperation("【主页】onResume -> 回到前台");
         SettingsActivity.logOperation("【系统】APP回到前台");
-
         if (playerManager != null) {
             playerManager.onForeground();
         }
-
         return true;
     }
 
@@ -533,10 +529,12 @@ public class AppCoreManager {
     public void onWindowFocusChanged(boolean hasFocus) {
         // 窗口焦点变化的逻辑主要是全面屏重应用
         // 这个由 DisplayManager 处理，这里只记录日志
+
+        // ✅ 修改：窗口焦点 → 操作日志（用户最关心的这个！）
         if (hasFocus) {
-            log("【主页】窗口获得焦点");
+            SettingsActivity.logOperation("【主页】窗口获得焦点");
         } else {
-            log("【主页】窗口失去焦点");
+            SettingsActivity.logOperation("【主页】窗口失去焦点");
         }
     }
 
@@ -544,20 +542,17 @@ public class AppCoreManager {
      * 页面销毁（onDestroy）
      */
     public void onDestroy() {
-        log("【主页】onDestroy -> 页面销毁");
+        // ✅ 修改：生命周期 → 操作日志
+        SettingsActivity.logOperation("【主页】onDestroy -> 页面销毁");
         SettingsActivity.logOperation("【系统】APP退出");
-
         // 注销广播
         unregisterReceivers();
-
         // 取消超时
         timeoutHandler.removeCallbacksAndMessages(null);
-
         // 释放播放器
         if (playerManager != null) {
             playerManager.release();
         }
-
         // 清空引用
         channelSourceList = null;
     }
@@ -595,13 +590,13 @@ public class AppCoreManager {
         if (liveUrl != null) UrlConfig.LIVE_URL = liveUrl;
         if (epgUrl != null) UrlConfig.EPG_URL = epgUrl;
 
+        // ✅ 保留：配置更新/数据相关 → 播放日志
         log("【远程配置】更新直播源：" + liveUrl);
         log("【远程配置】更新EPG：" + epgUrl);
-        SettingsActivity.logOperation("【远程配置】更新直播源/EPG地址");
 
+        SettingsActivity.logOperation("【远程配置】更新直播源/EPG地址");
         // 重置缓存播放标志
         hasPlayedWithCache = false;
-
         // 重新加载
         loadLiveAndEpg();
     }
@@ -633,12 +628,27 @@ public class AppCoreManager {
     // ====================================================================
 
     /**
-     * 记录日志
+     * 记录播放日志（仅数据加载/播放相关的日志才调用这个）
+     *
+     * 【说明】
+     * 这个方法只记录真正的播放/数据相关日志，会输出到"解析 & 播放日志"。
+     *
+     * 【哪些日志应该调用这个？】
+     * - 直播源加载（成功、失败、缓存）
+     * - EPG 加载
+     * - 数据解析
+     * - 配置地址更新
+     *
+     * 【哪些日志不应该调用这个？】
+     * - 页面生命周期（onCreate、onPause、onResume、onDestroy）
+     * - 窗口焦点变化
+     * - 广播注册/注销
+     * - 这些应该调用 SettingsActivity.logOperation()
      *
      * @param msg 日志内容
      */
     private void log(String msg) {
-        // 同步到 SettingsActivity 的全局日志
+        // 同步到 SettingsActivity 的播放日志
         SettingsActivity.log(msg);
     }
 

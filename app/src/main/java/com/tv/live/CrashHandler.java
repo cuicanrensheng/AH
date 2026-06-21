@@ -26,13 +26,13 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * 全局崩溃捕获器（优化版）
+ * 全局崩溃捕获器
  *
  * 【功能清单】
  * 1. ✅ 捕获应用未处理的异常
  * 2. ✅ 保存崩溃日志到本地文件（持久化，重启后还能看到）
  * 3. ✅ 记录详细设备信息（手机型号、系统版本、APP版本等）
- * 4. ✅ 崩溃后自动重启到主页（用户体验更好）
+ * 4. ✅ 崩溃页面保留 1 分钟（方便查看崩溃原因）
  * 5. ✅ 最多保留 10 个崩溃日志，自动清理旧的
  * 6. ✅ 提供读取崩溃日志的方法，供设置页面查看
  *
@@ -40,17 +40,10 @@ import java.util.Locale;
  * 在 Application 的 onCreate 中调用：
  * CrashHandler.getInstance().init(this);
  *
- * 【优化说明】
- * 原来的版本：
- * - 只保存到静态变量，进程被杀后就没了
- * - 只有异常信息，没有设备信息
- * - 崩溃后显示崩溃页面然后杀进程，体验不好
- *
- * 优化后的版本：
- * - 保存到本地文件，永久保存，随时可以查看
- * - 包含完整的设备信息，方便排查问题
- * - 崩溃后自动重启到主页，用户几乎感知不到
- * - 自动管理日志文件数量，不会占用太多空间
+ * 【自动重启说明】
+ * 默认关闭自动重启，崩溃页面显示 1 分钟后直接退出。
+ * 如果需要自动重启，可以调用：
+ * CrashHandler.getInstance().setAutoRestartEnabled(true);
  */
 public class CrashHandler implements Thread.UncaughtExceptionHandler {
 
@@ -82,25 +75,45 @@ public class CrashHandler implements Thread.UncaughtExceptionHandler {
     private static final String CRASH_FILE_SUFFIX = ".txt";
 
     // ====================================================================
-    // 崩溃日志（静态变量，兼容旧版 CrashActivity）
+    // 崩溃日志（静态变量，供 CrashActivity 读取）
     // ====================================================================
 
     /**
      * 崩溃日志（静态变量）
      *
      * 【说明】
-     * 保留这个变量是为了兼容旧版的 CrashActivity。
-     * 优化后主要用文件保存，但是静态变量也会同步更新，
-     * 这样 CrashActivity 不用改也能正常显示。
+     * CrashActivity 直接读取这个静态变量来显示崩溃信息。
+     * 同时也会保存到本地文件，持久化存储。
      */
     public static volatile String CRASH_LOG = "";
+
+    // ====================================================================
+    // 崩溃页面显示时长配置
+    // ====================================================================
+
+    /**
+     * 崩溃页面显示时长（毫秒）
+     *
+     * 【说明】
+     * 崩溃后，崩溃页面会显示这么长时间，方便用户查看崩溃原因。
+     * 时间到了之后自动关闭应用。
+     *
+     * 默认 1 分钟（60000ms）
+     */
+    private static final long CRASH_PAGE_DISPLAY_DURATION = 60 * 1000; // 1分钟
 
     // ====================================================================
     // 自动重启相关配置
     // ====================================================================
 
-    /** 是否启用自动重启（默认开启） */
-    private boolean autoRestartEnabled = true;
+    /**
+     * 是否启用自动重启（默认关闭）
+     *
+     * 【说明】
+     * 默认关闭，崩溃页面显示 1 分钟后直接退出应用。
+     * 如果需要自动重启，可以调用 setAutoRestartEnabled(true) 开启。
+     */
+    private boolean autoRestartEnabled = false;
 
     /** 重启延迟时间（毫秒），默认 1 秒 */
     private static final long RESTART_DELAY = 1000;
@@ -138,6 +151,7 @@ public class CrashHandler implements Thread.UncaughtExceptionHandler {
 
         Log.d(TAG, "全局崩溃捕获器已初始化");
         Log.d(TAG, "崩溃日志保存目录：" + getCrashDir().getAbsolutePath());
+        Log.d(TAG, "崩溃页面显示时长：" + CRASH_PAGE_DISPLAY_DURATION / 1000 + " 秒");
         Log.d(TAG, "自动重启：" + (autoRestartEnabled ? "已开启" : "已关闭"));
     }
 
@@ -152,6 +166,7 @@ public class CrashHandler implements Thread.UncaughtExceptionHandler {
      */
     public void setAutoRestartEnabled(boolean enabled) {
         this.autoRestartEnabled = enabled;
+        Log.d(TAG, "自动重启已" + (enabled ? "开启" : "关闭"));
     }
 
     // ====================================================================
@@ -163,10 +178,12 @@ public class CrashHandler implements Thread.UncaughtExceptionHandler {
      *
      * 【执行流程】
      * 1. 收集崩溃信息和设备信息
-     * 2. 保存到静态变量（兼容旧版）
+     * 2. 保存到静态变量（供 CrashActivity 显示）
      * 3. 保存到本地文件（持久化）
-     * 4. 自动重启应用（如果开启了）
-     * 5. 杀死当前进程
+     * 4. 启动崩溃页面（显示崩溃原因）
+     * 5. 等待 1 分钟（让用户查看）
+     * 6. 自动重启应用（如果开启了）
+     * 7. 杀死当前进程
      */
     @Override
     public void uncaughtException(Thread thread, Throwable ex) {
@@ -177,7 +194,7 @@ public class CrashHandler implements Thread.UncaughtExceptionHandler {
             String crashLog = buildCrashLog(thread, ex);
 
             // ================================================================
-            // 第二步：保存到静态变量（兼容旧版 CrashActivity）
+            // 第二步：保存到静态变量（供 CrashActivity 读取显示）
             // ================================================================
             CRASH_LOG = crashLog;
             Log.e(TAG, crashLog);
@@ -193,25 +210,31 @@ public class CrashHandler implements Thread.UncaughtExceptionHandler {
             try {
                 SettingsActivity.log("【崩溃】" + ex.getClass().getName() + ": " + ex.getMessage());
                 SettingsActivity.log("【崩溃】详细日志已保存到文件");
+                SettingsActivity.log("【崩溃】崩溃页面将显示 " + (CRASH_PAGE_DISPLAY_DURATION / 1000) + " 秒");
             } catch (Exception ignored) {}
 
             // ================================================================
-            // 第五步：自动重启应用（如果开启了）
+            // 第五步：启动崩溃页面（显示崩溃原因）
+            // ================================================================
+            startCrashActivity();
+
+            // ================================================================
+            // 第六步：等待 1 分钟（让用户有时间查看崩溃原因）
+            // ================================================================
+            try {
+                Thread.sleep(CRASH_PAGE_DISPLAY_DURATION);
+            } catch (InterruptedException ignored) {}
+
+            // ================================================================
+            // 第七步：自动重启应用（如果开启了）
             // ================================================================
             if (autoRestartEnabled) {
                 restartApp();
-            } else {
-                // 如果不自动重启，就启动崩溃页面（兼容旧版）
-                startCrashActivity();
             }
 
             // ================================================================
-            // 第六步：等待一下，然后杀死当前进程
+            // 第八步：杀死当前进程
             // ================================================================
-            try {
-                Thread.sleep(autoRestartEnabled ? 200 : 500);
-            } catch (InterruptedException ignored) {}
-
             Process.killProcess(Process.myPid());
             System.exit(1);
 
@@ -237,6 +260,7 @@ public class CrashHandler implements Thread.UncaughtExceptionHandler {
      * 3. APP信息：版本名、版本号、包名
      * 4. 屏幕信息：分辨率、密度
      * 5. 完整堆栈信息
+     * 6. 提示信息
      *
      * @param thread 崩溃的线程
      * @param ex 异常对象
@@ -305,6 +329,17 @@ public class CrashHandler implements Thread.UncaughtExceptionHandler {
         ex.printStackTrace(pw);
         pw.close();
         sb.append(sw.toString());
+
+        // ================================================================
+        // 6. 提示信息
+        // ================================================================
+        sb.append("\n========== 提示 ==========\n");
+        if (autoRestartEnabled) {
+            sb.append("页面将在 ").append(CRASH_PAGE_DISPLAY_DURATION / 1000).append(" 秒后自动重启应用\n");
+        } else {
+            sb.append("页面将在 ").append(CRASH_PAGE_DISPLAY_DURATION / 1000).append(" 秒后自动关闭\n");
+        }
+        sb.append("详细日志已保存到本地文件，可在设置页面查看\n");
 
         sb.append("\n========================================\n");
 
@@ -409,9 +444,8 @@ public class CrashHandler implements Thread.UncaughtExceptionHandler {
      * 使用 AlarmManager 设置一个延迟闹钟，
      * 1 秒后启动 MainActivity，这样即使进程被杀了也能重启。
      *
-     * 【为什么用 AlarmManager？】
-     * 如果直接 startActivity，然后杀进程，可能会导致启动失败。
-     * 用 AlarmManager 的话，系统会在指定时间自动启动应用，更可靠。
+     * 【注意】
+     * 默认关闭，需要手动调用 setAutoRestartEnabled(true) 开启。
      */
     private void restartApp() {
         try {
@@ -444,26 +478,26 @@ public class CrashHandler implements Thread.UncaughtExceptionHandler {
 
         } catch (Exception e) {
             Log.e(TAG, "设置自动重启失败", e);
-            // 如果自动重启设置失败，就 fallback 到崩溃页面
-            startCrashActivity();
         }
     }
 
     // ====================================================================
-    // 启动崩溃页面（兼容旧版）
+    // 启动崩溃页面
     // ====================================================================
 
     /**
-     * 启动崩溃页面（兼容旧版逻辑）
+     * 启动崩溃页面
      *
      * 【说明】
-     * 如果关闭了自动重启，就用原来的方式：启动崩溃页面。
+     * 崩溃后启动 CrashActivity，显示崩溃原因，
+     * 页面会显示 1 分钟，然后自动关闭。
      */
     private void startCrashActivity() {
         try {
             Intent intent = new Intent(context, CrashActivity.class);
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
             context.startActivity(intent);
+            Log.d(TAG, "已启动崩溃页面");
         } catch (Exception e) {
             Log.e(TAG, "启动崩溃页面失败", e);
         }

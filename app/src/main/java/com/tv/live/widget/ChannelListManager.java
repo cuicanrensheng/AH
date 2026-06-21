@@ -13,6 +13,7 @@ import android.widget.TextView;
 
 import com.tv.live.Channel;
 import com.tv.live.R;
+import com.tv.live.SettingsActivity;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -36,6 +37,10 @@ import java.util.List;
  * 【说明】
  * 收藏/最近观看列表为空时，也要更新 ListView，
  * 不然会停留在上一个分组的内容，造成混淆。
+ *
+ * 【2026-06-21 新增：排查日志】
+ * 【说明】
+ * 在关键位置加上日志，方便排查收藏和最近观看功能的问题。
  */
 public class ChannelListManager {
     /** 频道列表 ListView */
@@ -79,6 +84,9 @@ public class ChannelListManager {
      */
     public void setOnChannelLongClickListener(OnChannelLongClickListener listener) {
         this.onChannelLongClickListener = listener;
+        // ✅ 加日志：确认监听器被设置了
+        SettingsActivity.logOperation("【列表】setOnChannelLongClickListener 被调用，listener=" 
+                + (listener != null ? "已设置" : "null"));
     }
 
     /**
@@ -97,10 +105,14 @@ public class ChannelListManager {
             }
         });
 
-        // ✅ 新增：长按事件
+        // ✅ 新增：长按事件（加了日志）
         lvChannelList.setOnItemLongClickListener(new AdapterView.OnItemLongClickListener() {
             @Override
             public boolean onItemLongClick(AdapterView<?> parent, View view, int position, long id) {
+                // ✅ 日志 1：确认长按事件触发了
+                SettingsActivity.logOperation("【列表】长按事件触发，position=" + position 
+                        + ", listener=" + (onChannelLongClickListener != null ? "已设置" : "未设置"));
+                
                 if (onChannelLongClickListener != null) {
                     String channelName = null;
                     if (parent.getAdapter() != null && position < parent.getAdapter().getCount()) {
@@ -109,7 +121,12 @@ public class ChannelListManager {
                             channelName = item.toString();
                         }
                     }
-                    return onChannelLongClickListener.onChannelLongClick(channelName, position);
+                    // ✅ 日志 2：回调前
+                    SettingsActivity.logOperation("【列表】长按回调，channelName=" + channelName);
+                    boolean result = onChannelLongClickListener.onChannelLongClick(channelName, position);
+                    // ✅ 日志 3：回调后
+                    SettingsActivity.logOperation("【列表】长按回调结果=" + result);
+                    return result;
                 }
                 return false;
             }
@@ -270,6 +287,11 @@ public class ChannelListManager {
      * 即使列表为空也要更新适配器，不然会停留在上一个分组的内容。
      */
     public void setFilteredChannels(List<Channel> filteredChannels, String currentPlayChannelName) {
+        // ✅ 日志 4：确认方法被调用了
+        SettingsActivity.logOperation("【列表】setFilteredChannels 被调用，列表大小=" 
+                + (filteredChannels == null ? "null" : filteredChannels.size())
+                + ", 当前频道=" + currentPlayChannelName);
+        
         // ✅ 修复：去掉了空列表直接 return 的判断，空列表也要更新
         List<String> names = new ArrayList<>();
         int playIndex = 0;
@@ -336,6 +358,9 @@ public class ChannelListManager {
         if (names.size() > 0) {
             lvChannelList.setSelection(selectedPosition);
         }
+        
+        // ✅ 日志 5：方法执行完成
+        SettingsActivity.logOperation("【列表】setFilteredChannels 执行完成，names.size=" + names.size());
     }
 
     /**

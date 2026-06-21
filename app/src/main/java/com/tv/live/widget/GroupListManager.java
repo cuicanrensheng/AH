@@ -23,32 +23,27 @@ import java.util.Set;
  * 【职责】
  * 统一管理频道分组列表的显示、选中状态、点击事件等。
  *
- * 【2026-06-20 优化：统一高亮样式，解决多个光标问题】
+ * 【2026-06-21 优化：统一三种状态样式】
  *
- * 【原来的问题】
- * 原来有三种状态：选中状态、焦点状态、未选中状态，
- * 当焦点和选中位置不在同一个项时，就会有两个项同时亮着，
- * 看起来像有多个光标，很乱。
+ * 【三种状态说明】
+ * 1. 选中状态：蓝色文字 + 加粗 + 浅蓝色背景（当前选中的分组）
+ * 2. 焦点状态：蓝色文字 + 常规 + 透明背景（遥控器焦点所在的项）
+ * 3. 未选中状态：白色文字 + 常规 + 透明背景（普通项）
  *
- * 【优化方案】
- * 去掉"焦点状态"的单独判断，统一成两种状态：
- * 1. 高亮状态（选中=焦点，用同一种样式）
- * 2. 普通状态
+ * 【判断优先级】
+ * 选中状态 > 焦点状态 > 未选中状态
+ * 如果一个项既是选中又是焦点，显示选中样式
  */
 public class GroupListManager {
 
     /** 分组列表 ListView */
     private final ListView lvGroup;
-
     /** 上下文 */
     private final Context context;
-
     /** 分组名称列表 */
     private List<String> groupList;
-
     /** 当前选中位置 */
     private int selectedPosition = 0;
-
     /** 列表适配器 */
     private ArrayAdapter<String> adapter;
 
@@ -61,11 +56,9 @@ public class GroupListManager {
     public GroupListManager(Context context, ListView lvGroup) {
         this.context = context;
         this.lvGroup = lvGroup;
-
         // item 不需要获取焦点，由 ListView 统一管理
         lvGroup.setItemsCanFocus(false);
         lvGroup.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
-
         // 遥控器选择时同步更新选中状态
         lvGroup.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
@@ -88,7 +81,6 @@ public class GroupListManager {
      */
     public void setGroups(List<Channel> channelSourceList) {
         if (channelSourceList == null || channelSourceList.isEmpty()) return;
-
         // 提取所有分组（去重）
         Set<String> groupSet = new HashSet<>();
         for (Channel c : channelSourceList) groupSet.add(c.getGroup());
@@ -100,50 +92,47 @@ public class GroupListManager {
             public View getView(int position, View convertView, ViewGroup parent) {
                 View view = super.getView(position, convertView, parent);
                 TextView tv = view.findViewById(android.R.id.text1);
-
                 tv.setTextSize(16);
                 tv.setPadding(20, 15, 20, 15);
 
                 // ====================================================================
-                // ✅ 2026-06-20 优化：统一高亮，只有两种状态
+                // ✅ 2026-06-21 优化：统一三种状态样式
                 // ====================================================================
 
                 if (position == selectedPosition) {
-                    // ✅ 高亮状态（选中和焦点都用这一种样式）
-                    // 样式：蓝色文字 + 加粗 + 浅蓝色背景
+                    // ================================================================
+                    // ✅ 选中状态：蓝色文字 + 加粗 + 浅蓝色背景
+                    // ================================================================
+                    // 【说明】当前选中的分组，最明显的样式
                     tv.setTextColor(Color.parseColor("#40A9FF"));
                     tv.setTypeface(null, Typeface.BOLD);
                     tv.setBackgroundColor(0x3340A9FF);
+
+                } else if (view.isFocused()) {
+                    // ================================================================
+                    // ✅ 焦点状态：蓝色文字 + 常规 + 透明背景
+                    // ================================================================
+                    // 【说明】遥控器焦点所在的项，文字变蓝提示焦点位置
+                    // 背景透明，不会和选中状态冲突
+                    tv.setTextColor(Color.parseColor("#40A9FF"));
+                    tv.setTypeface(null, Typeface.NORMAL);
+                    tv.setBackgroundColor(Color.TRANSPARENT);
+
                 } else {
-                    // ✅ 普通状态
-                    // 样式：白色文字 + 常规 + 透明背景
+                    // ================================================================
+                    // ✅ 未选中状态：白色文字 + 常规 + 透明背景
+                    // ================================================================
+                    // 【说明】普通项，默认样式
                     tv.setTextColor(Color.WHITE);
                     tv.setTypeface(null, Typeface.NORMAL);
                     tv.setBackgroundColor(Color.TRANSPARENT);
                 }
-
-                /*
-                 * ❌ 已删除：原来的焦点状态判断
-                 *
-                 * 原来的代码：
-                 * else if (view.isFocused()) {
-                 *     // 焦点状态：蓝色文字 + 稍深一点的蓝色背景
-                 *     ...
-                 * }
-                 *
-                 * 【为什么删除？】
-                 * 原来有三种状态，当焦点和选中位置不在同一个项时，
-                 * 就会有两个项同时亮着，看起来像有多个光标。
-                 *
-                 * 现在统一成两种状态，同一个列表里永远只有一个项亮着。
-                 */
 
                 return view;
             }
         };
 
         lvGroup.setAdapter(adapter);
-
         // 默认选中第一个
         selectedPosition = 0;
         adapter.notifyDataSetChanged();
@@ -158,7 +147,6 @@ public class GroupListManager {
     public void setSelectedPosition(int position) {
         if (groupList == null || adapter == null) return;
         if (position < 0 || position >= groupList.size()) return;
-
         selectedPosition = position;
         lvGroup.setItemChecked(position, true);
         lvGroup.setSelection(position);

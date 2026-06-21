@@ -42,6 +42,10 @@ import java.util.List;
  * 【2026-06-21 新增：排查日志】
  * 【说明】
  * 在关键位置加上日志，方便排查收藏和最近观看功能的问题。
+ *
+ * 【2026-06-21 新增：调试日志 - 频道名对比】
+ * 【说明】
+ * 加上详细的频道名对比日志，找出为什么匹配不上。
  */
 public class ChannelPanelController {
     // ====================== 常量 ======================
@@ -662,7 +666,7 @@ public class ChannelPanelController {
     }
 
     // ====================================================================
-    // ✅ 2026-06-21 新增：添加到最近观看【加了日志】
+    // ✅ 2026-06-21 新增：添加到最近观看【加了调试日志】
     // ====================================================================
     /**
      * 添加到最近观看
@@ -683,6 +687,20 @@ public class ChannelPanelController {
             int favoriteCount = 0;
             int recentCount = 0;
             List<String> favorites = appConfig.getFavoriteChannels();
+
+            // ✅ 新增：调试日志 - 看看为什么匹配不上
+            SettingsActivity.logOperation("【最近-调试】recent.size=" + recent.size() 
+                    + ", channelSourceList.size=" + channelSourceList.size());
+            if (recent.size() > 0 && channelSourceList.size() > 0) {
+                String firstRecent = recent.get(0);
+                String firstChannel = channelSourceList.get(0).getName();
+                SettingsActivity.logOperation("【最近-调试】第一个最近名：[" + firstRecent + "]");
+                SettingsActivity.logOperation("【最近-调试】第一个源频道名：[" + firstChannel + "]");
+                SettingsActivity.logOperation("【最近-调试】是否相等：" + firstRecent.equals(firstChannel));
+                SettingsActivity.logOperation("【最近-调试】最近名长度：" + firstRecent.length() 
+                        + ", 源频道名长度：" + firstChannel.length());
+            }
+
             for (String name : favorites) {
                 for (Channel c : channelSourceList) {
                     if (name.equals(c.getName())) {
@@ -712,7 +730,7 @@ public class ChannelPanelController {
     }
 
     // ====================================================================
-    // ✅ 2026-06-21 新增：长按收藏处理【加了日志】
+    // ✅ 2026-06-21 新增：长按收藏处理【加了调试日志】
     // ====================================================================
     /**
      * 处理频道长按事件（触屏模式收藏）
@@ -742,6 +760,20 @@ public class ChannelPanelController {
             int recentCount = 0;
             List<String> favorites = appConfig.getFavoriteChannels();
             List<String> recent = appConfig.getRecentChannels();
+
+            // ✅ 新增：调试日志 - 看看为什么匹配不上
+            SettingsActivity.logOperation("【收藏-调试】favorites.size=" + favorites.size() 
+                    + ", channelSourceList.size=" + channelSourceList.size());
+            if (favorites.size() > 0 && channelSourceList.size() > 0) {
+                String firstFav = favorites.get(0);
+                String firstChannel = channelSourceList.get(0).getName();
+                SettingsActivity.logOperation("【收藏-调试】第一个收藏名：[" + firstFav + "]");
+                SettingsActivity.logOperation("【收藏-调试】第一个源频道名：[" + firstChannel + "]");
+                SettingsActivity.logOperation("【收藏-调试】是否相等：" + firstFav.equals(firstChannel));
+                SettingsActivity.logOperation("【收藏-调试】收藏名长度：" + firstFav.length() 
+                        + ", 源频道名长度：" + firstChannel.length());
+            }
+
             for (String name : favorites) {
                 for (Channel c : channelSourceList) {
                     if (name.equals(c.getName())) {

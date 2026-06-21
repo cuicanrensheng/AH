@@ -27,6 +27,10 @@ import java.util.List;
  * 【2026-06-21 新增：支持筛选后的频道列表】
  * 【说明】
  * 新增 setFilteredChannels() 方法，用于显示收藏、最近观看等筛选后的列表。
+ *
+ * 【2026-06-21 新增：长按收藏/取消收藏】
+ * 【说明】
+ * 触屏模式下，长按频道项可以收藏/取消收藏该频道。
  */
 public class ChannelListManager {
     /** 频道列表 ListView */
@@ -35,6 +39,7 @@ public class ChannelListManager {
     private int selectedPosition = 0;
     /** 当前播放位置（正在播放的频道） */
     private int currentPlayIndex = 0;
+
     /** 频道点击监听器 */
     public interface OnChannelClickListener {
         void onChannelClick(int position);
@@ -43,6 +48,32 @@ public class ChannelListManager {
 
     public void setOnChannelClickListener(OnChannelClickListener listener) {
         this.onChannelClickListener = listener;
+    }
+
+    // ====================================================================
+    // ✅ 2026-06-21 新增：长按监听器
+    // ====================================================================
+    /**
+     * 频道长按监听器
+     */
+    public interface OnChannelLongClickListener {
+        /**
+         * 频道被长按了
+         *
+         * @param channelName 被长按的频道名称
+         * @param position 被长按的位置
+         * @return true 表示消费了事件
+         */
+        boolean onChannelLongClick(String channelName, int position);
+    }
+
+    private OnChannelLongClickListener onChannelLongClickListener;
+
+    /**
+     * 设置频道长按监听器
+     */
+    public void setOnChannelLongClickListener(OnChannelLongClickListener listener) {
+        this.onChannelLongClickListener = listener;
     }
 
     /**
@@ -58,6 +89,24 @@ public class ChannelListManager {
             ((ArrayAdapter<?>) parent.getAdapter()).notifyDataSetChanged();
             if (onChannelClickListener != null) {
                 onChannelClickListener.onChannelClick(position);
+            }
+        });
+
+        // ✅ 新增：长按事件
+        lvChannelList.setOnItemLongClickListener(new AdapterView.OnItemLongClickListener() {
+            @Override
+            public boolean onItemLongClick(AdapterView<?> parent, View view, int position, long id) {
+                if (onChannelLongClickListener != null) {
+                    String channelName = null;
+                    if (parent.getAdapter() != null && position < parent.getAdapter().getCount()) {
+                        Object item = parent.getAdapter().getItem(position);
+                        if (item != null) {
+                            channelName = item.toString();
+                        }
+                    }
+                    return onChannelLongClickListener.onChannelLongClick(channelName, position);
+                }
+                return false;
             }
         });
 
@@ -103,7 +152,6 @@ public class ChannelListManager {
                 } else {
                     tvIndex.setText(String.valueOf(position + 1));
                 }
-
                 tvChannel.setText(getItem(position));
                 tvChannel.setTextSize(16);
 
@@ -173,7 +221,6 @@ public class ChannelListManager {
                 } else {
                     tvIndex.setText(String.valueOf(position + 1));
                 }
-
                 tvChannel.setText(getItem(position));
                 tvChannel.setTextSize(16);
 
@@ -227,8 +274,8 @@ public class ChannelListManager {
         }
         selectedPosition = playIndex;
         this.currentPlayIndex = playIndex;
-
         final int finalPlayIndex = playIndex;
+
         ArrayAdapter<String> adapter = new ArrayAdapter<String>(lvChannelList.getContext(),
                 R.layout.item_channel, names) {
             @Override
@@ -246,7 +293,6 @@ public class ChannelListManager {
                 } else {
                     tvIndex.setText(String.valueOf(position + 1));
                 }
-
                 tvChannel.setText(getItem(position));
                 tvChannel.setTextSize(16);
 

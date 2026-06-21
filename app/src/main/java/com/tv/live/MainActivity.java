@@ -59,6 +59,19 @@ import java.util.List;
  * - 返回：返回/关闭面板
  * - 菜单：关闭面板
  * - 数字键：数字选台
+ *
+ * 【2026-06-21 修复：操作日志混进播放日志的问题】
+ * 【问题原因】
+ * 原来所有日志都调用 log() 方法，导致操作/生命周期日志也混进了"解析 & 播放日志"里。
+ * 【修复方案】
+ * 把操作/生命周期/设置相关的日志都改成调用 SettingsActivity.logOperation()，
+ * 只保留真正的播放/加载/网络相关的日志调用 log()。
+ * 【修改清单】
+ * 1. 【主页】onCreate / onDestroy → 操作日志
+ * 2. 【设置】打开设置 / 从设置返回 / 各项设置 → 操作日志
+ * 3. 【防花屏】显示/隐藏占位图 → 操作日志
+ * 4. 【播放】记录上次播放索引 → 操作日志
+ * 5. 【配置】地址 / 【缓存/网络】加载 / 【播放】频道信息 → 保留在播放日志
  */
 public class MainActivity extends AppCompatActivity {
 
@@ -151,18 +164,23 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        log("【主页】onCreate -> 页面创建");
+
+        // ====================================================================
+        // ✅ 2026-06-21 修改：生命周期日志 → 操作日志
+        // ====================================================================
+        // 【为什么改？】
+        // 页面创建属于生命周期事件，是操作日志，不应该混进播放日志里。
+        SettingsActivity.logOperation("【主页】onCreate -> 页面创建");
+
         SettingsActivity.logOperation("【系统】APP启动");
 
         mInstance = this;
-
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
 
         displayManager = new DisplayManager(this);
         displayManager.applyFullScreen();
 
         setContentView(R.layout.activity_main);
-
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
         initInfoDisplayManager();
@@ -175,6 +193,11 @@ public class MainActivity extends AppCompatActivity {
         if (customLive != null) UrlConfig.LIVE_URL = customLive;
         if (customEpg != null) UrlConfig.EPG_URL = customEpg;
 
+        // ====================================================================
+        // ✅ 保留：配置地址 → 播放日志
+        // ====================================================================
+        // 【为什么保留？】
+        // 直播源和 EPG 地址是播放相关的配置，属于播放日志的范畴。
         log("【配置】直播源地址：" + UrlConfig.LIVE_URL);
         log("【配置】EPG地址：" + UrlConfig.EPG_URL);
 
@@ -215,7 +238,13 @@ public class MainActivity extends AppCompatActivity {
 
         currentPlayIndex = appConfig.getLastPlayIndex();
         channelPanelController.setCurrentPlayIndex(currentPlayIndex);
-        log("【播放】记录上次播放索引：" + currentPlayIndex);
+
+        // ====================================================================
+        // ✅ 2026-06-21 修改：记录上次播放索引 → 操作日志
+        // ====================================================================
+        // 【为什么改？】
+        // 恢复上次播放的频道是启动时的操作，属于操作日志，不应该混进播放日志里。
+        SettingsActivity.logOperation("【播放】记录上次播放索引：" + currentPlayIndex);
 
         initChannelNumberManager();
         initAppCoreManager();
@@ -568,6 +597,7 @@ public class MainActivity extends AppCompatActivity {
         appCoreManager = new AppCoreManager(this, mPlayerManager, appConfig);
 
         appCoreManager.setOnDataLoadListener(new AppCoreManager.OnDataLoadListener() {
+
             @Override
             public void onLiveSourceLoaded(List<Channel> channels, boolean fromCache) {
                 runOnUiThread(new Runnable() {
@@ -587,6 +617,12 @@ public class MainActivity extends AppCompatActivity {
                         }
 
                         displayManager.hideLoading();
+
+                        // ====================================================================
+                        // ✅ 保留：直播源加载完成 → 播放日志
+                        // ====================================================================
+                        // 【为什么保留？】
+                        // 直播源加载是播放的前提，属于播放相关的日志。
                         log("【" + (fromCache ? "缓存" : "网络") + "】直播源加载完成，频道数：" + channels.size());
                     }
                 });
@@ -601,6 +637,11 @@ public class MainActivity extends AppCompatActivity {
                             displayManager.updateLoadingText("加载失败，请检查网络或稍后重试");
                             SettingsActivity.logOperation("【加载】直播源加载失败：" + errorMsg);
                         } else {
+                            // ====================================================================
+                            // ✅ 保留：使用缓存数据 → 播放日志
+                            // ====================================================================
+                            // 【为什么保留？】
+                            // 缓存数据用于播放，属于播放相关的日志。
                             log("【缓存】使用缓存数据继续播放");
                             displayManager.hideLoading();
                         }
@@ -626,7 +667,13 @@ public class MainActivity extends AppCompatActivity {
                 runOnUiThread(new Runnable() {
                     @Override
                     public void run() {
+                        // ====================================================================
+                        // ✅ 保留：加载超时 → 播放日志
+                        // ====================================================================
+                        // 【为什么保留？】
+                        // 加载超时是播放数据加载的状态，属于播放相关的日志。
                         log("【加载】超时，自动隐藏加载动画");
+
                         if (!hasData) {
                             displayManager.updateLoadingText("加载失败，请检查网络或稍后重试");
                             SettingsActivity.logOperation("【加载】直播源加载超时");
@@ -662,10 +709,15 @@ public class MainActivity extends AppCompatActivity {
             channelPanelController.setReverse(channel_reverse);
         }
 
-        log("【设置】EPG开关：" + epg_enable);
-        log("【设置】切台反转：" + channel_reverse);
-        log("【设置】数字选台：" + number_channel_enable);
-        log("【设置】自动更新源：" + auto_update_source);
+        // ====================================================================
+        // ✅ 2026-06-21 修改：设置项日志 → 操作日志
+        // ====================================================================
+        // 【为什么改？】
+        // 这些都是设置配置项，属于操作日志，不应该混进播放日志里。
+        SettingsActivity.logOperation("【设置】EPG开关：" + epg_enable);
+        SettingsActivity.logOperation("【设置】切台反转：" + channel_reverse);
+        SettingsActivity.logOperation("【设置】数字选台：" + number_channel_enable);
+        SettingsActivity.logOperation("【设置】自动更新源：" + auto_update_source);
     }
 
     // ====================================================================
@@ -703,6 +755,11 @@ public class MainActivity extends AppCompatActivity {
 
         currentPlayIndex = index;
 
+        // ====================================================================
+        // ✅ 保留：播放频道信息 → 播放日志
+        // ====================================================================
+        // 【为什么保留？】
+        // 这些都是播放相关的核心信息，应该在"解析 & 播放日志"里。
         log("========================================");
         log("【播放】频道名称：" + channel.getName());
         log("【播放】播放地址：" + channel.getPlayUrl());
@@ -711,7 +768,6 @@ public class MainActivity extends AppCompatActivity {
 
         playerStateListener.setCurrentChannelName(channel.getName());
         appConfig.setLastPlayIndex(index);
-
         mPlayerManager.playUrl(channel.getPlayUrl());
 
         TVPlayerManager.LiveInfo live = mPlayerManager.getLiveInfo();
@@ -886,7 +942,14 @@ public class MainActivity extends AppCompatActivity {
      */
     public void openSettings() {
         isOpeningSettings = true;
-        log("【设置】打开设置页面，不显示占位图");
+
+        // ====================================================================
+        // ✅ 2026-06-21 修改：打开设置页面 → 操作日志
+        // ====================================================================
+        // 【为什么改？】
+        // 打开设置页面是用户操作，属于操作日志，不应该混进播放日志里。
+        SettingsActivity.logOperation("【设置】打开设置页面，不显示占位图");
+
         appCoreManager.beforeOpenSettings();
         startActivity(new Intent(this, SettingsActivity.class));
     }
@@ -904,7 +967,12 @@ public class MainActivity extends AppCompatActivity {
         if (!isOpeningSettings) {
             showPlayerPlaceholder();
         } else {
-            log("【防花屏】打开设置页面，不显示占位图");
+            // ====================================================================
+            // ✅ 2026-06-21 修改：打开设置不显示占位图 → 操作日志
+            // ====================================================================
+            // 【为什么改？】
+            // 这是页面生命周期的操作，属于操作日志，不应该混进播放日志里。
+            SettingsActivity.logOperation("【防花屏】打开设置页面，不显示占位图");
         }
 
         super.onPause();
@@ -914,15 +982,18 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
-
         isOpeningSettings = false;
-        log("【设置】从设置页面返回，重置标志位");
+
+        // ====================================================================
+        // ✅ 2026-06-21 修改：从设置返回 → 操作日志
+        // ====================================================================
+        // 【为什么改？】
+        // 这是页面生命周期的操作，属于操作日志，不应该混进播放日志里。
+        SettingsActivity.logOperation("【设置】从设置页面返回，重置标志位");
 
         boolean resumed = appCoreManager.onResume();
-
         loadSettings();
         screenRatioManager.apply();
-
         displayManager.reapplyFullScreen();
 
         // 延迟 2000ms 再隐藏占位图
@@ -949,13 +1020,18 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        log("【主页】onDestroy -> 页面销毁");
+
+        // ====================================================================
+        // ✅ 2026-06-21 修改：页面销毁 → 操作日志
+        // ====================================================================
+        // 【为什么改？】
+        // 页面销毁是生命周期事件，属于操作日志，不应该混进播放日志里。
+        SettingsActivity.logOperation("【主页】onDestroy -> 页面销毁");
 
         if (mPanelAutoHideHandler != null) {
             mPanelAutoHideHandler.removeCallbacks(mPanelAutoHideRunnable);
             mPanelAutoHideHandler = null;
         }
-
         if (infoDisplayManager != null) infoDisplayManager.release();
         if (channelNumberManager != null) channelNumberManager.release();
         if (displayManager != null) displayManager.release();
@@ -978,7 +1054,13 @@ public class MainActivity extends AppCompatActivity {
     private void showPlayerPlaceholder() {
         if (ivPlayerPlaceholder != null) {
             ivPlayerPlaceholder.setVisibility(View.VISIBLE);
-            log("【防花屏】显示占位图");
+
+            // ====================================================================
+            // ✅ 2026-06-21 修改：显示占位图 → 操作日志
+            // ====================================================================
+            // 【为什么改？】
+            // 显示/隐藏占位图是防花屏的操作，属于操作日志，不应该混进播放日志里。
+            SettingsActivity.logOperation("【防花屏】显示占位图");
         }
     }
 
@@ -988,14 +1070,39 @@ public class MainActivity extends AppCompatActivity {
     private void hidePlayerPlaceholder() {
         if (ivPlayerPlaceholder != null) {
             ivPlayerPlaceholder.setVisibility(View.GONE);
-            log("【防花屏】隐藏占位图");
+
+            // ====================================================================
+            // ✅ 2026-06-21 修改：隐藏占位图 → 操作日志
+            // ====================================================================
+            // 【为什么改？】
+            // 显示/隐藏占位图是防花屏的操作，属于操作日志，不应该混进播放日志里。
+            SettingsActivity.logOperation("【防花屏】隐藏占位图");
         }
     }
 
     // ====================== 日志方法 ======================
 
     /**
-     * 记录日志
+     * 记录播放日志（仅播放/加载/网络相关的日志才调用这个）
+     *
+     * 【说明】
+     * 这个方法只记录真正的播放相关日志，会同时加到：
+     * 1. logList（旧的兼容列表）
+     * 2. SettingsActivity.PLAY_LOG（播放日志）
+     *
+     * 【哪些日志应该调用这个？】
+     * - 播放频道信息（频道名、地址、索引）
+     * - 直播源加载（成功、失败、缓存）
+     * - 配置地址（直播源地址、EPG地址）
+     * - 播放器状态变化
+     * - HTTP 请求/重定向
+     *
+     * 【哪些日志不应该调用这个？】
+     * - 页面生命周期（onCreate、onPause、onResume、onDestroy）
+     * - 用户操作（打开设置、切换频道、按键）
+     * - 设置变更（EPG开关、反转开关等）
+     * - 防花屏操作（显示/隐藏占位图）
+     * - 这些应该调用 SettingsActivity.logOperation()
      */
     private void log(String msg) {
         logList.add(msg);

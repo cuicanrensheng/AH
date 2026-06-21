@@ -26,7 +26,7 @@ import java.util.List;
  * 【2026-06-21 优化：焦点优先样式 + 区分焦点和选中状态】
  *
  * 【三种状态说明】
- * 1. 焦点状态：白色文字 + 蓝色背景（遥控器焦点所在的项，最显眼）
+ * 1. 焦点状态：白色文字 + 浅蓝色背景（遥控器焦点所在的项，最显眼）
  * 2. 选中状态：蓝色文字 + 透明背景（当前播放的频道）
  * 3. 未选中状态：白色文字 + 透明背景（普通项）
  *
@@ -38,11 +38,20 @@ public class ChannelListManager {
     private final ListView lvChannelList;
     /** 当前选中位置（当前播放的频道） */
     private int selectedPosition = 0;
+
     // ====================================================================
     // ✅ 新增：焦点位置变量
     // ====================================================================
-    /** 当前焦点位置（遥控器移动到的位置） */
+    /**
+     * 当前焦点位置（遥控器移动到的位置）
+     *
+     * 【说明】
+     * 单独记录焦点位置，和选中位置分开。
+     * - 遥控器上下移动 → 只改变 focusedPosition
+     * - 按 OK 键确认 → 改变 selectedPosition，并同步 focusedPosition
+     */
     private int focusedPosition = 0;
+
     /** 频道点击监听器 */
     public interface OnChannelClickListener {
         void onChannelClick(int position);
@@ -79,6 +88,7 @@ public class ChannelListManager {
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int pos, long id) {
                 // 只更新焦点位置，不更新选中位置
+                // 【说明】遥控器上下移动时，只是移动焦点，还没确认选中
                 setFocusedPosition(pos);
             }
             @Override
@@ -91,6 +101,8 @@ public class ChannelListManager {
     // ====================================================================
     /**
      * 设置焦点位置（遥控器移动时调用）
+     *
+     * @param position 焦点位置
      */
     public void setFocusedPosition(int position) {
         this.focusedPosition = position;
@@ -101,6 +113,8 @@ public class ChannelListManager {
 
     /**
      * 获取当前焦点位置
+     *
+     * @return 当前焦点位置
      */
     public int getFocusedPosition() {
         return focusedPosition;
@@ -144,12 +158,13 @@ public class ChannelListManager {
                 // ====================================================================
                 // ✅ 2026-06-21 修改：统一三种状态样式（焦点优先）
                 // ====================================================================
-                // 判断优先级：焦点 > 选中 > 普通
+                // 【判断优先级】焦点 > 选中 > 普通
+
                 if (position == focusedPosition) {
-                    // ── 焦点状态：白色文字 + 蓝色背景（最显眼）──
+                    // ── 焦点状态：白色文字 + 浅蓝色背景（最显眼）──
                     tvChannel.setTextColor(Color.WHITE);
                     tvChannel.setTypeface(null, Typeface.NORMAL);
-                    convertView.setBackgroundColor(Color.parseColor("#40A9FF"));
+                    convertView.setBackgroundColor(0x3340A9FF); // 20% 透明度的蓝色
                     // 序号也跟着变白色
                     tvIndex.setTextColor(Color.WHITE);
                 } else if (position == selectedPosition) {
@@ -224,10 +239,10 @@ public class ChannelListManager {
                 // ✅ 2026-06-21 修改：统一三种状态样式（焦点优先）
                 // ====================================================================
                 if (position == focusedPosition) {
-                    // ── 焦点状态：白色文字 +浅蓝色背景
+                    // ── 焦点状态：白色文字 + 浅蓝色背景（最显眼）──
                     tvChannel.setTextColor(Color.WHITE);
                     tvChannel.setTypeface(null, Typeface.NORMAL);
-                    convertView.setBackgroundColor(0x3340A9FF);
+                    convertView.setBackgroundColor(0x3340A9FF); // 20% 透明度的蓝色
                     tvIndex.setTextColor(Color.WHITE);
                 } else if (position == selectedPosition) {
                     // ── 选中状态：蓝色文字 + 透明背景（次之）──
@@ -254,6 +269,9 @@ public class ChannelListManager {
      * 设置选中位置
      *
      * @param position 选中位置
+     *
+     * 【说明】
+     * 选中时会同步移动焦点到选中项。
      */
     public void setSelectedPosition(int position) {
         selectedPosition = position;

@@ -67,6 +67,15 @@ import java.util.List;
  * 【优化方案】
  * 改成代码动态设置背景色和文字颜色，不依赖布局里的 drawable 和 color selector，
  * 肯定能看到焦点，而且和频道面板的高亮样式完全统一。
+ *
+ * 【2026-06-20 优化：手机点击时光标跟随移动】
+ * 【原来的问题】
+ * 手机点击设置项时，光标（高亮）不会跟着移动，
+ * 因为点击只触发了 OnClickListener，没有更新焦点位置。
+ * 【优化方案】
+ * 1. 给每个设置项设置 focusableInTouchMode=true（手机点击时也能获得焦点）
+ * 2. 给每个设置项设置 OnFocusChangeListener（焦点变化时自动更新高亮）
+ * 这样无论是遥控器操作还是手机点击，光标都会跟着移动。
  */
 public class SettingsActivity extends AppCompatActivity {
 
@@ -363,6 +372,15 @@ public class SettingsActivity extends AppCompatActivity {
      * 2. 在 initViews 里 findViewById
      * 3. 在这个方法里 add 到列表里（按顺序）
      * 4. 搞定！遥控器自动支持
+     *
+     * 【2026-06-20 优化：加上焦点变化监听器，支持手机点击时光标跟随】
+     * 【原来的问题】
+     * 手机点击设置项时，光标（高亮）不会跟着移动，
+     * 因为点击只触发了 OnClickListener，没有更新焦点位置。
+     * 【优化方案】
+     * 1. 给每个设置项设置 focusableInTouchMode=true（手机点击时也能获得焦点）
+     * 2. 给每个设置项设置 OnFocusChangeListener（焦点变化时自动更新高亮）
+     * 这样无论是遥控器操作还是手机点击，光标都会跟着移动。
      */
     private void initSettingsItemList() {
         settingsItemList.clear();
@@ -387,6 +405,58 @@ public class SettingsActivity extends AppCompatActivity {
         for (int i = settingsItemList.size() - 1; i >= 0; i--) {
             if (settingsItemList.get(i) == null) {
                 settingsItemList.remove(i);
+            }
+        }
+
+        // ====================================================================
+        // ✅ 2026-06-20 新增：给每个设置项设置焦点变化监听器
+        // ====================================================================
+        // 【作用】
+        // 无论是遥控器操作还是手机点击，只要焦点变化了，高亮就会跟着更新。
+        //
+        // 【为什么要加 focusableInTouchMode？】
+        // Android 默认情况下，触摸模式下（手机点击）View 不会获得焦点，
+        // 只有遥控器/键盘操作时才会获得焦点。
+        // 设置 focusableInTouchMode=true 后，手机点击也能获得焦点。
+        //
+        // 【为什么要加 OnFocusChangeListener？】
+        // 焦点变化时自动更新高亮，不用在每个点击事件里都写一遍更新代码。
+        //
+        // 【注意】
+        // 这里会和遥控器的 updateSettingsFocus() 重复调用，
+        // 但是没关系，重复调用不会有问题，只是多输出一次日志而已。
+
+        for (int i = 0; i < settingsItemList.size(); i++) {
+            final int position = i;
+            View item = settingsItemList.get(i);
+            if (item != null) {
+
+                // ✅ 支持触摸模式下获得焦点（手机点击时也能获得焦点）
+                // 【为什么需要？】
+                // Android 默认触摸模式下 View 不会获得焦点，
+                // 只有遥控器/键盘操作时才会获得焦点。
+                // 设置这个属性后，手机点击也能触发焦点变化。
+                item.setFocusableInTouchMode(true);
+
+                // ✅ 设置焦点变化监听器
+                // 【作用】
+                // 当 View 获得焦点时，更新遥控器管理器的焦点位置，
+                // 并更新高亮显示，保持遥控器和实际焦点位置一致。
+                item.setOnFocusChangeListener(new View.OnFocusChangeListener() {
+                    @Override
+                    public void onFocusChange(View v, boolean hasFocus) {
+                        if (hasFocus) {
+                            // 获得焦点时，更新遥控器管理器的焦点位置
+                            // 保持 remoteManager 和实际焦点位置一致
+                            remoteManager.setSettingsFocusPosition(position);
+
+                            // 更新高亮显示
+                            updateSettingsFocus();
+
+                            logOperation("【设置】焦点变化（点击/遥控器），移动到第 " + (position + 1) + " 项");
+                        }
+                    }
+                });
             }
         }
     }

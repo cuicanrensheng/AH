@@ -20,22 +20,20 @@ import java.util.Set;
 /**
  * 分组列表管理器
  *
- * 【2026-06-21 修复 1：分组顺序固定】
- * 【问题原因】
- * 原来用 HashSet 提取分组，HashSet 是无序的，每次打开分组顺序可能不一样。
- * 【解决方案】
- * 改用 LinkedHashSet，保持分组在直播源中的出现顺序。
+ * 【2026-06-21 新增：「全部频道」分组】
+ * 【功能说明】
+ * 分组列表最顶部增加一个「全部」选项，点击后显示所有频道，方便快速浏览。
  *
- * 【2026-06-21 修复 2：分组显示频道数量】
- * 【新增功能】
- * 每个分组名称后面显示频道数量，比如「央视 (18)」，一目了然。
+ * 【特殊分组说明】
+ * - 位置 0：「全部」（特殊分组，显示所有频道）
+ * - 位置 1+：实际的分组（按直播源顺序）
  */
 public class GroupListManager {
     /** 分组列表 ListView */
     private final ListView lvGroup;
     /** 上下文 */
     private final Context context;
-    /** 分组名称列表 */
+    /** 分组名称列表（包含「全部」） */
     private List<String> groupList;
     /** 每个分组的频道数量 */
     private List<Integer> groupCountList;
@@ -45,6 +43,11 @@ public class GroupListManager {
     private ArrayAdapter<String> adapter;
     /** 分组选中监听器（供外部回调） */
     private OnGroupSelectedListener listener;
+
+    /**
+     * 特殊分组：全部频道
+     */
+    public static final String GROUP_ALL = "全部";
 
     /**
      * 分组选中监听器接口
@@ -94,22 +97,31 @@ public class GroupListManager {
      * 设置分组列表
      *
      * 【2026-06-21 修改】
-     * 1. 改用 LinkedHashSet，保持分组顺序
-     * 2. 同时计算每个分组的频道数量
+     * 1. 最前面插入「全部」分组
+     * 2. 用 LinkedHashSet 保持分组顺序
+     * 3. 计算每个分组的频道数量
      */
     public void setGroups(List<Channel> channelSourceList) {
         if (channelSourceList == null || channelSourceList.isEmpty()) return;
 
-        // ✅ 修复 1：用 LinkedHashSet 替代 HashSet，保持分组出现顺序
+        // 用 LinkedHashSet 提取分组，保持出现顺序
         Set<String> groupSet = new LinkedHashSet<>();
         for (Channel c : channelSourceList) {
             groupSet.add(c.getGroup());
         }
-        groupList = new ArrayList<>(groupSet);
+        List<String> originalGroups = new ArrayList<>(groupSet);
 
-        // ✅ 修复 2：计算每个分组的频道数量
+        // ✅ 新增：最前面插入「全部」分组
+        groupList = new ArrayList<>();
+        groupList.add(GROUP_ALL); // 第 0 个是「全部」
+        groupList.addAll(originalGroups); // 后面是实际分组
+
+        // ✅ 计算每个分组的频道数量
         groupCountList = new ArrayList<>();
-        for (String group : groupList) {
+        // 「全部」分组的数量 = 总频道数
+        groupCountList.add(channelSourceList.size());
+        // 其他分组的数量
+        for (String group : originalGroups) {
             int count = 0;
             for (Channel c : channelSourceList) {
                 if (group.equals(c.getGroup())) {
@@ -128,7 +140,7 @@ public class GroupListManager {
                 tv.setTextSize(16);
                 tv.setPadding(20, 15, 20, 15);
 
-                // ✅ 修复 2：显示分组名 + 频道数量，比如「央视 (18)」
+                // 显示分组名 + 频道数量，比如「全部 (128)」「央视 (18)」
                 String groupName = groupList.get(position);
                 int count = groupCountList.get(position);
                 tv.setText(groupName + " (" + count + ")");
@@ -154,6 +166,7 @@ public class GroupListManager {
             }
         };
         lvGroup.setAdapter(adapter);
+        // 默认选中「全部」
         selectedPosition = 0;
         adapter.notifyDataSetChanged();
     }
@@ -183,8 +196,6 @@ public class GroupListManager {
 
     /**
      * 根据分组名获取位置
-     *
-     * 【2026-06-21 新增：切换频道后同步分组用】
      */
     public int getGroupPosition(String groupName) {
         if (groupList == null || groupName == null) return 0;
@@ -194,6 +205,14 @@ public class GroupListManager {
             }
         }
         return 0;
+    }
+
+    /**
+     * 判断是不是「全部」分组
+     */
+    public boolean isAllGroup(int position) {
+        if (groupList == null || position < 0 || position >= groupList.size()) return false;
+        return GROUP_ALL.equals(groupList.get(position));
     }
 
     public void onBackPressed() {}

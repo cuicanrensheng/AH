@@ -38,11 +38,16 @@ import java.util.List;
  * 【2026-06-21 新增：长按收藏（触屏模式）】
  * 【功能说明】
  * 触屏模式下，长按频道项可以收藏/取消收藏该频道。
+ *
+ * 【2026-06-21 新增：排查日志】
+ * 【说明】
+ * 在关键位置加上日志，方便排查收藏和最近观看功能的问题。
  */
 public class ChannelPanelController {
     // ====================== 常量 ======================
     /** 频道切换冷却时间（毫秒），300ms 内不允许连续切台 */
     private static final long CHANNEL_COOLDOWN = 300;
+
     // ====================== 上下文与视图 ======================
     private Context context;
     private View panelLayout;
@@ -53,10 +58,12 @@ public class ChannelPanelController {
     private ListView lvEpg;
     private TextView btnShowEpg;
     private TextView btnBackGroup;
+
     // ====================== 左右面板切换 ======================
     private View llLeftPanel;
     private View llRightPanel;
     private boolean rightPanelOpen = false;
+
     // ====================== 子管理器 ======================
     private GroupListManager groupListManager;
     private ChannelListManager channelListManager;
@@ -64,15 +71,18 @@ public class ChannelPanelController {
     private DateListManager dateListManager;
     private EpgManagerWrapper epgManagerWrapper;
     private PanelManager panelManager;
+
     // ====================== 数据状态 ======================
     private List<Channel> channelSourceList = new ArrayList<>();
     private List<Channel> currentGroupChannelList = new ArrayList<>();
     private String currentGroupName = "";
     private int currentPlayIndex = 0;
     private int currentSelectedDateIndex = 0;
+
     // ====================== 面板状态 ======================
     private boolean epgPanelOpen = false;
     private boolean epgEnable = true;
+
     // ====================================================================
     // 换台反转相关
     // ====================================================================
@@ -97,22 +107,28 @@ public class ChannelPanelController {
     public boolean isReverse() {
         return isReverse;
     }
+
     // ====================== 切台防抖 ======================
     private long lastChannelChangeTime = 0;
+
     // ====================== 焦点管理 ======================
     private String currentFocusPanel = "left";
     private String leftFocusView = "channel";
     private String rightFocusView = "channel";
+
     // ====================== 回调监听器 ======================
     private OnChannelChangeListener channelChangeListener;
     private OnPanelStateListener panelStateListener;
+
     // ====================== 接口定义 ======================
     public interface OnChannelChangeListener {
         void onChannelChanged(Channel channel, int index);
     }
+
     public interface OnPanelStateListener {
         void onPanelStateChanged(boolean isOpen);
     }
+
     // ====================== 构造函数 ======================
     public ChannelPanelController(
             Context context,
@@ -153,6 +169,7 @@ public class ChannelPanelController {
         initClickListeners();
         initFocusListeners();
     }
+
     // ====================================================================
     // 1. 初始化点击事件
     // ====================================================================
@@ -163,12 +180,14 @@ public class ChannelPanelController {
                 onGroupClicked(position);
             }
         });
+
         lvChannelList.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> p, View v, int pos, long id) {
                 onChannelClicked(pos);
             }
         });
+
         lvChannelListEpg.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> p, View v, int pos, long id) {
@@ -176,18 +195,22 @@ public class ChannelPanelController {
             }
         });
 
-        // ✅ 2026-06-21 新增：长按收藏（左侧频道列表）
+        // ✅ 2026-06-21 新增：长按收藏（左侧频道列表）【加了日志】
         channelListManager.setOnChannelLongClickListener(new ChannelListManager.OnChannelLongClickListener() {
             @Override
             public boolean onChannelLongClick(String channelName, int position) {
+                // ✅ 日志：确认回调触发了
+                SettingsActivity.logOperation("【面板】左侧长按回调触发，channelName=" + channelName);
                 return handleChannelLongClick(channelName, false);
             }
         });
 
-        // ✅ 2026-06-21 新增：长按收藏（右侧节目单页面的频道列表）
+        // ✅ 2026-06-21 新增：长按收藏（右侧节目单页面的频道列表）【加了日志】
         channelListManagerEpg.setOnChannelLongClickListener(new ChannelListManager.OnChannelLongClickListener() {
             @Override
             public boolean onChannelLongClick(String channelName, int position) {
+                // ✅ 日志：确认回调触发了
+                SettingsActivity.logOperation("【面板】右侧长按回调触发，channelName=" + channelName);
                 return handleChannelLongClick(channelName, true);
             }
         });
@@ -198,6 +221,7 @@ public class ChannelPanelController {
                 onEpgButtonClicked();
             }
         });
+
         btnBackGroup.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -205,7 +229,8 @@ public class ChannelPanelController {
             }
         });
     }
-             // ====================================================================
+
+    // ====================================================================
     // 初始化焦点变化监听
     // ====================================================================
     private void initFocusListeners() {
@@ -218,6 +243,7 @@ public class ChannelPanelController {
                 }
             }
         });
+
         lvChannelList.setOnFocusChangeListener(new View.OnFocusChangeListener() {
             @Override
             public void onFocusChange(View v, boolean hasFocus) {
@@ -227,6 +253,7 @@ public class ChannelPanelController {
                 }
             }
         });
+
         btnShowEpg.setOnFocusChangeListener(new View.OnFocusChangeListener() {
             @Override
             public void onFocusChange(View v, boolean hasFocus) {
@@ -236,6 +263,7 @@ public class ChannelPanelController {
                 }
             }
         });
+
         lvChannelListEpg.setOnFocusChangeListener(new View.OnFocusChangeListener() {
             @Override
             public void onFocusChange(View v, boolean hasFocus) {
@@ -245,6 +273,7 @@ public class ChannelPanelController {
                 }
             }
         });
+
         lvDate.setOnFocusChangeListener(new View.OnFocusChangeListener() {
             @Override
             public void onFocusChange(View v, boolean hasFocus) {
@@ -254,6 +283,7 @@ public class ChannelPanelController {
                 }
             }
         });
+
         lvEpg.setOnFocusChangeListener(new View.OnFocusChangeListener() {
             @Override
             public void onFocusChange(View v, boolean hasFocus) {
@@ -263,6 +293,7 @@ public class ChannelPanelController {
                 }
             }
         });
+
         btnBackGroup.setOnFocusChangeListener(new View.OnFocusChangeListener() {
             @Override
             public void onFocusChange(View v, boolean hasFocus) {
@@ -273,6 +304,7 @@ public class ChannelPanelController {
             }
         });
     }
+
     // ====================================================================
     // 2. 分组管理相关
     // ====================================================================
@@ -328,7 +360,6 @@ public class ChannelPanelController {
         groupListManager.setSelectedPosition(position);
         lvGroup.setItemChecked(position, true);
         lvGroup.setSelection(position);
-
         String groupName = groupListManager.getCurrentGroup(position);
         currentGroupName = groupName;
 
@@ -411,6 +442,7 @@ public class ChannelPanelController {
     public void setEpgEnable(boolean enable) {
         this.epgEnable = enable;
     }
+
     // ====================================================================
     // 3. 频道切换相关（核心）
     // ====================================================================
@@ -629,18 +661,28 @@ public class ChannelPanelController {
         addToRecent(ch.getName());
     }
 
+    // ====================================================================
+    // ✅ 2026-06-21 新增：添加到最近观看【加了日志】
+    // ====================================================================
     /**
      * 添加到最近观看
      */
     private void addToRecent(String channelName) {
+        // ✅ 日志 1：确认方法被调用
+        SettingsActivity.logOperation("【最近观看】addToRecent 被调用，channelName=" + channelName);
+        
         try {
             AppConfig appConfig = AppConfig.getInstance(context);
             appConfig.addRecentChannel(channelName);
+            
+            // ✅ 日志 2：添加成功
+            List<String> recent = appConfig.getRecentChannels();
+            SettingsActivity.logOperation("【最近观看】添加成功，当前最近观看数量=" + recent.size());
+            
             // 更新分组列表的数量
             int favoriteCount = 0;
             int recentCount = 0;
             List<String> favorites = appConfig.getFavoriteChannels();
-            List<String> recent = appConfig.getRecentChannels();
             for (String name : favorites) {
                 for (Channel c : channelSourceList) {
                     if (name.equals(c.getName())) {
@@ -658,13 +700,19 @@ public class ChannelPanelController {
                 }
             }
             groupListManager.updateSpecialGroupCount(favoriteCount, recentCount);
+            
+            // ✅ 日志 3：数量更新完成
+            SettingsActivity.logOperation("【最近观看】分组数量更新完成，收藏=" + favoriteCount 
+                    + ", 最近观看=" + recentCount);
+            
         } catch (Exception e) {
-            // 忽略错误
+            // ✅ 日志 4：异常
+            SettingsActivity.logOperation("【最近观看】添加失败，异常=" + e.getMessage());
         }
     }
 
     // ====================================================================
-    // ✅ 2026-06-21 新增：长按收藏处理
+    // ✅ 2026-06-21 新增：长按收藏处理【加了日志】
     // ====================================================================
     /**
      * 处理频道长按事件（触屏模式收藏）
@@ -674,12 +722,21 @@ public class ChannelPanelController {
      * @return true 表示消费了事件
      */
     private boolean handleChannelLongClick(String channelName, boolean isRightPanel) {
-        if (channelName == null || channelName.isEmpty()) return false;
-
+        // ✅ 日志 1：确认方法被调用
+        SettingsActivity.logOperation("【收藏】handleChannelLongClick 被调用，channelName=" 
+                + channelName + ", isRightPanel=" + isRightPanel);
+        
+        if (channelName == null || channelName.isEmpty()) {
+            SettingsActivity.logOperation("【收藏】handleChannelLongClick 失败：频道名为空");
+            return false;
+        }
         try {
             AppConfig appConfig = AppConfig.getInstance(context);
             boolean isFavorite = appConfig.toggleFavorite(channelName);
-
+            
+            // ✅ 日志 2：收藏操作结果
+            SettingsActivity.logOperation("【收藏】长按操作结果=" + (isFavorite ? "已收藏" : "已取消"));
+            
             // 更新分组列表的数量
             int favoriteCount = 0;
             int recentCount = 0;
@@ -702,7 +759,11 @@ public class ChannelPanelController {
                 }
             }
             groupListManager.updateSpecialGroupCount(favoriteCount, recentCount);
-
+            
+            // ✅ 日志 3：数量更新完成
+            SettingsActivity.logOperation("【收藏】分组数量更新完成，收藏=" + favoriteCount 
+                    + ", 最近观看=" + recentCount);
+            
             // 如果当前在「收藏」分组，刷新列表
             if (GroupListManager.GROUP_FAVORITE.equals(currentGroupName)) {
                 // 重新筛选收藏列表
@@ -720,13 +781,14 @@ public class ChannelPanelController {
                 } else {
                     channelListManagerEpg.setFilteredChannels(currentGroupChannelList, channelName);
                 }
+                SettingsActivity.logOperation("【收藏】在收藏分组，已刷新频道列表");
             }
-
             SettingsActivity.logOperation("【收藏】长按" + (isFavorite ? "添加" : "取消")
                     + "收藏：" + channelName);
             return true;
         } catch (Exception e) {
-            SettingsActivity.logOperation("【收藏】长按操作失败：" + e.getMessage());
+            // ✅ 日志 4：异常
+            SettingsActivity.logOperation("【收藏】长按操作失败，异常=" + e.getMessage());
             return false;
         }
     }
@@ -739,14 +801,11 @@ public class ChannelPanelController {
     public boolean toggleCurrentFavorite() {
         if (channelSourceList == null || channelSourceList.isEmpty()) return false;
         if (currentPlayIndex < 0 || currentPlayIndex >= channelSourceList.size()) return false;
-
         Channel currentChannel = channelSourceList.get(currentPlayIndex);
         if (currentChannel == null) return false;
-
         try {
             AppConfig appConfig = AppConfig.getInstance(context);
             boolean isFavorite = appConfig.toggleFavorite(currentChannel.getName());
-
             // 更新分组列表的数量
             int favoriteCount = 0;
             int recentCount = 0;
@@ -769,7 +828,6 @@ public class ChannelPanelController {
                 }
             }
             groupListManager.updateSpecialGroupCount(favoriteCount, recentCount);
-
             // 如果当前在「收藏」分组，刷新列表
             if (GroupListManager.GROUP_FAVORITE.equals(currentGroupName)) {
                 // 重新筛选收藏列表
@@ -784,7 +842,6 @@ public class ChannelPanelController {
                 }
                 channelListManager.setFilteredChannels(currentGroupChannelList, currentChannel.getName());
             }
-
             SettingsActivity.logOperation("【收藏】" + (isFavorite ? "添加" : "取消") 
                     + "收藏：" + currentChannel.getName());
             return isFavorite;
@@ -826,6 +883,7 @@ public class ChannelPanelController {
     public void setTotalChannelCount(int count) {
         // 预留方法
     }
+
     // ====================================================================
     // 4. 面板控制相关
     // ====================================================================
@@ -990,6 +1048,7 @@ public class ChannelPanelController {
             return 0;
         }
     }
+
     // ====================================================================
     // 5. 返回键处理
     // ====================================================================
@@ -1004,6 +1063,7 @@ public class ChannelPanelController {
         }
         return false;
     }
+
     // ====================================================================
     // 按键事件分发
     // ====================================================================
@@ -1119,6 +1179,7 @@ public class ChannelPanelController {
         }
         return false;
     }
+
     // ====================================================================
     // 6. 监听器设置
     // ====================================================================
@@ -1129,6 +1190,7 @@ public class ChannelPanelController {
     public void setOnPanelStateListener(OnPanelStateListener listener) {
         this.panelStateListener = listener;
     }
+
     // ====================================================================
     // 7. 资源释放
     // ====================================================================

@@ -1,6 +1,8 @@
 package com.tv.live.manager;
 
 import android.content.Context;
+import android.graphics.Color;
+import android.graphics.Typeface;
 import android.view.KeyEvent;
 import android.view.View;
 import android.widget.AdapterView;
@@ -28,33 +30,24 @@ import java.util.List;
  * 4. 焦点管理（手机触屏 + 电视遥控器）
  * 5. 按键处理（左右键移动焦点、OK键选中）
  *
- * 【2026-06-20 修复：换台反转功能 + 详细操作日志】
- * 【问题原因】
- * 之前反转逻辑只在 MainActivity 的 handleDirectionKey() 里，
- * 其他切台入口直接调用 playPrev()/playNext()，不考虑反转设置，
- * 导致反转在某些场景下失效，而且没有日志很难排查。
+ * 【2026-06-21 新增：按钮焦点样式统一】
+ * 【修改内容】
+ * 给节目单按钮（btnShowEpg）和返回按钮（btnBackGroup）加上焦点样式，
+ * 和四个列表的样式保持一致：
+ * - 焦点：白色文字 + 蓝色背景（最显眼）
+ * - 普通：白色文字 + 透明背景
  *
- * 【解决方案】
- * 1. 在 ChannelPanelController 里统一管理反转逻辑
- * 2. 新增 switchUp() / switchDown() 带反转的统一入口
- * 3. 所有切台相关方法都加上详细的操作日志
- * 4. 日志包括：入口、反转状态、实际方向、索引变化、频道名称
- *
- * 【2026-06-20 新增：isRightPanelOpen() 方法】
- * 【为什么加这个方法？】
- * TvRemoteManager 需要知道当前是左侧面板还是右侧面板，
- * 才能正确处理左右键的列切换逻辑。
- * 所以新增这个 public 方法，供外部调用。
+ * 【为什么要在代码里动态设置？】
+ * 因为这两个按钮是 TextView，不是 ListView 的 item，
+ * 不能通过 adapter 的 getView() 来设置样式，
+ * 所以需要在焦点变化监听里动态设置文字颜色和背景。
  */
 public class ChannelPanelController {
-
     // ====================== 常量 ======================
-
     /** 频道切换冷却时间（毫秒），300ms 内不允许连续切台 */
     private static final long CHANNEL_COOLDOWN = 300;
 
     // ====================== 上下文与视图 ======================
-
     private Context context;
     private View panelLayout;
     private ListView lvGroup;
@@ -66,13 +59,11 @@ public class ChannelPanelController {
     private TextView btnBackGroup;
 
     // ====================== 左右面板切换 ======================
-
     private View llLeftPanel;
     private View llRightPanel;
     private boolean rightPanelOpen = false;
 
     // ====================== 子管理器 ======================
-
     private GroupListManager groupListManager;
     private ChannelListManager channelListManager;
     private ChannelListManager channelListManagerEpg;
@@ -81,7 +72,6 @@ public class ChannelPanelController {
     private PanelManager panelManager;
 
     // ====================== 数据状态 ======================
-
     private List<Channel> channelSourceList = new ArrayList<>();
     private List<Channel> currentGroupChannelList = new ArrayList<>();
     private String currentGroupName = "";
@@ -89,14 +79,12 @@ public class ChannelPanelController {
     private int currentSelectedDateIndex = 0;
 
     // ====================== 面板状态 ======================
-
     private boolean epgPanelOpen = false;
     private boolean epgEnable = true;
 
     // ====================================================================
     // 换台反转相关
     // ====================================================================
-
     /**
      * 是否开启换台反转
      * 默认 false = 不反转
@@ -120,22 +108,18 @@ public class ChannelPanelController {
     }
 
     // ====================== 切台防抖 ======================
-
     private long lastChannelChangeTime = 0;
 
     // ====================== 焦点管理 ======================
-
     private String currentFocusPanel = "left";
     private String leftFocusView = "channel";
     private String rightFocusView = "channel";
 
     // ====================== 回调监听器 ======================
-
     private OnChannelChangeListener channelChangeListener;
     private OnPanelStateListener panelStateListener;
 
     // ====================== 接口定义 ======================
-
     public interface OnChannelChangeListener {
         void onChannelChanged(Channel channel, int index);
     }
@@ -145,7 +129,6 @@ public class ChannelPanelController {
     }
 
     // ====================== 构造函数 ======================
-
     public ChannelPanelController(
             Context context,
             View panelLayout,
@@ -183,14 +166,73 @@ public class ChannelPanelController {
         this.epgManagerWrapper = epgManagerWrapper;
         this.panelManager = panelManager;
 
+        // ====================================================================
+        // ✅ 新增：初始化按钮的默认样式
+        // ====================================================================
+        initButtonStyle();
+
         initClickListeners();
         initFocusListeners();
     }
 
     // ====================================================================
+    // ✅ 新增：初始化按钮默认样式
+    // ====================================================================
+    /**
+     * 初始化两个按钮的默认样式
+     *
+     * 【说明】
+     * 按钮默认是普通状态：白色文字 + 透明背景
+     * 和列表的普通项样式保持一致。
+     */
+    private void initButtonStyle() {
+        // 节目单按钮 - 默认样式：白色文字 + 透明背景
+        btnShowEpg.setTextColor(Color.WHITE);
+        btnShowEpg.setBackgroundColor(Color.TRANSPARENT);
+        btnShowEpg.setTypeface(Typeface.DEFAULT);
+
+        // 返回按钮 - 默认样式：白色文字 + 透明背景
+        btnBackGroup.setTextColor(Color.WHITE);
+        btnBackGroup.setBackgroundColor(Color.TRANSPARENT);
+        btnBackGroup.setTypeface(Typeface.DEFAULT);
+    }
+
+    // ====================================================================
+    // ✅ 新增：更新按钮样式（焦点/普通状态）
+    // ====================================================================
+    /**
+     * 更新按钮的样式
+     *
+     * @param button 按钮 TextView
+     * @param hasFocus 是否获得焦点
+     *
+     * 【样式规则】
+     * - 焦点：白色文字 + 蓝色背景（最显眼）
+     * - 普通：白色文字 + 透明背景
+     *
+     * 【为什么和列表统一？】
+     * 让整个面板的焦点样式保持一致，
+     * 用户遥控器移动时，视觉体验统一。
+     */
+    private void updateButtonStyle(TextView button, boolean hasFocus) {
+        if (button == null) return;
+
+        if (hasFocus) {
+            // ── 焦点状态：白色文字 + 蓝色背景（最显眼）──
+            button.setTextColor(Color.WHITE);
+            button.setBackgroundColor(Color.parseColor("#40A9FF"));
+            button.setTypeface(Typeface.DEFAULT);
+        } else {
+            // ── 普通状态：白色文字 + 透明背景 ──
+            button.setTextColor(Color.WHITE);
+            button.setBackgroundColor(Color.TRANSPARENT);
+            button.setTypeface(Typeface.DEFAULT);
+        }
+    }
+
+    // ====================================================================
     // 1. 初始化点击事件
     // ====================================================================
-
     private void initClickListeners() {
         lvGroup.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override
@@ -231,7 +273,6 @@ public class ChannelPanelController {
     // ====================================================================
     // 初始化焦点变化监听
     // ====================================================================
-
     private void initFocusListeners() {
         lvGroup.setOnFocusChangeListener(new View.OnFocusChangeListener() {
             @Override
@@ -253,6 +294,9 @@ public class ChannelPanelController {
             }
         });
 
+        // ====================================================================
+        // ✅ 修改：节目单按钮焦点变化时更新样式
+        // ====================================================================
         btnShowEpg.setOnFocusChangeListener(new View.OnFocusChangeListener() {
             @Override
             public void onFocusChange(View v, boolean hasFocus) {
@@ -260,6 +304,8 @@ public class ChannelPanelController {
                     currentFocusPanel = "left";
                     leftFocusView = "epgBtn";
                 }
+                // 更新按钮样式
+                updateButtonStyle(btnShowEpg, hasFocus);
             }
         });
 
@@ -293,6 +339,9 @@ public class ChannelPanelController {
             }
         });
 
+        // ====================================================================
+        // ✅ 修改：返回按钮焦点变化时更新样式
+        // ====================================================================
         btnBackGroup.setOnFocusChangeListener(new View.OnFocusChangeListener() {
             @Override
             public void onFocusChange(View v, boolean hasFocus) {
@@ -300,6 +349,8 @@ public class ChannelPanelController {
                     currentFocusPanel = "right";
                     rightFocusView = "backBtn";
                 }
+                // 更新按钮样式
+                updateButtonStyle(btnBackGroup, hasFocus);
             }
         });
     }
@@ -307,7 +358,6 @@ public class ChannelPanelController {
     // ====================================================================
     // 2. 分组管理相关
     // ====================================================================
-
     public void setChannels(List<Channel> channels) {
         if (channels == null) return;
         this.channelSourceList = channels;
@@ -323,14 +373,12 @@ public class ChannelPanelController {
 
         String groupName = groupListManager.getCurrentGroup(position);
         currentGroupName = groupName;
-
         currentGroupChannelList.clear();
         for (Channel c : channelSourceList) {
             if (groupName.equals(c.getGroup())) {
                 currentGroupChannelList.add(c);
             }
         }
-
         channelListManager.setChannelsByGroup(channelSourceList, groupName, currentPlayIndex);
 
         SettingsActivity.logOperation("【分组】选中分组：" + groupName
@@ -352,7 +400,6 @@ public class ChannelPanelController {
     // ====================================================================
     // 3. 频道切换相关（核心）
     // ====================================================================
-
     /**
      * 播放上一个频道（分组内循环）- 底层方法
      *
@@ -477,7 +524,6 @@ public class ChannelPanelController {
     // ====================================================================
     // 带反转的切台方法（统一入口）
     // ====================================================================
-
     /**
      * 按上键时调用（自动考虑反转）
      *
@@ -522,7 +568,6 @@ public class ChannelPanelController {
      */
     public void playChannel(int index) {
         if (channelSourceList == null || channelSourceList.isEmpty()) return;
-
         index = Math.max(0, Math.min(index, channelSourceList.size() - 1));
         currentPlayIndex = index;
         Channel ch = channelSourceList.get(index);
@@ -586,7 +631,6 @@ public class ChannelPanelController {
     // ====================================================================
     // 4. 面板控制相关
     // ====================================================================
-
     public void togglePanel() {
         if (!currentGroupName.isEmpty() && !currentGroupChannelList.isEmpty()) {
             channelListManager.setChannelsByGroup(channelSourceList, currentGroupName, currentPlayIndex);
@@ -634,23 +678,10 @@ public class ChannelPanelController {
     // ====================================================================
     // ✅ 新增：右侧面板是否打开（供 TvRemoteManager 使用）
     // ====================================================================
-
     /**
      * 右侧面板是否打开
      *
      * @return true=右侧面板打开，false=右侧面板关闭
-     *
-     * 【为什么需要这个方法？】
-     * TvRemoteManager 需要知道当前是左侧面板还是右侧面板，
-     * 才能正确处理左右键的列切换逻辑。
-     *
-     * 【状态来源】
-     * 直接返回成员变量 rightPanelOpen，
-     * 这个变量在 onEpgButtonClicked() 和 onBackGroupClicked() 中更新。
-     *
-     * 【什么时候调用？】
-     * MainActivity 的 syncRemoteMode() 中会调用，
-     * 用来同步遥控器管理器的面板状态。
      */
     public boolean isRightPanelOpen() {
         return rightPanelOpen;
@@ -758,7 +789,6 @@ public class ChannelPanelController {
     // ====================================================================
     // 5. 返回键处理
     // ====================================================================
-
     public boolean handleBackPressed() {
         if (isPanelOpen()) {
             if (rightPanelOpen) {
@@ -774,7 +804,6 @@ public class ChannelPanelController {
     // ====================================================================
     // 按键事件分发
     // ====================================================================
-
     public boolean dispatchKeyEvent(int keyCode) {
         if (!isPanelOpen()) {
             return false;
@@ -888,7 +917,6 @@ public class ChannelPanelController {
     // ====================================================================
     // 6. 监听器设置
     // ====================================================================
-
     public void setOnChannelChangeListener(OnChannelChangeListener listener) {
         this.channelChangeListener = listener;
     }
@@ -900,7 +928,6 @@ public class ChannelPanelController {
     // ====================================================================
     // 7. 资源释放
     // ====================================================================
-
     public void release() {
         context = null;
         panelLayout = null;

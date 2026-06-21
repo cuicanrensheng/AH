@@ -284,10 +284,10 @@ public class PanelStyleManager {
      */
     private void setTextColor(View view, int color) {
         if (view instanceof TextView) {
-            // 情况 A：View 本身就是 TextView（简单项，比如日期项）
+            // 情况 A：View 本身就是 TextView（简单项，比如日期项、分组项）
             ((TextView) view).setTextColor(color);
         } else if (view instanceof ViewGroup) {
-            // 情况 B：View 是 ViewGroup（复杂项，比如频道项）
+            // 情况 B：View 是 ViewGroup（复杂项，比如频道项、EPG项）
             // 找第一个 TextView，设置文字颜色
             TextView tv = findFirstTextView((ViewGroup) view);
             if (tv != null) {

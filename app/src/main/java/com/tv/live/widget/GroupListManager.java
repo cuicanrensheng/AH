@@ -20,20 +20,19 @@ import java.util.Set;
 /**
  * 分组列表管理器
  *
- * 【2026-06-21 新增：「全部频道」分组】
- * 【功能说明】
- * 分组列表最顶部增加一个「全部」选项，点击后显示所有频道，方便快速浏览。
- *
- * 【特殊分组说明】
- * - 位置 0：「全部」（特殊分组，显示所有频道）
- * - 位置 1+：实际的分组（按直播源顺序）
+ * 【2026-06-21 新增：「收藏」和「最近观看」分组】
+ * 【特殊分组顺序】
+ * 1. 全部
+ * 2. 收藏
+ * 3. 最近观看
+ * 4. 实际分组（按直播源顺序）
  */
 public class GroupListManager {
     /** 分组列表 ListView */
     private final ListView lvGroup;
     /** 上下文 */
     private final Context context;
-    /** 分组名称列表（包含「全部」） */
+    /** 分组名称列表 */
     private List<String> groupList;
     /** 每个分组的频道数量 */
     private List<Integer> groupCountList;
@@ -44,10 +43,12 @@ public class GroupListManager {
     /** 分组选中监听器（供外部回调） */
     private OnGroupSelectedListener listener;
 
-    /**
-     * 特殊分组：全部频道
-     */
+    /** 特殊分组：全部频道 */
     public static final String GROUP_ALL = "全部";
+    /** 特殊分组：收藏频道 */
+    public static final String GROUP_FAVORITE = "收藏";
+    /** 特殊分组：最近观看 */
+    public static final String GROUP_RECENT = "最近观看";
 
     /**
      * 分组选中监听器接口
@@ -97,11 +98,15 @@ public class GroupListManager {
      * 设置分组列表
      *
      * 【2026-06-21 修改】
-     * 1. 最前面插入「全部」分组
+     * 1. 最前面插入 3 个特殊分组：全部、收藏、最近观看
      * 2. 用 LinkedHashSet 保持分组顺序
      * 3. 计算每个分组的频道数量
+     *
+     * @param channelSourceList 全部频道列表
+     * @param favoriteCount 收藏频道数量
+     * @param recentCount 最近观看频道数量
      */
-    public void setGroups(List<Channel> channelSourceList) {
+    public void setGroups(List<Channel> channelSourceList, int favoriteCount, int recentCount) {
         if (channelSourceList == null || channelSourceList.isEmpty()) return;
 
         // 用 LinkedHashSet 提取分组，保持出现顺序
@@ -111,16 +116,19 @@ public class GroupListManager {
         }
         List<String> originalGroups = new ArrayList<>(groupSet);
 
-        // ✅ 新增：最前面插入「全部」分组
+        // ✅ 新增：特殊分组放在最前面
         groupList = new ArrayList<>();
-        groupList.add(GROUP_ALL); // 第 0 个是「全部」
-        groupList.addAll(originalGroups); // 后面是实际分组
+        groupList.add(GROUP_ALL);      // 1. 全部
+        groupList.add(GROUP_FAVORITE); // 2. 收藏
+        groupList.add(GROUP_RECENT);   // 3. 最近观看
+        groupList.addAll(originalGroups); // 4. 实际分组
 
         // ✅ 计算每个分组的频道数量
         groupCountList = new ArrayList<>();
-        // 「全部」分组的数量 = 总频道数
-        groupCountList.add(channelSourceList.size());
-        // 其他分组的数量
+        groupCountList.add(channelSourceList.size()); // 全部
+        groupCountList.add(favoriteCount);            // 收藏
+        groupCountList.add(recentCount);              // 最近观看
+        // 实际分组数量
         for (String group : originalGroups) {
             int count = 0;
             for (Channel c : channelSourceList) {
@@ -140,7 +148,7 @@ public class GroupListManager {
                 tv.setTextSize(16);
                 tv.setPadding(20, 15, 20, 15);
 
-                // 显示分组名 + 频道数量，比如「全部 (128)」「央视 (18)」
+                // 显示分组名 + 频道数量，比如「全部 (128)」「收藏 (5)」
                 String groupName = groupList.get(position);
                 int count = groupCountList.get(position);
                 tv.setText(groupName + " (" + count + ")");
@@ -169,6 +177,21 @@ public class GroupListManager {
         // 默认选中「全部」
         selectedPosition = 0;
         adapter.notifyDataSetChanged();
+    }
+
+    /**
+     * 更新收藏和最近观看的数量（收藏/取消收藏时调用）
+     *
+     * @param favoriteCount 新的收藏数量
+     * @param recentCount 新的最近观看数量
+     */
+    public void updateSpecialGroupCount(int favoriteCount, int recentCount) {
+        if (groupCountList == null || groupCountList.size() < 3) return;
+        groupCountList.set(1, favoriteCount); // 收藏
+        groupCountList.set(2, recentCount);   // 最近观看
+        if (adapter != null) {
+            adapter.notifyDataSetChanged();
+        }
     }
 
     /**
@@ -213,6 +236,13 @@ public class GroupListManager {
     public boolean isAllGroup(int position) {
         if (groupList == null || position < 0 || position >= groupList.size()) return false;
         return GROUP_ALL.equals(groupList.get(position));
+    }
+
+    /**
+     * 判断是不是特殊分组（全部、收藏、最近观看）
+     */
+    public boolean isSpecialGroup(int position) {
+        return position < 3; // 前 3 个是特殊分组
     }
 
     public void onBackPressed() {}

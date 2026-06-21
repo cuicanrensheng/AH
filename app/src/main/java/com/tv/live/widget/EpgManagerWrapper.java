@@ -400,13 +400,13 @@ public class EpgManagerWrapper {
                 holder.tv_title.setTextColor(Color.parseColor("#40A9FF"));
                 holder.tv_title.setTypeface(null, Typeface.BOLD);
                 convertView.setBackgroundColor(0x3340A9FF);
-            } else if (convertView.isFocused()) {
-                // ✅ 焦点状态：蓝色文字 + 稍深一点的蓝色背景
+            }else if (convertView.isFocused()) {
+                // ✅ 焦点状态：蓝色文字 + 常规 + 透明背景
                 holder.tv_dayName.setTextColor(Color.parseColor("#40A9FF"));
                 holder.tv_time.setTextColor(Color.parseColor("#40A9FF"));
                 holder.tv_title.setTextColor(Color.parseColor("#40A9FF"));
                 holder.tv_title.setTypeface(null, Typeface.NORMAL);
-                convertView.setBackgroundColor(0x4440A9FF);
+                convertView.setBackgroundColor(Color.TRANSPARENT);
             } else {
                 // ✅ 未选中状态：原来的颜色 + 透明背景
                 holder.tv_dayName.setTextColor(Color.WHITE);

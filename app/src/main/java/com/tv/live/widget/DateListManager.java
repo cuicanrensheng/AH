@@ -23,32 +23,23 @@ import java.util.List;
  * 【职责】
  * 统一管理日期列表的显示、选中状态、点击事件等。
  *
- * 【2026-06-20 优化：统一高亮样式，解决多个光标问题】
+ * 【2026-06-21 优化：统一三种状态样式】
  *
- * 【原来的问题】
- * 原来有三种状态：选中状态、焦点状态、未选中状态，
- * 当焦点和选中位置不在同一个项时，就会有两个项同时亮着，
- * 看起来像有多个光标，很乱。
- *
- * 【优化方案】
- * 去掉"焦点状态"的单独判断，统一成两种状态：
- * 1. 高亮状态（选中=焦点，用同一种样式）
- * 2. 普通状态
+ * 【三种状态说明】
+ * 1. 选中状态：蓝色文字 + 加粗 + 浅蓝色背景（当前选中的日期）
+ * 2. 焦点状态：蓝色文字 + 常规 + 透明背景（遥控器焦点所在的项）
+ * 3. 未选中状态：白色文字 + 常规 + 透明背景（普通项）
  */
 public class DateListManager {
 
     /** 日期列表 ListView */
     private final ListView lvDate;
-
     /** 上下文 */
     private final Context context;
-
     /** 当前选中位置 */
     private int selectedPosition = 0;
-
     /** 日期选中监听器 */
     private OnDateSelectedListener listener;
-
     /** 列表适配器 */
     private ArrayAdapter<String> adapter;
 
@@ -72,11 +63,9 @@ public class DateListManager {
     public DateListManager(Context context, ListView lvDate) {
         this.context = context;
         this.lvDate = lvDate;
-
         // item 不需要获取焦点，由 ListView 统一管理
         lvDate.setItemsCanFocus(false);
         lvDate.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
-
         // 遥控器焦点选中时同步更新位置
         lvDate.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
@@ -99,7 +88,6 @@ public class DateListManager {
         List<String> dates = new ArrayList<>();
         Calendar cal = Calendar.getInstance();
         String[] week = {"周日", "周一", "周二", "周三", "周四", "周五", "周六"};
-
         for (int i = 0; i < 8; i++) {
             String display;
             if (i == 0) {
@@ -124,38 +112,33 @@ public class DateListManager {
                 TextView tv = (TextView) super.getView(position, convertView, parent);
 
                 // ====================================================================
-                // ✅ 2026-06-20 优化：统一高亮，只有两种状态
+                // ✅ 2026-06-21 优化：统一三种状态样式
                 // ====================================================================
 
                 if (position == selectedPosition) {
-                    // ✅ 高亮状态（选中和焦点都用这一种样式）
-                    // 样式：蓝色文字 + 加粗 + 浅蓝色背景
+                    // ================================================================
+                    // ✅ 选中状态：蓝色文字 + 加粗 + 浅蓝色背景
+                    // ================================================================
                     tv.setTextColor(Color.parseColor("#40A9FF"));
                     tv.setTypeface(null, Typeface.BOLD);
                     tv.setBackgroundColor(0x3340A9FF);
+
+                } else if (tv.isFocused()) {
+                    // ================================================================
+                    // ✅ 焦点状态：蓝色文字 + 常规 + 透明背景
+                    // ================================================================
+                    tv.setTextColor(Color.parseColor("#40A9FF"));
+                    tv.setTypeface(null, Typeface.NORMAL);
+                    tv.setBackgroundColor(Color.TRANSPARENT);
+
                 } else {
-                    // ✅ 普通状态
-                    // 样式：白色文字 + 常规 + 透明背景
+                    // ================================================================
+                    // ✅ 未选中状态：白色文字 + 常规 + 透明背景
+                    // ================================================================
                     tv.setTextColor(Color.WHITE);
                     tv.setTypeface(null, Typeface.NORMAL);
                     tv.setBackgroundColor(Color.TRANSPARENT);
                 }
-
-                /*
-                 * ❌ 已删除：原来的焦点状态判断
-                 *
-                 * 原来的代码：
-                 * else if (tv.isFocused()) {
-                 *     // 焦点状态：蓝色文字 + 稍深一点的蓝色背景
-                 *     ...
-                 * }
-                 *
-                 * 【为什么删除？】
-                 * 原来有三种状态，当焦点和选中位置不在同一个项时，
-                 * 就会有两个项同时亮着，看起来像有多个光标。
-                 *
-                 * 现在统一成两种状态，同一个列表里永远只有一个项亮着。
-                 */
 
                 return tv;
             }

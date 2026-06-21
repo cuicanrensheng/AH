@@ -315,7 +315,11 @@ public class ChannelPanelController {
         channelListManager.setChannels(channels, currentPlayIndex);
         channelListManagerEpg.setChannels(channels, currentPlayIndex);
     }
-
+        /**
+     * 分组被点击了
+     *
+     * 【2026-06-21 修改：支持「全部」分组】
+     */
     private void onGroupClicked(int position) {
         groupListManager.setSelectedPosition(position);
         lvGroup.setItemChecked(position, true);
@@ -324,17 +328,26 @@ public class ChannelPanelController {
         String groupName = groupListManager.getCurrentGroup(position);
         currentGroupName = groupName;
 
-        currentGroupChannelList.clear();
-        for (Channel c : channelSourceList) {
-            if (groupName.equals(c.getGroup())) {
-                currentGroupChannelList.add(c);
+        // ✅ 新增：判断是不是「全部」分组
+        if (GroupListManager.GROUP_ALL.equals(groupName)) {
+            // 「全部」分组：显示所有频道
+            currentGroupChannelList.clear();
+            currentGroupChannelList.addAll(channelSourceList);
+            channelListManager.setChannels(channelSourceList, currentPlayIndex);
+            SettingsActivity.logOperation("【分组】选中「全部」分组，频道数：" 
+                    + channelSourceList.size());
+        } else {
+            // 普通分组：按分组筛选
+            currentGroupChannelList.clear();
+            for (Channel c : channelSourceList) {
+                if (groupName.equals(c.getGroup())) {
+                    currentGroupChannelList.add(c);
+                }
             }
+            channelListManager.setChannelsByGroup(channelSourceList, groupName, currentPlayIndex);
+            SettingsActivity.logOperation("【分组】选中分组：" + groupName
+                    + "，频道数：" + currentGroupChannelList.size());
         }
-
-        channelListManager.setChannelsByGroup(channelSourceList, groupName, currentPlayIndex);
-
-        SettingsActivity.logOperation("【分组】选中分组：" + groupName
-                + "，频道数：" + currentGroupChannelList.size());
     }
 
     public String getCurrentGroupName() {

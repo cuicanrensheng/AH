@@ -13,43 +13,36 @@ import android.widget.TextView;
 import com.tv.live.Channel;
 
 import java.util.ArrayList;
-import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
 /**
  * 分组列表管理器
  *
- * 【职责】
- * 统一管理频道分组列表的显示、选中状态、点击事件等。
+ * 【2026-06-21 修复 1：分组顺序固定】
+ * 【问题原因】
+ * 原来用 HashSet 提取分组，HashSet 是无序的，每次打开分组顺序可能不一样。
+ * 【解决方案】
+ * 改用 LinkedHashSet，保持分组在直播源中的出现顺序。
  *
- * 【2026-06-21 优化：区分焦点和选中状态】
- *
- * 【三种状态说明】
- * 1. 选中状态：蓝色文字 + 加粗 + 浅蓝色背景（点击 OK 键后真正选中的分组）
- * 2. 焦点状态：蓝色文字 + 常规 + 透明背景（遥控器焦点所在的项，还没点击确认）
- * 3. 未选中状态：白色文字 + 常规 + 透明背景（普通项）
- *
- * 【判断优先级】
- * 选中状态 > 焦点状态 > 未选中状态
- *
- * 【交互变化】
- * - 移动焦点：只改变焦点样式，不切换分组
- * - 点击 OK 键：才真正选中，切换分组
+ * 【2026-06-21 修复 2：分组显示频道数量】
+ * 【新增功能】
+ * 每个分组名称后面显示频道数量，比如「央视 (18)」，一目了然。
  */
 public class GroupListManager {
-
     /** 分组列表 ListView */
     private final ListView lvGroup;
     /** 上下文 */
     private final Context context;
     /** 分组名称列表 */
     private List<String> groupList;
+    /** 每个分组的频道数量 */
+    private List<Integer> groupCountList;
     /** 当前选中位置 */
     private int selectedPosition = 0;
     /** 列表适配器 */
     private ArrayAdapter<String> adapter;
-
     /** 分组选中监听器（供外部回调） */
     private OnGroupSelectedListener listener;
 
@@ -69,43 +62,26 @@ public class GroupListManager {
 
     /**
      * 构造函数
-     *
-     * @param context 上下文
-     * @param lvGroup 分组列表 ListView
      */
     public GroupListManager(Context context, ListView lvGroup) {
         this.context = context;
         this.lvGroup = lvGroup;
-        // item 不需要获取焦点，由 ListView 统一管理
         lvGroup.setItemsCanFocus(false);
         lvGroup.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
 
-        // ================================================================
-        // ✅ 修改：焦点移动时只刷新样式，不更新选中位置
-        // ================================================================
-        // 【说明】
-        // 原来的 onItemSelected 会更新 selectedPosition，导致焦点移动就变成选中状态。
-        // 现在改成只刷新列表，让 getView() 里的 view.isFocused() 生效，
-        // 这样焦点样式和选中样式就能区分开了。
+        // 焦点移动时只刷新样式，不更新选中位置
         lvGroup.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int pos, long id) {
-                // 只刷新列表，让焦点样式生效，不更新 selectedPosition
                 if (adapter != null) {
                     adapter.notifyDataSetChanged();
                 }
             }
-
             @Override
             public void onNothingSelected(AdapterView<?> parent) {}
         });
 
-        // ================================================================
-        // ✅ 新增：点击选中事件（按 OK 键时触发）
-        // ================================================================
-        // 【说明】
-        // 用户按 OK 键点击某个分组时，才真正更新选中位置，
-        // 并回调给外部，切换到该分组的频道列表。
+        // 点击选中事件
         lvGroup.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
@@ -117,14 +93,31 @@ public class GroupListManager {
     /**
      * 设置分组列表
      *
-     * @param channelSourceList 全部频道列表
+     * 【2026-06-21 修改】
+     * 1. 改用 LinkedHashSet，保持分组顺序
+     * 2. 同时计算每个分组的频道数量
      */
     public void setGroups(List<Channel> channelSourceList) {
         if (channelSourceList == null || channelSourceList.isEmpty()) return;
-        // 提取所有分组（去重）
-        Set<String> groupSet = new HashSet<>();
-        for (Channel c : channelSourceList) groupSet.add(c.getGroup());
+
+        // ✅ 修复 1：用 LinkedHashSet 替代 HashSet，保持分组出现顺序
+        Set<String> groupSet = new LinkedHashSet<>();
+        for (Channel c : channelSourceList) {
+            groupSet.add(c.getGroup());
+        }
         groupList = new ArrayList<>(groupSet);
+
+        // ✅ 修复 2：计算每个分组的频道数量
+        groupCountList = new ArrayList<>();
+        for (String group : groupList) {
+            int count = 0;
+            for (Channel c : channelSourceList) {
+                if (group.equals(c.getGroup())) {
+                    count++;
+                }
+            }
+            groupCountList.add(count);
+        }
 
         adapter = new ArrayAdapter<String>(lvGroup.getContext(),
                 android.R.layout.simple_list_item_1, groupList) {
@@ -135,65 +128,46 @@ public class GroupListManager {
                 tv.setTextSize(16);
                 tv.setPadding(20, 15, 20, 15);
 
-                // ====================================================================
-                // ✅ 2026-06-21 优化：区分三种状态样式
-                // ====================================================================
+                // ✅ 修复 2：显示分组名 + 频道数量，比如「央视 (18)」
+                String groupName = groupList.get(position);
+                int count = groupCountList.get(position);
+                tv.setText(groupName + " (" + count + ")");
 
+                // 三种状态样式
                 if (position == selectedPosition) {
-                    // ================================================================
-                    // ✅ 选中状态：蓝色文字 + 加粗 + 浅蓝色背景
-                    // ================================================================
-                    // 【说明】点击 OK 键真正选中的分组，最明显的样式
+                    // 选中状态：蓝色文字 + 加粗 + 浅蓝色背景
                     tv.setTextColor(Color.parseColor("#40A9FF"));
                     tv.setTypeface(null, Typeface.BOLD);
                     tv.setBackgroundColor(0x3340A9FF);
-
                 } else if (view.isFocused()) {
-                    // ================================================================
-                    // ✅ 焦点状态：蓝色文字 + 常规 + 透明背景
-                    // ================================================================
-                    // 【说明】遥控器焦点所在的项，文字变蓝提示焦点位置
-                    // 背景透明，不会和选中状态冲突
+                    // 焦点状态：蓝色文字 + 常规 + 透明背景
                     tv.setTextColor(Color.parseColor("#40A9FF"));
                     tv.setTypeface(null, Typeface.NORMAL);
                     tv.setBackgroundColor(Color.TRANSPARENT);
-
                 } else {
-                    // ================================================================
-                    // ✅ 未选中状态：白色文字 + 常规 + 透明背景
-                    // ================================================================
-                    // 【说明】普通项，默认样式
+                    // 未选中状态：白色文字 + 常规 + 透明背景
                     tv.setTextColor(Color.WHITE);
                     tv.setTypeface(null, Typeface.NORMAL);
                     tv.setBackgroundColor(Color.TRANSPARENT);
                 }
-
                 return view;
             }
         };
-
         lvGroup.setAdapter(adapter);
-        // 默认选中第一个
         selectedPosition = 0;
         adapter.notifyDataSetChanged();
     }
 
     /**
      * 设置选中位置，立即刷新高亮
-     * 外部点击时调用这个方法
-     *
-     * @param position 选中位置
      */
     public void setSelectedPosition(int position) {
         if (groupList == null || adapter == null) return;
         if (position < 0 || position >= groupList.size()) return;
-
         selectedPosition = position;
         lvGroup.setItemChecked(position, true);
         lvGroup.setSelection(position);
         adapter.notifyDataSetChanged();
-
-        // 回调通知外部，分组选中了
         if (listener != null) {
             listener.onGroupSelected(position, groupList.get(position));
         }
@@ -201,13 +175,25 @@ public class GroupListManager {
 
     /**
      * 获取指定位置的分组名称
-     *
-     * @param position 位置
-     * @return 分组名称
      */
     public String getCurrentGroup(int position) {
         if (groupList == null || position < 0 || position >= groupList.size()) return "";
         return groupList.get(position);
+    }
+
+    /**
+     * 根据分组名获取位置
+     *
+     * 【2026-06-21 新增：切换频道后同步分组用】
+     */
+    public int getGroupPosition(String groupName) {
+        if (groupList == null || groupName == null) return 0;
+        for (int i = 0; i < groupList.size(); i++) {
+            if (groupName.equals(groupList.get(i))) {
+                return i;
+            }
+        }
+        return 0;
     }
 
     public void onBackPressed() {}

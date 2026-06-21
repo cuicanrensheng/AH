@@ -34,6 +34,10 @@ import java.util.List;
  * 1. 分组列表增加「收藏」和「最近观看」两个特殊分组
  * 2. 菜单键（KEYCODE_MENU）可以快速收藏/取消收藏当前频道
  * 3. 切换频道时自动添加到最近观看
+ *
+ * 【2026-06-21 新增：长按收藏（触屏模式）】
+ * 【功能说明】
+ * 触屏模式下，长按频道项可以收藏/取消收藏该频道。
  */
 public class ChannelPanelController {
     // ====================== 常量 ======================
@@ -171,6 +175,23 @@ public class ChannelPanelController {
                 onChannelClicked(pos);
             }
         });
+
+        // ✅ 2026-06-21 新增：长按收藏（左侧频道列表）
+        channelListManager.setOnChannelLongClickListener(new ChannelListManager.OnChannelLongClickListener() {
+            @Override
+            public boolean onChannelLongClick(String channelName, int position) {
+                return handleChannelLongClick(channelName, false);
+            }
+        });
+
+        // ✅ 2026-06-21 新增：长按收藏（右侧节目单页面的频道列表）
+        channelListManagerEpg.setOnChannelLongClickListener(new ChannelListManager.OnChannelLongClickListener() {
+            @Override
+            public boolean onChannelLongClick(String channelName, int position) {
+                return handleChannelLongClick(channelName, true);
+            }
+        });
+
         btnShowEpg.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -184,7 +205,7 @@ public class ChannelPanelController {
             }
         });
     }
-    // ====================================================================
+             // ====================================================================
     // 初始化焦点变化监听
     // ====================================================================
     private void initFocusListeners() {
@@ -610,10 +631,6 @@ public class ChannelPanelController {
 
     /**
      * 添加到最近观看
-     *
-     * 【说明】
-     * 切换频道时自动调用，添加到最近观看列表，
-     * 并更新分组列表的数量显示。
      */
     private void addToRecent(String channelName) {
         try {
@@ -646,8 +663,76 @@ public class ChannelPanelController {
         }
     }
 
+    // ====================================================================
+    // ✅ 2026-06-21 新增：长按收藏处理
+    // ====================================================================
     /**
-     * ✅ 2026-06-21 新增：切换当前频道的收藏状态（菜单键调用）
+     * 处理频道长按事件（触屏模式收藏）
+     *
+     * @param channelName 被长按的频道名称
+     * @param isRightPanel 是否是右侧面板
+     * @return true 表示消费了事件
+     */
+    private boolean handleChannelLongClick(String channelName, boolean isRightPanel) {
+        if (channelName == null || channelName.isEmpty()) return false;
+
+        try {
+            AppConfig appConfig = AppConfig.getInstance(context);
+            boolean isFavorite = appConfig.toggleFavorite(channelName);
+
+            // 更新分组列表的数量
+            int favoriteCount = 0;
+            int recentCount = 0;
+            List<String> favorites = appConfig.getFavoriteChannels();
+            List<String> recent = appConfig.getRecentChannels();
+            for (String name : favorites) {
+                for (Channel c : channelSourceList) {
+                    if (name.equals(c.getName())) {
+                        favoriteCount++;
+                        break;
+                    }
+                }
+            }
+            for (String name : recent) {
+                for (Channel c : channelSourceList) {
+                    if (name.equals(c.getName())) {
+                        recentCount++;
+                        break;
+                    }
+                }
+            }
+            groupListManager.updateSpecialGroupCount(favoriteCount, recentCount);
+
+            // 如果当前在「收藏」分组，刷新列表
+            if (GroupListManager.GROUP_FAVORITE.equals(currentGroupName)) {
+                // 重新筛选收藏列表
+                currentGroupChannelList.clear();
+                for (String name : favorites) {
+                    for (Channel c : channelSourceList) {
+                        if (name.equals(c.getName())) {
+                            currentGroupChannelList.add(c);
+                            break;
+                        }
+                    }
+                }
+                if (!isRightPanel) {
+                    channelListManager.setFilteredChannels(currentGroupChannelList, channelName);
+                } else {
+                    channelListManagerEpg.setFilteredChannels(currentGroupChannelList, channelName);
+                }
+            }
+
+            SettingsActivity.logOperation("【收藏】长按" + (isFavorite ? "添加" : "取消")
+                    + "收藏：" + channelName);
+            return true;
+        } catch (Exception e) {
+            SettingsActivity.logOperation("【收藏】长按操作失败：" + e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * 切换当前频道的收藏状态（菜单键调用）
      *
      * @return 操作后的状态（true=已收藏，false=已取消）
      */

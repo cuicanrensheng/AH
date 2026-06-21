@@ -37,20 +37,12 @@ import java.util.List;
  * 3. 触屏点击时自动切换到触屏模式
  * 4. 释放资源时调用各个管理器的 release() 方法
  *
- * 【两种模式说明】
- * 1. 遥控器模式：
- *    - 焦点：白色文字 + 浅蓝色背景（最显眼）
- *    - 选中：蓝色文字 + 透明背景（次之）
- *    - 普通：白色文字 + 透明背景
- *
- * 2. 触屏模式：
- *    - 选中：白色文字 + 深蓝色背景（明显的选中效果）
- *    - 普通：白色文字 + 透明背景
- *
- * 【模式切换逻辑】
- * - 按遥控器按键 → 切换到遥控器模式
- * - 触屏点击列表项 → 切换到触屏模式
- * - 模式切换后，所有列表自动刷新样式
+ * 【2026-06-21 修复：切换频道后遥控器按键没反应】
+ * 【修复内容】
+ * 1. 关闭面板时清除焦点，防止按键事件被面板消费
+ * 2. 切换频道后自动同步当前分组名和分组频道列表
+ * 3. 切台失败时加上详细日志，方便排查
+ * 4. 增加更多操作日志，追踪按键和切台流程
  */
 public class ChannelPanelController {
     // ====================== 常量 ======================
@@ -193,9 +185,6 @@ public class ChannelPanelController {
      * 【说明】
      * 按钮默认是普通状态，统一调用 PanelStyleManager 应用普通样式，
      * 和列表的普通项样式保持一致。
-     *
-     * 【为什么统一调用？】
-     * 以后改样式只改 PanelStyleManager.java 就行，不用改这里。
      */
     private void initButtonStyle() {
         // 节目单按钮 - 默认普通样式
@@ -219,10 +208,6 @@ public class ChannelPanelController {
      * 【样式规则】
      * - 焦点：调用 PanelStyleManager.applyFocusStyle()
      * - 普通：调用 PanelStyleManager.applyNormalStyle()
-     *
-     * 【为什么统一调用？】
-     * 以后改样式只改 PanelStyleManager.java 就行，不用改这里。
-     * 按钮和列表的样式完全一致。
      */
     private void updateButtonStyle(TextView button, boolean hasFocus) {
         if (button == null) return;
@@ -245,19 +230,6 @@ public class ChannelPanelController {
         lvGroup.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
-                // ====================================================================
-                // ✅ 2026-06-21 新增：触屏点击 → 切换到触屏模式
-                // ====================================================================
-                // 【说明】
-                // onItemClick 可能是遥控器按 OK 键，也可能是触屏点击。
-                // 但是 onItemSelected 只有遥控器才会触发，所以我们在 onItemSelected
-                // 里切换到遥控器模式，这里就不用再切换了。
-                // 如果是触屏点击，onItemSelected 不会触发，所以模式不会变。
-                // 但是为了保险起见，我们可以加一个触屏检测。
-                // 【注意】ListView 的 onItemClick 无法区分是遥控器还是触屏，
-                // 所以我们主要靠 onItemSelected 来判断遥控器模式。
-                // 触屏模式的切换主要靠 onTouchEvent，这里先不处理。
-
                 onGroupClicked(position);
             }
         });
@@ -328,8 +300,6 @@ public class ChannelPanelController {
                     // ====================================================================
                     // ✅ 2026-06-21 新增：按钮获得焦点 → 切换到遥控器模式
                     // ====================================================================
-                    // 【说明】
-                    // 按钮获得焦点，说明是用遥控器操作的，切换到遥控器模式。
                     PanelStyleManager.getInstance().setMode(PanelStyleManager.MODE_REMOTE);
                 }
                 // 更新按钮样式
@@ -397,6 +367,26 @@ public class ChannelPanelController {
         groupListManager.setGroups(channels);
         channelListManager.setChannels(channels, currentPlayIndex);
         channelListManagerEpg.setChannels(channels, currentPlayIndex);
+
+        // ====================================================================
+        // ✅ 2026-06-21 新增：初始化时同步当前分组
+        // ====================================================================
+        if (channels.size() > 0 && currentPlayIndex < channels.size()) {
+            Channel currentChannel = channels.get(currentPlayIndex);
+            String groupName = currentChannel.getGroup();
+            if (groupName != null && !groupName.isEmpty()) {
+                currentGroupName = groupName;
+                // 筛选当前分组的频道
+                currentGroupChannelList.clear();
+                for (Channel c : channels) {
+                    if (groupName.equals(c.getGroup())) {
+                        currentGroupChannelList.add(c);
+                    }
+                }
+                SettingsActivity.logOperation("【初始化】当前分组：" + groupName 
+                        + "，频道数：" + currentGroupChannelList.size());
+            }
+        }
     }
 
     private void onGroupClicked(int position) {
@@ -436,6 +426,9 @@ public class ChannelPanelController {
      *
      * 【2026-06-20 新增：详细操作日志】
      * 记录底层方法调用，方便追踪是从哪里触发的切台。
+     *
+     * 【2026-06-21 修复：增加失败日志】
+     * groupIndex == -1 时加上日志，方便排查切台失败的原因。
      */
     public void playPrev() {
         // 防抖检查
@@ -455,6 +448,8 @@ public class ChannelPanelController {
         // 获取当前频道和分组
         Channel currentChannel = channelSourceList.get(currentPlayIndex);
         String currentGroup = currentChannel.getGroup();
+        SettingsActivity.logOperation("【切台】playPrev 当前频道：" + currentChannel.getName() 
+                + "，分组：" + currentGroup);
 
         // 筛选当前分组的频道
         List<Channel> groupChannels = new ArrayList<>();
@@ -477,7 +472,16 @@ public class ChannelPanelController {
                 break;
             }
         }
-        if (groupIndex == -1) return;
+
+        // ====================================================================
+        // ✅ 2026-06-21 修复：groupIndex == -1 时加上日志
+        // ====================================================================
+        if (groupIndex == -1) {
+            SettingsActivity.logOperation("【切台】playPrev 失败：当前频道不在分组内" 
+                    + "，频道名：" + currentChannel.getName() 
+                    + "，分组：" + currentGroup);
+            return;
+        }
 
         // 计算上一个频道的索引（分组内循环）
         int prevGroupIndex = (groupIndex - 1 + groupChannels.size()) % groupChannels.size();
@@ -489,6 +493,8 @@ public class ChannelPanelController {
                     + currentPlayIndex + " → " + globalIndex 
                     + "（" + prevChannel.getName() + "）");
             playChannel(globalIndex);
+        } else {
+            SettingsActivity.logOperation("【切台】playPrev 失败：找不到全局索引");
         }
     }
 
@@ -496,6 +502,8 @@ public class ChannelPanelController {
      * 播放下一个频道（分组内循环）- 底层方法
      *
      * 【2026-06-20 新增：详细操作日志】
+     *
+     * 【2026-06-21 修复：增加失败日志】
      */
     public void playNext() {
         // 防抖检查
@@ -515,6 +523,8 @@ public class ChannelPanelController {
         // 获取当前频道和分组
         Channel currentChannel = channelSourceList.get(currentPlayIndex);
         String currentGroup = currentChannel.getGroup();
+        SettingsActivity.logOperation("【切台】playNext 当前频道：" + currentChannel.getName() 
+                + "，分组：" + currentGroup);
 
         // 筛选当前分组的频道
         List<Channel> groupChannels = new ArrayList<>();
@@ -537,7 +547,16 @@ public class ChannelPanelController {
                 break;
             }
         }
-        if (groupIndex == -1) return;
+
+        // ====================================================================
+        // ✅ 2026-06-21 修复：groupIndex == -1 时加上日志
+        // ====================================================================
+        if (groupIndex == -1) {
+            SettingsActivity.logOperation("【切台】playNext 失败：当前频道不在分组内" 
+                    + "，频道名：" + currentChannel.getName() 
+                    + "，分组：" + currentGroup);
+            return;
+        }
 
         // 计算下一个频道的索引（分组内循环）
         int nextGroupIndex = (groupIndex + 1) % groupChannels.size();
@@ -549,6 +568,8 @@ public class ChannelPanelController {
                     + currentPlayIndex + " → " + globalIndex 
                     + "（" + nextChannel.getName() + "）");
             playChannel(globalIndex);
+        } else {
+            SettingsActivity.logOperation("【切台】playNext 失败：找不到全局索引");
         }
     }
 
@@ -596,6 +617,11 @@ public class ChannelPanelController {
 
     /**
      * 播放指定索引的频道
+     *
+     * 【2026-06-21 修复：切换频道后自动同步分组】
+     * 【修改原因】
+     * 如果从其他分组切换过来，currentGroupName 还是原来的分组，
+     * 导致下次打开面板时显示错误的分组，也可能影响其他逻辑。
      */
     public void playChannel(int index) {
         if (channelSourceList == null || channelSourceList.isEmpty()) return;
@@ -603,6 +629,30 @@ public class ChannelPanelController {
         currentPlayIndex = index;
         Channel ch = channelSourceList.get(index);
         if (ch == null) return;
+
+        // ====================================================================
+        // ✅ 2026-06-21 修复：切换频道后自动同步当前分组
+        // ====================================================================
+        // 【为什么要同步？】
+        // 如果从其他分组切换过来（比如数字选台直接切到另一个分组的频道），
+        // currentGroupName 还是原来的分组，会导致：
+        // 1. 下次打开面板时显示错误的分组
+        // 2. 分组内循环切台时可能出错（虽然 playPrev 是用 currentChannel.getGroup()）
+        // 3. 状态不一致，容易出 bug
+        String newGroup = ch.getGroup();
+        if (newGroup != null && !newGroup.equals(currentGroupName)) {
+            String oldGroup = currentGroupName;
+            currentGroupName = newGroup;
+            // 重新筛选当前分组的频道列表
+            currentGroupChannelList.clear();
+            for (Channel c : channelSourceList) {
+                if (newGroup.equals(c.getGroup())) {
+                    currentGroupChannelList.add(c);
+                }
+            }
+            SettingsActivity.logOperation("【切台】切换分组：" + oldGroup + " → " + newGroup 
+                    + "，频道数：" + currentGroupChannelList.size());
+        }
 
         // 更新主页面频道列表的选中状态
         if (!currentGroupName.isEmpty() && !currentGroupChannelList.isEmpty()) {
@@ -662,6 +712,14 @@ public class ChannelPanelController {
     // ====================================================================
     // 4. 面板控制相关
     // ====================================================================
+    /**
+     * 切换面板显示/隐藏
+     *
+     * 【2026-06-21 修复：关闭面板时清除焦点】
+     * 【修复原因】
+     * 关闭面板后，焦点可能还在面板的 ListView 上，导致按键事件被错误消费，
+     * 或者焦点丢失，所有按键都没反应。清除焦点后，播放界面可以正确接收按键。
+     */
     public void togglePanel() {
         if (!currentGroupName.isEmpty() && !currentGroupChannelList.isEmpty()) {
             channelListManager.setChannelsByGroup(channelSourceList, currentGroupName, currentPlayIndex);
@@ -674,11 +732,30 @@ public class ChannelPanelController {
         panelManager.toggle(channelSourceList, currentPlayIndex, dateListManager);
 
         if (!isOpen) {
+            // 打开面板时，让频道列表请求焦点
             panelLayout.post(new Runnable() {
                 @Override
                 public void run() {
                     lvChannelList.requestFocus();
                     lvChannelList.setSelection(getChannelListSelection());
+                }
+            });
+        } else {
+            // ====================================================================
+            // ✅ 2026-06-21 修复：关闭面板时清除焦点
+            // ====================================================================
+            // 【为什么要清除焦点？】
+            // 关闭面板后，面板里的 View 都不可见了，但是焦点可能还停留在原来的 ListView 上。
+            // 这会导致：
+            // 1. 按键事件被不可见的 View 消费
+            // 2. 或者焦点丢失，没有 View 处理按键
+            // 清除焦点后，焦点会自动转移到播放界面的 View 上，
+            // 确保上下键等按键能正常响应。
+            panelLayout.post(new Runnable() {
+                @Override
+                public void run() {
+                    panelLayout.clearFocus();
+                    SettingsActivity.logOperation("【面板】关闭面板，已清除焦点");
                 }
             });
         }
@@ -841,8 +918,6 @@ public class ChannelPanelController {
         // ====================================================================
         // ✅ 2026-06-21 新增：遥控器按键 → 切换到遥控器模式
         // ====================================================================
-        // 【说明】
-        // 只要有按键事件，就说明是用遥控器操作的，切换到遥控器模式。
         PanelStyleManager.getInstance().setMode(PanelStyleManager.MODE_REMOTE);
 
         switch (keyCode) {
@@ -968,9 +1043,6 @@ public class ChannelPanelController {
         // ====================================================================
         // ✅ 2026-06-21 新增：释放各个子管理器的资源
         // ====================================================================
-        // 【说明】
-        // 每个管理器都注册了 PanelStyleManager 的监听器，
-        // 释放时要移除，防止内存泄漏。
         if (groupListManager != null) {
             groupListManager.release();
         }

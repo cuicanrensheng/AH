@@ -13,8 +13,13 @@ public class AppConfig {
 
     // ====================================================================
     // ✅ 2026-06-21 新增：收藏和最近观看的分隔符
+    //
+    // 【重要说明】
+    // SEPARATOR 用于保存时拼接字符串
+    // SEPARATOR_REGEX 用于 split 时分割（因为 | 在正则里是特殊字符，必须转义）
     // ====================================================================
     private static final String SEPARATOR = "|||";
+    private static final String SEPARATOR_REGEX = "\\|\\|\\|"; // ✅ 转义后的分隔符，用于 split
 
     private AppConfig(Context context) {
         appSp = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE);
@@ -81,7 +86,7 @@ public class AppConfig {
         String saved = appSp.getString(KEY_FAVORITE_CHANNELS, "");
         List<String> list = new ArrayList<>();
         if (saved.isEmpty()) return list;
-        String[] names = saved.split(SEPARATOR);
+        String[] names = saved.split(SEPARATOR_REGEX); // ✅ 改成转义后的分隔符
         for (String name : names) {
             if (!name.isEmpty()) {
                 list.add(name);
@@ -146,7 +151,7 @@ public class AppConfig {
     private void saveFavorites(List<String> favorites) {
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < favorites.size(); i++) {
-            if (i > 0) sb.append(SEPARATOR);
+            if (i > 0) sb.append(SEPARATOR); // 保存用原来的分隔符，不用转义
             sb.append(favorites.get(i));
         }
         appSp.edit().putString(KEY_FAVORITE_CHANNELS, sb.toString()).apply();
@@ -167,7 +172,7 @@ public class AppConfig {
         String saved = appSp.getString(KEY_RECENT_CHANNELS, "");
         List<String> list = new ArrayList<>();
         if (saved.isEmpty()) return list;
-        String[] names = saved.split(SEPARATOR);
+        String[] names = saved.split(SEPARATOR_REGEX); // ✅ 改成转义后的分隔符
         for (String name : names) {
             if (!name.isEmpty()) {
                 list.add(name);
@@ -205,7 +210,7 @@ public class AppConfig {
     private void saveRecent(List<String> recent) {
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < recent.size(); i++) {
-            if (i > 0) sb.append(SEPARATOR);
+            if (i > 0) sb.append(SEPARATOR); // 保存用原来的分隔符，不用转义
             sb.append(recent.get(i));
         }
         appSp.edit().putString(KEY_RECENT_CHANNELS, sb.toString()).apply();

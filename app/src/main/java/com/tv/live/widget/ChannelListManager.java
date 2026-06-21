@@ -23,29 +23,17 @@ import java.util.List;
  * 【职责】
  * 统一管理频道列表的显示、选中状态、点击事件等。
  *
- * 【2026-06-20 优化：统一高亮样式，解决多个光标问题】
+ * 【2026-06-21 优化：统一三种状态样式】
  *
- * 【原来的问题】
- * 原来有三种状态：选中状态、焦点状态、未选中状态，
- * 当焦点和选中位置不在同一个项时，就会有两个项同时亮着，
- * 看起来像有多个光标，很乱。
- *
- * 【优化方案】
- * 去掉"焦点状态"的单独判断，统一成两种状态：
- * 1. 高亮状态（选中=焦点，用同一种样式）
- * 2. 普通状态
- *
- * 【效果】
- * - 同一个列表里永远只有一个高亮
- * - 手机点击：点哪个哪个亮
- * - 遥控器移动：移到哪哪亮
- * - 样式统一：浅蓝色背景 + 蓝色文字 + 加粗
+ * 【三种状态说明】
+ * 1. 选中状态：蓝色文字 + 加粗 + 浅蓝色背景（当前播放的频道）
+ * 2. 焦点状态：蓝色文字 + 常规 + 透明背景（遥控器焦点所在的项）
+ * 3. 未选中状态：白色文字 + 常规 + 透明背景（普通项）
  */
 public class ChannelListManager {
 
     /** 频道列表 ListView */
     private final ListView lvChannelList;
-
     /** 当前选中位置 */
     private int selectedPosition = 0;
 
@@ -68,7 +56,6 @@ public class ChannelListManager {
      */
     public ChannelListManager(Context context, ListView lvChannelList) {
         this.lvChannelList = lvChannelList;
-
         // item 不需要获取焦点，由 ListView 统一管理
         lvChannelList.setItemsCanFocus(false);
 
@@ -106,10 +93,8 @@ public class ChannelListManager {
      */
     public void setChannels(List<Channel> channelSourceList, int currentPlayIndex) {
         if (channelSourceList == null || channelSourceList.isEmpty()) return;
-
         List<String> names = new ArrayList<>();
         for (Channel c : channelSourceList) names.add(c.getName());
-
         selectedPosition = currentPlayIndex;
 
         // 使用自定义布局，显示序号 + 频道名
@@ -129,50 +114,44 @@ public class ChannelListManager {
 
                 // 设置序号（从 1 开始）
                 tvIndex.setText(String.valueOf(position + 1));
-
                 // 设置频道名称
                 tvChannel.setText(getItem(position));
                 tvChannel.setTextSize(16);
 
                 // ====================================================================
-                // ✅ 2026-06-20 优化：统一高亮，只有两种状态
+                // ✅ 2026-06-21 优化：统一三种状态样式
                 // ====================================================================
 
                 if (position == selectedPosition) {
-                    // ✅ 高亮状态（选中和焦点都用这一种样式）
-                    // 样式：蓝色文字 + 加粗 + 浅蓝色背景
+                    // ================================================================
+                    // ✅ 选中状态：蓝色文字 + 加粗 + 浅蓝色背景
+                    // ================================================================
                     tvChannel.setTextColor(Color.parseColor("#40A9FF"));
                     tvChannel.setTypeface(null, Typeface.BOLD);
                     convertView.setBackgroundColor(0x3340A9FF);
                     // 序号也跟着变蓝色
                     tvIndex.setTextColor(Color.parseColor("#40A9FF"));
+
+                } else if (convertView.isFocused()) {
+                    // ================================================================
+                    // ✅ 焦点状态：蓝色文字 + 常规 + 透明背景
+                    // ================================================================
+                    tvChannel.setTextColor(Color.parseColor("#40A9FF"));
+                    tvChannel.setTypeface(null, Typeface.NORMAL);
+                    convertView.setBackgroundColor(Color.TRANSPARENT);
+                    // 序号也跟着变蓝色
+                    tvIndex.setTextColor(Color.parseColor("#40A9FF"));
+
                 } else {
-                    // ✅ 普通状态（未选中、无焦点）
-                    // 样式：白色文字 + 常规 + 透明背景
+                    // ================================================================
+                    // ✅ 未选中状态：白色文字 + 常规 + 透明背景
+                    // ================================================================
                     tvChannel.setTextColor(Color.WHITE);
                     tvChannel.setTypeface(null, Typeface.NORMAL);
                     convertView.setBackgroundColor(Color.TRANSPARENT);
                     // 序号灰色
                     tvIndex.setTextColor(Color.parseColor("#888888"));
                 }
-
-                /*
-                 * ❌ 已删除：原来的焦点状态判断
-                 *
-                 * 原来的代码：
-                 * else if (convertView.isFocused()) {
-                 *     // 焦点状态：蓝色文字 + 稍深一点的蓝色背景
-                 *     ...
-                 * }
-                 *
-                 * 【为什么删除？】
-                 * 原来有三种状态（选中、焦点、普通），
-                 * 当焦点和选中位置不在同一个项时，就会有两个项同时亮着，
-                 * 看起来像有多个光标，很乱。
-                 *
-                 * 现在统一成两种状态，高亮=选中=焦点，
-                 * 同一个列表里永远只有一个项亮着，清晰明了。
-                 */
 
                 return convertView;
             }
@@ -195,10 +174,8 @@ public class ChannelListManager {
      */
     public void setChannelsByGroup(List<Channel> channelSourceList, String group, int currentPlayIndex) {
         if (channelSourceList == null || channelSourceList.isEmpty()) return;
-
         List<String> names = new ArrayList<>();
         int realIndex = 0;
-
         for (int i = 0; i < channelSourceList.size(); i++) {
             Channel c = channelSourceList.get(i);
             if (group == null || group.isEmpty() || group.equals(c.getGroup())) {
@@ -208,7 +185,6 @@ public class ChannelListManager {
                 }
             }
         }
-
         selectedPosition = realIndex;
 
         // 使用自定义布局，显示序号 + 频道名
@@ -228,23 +204,30 @@ public class ChannelListManager {
 
                 // 设置序号（从 1 开始）
                 tvIndex.setText(String.valueOf(position + 1));
-
                 // 设置频道名称
                 tvChannel.setText(getItem(position));
                 tvChannel.setTextSize(16);
 
                 // ====================================================================
-                // ✅ 2026-06-20 优化：统一高亮，只有两种状态
+                // ✅ 2026-06-21 优化：统一三种状态样式
                 // ====================================================================
 
                 if (position == selectedPosition) {
-                    // ✅ 高亮状态（选中和焦点都用这一种样式）
+                    // ✅ 选中状态：蓝色文字 + 加粗 + 浅蓝色背景
                     tvChannel.setTextColor(Color.parseColor("#40A9FF"));
                     tvChannel.setTypeface(null, Typeface.BOLD);
                     convertView.setBackgroundColor(0x3340A9FF);
                     tvIndex.setTextColor(Color.parseColor("#40A9FF"));
+
+                } else if (convertView.isFocused()) {
+                    // ✅ 焦点状态：蓝色文字 + 常规 + 透明背景
+                    tvChannel.setTextColor(Color.parseColor("#40A9FF"));
+                    tvChannel.setTypeface(null, Typeface.NORMAL);
+                    convertView.setBackgroundColor(Color.TRANSPARENT);
+                    tvIndex.setTextColor(Color.parseColor("#40A9FF"));
+
                 } else {
-                    // ✅ 普通状态
+                    // ✅ 未选中状态：白色文字 + 常规 + 透明背景
                     tvChannel.setTextColor(Color.WHITE);
                     tvChannel.setTypeface(null, Typeface.NORMAL);
                     convertView.setBackgroundColor(Color.TRANSPARENT);

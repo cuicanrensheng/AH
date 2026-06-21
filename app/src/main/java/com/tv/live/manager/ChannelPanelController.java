@@ -21,6 +21,14 @@ import java.util.List;
 /**
  * 频道面板控制器
  *
+ * 【职责】
+ * 统一管理所有和频道面板相关的逻辑，包括：
+ * 1. 分组管理（分组列表、选中状态、分组筛选）
+ * 2. 频道切换（上/下切台、分组内循环、防抖、反转）
+ * 3. 面板控制（显示/隐藏、EPG 展开/收起、列表点击）
+ * 4. 焦点管理（手机触屏 + 电视遥控器）
+ * 5. 按键处理（左右键移动焦点、OK键选中、菜单键收藏）
+ *
  * 【2026-06-21 新增：收藏 + 最近观看 + 菜单键】
  * 【功能说明】
  * 1. 分组列表增加「收藏」和「最近观看」两个特殊分组
@@ -64,14 +72,24 @@ public class ChannelPanelController {
     // ====================================================================
     // 换台反转相关
     // ====================================================================
+    /**
+     * 是否开启换台反转
+     * 默认 false = 不反转
+     */
     private boolean isReverse = false;
 
+    /**
+     * 设置是否开启换台反转
+     */
     public void setReverse(boolean reverse) {
         this.isReverse = reverse;
         SettingsActivity.logOperation("【设置】反转状态同步到 ChannelPanelController：" 
                 + (reverse ? "开启" : "关闭"));
     }
 
+    /**
+     * 获取当前反转状态
+     */
     public boolean isReverse() {
         return isReverse;
     }
@@ -375,7 +393,11 @@ public class ChannelPanelController {
     // ====================================================================
     // 3. 频道切换相关（核心）
     // ====================================================================
+    /**
+     * 播放上一个频道（分组内循环）- 底层方法
+     */
     public void playPrev() {
+        // 防抖检查
         long now = System.currentTimeMillis();
         if (now - lastChannelChangeTime < CHANNEL_COOLDOWN) {
             SettingsActivity.logOperation("【切台】playPrev 防抖拦截，距离上次：" 
@@ -383,22 +405,30 @@ public class ChannelPanelController {
             return;
         }
         lastChannelChangeTime = now;
+
         if (channelSourceList == null || channelSourceList.isEmpty()) {
             SettingsActivity.logOperation("【切台】playPrev 失败：频道列表为空");
             return;
         }
+
+        // 获取当前频道和分组
         Channel currentChannel = channelSourceList.get(currentPlayIndex);
         String currentGroup = currentChannel.getGroup();
+
+        // 筛选当前分组的频道
         List<Channel> groupChannels = new ArrayList<>();
         for (Channel c : channelSourceList) {
             if (currentGroup.equals(c.getGroup())) {
                 groupChannels.add(c);
             }
         }
+
         if (groupChannels.size() <= 1) {
             SettingsActivity.logOperation("【切台】playPrev 失败：分组内只有1个频道");
             return;
         }
+
+        // 找到当前频道在分组中的索引
         int groupIndex = -1;
         for (int i = 0; i < groupChannels.size(); i++) {
             if (groupChannels.get(i).getName().equals(currentChannel.getName())) {
@@ -407,9 +437,12 @@ public class ChannelPanelController {
             }
         }
         if (groupIndex == -1) return;
+
+        // 计算上一个频道的索引（分组内循环）
         int prevGroupIndex = (groupIndex - 1 + groupChannels.size()) % groupChannels.size();
         Channel prevChannel = groupChannels.get(prevGroupIndex);
         int globalIndex = channelSourceList.indexOf(prevChannel);
+
         if (globalIndex != -1) {
             SettingsActivity.logOperation("【切台】playPrev 上一台 → " 
                     + currentPlayIndex + " → " + globalIndex 
@@ -418,7 +451,11 @@ public class ChannelPanelController {
         }
     }
 
+    /**
+     * 播放下一个频道（分组内循环）- 底层方法
+     */
     public void playNext() {
+        // 防抖检查
         long now = System.currentTimeMillis();
         if (now - lastChannelChangeTime < CHANNEL_COOLDOWN) {
             SettingsActivity.logOperation("【切台】playNext 防抖拦截，距离上次：" 
@@ -426,22 +463,30 @@ public class ChannelPanelController {
             return;
         }
         lastChannelChangeTime = now;
+
         if (channelSourceList == null || channelSourceList.isEmpty()) {
             SettingsActivity.logOperation("【切台】playNext 失败：频道列表为空");
             return;
         }
+
+        // 获取当前频道和分组
         Channel currentChannel = channelSourceList.get(currentPlayIndex);
         String currentGroup = currentChannel.getGroup();
+
+        // 筛选当前分组的频道
         List<Channel> groupChannels = new ArrayList<>();
         for (Channel c : channelSourceList) {
             if (currentGroup.equals(c.getGroup())) {
                 groupChannels.add(c);
             }
         }
+
         if (groupChannels.size() <= 1) {
             SettingsActivity.logOperation("【切台】playNext 失败：分组内只有1个频道");
             return;
         }
+
+        // 找到当前频道在分组中的索引
         int groupIndex = -1;
         for (int i = 0; i < groupChannels.size(); i++) {
             if (groupChannels.get(i).getName().equals(currentChannel.getName())) {
@@ -450,9 +495,12 @@ public class ChannelPanelController {
             }
         }
         if (groupIndex == -1) return;
+
+        // 计算下一个频道的索引（分组内循环）
         int nextGroupIndex = (groupIndex + 1) % groupChannels.size();
         Channel nextChannel = groupChannels.get(nextGroupIndex);
         int globalIndex = channelSourceList.indexOf(nextChannel);
+
         if (globalIndex != -1) {
             SettingsActivity.logOperation("【切台】playNext 下一台 → " 
                     + currentPlayIndex + " → " + globalIndex 
@@ -460,27 +508,40 @@ public class ChannelPanelController {
             playChannel(globalIndex);
         }
     }
+
     // ====================================================================
     // 带反转的切台方法（统一入口）
     // ====================================================================
+    /**
+     * 按上键时调用（自动考虑反转）
+     */
     public void switchUp() {
         SettingsActivity.logOperation("【切台】switchUp 上键 → 反转状态：" 
                 + (isReverse ? "开启" : "关闭") 
                 + " → 实际方向：" + (isReverse ? "下一台" : "上一台"));
+        
         if (isReverse) {
+            // 反转开启：上键 = 下一台
             playNext();
         } else {
+            // 反转关闭：上键 = 上一台
             playPrev();
         }
     }
 
+    /**
+     * 按下键时调用（自动考虑反转）
+     */
     public void switchDown() {
         SettingsActivity.logOperation("【切台】switchDown 下键 → 反转状态：" 
                 + (isReverse ? "开启" : "关闭") 
                 + " → 实际方向：" + (isReverse ? "上一台" : "下一台"));
+        
         if (isReverse) {
+            // 反转开启：下键 = 上一台
             playPrev();
         } else {
+            // 反转关闭：下键 = 下一台
             playNext();
         }
     }
@@ -734,6 +795,9 @@ public class ChannelPanelController {
         return panelLayout.getVisibility() == View.VISIBLE;
     }
 
+    // ====================================================================
+    // 右侧面板是否打开
+    // ====================================================================
     public boolean isRightPanelOpen() {
         return rightPanelOpen;
     }
@@ -989,4 +1053,21 @@ public class ChannelPanelController {
         llLeftPanel = null;
         llRightPanel = null;
         lvGroup = null;
-        lvChannelList
+        lvChannelList = null;
+        lvChannelListEpg = null;
+        lvDate = null;
+        lvEpg = null;
+        btnShowEpg = null;
+        btnBackGroup = null;
+        channelSourceList = null;
+        currentGroupChannelList = null;
+        channelChangeListener = null;
+        panelStateListener = null;
+        groupListManager = null;
+        channelListManager = null;
+        channelListManagerEpg = null;
+        dateListManager = null;
+        epgManagerWrapper = null;
+        panelManager = null;
+    }
+}

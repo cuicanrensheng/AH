@@ -348,3 +348,121 @@ public class EpgManagerWrapper {
         };
         context.registerReceiver(receiver, new IntentFilter(ACTION_REMINDER));
     }
+        // ====================================================================
+    // EPG 列表适配器
+    // ====================================================================
+    /**
+     * EPG 节目单列表适配器
+     *
+     * 【说明】
+     * 每个 item 包含：日期、时间、节目名称、操作按钮（回看/预约/播放中）
+     */
+    private class EpgAdapter extends ArrayAdapter<Channel.EpgItem> {
+        private final Context ctx;
+        private Channel currentChannel;
+        private List<Channel.EpgItem> list;
+        private final LayoutInflater inflater;
+        private int dayIndex;
+        private final SimpleDateFormat sdfFull = new SimpleDateFormat("yyyyMMddHHmmss", Locale.CHINA);
+
+        public EpgAdapter(Context ctx, Channel currentChannel, List<Channel.EpgItem> list, int dayIndex) {
+            super(ctx, R.layout.item_epg, list);
+            this.ctx = ctx;
+            this.currentChannel = currentChannel;
+            this.list = list;
+            this.inflater = LayoutInflater.from(ctx);
+            this.dayIndex = dayIndex;
+        }
+
+        /**
+         * 更新数据
+         *
+         * @param currentChannel 当前频道
+         * @param list 节目列表
+         * @param dayIndex 日期索引
+         */
+        public void setData(Channel currentChannel, List<Channel.EpgItem> list, int dayIndex) {
+            this.currentChannel = currentChannel;
+            this.list.clear();
+            this.list.addAll(list);
+            this.dayIndex = dayIndex;
+            notifyDataSetChanged();
+        }
+
+        @Override
+        public View getView(int position, View convertView, ViewGroup parent) {
+            ViewHolder holder;
+            if (convertView == null) {
+                convertView = inflater.inflate(R.layout.item_epg, parent, false);
+                holder = new ViewHolder();
+                holder.tv_dayName = convertView.findViewById(R.id.tv_dayName);
+                holder.tv_time = convertView.findViewById(R.id.tv_time);
+                holder.tv_title = convertView.findViewById(R.id.tv_title);
+                holder.tv_action = convertView.findViewById(R.id.tv_action);
+                convertView.setTag(holder);
+            } else {
+                holder = (ViewHolder) convertView.getTag();
+            }
+
+            Channel.EpgItem item = list.get(position);
+            String endTime = epgEndTimeMap.get(item);
+            holder.tv_dayName.setText(item.dayName);
+            holder.tv_time.setText(item.time + "-" + endTime);
+            holder.tv_title.setText(item.title);
+
+            // 判断是否是选中/播放中的节目
+            boolean isPlayingOrSelected = (position == selectedPosition || item.isPlaying);
+
+            // ====================================================================
+            // ✅ 2026-06-21 修改：统一三种状态样式（焦点优先）
+            // ====================================================================
+            // 判断优先级：焦点 > 选中 > 普通
+            if (position == focusedPosition) {
+                // ── 焦点状态：白色文字 + 蓝色背景（最显眼）──
+                holder.tv_dayName.setTextColor(Color.WHITE);
+                holder.tv_time.setTextColor(Color.WHITE);
+                holder.tv_title.setTextColor(Color.WHITE);
+                holder.tv_title.setTypeface(null, Typeface.NORMAL);
+                holder.tv_action.setTextColor(Color.WHITE);
+                convertView.setBackgroundColor(Color.parseColor("#40A9FF"));
+            } else if (isPlayingOrSelected) {
+                // ── 选中状态：蓝色文字 + 透明背景（次之）──
+                holder.tv_dayName.setTextColor(Color.parseColor("#40A9FF"));
+                holder.tv_time.setTextColor(Color.parseColor("#40A9FF"));
+                holder.tv_title.setTextColor(Color.parseColor("#40A9FF"));
+                holder.tv_title.setTypeface(null, Typeface.NORMAL);
+                holder.tv_action.setTextColor(Color.parseColor("#40A9FF"));
+                convertView.setBackgroundColor(Color.TRANSPARENT);
+            } else {
+                // ── 普通状态：白色文字 + 透明背景 ──
+                holder.tv_dayName.setTextColor(Color.WHITE);
+                holder.tv_time.setTextColor(Color.WHITE);
+                holder.tv_title.setTextColor(Color.WHITE);
+                holder.tv_title.setTypeface(null, Typeface.NORMAL);
+                holder.tv_action.setTextColor(Color.WHITE);
+                convertView.setBackgroundColor(Color.TRANSPARENT);
+            }
+
+            // 操作按钮文字（回看/预约/播放中）
+            if (item.isPlaying) {
+                holder.tv_action.setText("播放中");
+                holder.tv_action.setVisibility(View.VISIBLE);
+            } else if (bookedSet.contains(item.title)) {
+                holder.tv_action.setText("已预约");
+                holder.tv_action.setVisibility(View.VISIBLE);
+            } else {
+                holder.tv_action.setText("回看");
+                holder.tv_action.setVisibility(View.VISIBLE);
+            }
+
+            return convertView;
+        }
+
+        class ViewHolder {
+            TextView tv_dayName;
+            TextView tv_time;
+            TextView tv_title;
+            TextView tv_action;
+        }
+    }
+}

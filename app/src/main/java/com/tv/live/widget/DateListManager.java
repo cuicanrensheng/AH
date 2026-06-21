@@ -143,10 +143,10 @@ public class DateListManager {
                 // ====================================================================
                 // 判断优先级：焦点 > 选中 > 普通
                 if (position == focusedPosition) {
-                    // ── 焦点状态：白色文字 + 蓝色背景（最显眼）──
+                    // ── 焦点状态：白色文字 + 浅蓝色背景
                     tv.setTextColor(Color.WHITE);
                     tv.setTypeface(null, Typeface.NORMAL);
-                    tv.setBackgroundColor(Color.parseColor("#40A9FF"));
+                     tv.setBackgroundColor(0x3340A9FF);
                 } else if (position == selectedPosition) {
                     // ── 选中状态：蓝色文字 + 透明背景（次之）──
                     tv.setTextColor(Color.parseColor("#40A9FF"));

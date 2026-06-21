@@ -532,12 +532,7 @@ public class ChannelPanelController {
         /**
      * 播放指定索引的频道
      *
-     * 【2026-06-21 修复：切换频道后同步分组选中状态】
-     * 【问题原因】
-     * 从其他分组切换频道过来（比如数字选台、手势切台），
-     * 分组列表还是显示原来的分组，和当前频道不一致。
-     * 【解决方案】
-     * 切换频道时，自动获取当前频道的分组，同步更新分组列表的选中状态。
+     * 【2026-06-21 修改：同步分组时处理「全部」分组的情况】
      */
     public void playChannel(int index) {
         if (channelSourceList == null || channelSourceList.isEmpty()) return;
@@ -546,30 +541,34 @@ public class ChannelPanelController {
         Channel ch = channelSourceList.get(index);
         if (ch == null) return;
 
-        // ✅ 修复：切换频道后同步分组选中状态
+        // 切换频道后同步分组选中状态
         String channelGroup = ch.getGroup();
         if (channelGroup != null && !channelGroup.isEmpty()) {
-            // 如果当前分组和频道分组不一致，同步更新分组
-            if (!channelGroup.equals(currentGroupName)) {
+            // 如果当前是「全部」分组，不用切换分组，只更新频道列表
+            if (!GroupListManager.GROUP_ALL.equals(currentGroupName) 
+                    && !channelGroup.equals(currentGroupName)) {
+                // 不是「全部」且分组不一致 → 同步切换分组
                 currentGroupName = channelGroup;
-                // 重新筛选当前分组的频道列表
                 currentGroupChannelList.clear();
                 for (Channel c : channelSourceList) {
                     if (channelGroup.equals(c.getGroup())) {
                         currentGroupChannelList.add(c);
                     }
                 }
-                // 同步分组列表的选中状态
                 int groupPos = groupListManager.getGroupPosition(channelGroup);
                 groupListManager.setSelectedPosition(groupPos);
             }
         }
 
         // 更新主页面频道列表的选中状态
-        if (!currentGroupName.isEmpty() && !currentGroupChannelList.isEmpty()) {
-            channelListManager.setChannelsByGroup(channelSourceList, currentGroupName, index);
-        } else {
+        if (GroupListManager.GROUP_ALL.equals(currentGroupName) 
+                || currentGroupName.isEmpty() 
+                || currentGroupChannelList.isEmpty()) {
+            // 「全部」分组 或 未选分组 → 显示全部频道
             channelListManager.setChannels(channelSourceList, index);
+        } else {
+            // 普通分组 → 按分组筛选
+            channelListManager.setChannelsByGroup(channelSourceList, currentGroupName, index);
         }
 
         // 同步更新节目单页面的频道列表选中状态
@@ -582,10 +581,6 @@ public class ChannelPanelController {
         if (channelChangeListener != null) {
             channelChangeListener.onChannelChanged(ch, index);
         }
-
-        SettingsActivity.logOperation("【切台】切换到频道：" + ch.getName()
-                + "，分组：" + channelGroup
-                + "，索引：" + index);
     }
 
     private void onChannelClicked(int position) {
@@ -625,17 +620,18 @@ public class ChannelPanelController {
     // 4. 面板控制相关
     // ====================================================================
 
-    public void togglePanel() {
-        if (!currentGroupName.isEmpty() && !currentGroupChannelList.isEmpty()) {
-            channelListManager.setChannelsByGroup(channelSourceList, currentGroupName, currentPlayIndex);
-        } else {
+        public void togglePanel() {
+        // ✅ 修改：处理「全部」分组
+        if (GroupListManager.GROUP_ALL.equals(currentGroupName) 
+                || currentGroupName.isEmpty() 
+                || currentGroupChannelList.isEmpty()) {
             channelListManager.setChannels(channelSourceList, currentPlayIndex);
+        } else {
+            channelListManager.setChannelsByGroup(channelSourceList, currentGroupName, currentPlayIndex);
         }
         channelListManagerEpg.setChannels(channelSourceList, currentPlayIndex);
-
         boolean isOpen = isPanelOpen();
         panelManager.toggle(channelSourceList, currentPlayIndex, dateListManager);
-
         if (!isOpen) {
             panelLayout.post(new Runnable() {
                 @Override
@@ -645,11 +641,9 @@ public class ChannelPanelController {
                 }
             });
         }
-
         if (panelStateListener != null) {
             panelStateListener.onPanelStateChanged(!isOpen);
         }
-
         SettingsActivity.logOperation("【面板】" + (isOpen ? "关闭" : "打开") + "频道面板");
     }
 
@@ -778,9 +772,14 @@ public class ChannelPanelController {
     public int getCurrentSelectedDateIndex() {
         return currentSelectedDateIndex;
     }
-
-    private int getChannelListSelection() {
-        if (!currentGroupName.isEmpty() && !currentGroupChannelList.isEmpty()) {
+        private int getChannelListSelection() {
+        if (GroupListManager.GROUP_ALL.equals(currentGroupName) 
+                || currentGroupName.isEmpty() 
+                || currentGroupChannelList.isEmpty()) {
+            // 「全部」分组 → 返回全局索引
+            return currentPlayIndex;
+        } else {
+            // 普通分组 → 找在分组中的索引
             Channel currentChannel = channelSourceList.get(currentPlayIndex);
             for (int i = 0; i < currentGroupChannelList.size(); i++) {
                 if (currentGroupChannelList.get(i).getName().equals(currentChannel.getName())) {
@@ -788,11 +787,8 @@ public class ChannelPanelController {
                 }
             }
             return 0;
-        } else {
-            return currentPlayIndex;
         }
     }
-
     // ====================================================================
     // 5. 返回键处理
     // ====================================================================

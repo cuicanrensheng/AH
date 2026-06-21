@@ -196,39 +196,42 @@ public class ChannelPanelController {
         btnBackGroup.setBackgroundColor(Color.TRANSPARENT);
         btnBackGroup.setTypeface(Typeface.DEFAULT);
     }
-
     // ====================================================================
-    // ✅ 新增：更新按钮样式（焦点/普通状态）
-    // ====================================================================
-    /**
-     * 更新按钮的样式
-     *
-     * @param button 按钮 TextView
-     * @param hasFocus 是否获得焦点
-     *
-     * 【样式规则】
-     * - 焦点：白色文字 + 蓝色背景（最显眼）
-     * - 普通：白色文字 + 透明背景
-     *
-     * 【为什么和列表统一？】
-     * 让整个面板的焦点样式保持一致，
-     * 用户遥控器移动时，视觉体验统一。
-     */
-    private void updateButtonStyle(TextView button, boolean hasFocus) {
-        if (button == null) return;
+// ✅ 新增：更新按钮样式（焦点/普通状态）
+// ====================================================================
+/**
+ * 更新按钮的样式
+ *
+ * @param button 按钮 TextView
+ * @param hasFocus 是否获得焦点
+ *
+ * 【样式规则】
+ * - 焦点：白色文字 + 浅蓝色背景（最显眼）
+ * - 普通：白色文字 + 透明背景
+ *
+ * 【为什么和列表统一？】
+ * 让整个面板的焦点样式保持一致，
+ * 用户遥控器移动时，视觉体验统一。
+ *
+ * 【为什么用 0x3340A9FF？】
+ * 20% 透明度的蓝色，和四个列表的焦点背景颜色保持一致，
+ * 柔和不刺眼，和面板整体风格搭配。
+ */
+private void updateButtonStyle(TextView button, boolean hasFocus) {
+    if (button == null) return;
 
-        if (hasFocus) {
-            // ── 焦点状态：白色文字 + 蓝色背景（最显眼）──
-            button.setTextColor(Color.WHITE);
-            button.setBackgroundColor(Color.parseColor("#40A9FF"));
-            button.setTypeface(Typeface.DEFAULT);
-        } else {
-            // ── 普通状态：白色文字 + 透明背景 ──
-            button.setTextColor(Color.WHITE);
-            button.setBackgroundColor(Color.TRANSPARENT);
-            button.setTypeface(Typeface.DEFAULT);
-        }
+    if (hasFocus) {
+        // ── 焦点状态：白色文字 + 浅蓝色背景（最显眼）──
+        button.setTextColor(Color.WHITE);
+        button.setBackgroundColor(0x3340A9FF); // 20% 透明度的蓝色，和列表统一
+        button.setTypeface(Typeface.DEFAULT);
+    } else {
+        // ── 普通状态：白色文字 + 透明背景 ──
+        button.setTextColor(Color.WHITE);
+        button.setBackgroundColor(Color.TRANSPARENT);
+        button.setTypeface(Typeface.DEFAULT);
     }
+}
 
     // ====================================================================
     // 1. 初始化点击事件

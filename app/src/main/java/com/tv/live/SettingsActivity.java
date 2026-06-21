@@ -4,6 +4,7 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
 import android.graphics.Color;
+import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
 import android.os.Bundle;
 import android.view.KeyEvent;
@@ -76,6 +77,20 @@ import java.util.List;
  * 1. 给每个设置项设置 focusableInTouchMode=true（手机点击时也能获得焦点）
  * 2. 给每个设置项设置 OnFocusChangeListener（焦点变化时自动更新高亮）
  * 这样无论是遥控器操作还是手机点击，光标都会跟着移动。
+ *
+ * 【2026-06-21 优化：统一三种状态样式，和列表完全一致】
+ * 【优化内容】
+ * 从两种状态（选中/普通）改成三种状态：
+ * 1. 选中状态：蓝色文字 + 加粗 + 浅蓝色背景
+ * 2. 焦点状态：蓝色文字 + 常规 + 透明背景
+ * 3. 未选中状态：白色文字 + 常规 + 透明背景
+ *
+ * 【为什么改成三种状态？】
+ * 和频道分组、频道列表、日期列表、节目单列表保持一致的样式体系，
+ * 整个应用的高亮样式统一，用户体验一致。
+ *
+ * 【判断优先级】
+ * 选中状态 > 焦点状态 > 未选中状态
  */
 public class SettingsActivity extends AppCompatActivity {
 
@@ -83,10 +98,8 @@ public class SettingsActivity extends AppCompatActivity {
 
     /** 5个开关控件 */
     private Switch sw_boot, sw_epg, sw_auto_update, sw_reverse, sw_num_channel;
-
     /** 纯文本点击项 */
     private TextView tv_screen_ratio, tv_custom_source, tv_custom_epg, tv_multi_source, tv_multi_epg, tv_qr_code;
-
     /** 开机自启状态描述文本 */
     private TextView tv_boot_status;
 
@@ -138,7 +151,6 @@ public class SettingsActivity extends AppCompatActivity {
     private SourceDialogManager sourceDialogManager;
     private QRCodeManager qrCodeManager;
     private WebServerManager webServerManager;
-
     private static final int WEB_SERVER_PORT = 10481;
     private String currentWebUrl;
 
@@ -209,7 +221,6 @@ public class SettingsActivity extends AppCompatActivity {
         getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
 
         super.onCreate(savedInstanceState);
-
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
         setContentView(R.layout.activity_settings);
 
@@ -277,11 +288,13 @@ public class SettingsActivity extends AppCompatActivity {
         // ====================================================================
         sw_boot.setChecked(sp.getBoolean("boot_auto_start", false));
         bootStartManager.updateBootStatusText(tv_boot_status);
+
         findViewById(R.id.item_boot).setOnClickListener(v -> {
             boolean isChecked = !sw_boot.isChecked();
             sw_boot.setChecked(isChecked);
             bootStartManager.toggleBoot(isChecked, tv_boot_status);
         });
+
         findViewById(R.id.item_boot).setOnLongClickListener(v -> {
             bootStartManager.showBootStatusDialog();
             return true;
@@ -313,6 +326,7 @@ public class SettingsActivity extends AppCompatActivity {
             logOperation("【设置】自动更新源" + (isChecked ? "已开启" : "已关闭"));
             Toast.makeText(this, "自动更新源" + (isChecked ? "已开启（每天凌晨4点）" : "已关闭"), Toast.LENGTH_SHORT).show();
         });
+
         if (sp.getBoolean("auto_update_source", true)) {
             autoUpdateManager.setAutoUpdateAlarm();
         }
@@ -351,6 +365,7 @@ public class SettingsActivity extends AppCompatActivity {
         // ===== 启动网页后台 =====
         webServerManager.start();
         currentWebUrl = webServerManager.getAccessUrl();
+
         logOperation("【设置】打开设置页面");
     }
 
@@ -425,12 +440,10 @@ public class SettingsActivity extends AppCompatActivity {
         // 【注意】
         // 这里会和遥控器的 updateSettingsFocus() 重复调用，
         // 但是没关系，重复调用不会有问题，只是多输出一次日志而已。
-
         for (int i = 0; i < settingsItemList.size(); i++) {
             final int position = i;
             View item = settingsItemList.get(i);
             if (item != null) {
-
                 // ✅ 支持触摸模式下获得焦点（手机点击时也能获得焦点）
                 // 【为什么需要？】
                 // Android 默认触摸模式下 View 不会获得焦点，
@@ -449,10 +462,8 @@ public class SettingsActivity extends AppCompatActivity {
                             // 获得焦点时，更新遥控器管理器的焦点位置
                             // 保持 remoteManager 和实际焦点位置一致
                             remoteManager.setSettingsFocusPosition(position);
-
                             // 更新高亮显示
                             updateSettingsFocus();
-
                             logOperation("【设置】焦点变化（点击/遥控器），移动到第 " + (position + 1) + " 项");
                         }
                     }
@@ -478,10 +489,8 @@ public class SettingsActivity extends AppCompatActivity {
     private void initRemoteManager() {
         // 创建遥控器管理器
         remoteManager = new TvRemoteManager();
-
         // 设置为设置模式
         remoteManager.setMode(TvRemoteManager.Mode.SETTINGS_MODE);
-
         // 设置设置项总数
         remoteManager.setSettingsItemCount(settingsItemList.size());
 
@@ -574,26 +583,31 @@ public class SettingsActivity extends AppCompatActivity {
             showRatioDialog();
             logOperation("【设置】打开屏幕比例设置");
         });
+
         // 自定义订阅源
         tv_custom_source.setOnClickListener(v -> {
             showInputDialog("自定义订阅源", "请输入直播源地址", KEY_CUSTOM_LIVE);
             logOperation("【设置】打开自定义订阅源");
         });
+
         // 自定义节目单
         tv_custom_epg.setOnClickListener(v -> {
             showInputDialog("自定义节目单", "请输入EPG地址", KEY_CUSTOM_EPG);
             logOperation("【设置】打开自定义节目单");
         });
+
         // 多订阅源
         tv_multi_source.setOnClickListener(v -> {
             sourceDialogManager.showHistoryDialog("直播源历史", "live_history");
             logOperation("【设置】打开直播源历史");
         });
+
         // 多节目单
         tv_multi_epg.setOnClickListener(v -> {
             sourceDialogManager.showHistoryDialog("节目单历史", "epg_history");
             logOperation("【设置】打开节目单历史");
         });
+
         // 扫码添加
         tv_qr_code.setOnClickListener(v -> {
             qrCodeManager.showQRCodeDialog(currentWebUrl);
@@ -623,153 +637,125 @@ public class SettingsActivity extends AppCompatActivity {
         if (remoteManager != null && remoteManager.dispatchKeyEvent(keyCode)) {
             return true;
         }
-
         return super.onKeyDown(keyCode, event);
     }
 
     // ====================================================================
-    // ✅ 2026-06-20 优化：统一高亮样式，代码动态设置，肯定生效
+    // ✅ 2026-06-21 优化：统一三种状态样式，和列表完全一致
     // ====================================================================
 
     /**
      * 更新设置项焦点高亮显示
      *
-     * 【2026-06-20 优化：改成代码动态设置，肯定能看到焦点】
+     * 【2026-06-21 优化：从两种状态改成三种状态，和列表完全统一】
      *
-     * 【原来的问题】
-     * 1. 布局里文字颜色是写死的白色（#FFFFFF），就算获得焦点也不会变
-     * 2. 背景用的是 setting_item_bg.xml，不确定里面有没有定义选中/焦点状态
-     * 3. 导致遥控器操作时看不到焦点在哪里，体验很差
+     * 【原来的两种状态】
+     * 1. 高亮状态：蓝色文字 + 浅蓝色背景
+     * 2. 普通状态：白色文字 + 透明背景
      *
-     * 【优化方案】
-     * 像 EPG 列表那样，在代码里动态设置背景色和文字颜色，
-     * 不依赖布局里的 drawable 和 color selector，肯定能生效。
+     * 【现在的三种状态】
+     * 1. ✅ 选中状态：蓝色文字 + 加粗 + 浅蓝色背景（当前选中的设置项）
+     * 2. ✅ 焦点状态：蓝色文字 + 常规 + 透明背景（遥控器焦点所在的项）
+     * 3. ✅ 未选中状态：白色文字 + 常规 + 透明背景（普通项）
      *
-     * 【高亮样式】
-     * 和频道面板完全统一：
-     * - 背景：浅蓝色（0x3340A9FF，20% 透明度的蓝色）
-     * - 文字：蓝色（#40A9FF）
-     * - 普通状态：透明背景 + 白色文字
+     * 【为什么改成三种状态？】
+     * 和频道分组、频道列表、日期列表、节目单列表保持一致的样式体系，
+     * 整个应用的高亮样式统一，用户体验一致。
+     *
+     * 【判断优先级】
+     * 选中状态 > 焦点状态 > 未选中状态
+     * 如果一个项既是选中又是焦点，显示选中样式
      *
      * 【处理两种类型的设置项】
      * 1. TextView 类型：比如"屏幕比例"、"自定义订阅源"等
      * 2. ViewGroup 类型：比如"开机自启"、"检查更新"等（LinearLayout 包裹文字和开关）
-     *
-     * @param 无
-     * @return 无
      */
     private void updateSettingsFocus() {
-        // 获取当前焦点位置
-        int position = remoteManager.getSettingsFocusPosition();
+        // 获取当前选中位置（遥控器管理器记录的位置）
+        int selectedPosition = remoteManager.getSettingsFocusPosition();
 
-        SettingsActivity.logOperation("【设置遥控】准备更新焦点，位置：" + (position + 1));
+        SettingsActivity.logOperation("【设置遥控】准备更新焦点，选中位置：" + (selectedPosition + 1));
 
         // ====================================================================
-        // 第一步：清除所有项的高亮，恢复成普通状态
+        // 遍历所有设置项，分别设置对应的样式
         // ====================================================================
-        // 【为什么要先全部清除？】
-        // 因为焦点移动后，上一个焦点项需要恢复成普通状态，
-        // 如果不清除，就会有多个项同时亮着，看起来像多个光标。
-        // 先全部清除，再给当前项设置高亮，保证永远只有一个高亮。
-
         for (int i = 0; i < settingsItemList.size(); i++) {
             View item = settingsItemList.get(i);
             if (item == null) continue;
 
-            // ------------------------------------------------------------
-            // 1.1 设置背景：透明背景（普通状态）
-            // ------------------------------------------------------------
-            item.setBackgroundColor(Color.TRANSPARENT);
+            if (i == selectedPosition) {
+                // ================================================================
+                // ✅ 选中状态：蓝色文字 + 加粗 + 浅蓝色背景
+                // ================================================================
+                // 【说明】当前选中的设置项，最明显的样式
+                setItemStyle(item, "#40A9FF", Typeface.BOLD, 0x3340A9FF);
+                SettingsActivity.logOperation("【设置遥控】第 " + (i + 1) + " 项 → 选中状态");
 
-            // ------------------------------------------------------------
-            // 1.2 设置文字颜色：白色（普通状态）
-            // ------------------------------------------------------------
-            // 【为什么要分两种情况？】
-            // 因为设置项有两种类型：
-            // - 简单项：直接是 TextView（比如"屏幕比例"）
-            // - 复杂项：是 LinearLayout，里面包含文字和开关（比如"开机自启"）
-            // 需要分别处理。
+                // 请求焦点（让系统知道焦点在哪）
+                item.requestFocus();
+                // 滚动到可见区域
+                scrollToView(item);
 
-            if (item instanceof TextView) {
-                // 情况 A：当前项就是 TextView（简单项，比如"屏幕比例"）
-                ((TextView) item).setTextColor(Color.WHITE);
-                SettingsActivity.logOperation("【设置遥控】第 " + (i + 1) + " 项恢复普通状态（TextView）");
+            } else if (item.isFocused()) {
+                // ================================================================
+                // ✅ 焦点状态：蓝色文字 + 常规 + 透明背景
+                // ================================================================
+                // 【说明】遥控器焦点所在的项，文字变蓝提示焦点位置
+                // 背景透明，不会和选中状态冲突
+                setItemStyle(item, "#40A9FF", Typeface.NORMAL, Color.TRANSPARENT);
+                SettingsActivity.logOperation("【设置遥控】第 " + (i + 1) + " 项 → 焦点状态");
 
-            } else if (item instanceof ViewGroup) {
-                // 情况 B：当前项是 ViewGroup（复杂项，比如"开机自启"，里面有文字和开关）
-                // 找第一个 TextView，设置成白色
-                // 【为什么找第一个？】
-                // 因为布局里第一个子 View 通常就是标题文字。
-                TextView tv = findFirstTextView((ViewGroup) item);
-                if (tv != null) {
-                    tv.setTextColor(Color.WHITE);
-                    SettingsActivity.logOperation("【设置遥控】第 " + (i + 1) + " 项恢复普通状态（ViewGroup）");
-                }
+            } else {
+                // ================================================================
+                // ✅ 未选中状态：白色文字 + 常规 + 透明背景
+                // ================================================================
+                // 【说明】普通项，默认样式
+                setItemStyle(item, "#FFFFFF", Typeface.NORMAL, Color.TRANSPARENT);
             }
         }
 
-        // ====================================================================
-        // 第二步：给当前焦点项设置高亮
-        // ====================================================================
-        // 【为什么要做边界检查？】
-        // 防止 position 越界（比如 -1 或者超出列表范围），导致崩溃。
+        SettingsActivity.logOperation("【设置遥控】焦点更新完成，当前选中位置：" + (selectedPosition + 1));
+    }
 
-        if (position >= 0 && position < settingsItemList.size()) {
-            View currentItem = settingsItemList.get(position);
-            if (currentItem != null) {
+    // ====================================================================
+    // ✅ 2026-06-21 新增：辅助方法 - 设置单个设置项的样式
+    // ====================================================================
 
-                // ------------------------------------------------------------
-                // 2.1 设置背景：浅蓝色背景（高亮状态）
-                // ------------------------------------------------------------
-                // 【颜色值说明】
-                // 0x3340A9FF
-                // - 0x：十六进制前缀
-                // - 33：透明度（20%，00=完全透明，FF=完全不透明）
-                // - 40A9FF：蓝色（和频道面板统一）
-                // 【为什么用 20% 透明度？】
-                // 太亮了会刺眼，太暗了看不清，20% 是比较舒服的透明度。
-                currentItem.setBackgroundColor(0x3340A9FF);
+    /**
+     * 设置单个设置项的样式（文字颜色 + 字重 + 背景色）
+     *
+     * 【作用】
+     * 统一封装设置项样式的逻辑，避免在 updateSettingsFocus() 里重复写代码。
+     *
+     * 【处理两种类型的设置项】
+     * 1. TextView 类型：直接设置文字颜色和字重
+     * 2. ViewGroup 类型：找到第一个 TextView，设置文字颜色和字重
+     *
+     * @param item 设置项 View
+     * @param textColor 文字颜色（十六进制字符串，如 "#40A9FF"）
+     * @param typeface 字重（Typeface.BOLD 或 Typeface.NORMAL）
+     * @param bgColor 背景色（如 0x3340A9FF 或 Color.TRANSPARENT）
+     */
+    private void setItemStyle(View item, String textColor, int typeface, int bgColor) {
+        // 设置背景色
+        item.setBackgroundColor(bgColor);
 
-                // ------------------------------------------------------------
-                // 2.2 设置文字颜色：蓝色（高亮状态）
-                // ------------------------------------------------------------
-                if (currentItem instanceof TextView) {
-                    // 情况 A：当前项就是 TextView
-                    ((TextView) currentItem).setTextColor(Color.parseColor("#40A9FF"));
+        // 设置文字颜色和字重
+        if (item instanceof TextView) {
+            // 情况 A：当前项就是 TextView（简单项，比如"屏幕比例"）
+            TextView tv = (TextView) item;
+            tv.setTextColor(Color.parseColor(textColor));
+            tv.setTypeface(null, typeface);
 
-                } else if (currentItem instanceof ViewGroup) {
-                    // 情况 B：当前项是 ViewGroup
-                    TextView tv = findFirstTextView((ViewGroup) currentItem);
-                    if (tv != null) {
-                        tv.setTextColor(Color.parseColor("#40A9FF"));
-                    }
-                }
-
-                // ------------------------------------------------------------
-                // 2.3 请求焦点（让系统知道焦点在哪）
-                // ------------------------------------------------------------
-                // 【为什么必须 requestFocus？】
-                // 1. 电视上必须有焦点，不然遥控器按键事件分发可能有问题
-                // 2. 虽然我们自己控制高亮样式，但系统还是需要知道焦点在哪
-                // 3. 不然下一次按方向键，系统不知道从哪个位置开始移动
-                currentItem.requestFocus();
-
-                // ------------------------------------------------------------
-                // 2.4 滚动到可见区域
-                // ------------------------------------------------------------
-                // 【为什么要滚动？】
-                // 如果当前焦点项在屏幕外面（上面或下面），
-                // 用户按了键但看不到焦点在哪，体验很差。
-                // 滚动到可见区域，保证用户总能看到焦点在哪里。
-                scrollToView(currentItem);
-
-                SettingsActivity.logOperation("【设置遥控】✅ 第 " + (position + 1) + " 项设置为高亮状态");
+        } else if (item instanceof ViewGroup) {
+            // 情况 B：当前项是 ViewGroup（复杂项，比如"开机自启"，里面有文字和开关）
+            // 找第一个 TextView，设置文字颜色和字重
+            TextView tv = findFirstTextView((ViewGroup) item);
+            if (tv != null) {
+                tv.setTextColor(Color.parseColor(textColor));
+                tv.setTypeface(null, typeface);
             }
-        } else {
-            SettingsActivity.logOperation("【设置遥控】⚠️ 焦点位置越界：" + position);
         }
-
-        SettingsActivity.logOperation("【设置遥控】焦点更新完成，当前位置：" + (position + 1));
     }
 
     // ====================================================================
@@ -792,15 +778,12 @@ public class SettingsActivity extends AppCompatActivity {
      */
     private TextView findFirstTextView(ViewGroup viewGroup) {
         if (viewGroup == null) return null;
-
         // 遍历所有子 View
         for (int i = 0; i < viewGroup.getChildCount(); i++) {
             View child = viewGroup.getChildAt(i);
-
             if (child instanceof TextView) {
                 // 找到了，直接返回
                 return (TextView) child;
-
             } else if (child instanceof ViewGroup) {
                 // 子 View 也是 ViewGroup，递归查找
                 TextView result = findFirstTextView((ViewGroup) child);
@@ -809,7 +792,6 @@ public class SettingsActivity extends AppCompatActivity {
                 }
             }
         }
-
         // 没找到
         return null;
     }
@@ -833,12 +815,10 @@ public class SettingsActivity extends AppCompatActivity {
      */
     private void scrollToView(View view) {
         if (scrollView == null || view == null) return;
-
         // 计算 View 在 ScrollView 中的位置
         int viewTop = view.getTop();
         int viewBottom = view.getBottom();
         int scrollViewHeight = scrollView.getHeight();
-
         // 如果 View 在当前可见区域上方，滚动到顶部
         if (viewTop < scrollView.getScrollY()) {
             scrollView.smoothScrollTo(0, viewTop - 50);
@@ -864,13 +844,10 @@ public class SettingsActivity extends AppCompatActivity {
      */
     private void handleSettingsItemClick(int position) {
         if (position < 0 || position >= settingsItemList.size()) return;
-
         View item = settingsItemList.get(position);
         if (item == null) return;
-
         // 模拟点击（触发 OnClickListener）
         item.performClick();
-
         logOperation("【设置遥控】选中第 " + (position + 1) + " 项");
     }
 
@@ -1033,17 +1010,14 @@ public class SettingsActivity extends AppCompatActivity {
     protected void onDestroy() {
         super.onDestroy();
         logOperation("【设置】关闭设置页面");
-
         // 停止网页后台
         if (webServerManager != null) {
             webServerManager.stop();
         }
-
         // 释放更新管理器
         if (updateManager != null) {
             updateManager.release();
         }
-
         // 释放遥控器管理器
         remoteManager = null;
         settingsItemList.clear();

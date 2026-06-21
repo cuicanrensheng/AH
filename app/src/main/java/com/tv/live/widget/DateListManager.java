@@ -6,178 +6,209 @@ import android.graphics.Typeface;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.AdapterView;
-import android.widget.ArrayAdapter;
+import android.widget.BaseAdapter;
 import android.widget.ListView;
 import android.widget.TextView;
 
-import com.tv.live.R;
 import com.tv.live.SettingsActivity;
 
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * 日期列表管理器
  *
- * 【职责】
- * 统一管理日期列表的显示、选中状态、点击事件等。
- *
- * 【2026-06-21 优化 V2：统一三种状态样式 + 准确焦点判断】
- *
- * 【三种状态说明】
- * 1. 选中状态：蓝色文字 + 加粗 + 浅蓝色背景（点击 OK 键后真正选中的日期）
- * 2. 焦点状态：蓝色文字 + 常规 + 透明背景（遥控器焦点所在的项）
- * 3. 未选中状态：白色文字 + 常规 + 透明背景（普通项）
- *
- * 【交互逻辑】
- * - 移动焦点：只改变焦点样式，不切换日期
- * - 点击 OK 键：才真正选中，切换日期
+ * 【2026-06-21 修改：统一三种状态高亮样式（焦点优先）】
+ * 【样式规则】
+ * 焦点 > 选中 > 普通
+ * - 焦点：白色文字 + 蓝色背景（最显眼，遥控器停在哪里）
+ * - 选中：蓝色文字 + 透明背景（当前选中的日期）
+ * - 普通：白色文字 + 透明背景
  */
 public class DateListManager {
+    private Context context;
+    private ListView listView;
+    private List<DateItem> dateList = new ArrayList<>();
+    private DateAdapter adapter;
 
-    /** 日期列表 ListView */
-    private final ListView lvDate;
-    /** 上下文 */
-    private final Context context;
-    /** 当前选中位置（点击后才更新） */
-    private int selectedPosition = 0;
-    /** 当前焦点位置（移动遥控器就更新） */
+    // ====================================================================
+    // ✅ 新增：焦点位置和选中位置分开记录
+    // ====================================================================
+    /** 当前焦点位置（遥控器移动到的位置） */
     private int focusedPosition = 0;
-    /** 日期选中监听器 */
-    private OnDateSelectedListener listener;
-    /** 列表适配器 */
-    private ArrayAdapter<String> adapter;
+    /** 当前选中位置（点击选中的日期） */
+    private int selectedPosition = 0;
 
-    /**
-     * 日期选中监听器接口
-     */
+    private OnDateSelectedListener listener;
+
     public interface OnDateSelectedListener {
-        void onDateSelected(int position);
+        void onDateSelected(int position, String date);
+    }
+
+    public static class DateItem {
+        public String weekDay;
+        public String date;
+
+        public DateItem(String weekDay, String date) {
+            this.weekDay = weekDay;
+            this.date = date;
+        }
+    }
+
+    public DateListManager(Context context, ListView listView) {
+        this.context = context;
+        this.listView = listView;
+        adapter = new DateAdapter();
+        listView.setAdapter(adapter);
+        initListeners();
+    }
+
+    private void initListeners() {
+        // 点击事件：点击才真正选中
+        listView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+            @Override
+            public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
+                SettingsActivity.logOperation("【日期】点击选中：" + position + " - " + dateList.get(position).date);
+                setSelectedPosition(position);
+                if (listener != null) {
+                    listener.onDateSelected(position, dateList.get(position).date);
+                }
+            }
+        });
+
+        // 选中事件：只移动焦点，不选中
+        listView.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                SettingsActivity.logOperation("【日期】焦点移动：" + position);
+                // ✅ 只更新焦点位置，不更新选中位置
+                setFocusedPosition(position);
+            }
+
+            @Override
+            public void onNothingSelected(AdapterView<?> parent) {
+                // 不做处理
+            }
+        });
+    }
+
+    // ====================================================================
+    // ✅ 新增：设置焦点位置
+    // ====================================================================
+    public void setFocusedPosition(int position) {
+        if (position < 0 || position >= dateList.size()) return;
+        this.focusedPosition = position;
+        adapter.notifyDataSetChanged();
+    }
+
+    public int getFocusedPosition() {
+        return focusedPosition;
+    }
+
+    public void setSelectedPosition(int position) {
+        if (position < 0 || position >= dateList.size()) return;
+        this.selectedPosition = position;
+        // 选中时也同步移动焦点到选中项
+        this.focusedPosition = position;
+        adapter.notifyDataSetChanged();
+    }
+
+    public int getSelectedPosition() {
+        return selectedPosition;
+    }
+
+    public void initDate() {
+        dateList.clear();
+        Calendar calendar = Calendar.getInstance();
+        SimpleDateFormat weekFormat = new SimpleDateFormat("EEEE", Locale.CHINA);
+        SimpleDateFormat dateFormat = new SimpleDateFormat("MM-dd", Locale.CHINA);
+
+        String[] weekDays = {"今天", "明天", "后天", "周四", "周五", "周六", "周日", "周一"};
+
+        for (int i = 0; i < 8; i++) {
+            String weekDay;
+            if (i < 3) {
+                weekDay = weekDays[i];
+            } else {
+                weekDay = weekFormat.format(calendar.getTime());
+            }
+            String date = dateFormat.format(calendar.getTime());
+            dateList.add(new DateItem(weekDay, date));
+            calendar.add(Calendar.DAY_OF_MONTH, 1);
+        }
+
+        // 默认选中今天（第0个）
+        this.selectedPosition = 0;
+        this.focusedPosition = 0;
+        adapter.notifyDataSetChanged();
     }
 
     public void setOnDateSelectedListener(OnDateSelectedListener listener) {
         this.listener = listener;
     }
 
-    /**
-     * 构造函数
-     *
-     * @param context 上下文
-     * @param lvDate 日期列表 ListView
-     */
-    public DateListManager(Context context, ListView lvDate) {
-        this.context = context;
-        this.lvDate = lvDate;
-        // item 不需要获取焦点，由 ListView 统一管理
-        lvDate.setItemsCanFocus(false);
-        lvDate.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
-
-        // ================================================================
-        // ✅ 焦点移动：只更新焦点位置，不更新选中位置
-        // ================================================================
-        lvDate.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-            @Override
-            public void onItemSelected(AdapterView<?> parent, View view, int pos, long id) {
-                focusedPosition = pos;  // 只更新焦点位置
-                if (adapter != null) {
-                    adapter.notifyDataSetChanged();
-                }
-            }
-            @Override
-            public void onNothingSelected(AdapterView<?> parent) {}
-        });
-    }
-
-    /**
-     * 初始化日期列表（8天）
-     */
-    public void initDate() {
-        List<String> dates = new ArrayList<>();
-        Calendar cal = Calendar.getInstance();
-        String[] week = {"周日", "周一", "周二", "周三", "周四", "周五", "周六"};
-        for (int i = 0; i < 8; i++) {
-            String display;
-            if (i == 0) {
-                display = "今天";
-            } else if (i == 1) {
-                display = "明天";
-            } else if (i == 2) {
-                display = "后天";
-            } else {
-                int dayOfWeek = cal.get(Calendar.DAY_OF_WEEK);
-                display = week[dayOfWeek - 1];
-            }
-            dates.add(display);
-            cal.add(Calendar.DAY_OF_YEAR, 1);
+    // ====================================================================
+    // 适配器
+    // ====================================================================
+    private class DateAdapter extends BaseAdapter {
+        @Override
+        public int getCount() {
+            return dateList.size();
         }
 
-        SettingsActivity.logOperation("【日期列表】初始化：" + dates);
+        @Override
+        public Object getItem(int position) {
+            return dateList.get(position);
+        }
 
-        adapter = new ArrayAdapter<String>(context, R.layout.item_date, dates) {
-            @Override
-            public View getView(int position, View convertView, ViewGroup parent) {
-                TextView tv = (TextView) super.getView(position, convertView, parent);
+        @Override
+        public long getItemId(int position) {
+            return position;
+        }
 
-                // ====================================================================
-                // ✅ 2026-06-21 优化 V2：统一三种状态样式
-                // ====================================================================
-
-                if (position == selectedPosition) {
-                    // ✅ 选中状态：蓝色文字 + 加粗 + 浅蓝色背景
-                    tv.setTextColor(Color.parseColor("#40A9FF"));
-                    tv.setTypeface(null, Typeface.BOLD);
-                    tv.setBackgroundColor(0x3340A9FF);
-
-                } else if (position == focusedPosition) {
-                    // ✅ 焦点状态：蓝色文字 + 常规 + 透明背景
-                    tv.setTextColor(Color.parseColor("#40A9FF"));
-                    tv.setTypeface(null, Typeface.NORMAL);
-                    tv.setBackgroundColor(Color.TRANSPARENT);
-
-                } else {
-                    // ✅ 未选中状态：白色文字 + 常规 + 透明背景
-                    tv.setTextColor(Color.WHITE);
-                    tv.setTypeface(null, Typeface.NORMAL);
-                    tv.setBackgroundColor(Color.TRANSPARENT);
-                }
-
-                return tv;
-            }
-        };
-
-        lvDate.setAdapter(adapter);
-
-        // ================================================================
-        // ✅ 点击选中：才更新选中位置，触发回调
-        // ================================================================
-        lvDate.setOnItemClickListener((parent, view, position, id) -> {
-            setSelectedPosition(position);
-            SettingsActivity.logOperation("【日期列表】👆 点击：位置" + position + "，" + dates.get(position));
-            if (listener != null) {
-                SettingsActivity.logOperation("【日期列表】✅ 触发回调");
-                listener.onDateSelected(position);
+        @Override
+        public View getView(int position, View convertView, ViewGroup parent) {
+            TextView textView;
+            if (convertView == null) {
+                textView = new TextView(context);
+                textView.setPadding(30, 20, 30, 20);
+                textView.setTextSize(16);
+                // 去掉系统默认焦点高亮
+                textView.setDefaultFocusHighlightEnabled(false);
             } else {
-                SettingsActivity.logOperation("【日期列表】❌ listener为空，未触发回调");
+                textView = (TextView) convertView;
             }
-        });
 
-        // 默认选中第一个
-        selectedPosition = 0;
-        focusedPosition = 0;
-        adapter.notifyDataSetChanged();
-    }
+            DateItem item = dateList.get(position);
+            String displayText = item.weekDay + "\n" + item.date;
+            textView.setText(displayText);
+            textView.setLineSpacing(0, 1.2f);
 
-    /**
-     * 设置选中位置
-     *
-     * @param position 选中位置
-     */
-    public void setSelectedPosition(int position) {
-        selectedPosition = position;
-        focusedPosition = position;  // 选中后焦点也移过去
-        if (adapter != null) {
-            adapter.notifyDataSetChanged();
+            // ====================================================================
+            // ✅ 修改：统一三种状态样式（焦点优先）
+            // ====================================================================
+            // 判断优先级：焦点 > 选中 > 普通
+            if (position == focusedPosition) {
+                // ── 焦点状态：白色文字 + 蓝色背景（最显眼）──
+                textView.setTextColor(Color.WHITE);
+                textView.setTypeface(Typeface.DEFAULT);
+                textView.setBackgroundColor(Color.parseColor("#40A9FF"));
+            } else if (position == selectedPosition) {
+                // ── 选中状态：蓝色文字 + 透明背景（次之）──
+                textView.setTextColor(Color.parseColor("#40A9FF"));
+                textView.setTypeface(Typeface.DEFAULT);
+                textView.setBackgroundColor(Color.TRANSPARENT);
+            } else {
+                // ── 普通状态：白色文字 + 透明背景 ──
+                textView.setTextColor(Color.WHITE);
+                textView.setTypeface(Typeface.DEFAULT);
+                textView.setBackgroundColor(Color.TRANSPARENT);
+            }
+
+            return textView;
         }
     }
 }

@@ -1,5 +1,7 @@
 package com.tv.live;
 
+import android.net.Uri;
+
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
@@ -13,6 +15,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -76,6 +79,9 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
 
     /** 当前字节位置 */
     private long currentPosition;
+
+    /** 重定向次数（临时存储） */
+    private int redirectCount = 0;
 
     // ====================================================================
     // 构造函数
@@ -220,8 +226,7 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
                     inputStream = connection.getErrorStream();
                 }
 
-                // 保存重定向次数（用 connection 的一个属性？或者用成员变量）
-                // 这里我们用一个简单的方式：把重定向次数存到一个成员变量里
+                // 保存重定向次数
                 this.redirectCount = redirectCount;
 
                 return new URL(currentUrl);
@@ -230,11 +235,8 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
     }
 
     // ====================================================================
-    // 辅助变量和方法
+    // 辅助方法
     // ====================================================================
-
-    /** 重定向次数（临时存储） */
-    private int redirectCount = 0;
 
     /**
      * 获取重定向次数
@@ -244,7 +246,7 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
     }
 
     // ====================================================================
-    // 其他必须实现的方法（保持原样，不改动逻辑）
+    // 其他必须实现的方法
     // ====================================================================
 
     @Override

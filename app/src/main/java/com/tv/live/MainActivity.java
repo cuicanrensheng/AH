@@ -32,6 +32,12 @@ import java.util.List;
 /**
  * 直播主页面 Activity
  *
+ * 【核心职责】
+ * 1. 页面生命周期管理
+ * 2. 各 Manager 的初始化和协调
+ * 3. 按键事件分发
+ * 4. 播放器视图绑定
+ *
  * 【2026-06-21 新增：收藏 + 最近观看】
  * 【修改说明】
  * 1. 频道面板模式下，菜单键 = 收藏/取消收藏当前频道
@@ -198,19 +204,10 @@ public class MainActivity extends AppCompatActivity {
             }
             /**
              * ✅ 2026-06-21 修改：菜单键 = 收藏/取消收藏
-             *
-             * 【原来的逻辑】
-             * 菜单键 = 关闭面板
-             *
-             * 【新的逻辑】
-             * 菜单键 = 收藏/取消收藏当前频道
-             * （关闭面板用返回键就可以了）
              */
             @Override
             public void onPanelMenu() {
-                // 收藏/取消收藏当前频道
                 boolean isFavorite = channelPanelController.toggleCurrentFavorite();
-                // 可以在这里加个 Toast 提示，或者用日志
                 SettingsActivity.logOperation("【遥控】菜单键 → " 
                         + (isFavorite ? "已添加收藏" : "已取消收藏"));
             }
@@ -473,9 +470,6 @@ public class MainActivity extends AppCompatActivity {
      * 播放指定频道（内部实现）
      *
      * 【2026-06-21 修改：添加到最近观看（双保险）】
-     * 【说明】
-     * ChannelPanelController.playChannel() 里已经加了，
-     * 这里再加一次，确保所有切台入口都能记录到最近观看。
      */
     private void playChannel(Channel channel, int index) {
         if (channel == null || channel.getPlayUrl() == null) return;

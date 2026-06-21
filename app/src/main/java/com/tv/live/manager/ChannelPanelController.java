@@ -30,17 +30,27 @@ import java.util.List;
  * 4. 焦点管理（手机触屏 + 电视遥控器）
  * 5. 按键处理（左右键移动焦点、OK键选中）
  *
- * 【2026-06-21 新增：按钮焦点样式统一】
+ * 【2026-06-21 优化：接入 PanelStyleManager 统一管理样式】
  * 【修改内容】
- * 给节目单按钮（btnShowEpg）和返回按钮（btnBackGroup）加上焦点样式，
- * 和四个列表的样式保持一致：
- * - 焦点：白色文字 + 蓝色背景（最显眼）
- * - 普通：白色文字 + 透明背景
+ * 1. 按钮样式也统一调用 PanelStyleManager
+ * 2. 遥控器按键时自动切换到遥控器模式
+ * 3. 触屏点击时自动切换到触屏模式
+ * 4. 释放资源时调用各个管理器的 release() 方法
  *
- * 【为什么要在代码里动态设置？】
- * 因为这两个按钮是 TextView，不是 ListView 的 item，
- * 不能通过 adapter 的 getView() 来设置样式，
- * 所以需要在焦点变化监听里动态设置文字颜色和背景。
+ * 【两种模式说明】
+ * 1. 遥控器模式：
+ *    - 焦点：白色文字 + 浅蓝色背景（最显眼）
+ *    - 选中：蓝色文字 + 透明背景（次之）
+ *    - 普通：白色文字 + 透明背景
+ *
+ * 2. 触屏模式：
+ *    - 选中：白色文字 + 深蓝色背景（明显的选中效果）
+ *    - 普通：白色文字 + 透明背景
+ *
+ * 【模式切换逻辑】
+ * - 按遥控器按键 → 切换到遥控器模式
+ * - 触屏点击列表项 → 切换到触屏模式
+ * - 模式切换后，所有列表自动刷新样式
  */
 public class ChannelPanelController {
     // ====================== 常量 ======================
@@ -170,68 +180,63 @@ public class ChannelPanelController {
         // ✅ 新增：初始化按钮的默认样式
         // ====================================================================
         initButtonStyle();
-
         initClickListeners();
         initFocusListeners();
     }
 
     // ====================================================================
-    // ✅ 新增：初始化按钮默认样式
+    // ✅ 初始化按钮默认样式
     // ====================================================================
     /**
      * 初始化两个按钮的默认样式
      *
      * 【说明】
-     * 按钮默认是普通状态：白色文字 + 透明背景
+     * 按钮默认是普通状态，统一调用 PanelStyleManager 应用普通样式，
      * 和列表的普通项样式保持一致。
+     *
+     * 【为什么统一调用？】
+     * 以后改样式只改 PanelStyleManager.java 就行，不用改这里。
      */
     private void initButtonStyle() {
-        // 节目单按钮 - 默认样式：白色文字 + 透明背景
-        btnShowEpg.setTextColor(Color.WHITE);
-        btnShowEpg.setBackgroundColor(Color.TRANSPARENT);
+        // 节目单按钮 - 默认普通样式
+        PanelStyleManager.getInstance().applyNormalStyle(btnShowEpg);
         btnShowEpg.setTypeface(Typeface.DEFAULT);
 
-        // 返回按钮 - 默认样式：白色文字 + 透明背景
-        btnBackGroup.setTextColor(Color.WHITE);
-        btnBackGroup.setBackgroundColor(Color.TRANSPARENT);
+        // 返回按钮 - 默认普通样式
+        PanelStyleManager.getInstance().applyNormalStyle(btnBackGroup);
         btnBackGroup.setTypeface(Typeface.DEFAULT);
     }
-    // ====================================================================
-// ✅ 新增：更新按钮样式（焦点/普通状态）
-// ====================================================================
-/**
- * 更新按钮的样式
- *
- * @param button 按钮 TextView
- * @param hasFocus 是否获得焦点
- *
- * 【样式规则】
- * - 焦点：白色文字 + 浅蓝色背景（最显眼）
- * - 普通：白色文字 + 透明背景
- *
- * 【为什么和列表统一？】
- * 让整个面板的焦点样式保持一致，
- * 用户遥控器移动时，视觉体验统一。
- *
- * 【为什么用 0x3340A9FF？】
- * 20% 透明度的蓝色，和四个列表的焦点背景颜色保持一致，
- * 柔和不刺眼，和面板整体风格搭配。
- */
-private void updateButtonStyle(TextView button, boolean hasFocus) {
-    if (button == null) return;
 
-    if (hasFocus) {
-        // ── 焦点状态：白色文字 + 浅蓝色背景（最显眼）──
-        button.setTextColor(Color.WHITE);
-        button.setBackgroundColor(0x3340A9FF); // 20% 透明度的蓝色，和列表统一
-        button.setTypeface(Typeface.DEFAULT);
-    } else {
-        // ── 普通状态：白色文字 + 透明背景 ──
-        button.setTextColor(Color.WHITE);
-        button.setBackgroundColor(Color.TRANSPARENT);
-        button.setTypeface(Typeface.DEFAULT);
+    // ====================================================================
+    // ✅ 更新按钮样式（焦点/普通状态）
+    // ====================================================================
+    /**
+     * 更新按钮的样式
+     *
+     * @param button 按钮 TextView
+     * @param hasFocus 是否获得焦点
+     *
+     * 【样式规则】
+     * - 焦点：调用 PanelStyleManager.applyFocusStyle()
+     * - 普通：调用 PanelStyleManager.applyNormalStyle()
+     *
+     * 【为什么统一调用？】
+     * 以后改样式只改 PanelStyleManager.java 就行，不用改这里。
+     * 按钮和列表的样式完全一致。
+     */
+    private void updateButtonStyle(TextView button, boolean hasFocus) {
+        if (button == null) return;
+
+        if (hasFocus) {
+            // ── 焦点状态：调用 PanelStyleManager 应用焦点样式 ──
+            PanelStyleManager.getInstance().applyFocusStyle(button);
+            button.setTypeface(Typeface.DEFAULT);
+        } else {
+            // ── 普通状态：调用 PanelStyleManager 应用普通样式 ──
+            PanelStyleManager.getInstance().applyNormalStyle(button);
+            button.setTypeface(Typeface.DEFAULT);
+        }
     }
-}
 
     // ====================================================================
     // 1. 初始化点击事件
@@ -240,6 +245,19 @@ private void updateButtonStyle(TextView button, boolean hasFocus) {
         lvGroup.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
+                // ====================================================================
+                // ✅ 2026-06-21 新增：触屏点击 → 切换到触屏模式
+                // ====================================================================
+                // 【说明】
+                // onItemClick 可能是遥控器按 OK 键，也可能是触屏点击。
+                // 但是 onItemSelected 只有遥控器才会触发，所以我们在 onItemSelected
+                // 里切换到遥控器模式，这里就不用再切换了。
+                // 如果是触屏点击，onItemSelected 不会触发，所以模式不会变。
+                // 但是为了保险起见，我们可以加一个触屏检测。
+                // 【注意】ListView 的 onItemClick 无法区分是遥控器还是触屏，
+                // 所以我们主要靠 onItemSelected 来判断遥控器模式。
+                // 触屏模式的切换主要靠 onTouchEvent，这里先不处理。
+
                 onGroupClicked(position);
             }
         });
@@ -306,6 +324,13 @@ private void updateButtonStyle(TextView button, boolean hasFocus) {
                 if (hasFocus) {
                     currentFocusPanel = "left";
                     leftFocusView = "epgBtn";
+
+                    // ====================================================================
+                    // ✅ 2026-06-21 新增：按钮获得焦点 → 切换到遥控器模式
+                    // ====================================================================
+                    // 【说明】
+                    // 按钮获得焦点，说明是用遥控器操作的，切换到遥控器模式。
+                    PanelStyleManager.getInstance().setMode(PanelStyleManager.MODE_REMOTE);
                 }
                 // 更新按钮样式
                 updateButtonStyle(btnShowEpg, hasFocus);
@@ -351,6 +376,11 @@ private void updateButtonStyle(TextView button, boolean hasFocus) {
                 if (hasFocus) {
                     currentFocusPanel = "right";
                     rightFocusView = "backBtn";
+
+                    // ====================================================================
+                    // ✅ 2026-06-21 新增：按钮获得焦点 → 切换到遥控器模式
+                    // ====================================================================
+                    PanelStyleManager.getInstance().setMode(PanelStyleManager.MODE_REMOTE);
                 }
                 // 更新按钮样式
                 updateButtonStyle(btnBackGroup, hasFocus);
@@ -373,7 +403,6 @@ private void updateButtonStyle(TextView button, boolean hasFocus) {
         groupListManager.setSelectedPosition(position);
         lvGroup.setItemChecked(position, true);
         lvGroup.setSelection(position);
-
         String groupName = groupListManager.getCurrentGroup(position);
         currentGroupName = groupName;
         currentGroupChannelList.clear();
@@ -383,7 +412,6 @@ private void updateButtonStyle(TextView button, boolean hasFocus) {
             }
         }
         channelListManager.setChannelsByGroup(channelSourceList, groupName, currentPlayIndex);
-
         SettingsActivity.logOperation("【分组】选中分组：" + groupName
                 + "，频道数：" + currentGroupChannelList.size());
     }
@@ -701,7 +729,6 @@ private void updateButtonStyle(TextView button, boolean hasFocus) {
             llRightPanel.setVisibility(View.VISIBLE);
             rightPanelOpen = true;
             epgPanelOpen = true;
-
             channelListManagerEpg.setChannels(channelSourceList, currentPlayIndex);
 
             llRightPanel.post(new Runnable() {
@@ -763,7 +790,6 @@ private void updateButtonStyle(TextView button, boolean hasFocus) {
     public void setCurrentDateIndex(int index) {
         this.currentSelectedDateIndex = index;
         panelManager.setCurrentDateIndex(index);
-
         if (!channelSourceList.isEmpty()
                 && currentPlayIndex >= 0 && currentPlayIndex < channelSourceList.size()) {
             Channel curr = channelSourceList.get(currentPlayIndex);
@@ -811,6 +837,13 @@ private void updateButtonStyle(TextView button, boolean hasFocus) {
         if (!isPanelOpen()) {
             return false;
         }
+
+        // ====================================================================
+        // ✅ 2026-06-21 新增：遥控器按键 → 切换到遥控器模式
+        // ====================================================================
+        // 【说明】
+        // 只要有按键事件，就说明是用遥控器操作的，切换到遥控器模式。
+        PanelStyleManager.getInstance().setMode(PanelStyleManager.MODE_REMOTE);
 
         switch (keyCode) {
             case KeyEvent.KEYCODE_DPAD_LEFT:
@@ -932,6 +965,28 @@ private void updateButtonStyle(TextView button, boolean hasFocus) {
     // 7. 资源释放
     // ====================================================================
     public void release() {
+        // ====================================================================
+        // ✅ 2026-06-21 新增：释放各个子管理器的资源
+        // ====================================================================
+        // 【说明】
+        // 每个管理器都注册了 PanelStyleManager 的监听器，
+        // 释放时要移除，防止内存泄漏。
+        if (groupListManager != null) {
+            groupListManager.release();
+        }
+        if (channelListManager != null) {
+            channelListManager.release();
+        }
+        if (channelListManagerEpg != null) {
+            channelListManagerEpg.release();
+        }
+        if (dateListManager != null) {
+            dateListManager.release();
+        }
+        if (epgManagerWrapper != null) {
+            epgManagerWrapper.release();
+        }
+
         context = null;
         panelLayout = null;
         llLeftPanel = null;

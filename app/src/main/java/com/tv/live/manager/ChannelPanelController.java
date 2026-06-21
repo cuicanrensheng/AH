@@ -516,17 +516,41 @@ public class ChannelPanelController {
             playNext();
         }
     }
-
-    /**
+        /**
      * 播放指定索引的频道
+     *
+     * 【2026-06-21 修复：切换频道后同步分组选中状态】
+     * 【问题原因】
+     * 从其他分组切换频道过来（比如数字选台、手势切台），
+     * 分组列表还是显示原来的分组，和当前频道不一致。
+     * 【解决方案】
+     * 切换频道时，自动获取当前频道的分组，同步更新分组列表的选中状态。
      */
     public void playChannel(int index) {
         if (channelSourceList == null || channelSourceList.isEmpty()) return;
-
         index = Math.max(0, Math.min(index, channelSourceList.size() - 1));
         currentPlayIndex = index;
         Channel ch = channelSourceList.get(index);
         if (ch == null) return;
+
+        // ✅ 修复：切换频道后同步分组选中状态
+        String channelGroup = ch.getGroup();
+        if (channelGroup != null && !channelGroup.isEmpty()) {
+            // 如果当前分组和频道分组不一致，同步更新分组
+            if (!channelGroup.equals(currentGroupName)) {
+                currentGroupName = channelGroup;
+                // 重新筛选当前分组的频道列表
+                currentGroupChannelList.clear();
+                for (Channel c : channelSourceList) {
+                    if (channelGroup.equals(c.getGroup())) {
+                        currentGroupChannelList.add(c);
+                    }
+                }
+                // 同步分组列表的选中状态
+                int groupPos = groupListManager.getGroupPosition(channelGroup);
+                groupListManager.setSelectedPosition(groupPos);
+            }
+        }
 
         // 更新主页面频道列表的选中状态
         if (!currentGroupName.isEmpty() && !currentGroupChannelList.isEmpty()) {
@@ -545,11 +569,12 @@ public class ChannelPanelController {
         if (channelChangeListener != null) {
             channelChangeListener.onChannelChanged(ch, index);
         }
+
+        SettingsActivity.logOperation("【切台】切换到频道：" + ch.getName()
+                + "，分组：" + channelGroup
+                + "，索引：" + index);
     }
 
-    /**
-     * 频道列表被点击了
-     */
     private void onChannelClicked(int position) {
         if (!currentGroupChannelList.isEmpty() && position < currentGroupChannelList.size()
                 && !rightPanelOpen) {

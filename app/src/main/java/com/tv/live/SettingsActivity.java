@@ -78,24 +78,26 @@ import java.util.List;
  * 2. 给每个设置项设置 OnFocusChangeListener（焦点变化时自动更新高亮）
  * 这样无论是遥控器操作还是手机点击，光标都会跟着移动。
  *
- * 【2026-06-21 优化：统一三种状态样式，和列表完全一致】
+ * 【2026-06-21 优化：统一焦点样式，和频道面板完全一致】
  * 【优化内容】
- * 从两种状态（选中/普通）改成三种状态：
- * 1. 选中状态：蓝色文字 + 加粗 + 浅蓝色背景
- * 2. 焦点状态：蓝色文字 + 常规 + 透明背景
- * 3. 未选中状态：白色文字 + 常规 + 透明背景
+ * 从三种状态（选中/焦点/普通）改成两种状态：
+ * 1. 焦点状态：白色文字 + 浅蓝色背景（遥控器焦点所在的项，最显眼）
+ * 2. 普通状态：白色文字 + 透明背景（其他项）
  *
- * 【为什么改成三种状态？】
- * 和频道分组、频道列表、日期列表、节目单列表保持一致的样式体系，
- * 整个应用的高亮样式统一，用户体验一致。
+ * 【为什么改成两种状态？】
+ * 设置页面不是列表，没有"当前选中的项"这种概念，
+ * 每个设置项都是独立的，点击就执行操作，不需要"选中"状态。
  *
- * 【判断优先级】
- * 选中状态 > 焦点状态 > 未选中状态
+ * 【为什么和频道面板样式统一？】
+ * 整个应用的高亮样式保持一致，用户体验更好，
+ * 遥控器移到哪里，哪里就有浅蓝色背景条，一眼就能看到焦点。
+ *
+ * 【样式规则（和频道面板完全一致）】
+ * - 焦点：白色文字 + 浅蓝色背景（0x3340A9FF，20% 透明度）
+ * - 普通：白色文字 + 透明背景
  */
 public class SettingsActivity extends AppCompatActivity {
-
     // ====================== 控件声明 ======================
-
     /** 5个开关控件 */
     private Switch sw_boot, sw_epg, sw_auto_update, sw_reverse, sw_num_channel;
     /** 纯文本点击项 */
@@ -104,14 +106,12 @@ public class SettingsActivity extends AppCompatActivity {
     private TextView tv_boot_status;
 
     // ====================== 配置相关 ======================
-
     /** SharedPreferences 配置存储 */
     private SharedPreferences sp;
 
     // ====================================================================
     // ✅ 新增：遥控器统一管理器
     // ====================================================================
-
     /**
      * 遥控器统一管理器
      *
@@ -145,7 +145,6 @@ public class SettingsActivity extends AppCompatActivity {
     // ====================================================================
     // 管理器相关（全部拆分后）
     // ====================================================================
-
     private BootStartManager bootStartManager;
     private AutoUpdateManager autoUpdateManager;
     private SourceDialogManager sourceDialogManager;
@@ -157,18 +156,15 @@ public class SettingsActivity extends AppCompatActivity {
     // ====================================================================
     // 应用更新管理器
     // ====================================================================
-
     private UpdateManager updateManager;
 
     // ====================== SP Key 常量 ======================
-
     private static final String KEY_CUSTOM_LIVE = "custom_live_url";
     private static final String KEY_CUSTOM_EPG = "custom_epg_url";
 
     // ====================================================================
     // 全局日志系统（加回兼容层）
     // ====================================================================
-
     public static volatile StringBuilder PLAY_LOG = new StringBuilder();
     public static volatile StringBuilder OPERATION_LOG = new StringBuilder();
 
@@ -183,7 +179,6 @@ public class SettingsActivity extends AppCompatActivity {
     }
 
     // ====================== onCreate 生命周期 ======================
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         // ====================================================================
@@ -372,7 +367,6 @@ public class SettingsActivity extends AppCompatActivity {
     // ====================================================================
     // ✅ 新增：初始化设置项列表（遥控器焦点顺序）
     // ====================================================================
-
     /**
      * 初始化设置项列表
      *
@@ -399,7 +393,6 @@ public class SettingsActivity extends AppCompatActivity {
      */
     private void initSettingsItemList() {
         settingsItemList.clear();
-
         // 按页面从上到下的顺序添加
         settingsItemList.add(findViewById(R.id.item_boot));           // 1. 开机自启
         settingsItemList.add(findViewById(R.id.item_epg));            // 2. 节目单开关
@@ -475,7 +468,6 @@ public class SettingsActivity extends AppCompatActivity {
     // ====================================================================
     // ✅ 新增：初始化遥控器管理器
     // ====================================================================
-
     /**
      * 初始化遥控器管理器
      *
@@ -496,7 +488,6 @@ public class SettingsActivity extends AppCompatActivity {
 
         // 设置回调监听器
         remoteManager.setOnRemoteActionListener(new TvRemoteManager.OnRemoteActionListener() {
-
             // ================== 播放模式回调（设置页面用不到，空实现） ==================
             @Override public void onPlayChannelUp() {}
             @Override public void onPlayChannelDown() {}
@@ -516,7 +507,6 @@ public class SettingsActivity extends AppCompatActivity {
             @Override public void onPanelFocusChanged(TvRemoteManager.PanelFocus newFocus) {}
 
             // ================== 设置模式回调（核心，需要实现） ==================
-
             /**
              * 上移：焦点向上移动一项
              */
@@ -573,7 +563,6 @@ public class SettingsActivity extends AppCompatActivity {
     }
 
     // ====================== 其他点击事件初始化 ======================
-
     /**
      * 初始化纯文本项的点击事件
      */
@@ -618,7 +607,6 @@ public class SettingsActivity extends AppCompatActivity {
     // ====================================================================
     // ✅ 新增：按键事件处理（直接调用 TvRemoteManager）
     // ====================================================================
-
     /**
      * 按键事件处理
      *
@@ -641,40 +629,35 @@ public class SettingsActivity extends AppCompatActivity {
     }
 
     // ====================================================================
-    // ✅ 2026-06-21 优化：统一三种状态样式，和列表完全一致
+    // ✅ 2026-06-21 优化：统一焦点样式，和频道面板完全一致
     // ====================================================================
-
     /**
      * 更新设置项焦点高亮显示
      *
-     * 【2026-06-21 优化：从两种状态改成三种状态，和列表完全统一】
+     * 【2026-06-21 优化：和频道面板样式完全统一】
      *
-     * 【原来的两种状态】
-     * 1. 高亮状态：蓝色文字 + 浅蓝色背景
-     * 2. 普通状态：白色文字 + 透明背景
+     * 【原来的问题】
+     * 之前是"选中状态"有背景，"焦点状态"没背景，
+     * 和频道面板的样式反过来了，用户体验不一致。
      *
-     * 【现在的三种状态】
-     * 1. ✅ 选中状态：蓝色文字 + 加粗 + 浅蓝色背景（当前选中的设置项）
-     * 2. ✅ 焦点状态：蓝色文字 + 常规 + 透明背景（遥控器焦点所在的项）
-     * 3. ✅ 未选中状态：白色文字 + 常规 + 透明背景（普通项）
+     * 【现在的样式（和频道面板完全一致）】
+     * 1. ✅ 焦点状态：白色文字 + 浅蓝色背景（遥控器焦点所在的项，最显眼）
+     * 2. ✅ 普通状态：白色文字 + 透明背景（其他项）
      *
-     * 【为什么改成三种状态？】
-     * 和频道分组、频道列表、日期列表、节目单列表保持一致的样式体系，
-     * 整个应用的高亮样式统一，用户体验一致。
-     *
-     * 【判断优先级】
-     * 选中状态 > 焦点状态 > 未选中状态
-     * 如果一个项既是选中又是焦点，显示选中样式
+     * 【为什么设置页面没有"选中"状态？】
+     * 因为设置页面不是列表，没有"当前选中的项"这种概念，
+     * 每个设置项都是独立的，点击就执行操作，不需要"选中"状态。
+     * 设置页面只有"焦点"和"普通"两种状态就够了。
      *
      * 【处理两种类型的设置项】
      * 1. TextView 类型：比如"屏幕比例"、"自定义订阅源"等
      * 2. ViewGroup 类型：比如"开机自启"、"检查更新"等（LinearLayout 包裹文字和开关）
      */
     private void updateSettingsFocus() {
-        // 获取当前选中位置（遥控器管理器记录的位置）
-        int selectedPosition = remoteManager.getSettingsFocusPosition();
-
-        SettingsActivity.logOperation("【设置遥控】准备更新焦点，选中位置：" + (selectedPosition + 1));
+        // 获取当前焦点位置（遥控器管理器记录的位置）
+        // 【2026-06-21 修改】变量名从 selectedPosition 改成 focusPosition，更准确
+        int focusPosition = remoteManager.getSettingsFocusPosition();
+        SettingsActivity.logOperation("【设置遥控】准备更新焦点，焦点位置：" + (focusPosition + 1));
 
         // ====================================================================
         // 遍历所有设置项，分别设置对应的样式
@@ -683,44 +666,37 @@ public class SettingsActivity extends AppCompatActivity {
             View item = settingsItemList.get(i);
             if (item == null) continue;
 
-            if (i == selectedPosition) {
+            if (i == focusPosition) {
                 // ================================================================
-                // ✅ 选中状态：蓝色文字 + 加粗 + 浅蓝色背景
+                // ✅ 焦点状态：白色文字 + 浅蓝色背景（最显眼）
                 // ================================================================
-                // 【说明】当前选中的设置项，最明显的样式
-                setItemStyle(item, "#40A9FF", Typeface.BOLD, 0x3340A9FF);
-                SettingsActivity.logOperation("【设置遥控】第 " + (i + 1) + " 项 → 选中状态");
-
+                // 【说明】遥控器焦点所在的项，最明显的样式
+                // - 文字：白色（在蓝色背景上最清晰）
+                // - 背景：浅蓝色 0x3340A9FF（20% 透明度，柔和不刺眼）
+                // - 字重：常规（不用加粗，靠背景区分）
+                // 【为什么和频道面板一致？】
+                // 整个应用的高亮样式统一，用户体验更好，
+                // 遥控器移到哪里，哪里就有浅蓝色背景条，一眼就能看到焦点。
+                setItemStyle(item, "#FFFFFF", Typeface.NORMAL, 0x3340A9FF);
+                SettingsActivity.logOperation("【设置遥控】第 " + (i + 1) + " 项 → 焦点状态");
                 // 请求焦点（让系统知道焦点在哪）
                 item.requestFocus();
                 // 滚动到可见区域
                 scrollToView(item);
-
-            } else if (item.isFocused()) {
-                // ================================================================
-                // ✅ 焦点状态：蓝色文字 + 常规 + 透明背景
-                // ================================================================
-                // 【说明】遥控器焦点所在的项，文字变蓝提示焦点位置
-                // 背景透明，不会和选中状态冲突
-                setItemStyle(item, "#40A9FF", Typeface.NORMAL, Color.TRANSPARENT);
-                SettingsActivity.logOperation("【设置遥控】第 " + (i + 1) + " 项 → 焦点状态");
-
             } else {
                 // ================================================================
-                // ✅ 未选中状态：白色文字 + 常规 + 透明背景
+                // ✅ 普通状态：白色文字 + 透明背景
                 // ================================================================
                 // 【说明】普通项，默认样式
                 setItemStyle(item, "#FFFFFF", Typeface.NORMAL, Color.TRANSPARENT);
             }
         }
-
-        SettingsActivity.logOperation("【设置遥控】焦点更新完成，当前选中位置：" + (selectedPosition + 1));
+        SettingsActivity.logOperation("【设置遥控】焦点更新完成，当前焦点位置：" + (focusPosition + 1));
     }
 
     // ====================================================================
     // ✅ 2026-06-21 新增：辅助方法 - 设置单个设置项的样式
     // ====================================================================
-
     /**
      * 设置单个设置项的样式（文字颜色 + 字重 + 背景色）
      *
@@ -732,7 +708,7 @@ public class SettingsActivity extends AppCompatActivity {
      * 2. ViewGroup 类型：找到第一个 TextView，设置文字颜色和字重
      *
      * @param item 设置项 View
-     * @param textColor 文字颜色（十六进制字符串，如 "#40A9FF"）
+     * @param textColor 文字颜色（十六进制字符串，如 "#FFFFFF"）
      * @param typeface 字重（Typeface.BOLD 或 Typeface.NORMAL）
      * @param bgColor 背景色（如 0x3340A9FF 或 Color.TRANSPARENT）
      */
@@ -746,7 +722,6 @@ public class SettingsActivity extends AppCompatActivity {
             TextView tv = (TextView) item;
             tv.setTextColor(Color.parseColor(textColor));
             tv.setTypeface(null, typeface);
-
         } else if (item instanceof ViewGroup) {
             // 情况 B：当前项是 ViewGroup（复杂项，比如"开机自启"，里面有文字和开关）
             // 找第一个 TextView，设置文字颜色和字重
@@ -761,7 +736,6 @@ public class SettingsActivity extends AppCompatActivity {
     // ====================================================================
     // ✅ 2026-06-20 新增：辅助方法 - 在 ViewGroup 中找到第一个 TextView
     // ====================================================================
-
     /**
      * 在 ViewGroup 中递归查找第一个 TextView
      *
@@ -799,7 +773,6 @@ public class SettingsActivity extends AppCompatActivity {
     // ====================================================================
     // 辅助方法：滚动到指定 View 可见
     // ====================================================================
-
     /**
      * 滚动到指定 View，让它显示在可见区域内
      *
@@ -819,6 +792,7 @@ public class SettingsActivity extends AppCompatActivity {
         int viewTop = view.getTop();
         int viewBottom = view.getBottom();
         int scrollViewHeight = scrollView.getHeight();
+
         // 如果 View 在当前可见区域上方，滚动到顶部
         if (viewTop < scrollView.getScrollY()) {
             scrollView.smoothScrollTo(0, viewTop - 50);
@@ -832,7 +806,6 @@ public class SettingsActivity extends AppCompatActivity {
     // ====================================================================
     // ✅ 新增：辅助方法 - 处理设置项点击
     // ====================================================================
-
     /**
      * 处理设置项点击/选中
      *
@@ -852,7 +825,6 @@ public class SettingsActivity extends AppCompatActivity {
     }
 
     // ====================== 屏幕比例对话框 ======================
-
     /**
      * 显示屏幕比例选择对话框
      */
@@ -868,7 +840,6 @@ public class SettingsActivity extends AppCompatActivity {
     }
 
     // ====================== 输入对话框（自定义源/节目单） ======================
-
     /**
      * 显示输入对话框
      */
@@ -898,7 +869,6 @@ public class SettingsActivity extends AppCompatActivity {
     // ====================================================================
     // 日志对话框（加回兼容层）
     // ====================================================================
-
     /**
      * 显示操作日志对话框
      */
@@ -922,6 +892,7 @@ public class SettingsActivity extends AppCompatActivity {
         tv.setPadding(40, 40, 40, 40);
         tv.setTextColor(Color.BLACK);
         scrollView.addView(tv);
+
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("📌 操作日志");
         builder.setView(scrollView);
@@ -959,6 +930,7 @@ public class SettingsActivity extends AppCompatActivity {
         tv.setPadding(40, 40, 40, 40);
         tv.setTextColor(Color.BLACK);
         scrollView.addView(tv);
+
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("📄 解析 & 播放日志");
         builder.setView(scrollView);
@@ -976,7 +948,6 @@ public class SettingsActivity extends AppCompatActivity {
     // ====================================================================
     // 窗口焦点变化时，重新隐藏状态栏
     // ====================================================================
-
     @Override
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
@@ -1005,7 +976,6 @@ public class SettingsActivity extends AppCompatActivity {
     }
 
     // ====================== onDestroy 生命周期 ======================
-
     @Override
     protected void onDestroy() {
         super.onDestroy();

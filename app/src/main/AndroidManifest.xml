@@ -34,7 +34,22 @@
         android:theme="@style/Theme.TVLive.NoTitle"
         android:usesCleartextTraffic="true"
         android:networkSecurityConfig="@xml/network_security_config"
-        android:hardwareAccelerated="true">
+        android:hardwareAccelerated="true"
+        android:largeHeap="true">
+
+        <!-- ================================================================ -->
+        <!-- 【2026-06-21 新增：android:largeHeap="true"】                    -->
+        <!-- 【作用】                                                         -->
+        <!-- 让应用能使用更多的内存（heap size），缓解 EPG 加载时的 OOM 问题。 -->
+        <!--                                                                  -->
+        <!-- 【效果】                                                         -->
+        <!-- 不同设备增加的内存不一样，一般能从 192MB 增加到 384MB 或更多。    -->
+        <!-- 能快速解决 EPG 加载时的内存溢出问题。                             -->
+        <!--                                                                  -->
+        <!-- 【注意】                                                         -->
+        <!-- 这只是临时缓解方案，最好还是用流式处理的优化版 EpgManager，        -->
+        <!-- 从根本上减少内存占用。                                            -->
+        <!-- ================================================================ -->
 
         <activity
             android:name=".MainActivity"

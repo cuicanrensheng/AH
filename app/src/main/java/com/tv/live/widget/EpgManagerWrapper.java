@@ -44,11 +44,16 @@ import java.util.Set;
  * 4. 标记当前播放中的节目
  * 5. 管理 EPG 列表的显示和更新
  *
- * 【2026-06-21 优化：日志分类】
- * 【优化内容】
- * 1. 数据加载/处理相关的日志 → 播放日志（SettingsActivity.log）
- * 2. UI 更新相关的日志 → 操作日志（SettingsActivity.logOperation）
- * 3. 两种日志分开，互不混淆
+ * 【2026-06-21 优化 V2：统一三种状态样式 + 准确焦点判断】
+ *
+ * 【三种状态说明】
+ * 1. 选中状态：蓝色文字 + 加粗 + 浅蓝色背景（点击 OK 键后真正选中的节目）
+ * 2. 焦点状态：蓝色文字 + 常规 + 透明背景（遥控器焦点所在的项）
+ * 3. 未选中状态：白色文字 + 常规 + 透明背景（普通项）
+ *
+ * 【交互逻辑】
+ * - 移动焦点：只改变焦点样式，不执行操作
+ * - 点击 OK 键：才真正选中
  *
  * 【日志分类说明】
  * - ✅ 播放日志（log）：EPG 数据获取、筛选、解析等数据处理相关
@@ -62,7 +67,12 @@ public class EpgManagerWrapper {
     private final Set<String> bookedSet = new HashSet<>();
     private final Map<Channel.EpgItem, String> epgEndTimeMap = new HashMap<>();
     private static final String ACTION_REMINDER = "com.tv.live.EPG_REMINDER";
+
+    /** 当前选中位置（点击后才更新） */
     private int selectedPosition = 0;
+    /** 当前焦点位置（移动遥控器就更新） */
+    private int focusedPosition = 0;
+
     private int playingIndex = -1;
     private int selectDayIndex = 0;
 
@@ -72,18 +82,22 @@ public class EpgManagerWrapper {
         // ✅ 改成 false，item 不需要获取焦点
         lvEpg.setItemsCanFocus(false);
         lvEpg.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
+
+        // ================================================================
+        // ✅ 焦点移动：只更新焦点位置，不更新选中位置
+        // ================================================================
         lvEpg.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int pos, long id) {
-                selectedPosition = pos;
+                focusedPosition = pos;  // 只更新焦点位置
                 if (parent.getAdapter() != null) {
                     ((ArrayAdapter<?>) parent.getAdapter()).notifyDataSetChanged();
                 }
             }
-
             @Override
             public void onNothingSelected(AdapterView<?> parent) {}
         });
+
         registerReminderReceiver();
     }
 
@@ -104,10 +118,8 @@ public class EpgManagerWrapper {
             SettingsActivity.log("【EPG包装】❌ refresh被调用，但currentChannel为空");
             return;
         }
-
         // ✅ 保留：数据处理开始 → 播放日志
         SettingsActivity.log("【EPG包装】🔄 开始刷新，频道：" + currentChannel.getName() + "，日期索引：" + dateIndex);
-
         playingIndex = -1;
         selectDayIndex = dateIndex;
         epgEndTimeMap.clear();
@@ -135,7 +147,6 @@ public class EpgManagerWrapper {
             }
 
             List<Channel.EpgItem> data = new ArrayList<>();
-
             if (epgList != null && !epgList.isEmpty()) {
                 // ✅ 计算目标日期 + 对应的周几（全部双重兼容）
                 String targetDay;
@@ -224,9 +235,6 @@ public class EpgManagerWrapper {
                 // ============================================================
                 // ✅ 2026-06-21 修改：UI 更新 → 操作日志
                 // ============================================================
-                // 【为什么改？】
-                // 主线程更新 UI 是界面操作，属于操作日志，
-                // 不应该混进"解析 & 播放日志"里。
                 SettingsActivity.logOperation("【EPG包装】📱 主线程更新UI，节目数：" + finalData.size());
 
                 if (adapter == null) {
@@ -239,19 +247,17 @@ public class EpgManagerWrapper {
                 if (playingIndex >= 0) {
                     lvEpg.setSelection(playingIndex);
                     selectedPosition = playingIndex;
+                    focusedPosition = playingIndex;
                 } else {
                     lvEpg.setSelection(0);
                     selectedPosition = 0;
+                    focusedPosition = 0;
                 }
-
                 adapter.notifyDataSetChanged();
 
                 // ============================================================
                 // ✅ 2026-06-21 修改：UI 更新完成 → 操作日志
                 // ============================================================
-                // 【为什么改？】
-                // UI 更新完成是界面操作的结果，属于操作日志，
-                // 不应该混进"解析 & 播放日志"里。
                 SettingsActivity.logOperation("【EPG包装】✅ UI更新完成");
             });
         }).start();
@@ -391,6 +397,11 @@ public class EpgManagerWrapper {
             holder.tv_time.setText(item.time + "-" + endTime);
             holder.tv_title.setText(item.title);
 
+            // ====================================================================
+            // ✅ 2026-06-21 优化 V2：统一三种状态样式
+            // ====================================================================
+            // 【说明】
+            // 正在播放的节目也视为选中状态（isPlaying）
             boolean isSelected = (position == selectedPosition || item.isPlaying);
 
             if (isSelected) {
@@ -400,93 +411,58 @@ public class EpgManagerWrapper {
                 holder.tv_title.setTextColor(Color.parseColor("#40A9FF"));
                 holder.tv_title.setTypeface(null, Typeface.BOLD);
                 convertView.setBackgroundColor(0x3340A9FF);
-            }else if (convertView.isFocused()) {
+
+            } else if (position == focusedPosition) {
                 // ✅ 焦点状态：蓝色文字 + 常规 + 透明背景
                 holder.tv_dayName.setTextColor(Color.parseColor("#40A9FF"));
                 holder.tv_time.setTextColor(Color.parseColor("#40A9FF"));
                 holder.tv_title.setTextColor(Color.parseColor("#40A9FF"));
                 holder.tv_title.setTypeface(null, Typeface.NORMAL);
                 convertView.setBackgroundColor(Color.TRANSPARENT);
+
             } else {
                 // ✅ 未选中状态：原来的颜色 + 透明背景
                 holder.tv_dayName.setTextColor(Color.WHITE);
-                holder.tv_time.setTextColor(Color.LTGRAY);
+                holder.tv_time.setTextColor(Color.WHITE);
                 holder.tv_title.setTextColor(Color.WHITE);
                 holder.tv_title.setTypeface(null, Typeface.NORMAL);
                 convertView.setBackgroundColor(Color.TRANSPARENT);
             }
 
-            String key = currentChannel.getName() + "_" + position;
-            boolean isPast = false;
-            try { isPast = item.time.compareTo(getNow()) < 0; } catch (Exception ignored) {}
-
+            // 操作按钮文字（回看/预约/播放中）
             if (item.isPlaying) {
-                // 播放中
                 holder.tv_action.setText("播放中");
-                holder.tv_action.setBackgroundColor(0xFFFF9800);
-                holder.tv_action.setEnabled(false);
-            } else if (isPast) {
-                // 已结束 → 回看
+                holder.tv_action.setTextColor(Color.parseColor("#40A9FF"));
+            } else if (isProgramPast(item)) {
                 holder.tv_action.setText("回看");
-                holder.tv_action.setBackgroundColor(0xFF607D8B);
-                holder.tv_action.setEnabled(true);
-                holder.tv_action.setOnClickListener(v -> {
-                    try {
-                        String liveUrl = currentChannel.getPlayUrl();
-                        if (TextUtils.isEmpty(liveUrl)) {
-                            Toast.makeText(ctx, "无播放地址", Toast.LENGTH_SHORT).show();
-                            return;
-                        }
-                        Calendar playDay = Calendar.getInstance();
-                        playDay.add(Calendar.DAY_OF_YEAR, dayIndex);
-                        String[] startHm = item.time.split(":");
-                        Calendar startCal = (Calendar) playDay.clone();
-                        startCal.set(Calendar.HOUR_OF_DAY, Integer.parseInt(startHm[0].trim()));
-                        startCal.set(Calendar.MINUTE, Integer.parseInt(startHm[1].trim()));
-                        startCal.set(Calendar.SECOND, 0);
-                        String[] endHm = endTime.split(":");
-                        Calendar endCal = (Calendar) playDay.clone();
-                        endCal.set(Calendar.HOUR_OF_DAY, Integer.parseInt(endHm[0].trim()));
-                        endCal.set(Calendar.MINUTE, Integer.parseInt(endHm[1].trim()));
-                        endCal.set(Calendar.SECOND, 0);
-                        String startStr = sdfFull.format(startCal.getTime());
-                        String endStr = sdfFull.format(endCal.getTime());
-                        String catchUrl = liveUrl.contains("PLTV") ? liveUrl.replace("PLTV", "TVOD") : liveUrl;
-                        catchUrl += catchUrl.contains("?") ? "&playseek=" + startStr + "-" + endStr : "?playseek=" + startStr + "-" + endStr;
-                        ((MainActivity) ctx).mPlayerManager.playUrl(catchUrl);
-                        Toast.makeText(ctx, "回看：" + item.title, Toast.LENGTH_SHORT).show();
-                    } catch (Exception e) {
-                        Toast.makeText(ctx, "回看失败", Toast.LENGTH_SHORT).show();
-                    }
-                });
+                holder.tv_action.setTextColor(Color.parseColor("#888888"));
             } else {
-                // 未开始 → 预约
                 holder.tv_action.setText("预约");
-                holder.tv_action.setBackgroundColor(0xFF4CAF50);
-                holder.tv_action.setEnabled(true);
-                holder.tv_action.setOnClickListener(v -> {
-                    if (bookedSet.contains(key)) {
-                        bookedSet.remove(key);
-                        Toast.makeText(ctx, "已取消预约", Toast.LENGTH_SHORT).show();
-                    } else {
-                        bookedSet.add(key);
-                        Toast.makeText(ctx, "已预约：" + item.title, Toast.LENGTH_SHORT).show();
-                    }
-                    notifyDataSetChanged();
-                });
+                holder.tv_action.setTextColor(Color.parseColor("#40A9FF"));
             }
 
             return convertView;
         }
 
         /**
-         * ViewHolder 模式
+         * 判断节目是否已结束
          */
-        private class ViewHolder {
-            TextView tv_dayName;
-            TextView tv_time;
-            TextView tv_title;
-            TextView tv_action;
+        private boolean isProgramPast(Channel.EpgItem item) {
+            String endTime = epgEndTimeMap.get(item);
+            if (endTime == null) return false;
+            String now = getNow();
+            return now.compareTo(endTime) > 0;
         }
+    }
+
+    // ====================================================================
+    // ViewHolder
+    // ====================================================================
+
+    static class ViewHolder {
+        TextView tv_dayName;
+        TextView tv_time;
+        TextView tv_title;
+        TextView tv_action;
     }
 }

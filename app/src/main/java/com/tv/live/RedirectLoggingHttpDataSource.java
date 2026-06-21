@@ -20,55 +20,78 @@ import java.util.Map;
 import java.util.zip.GZIPInputStream;
 
 /**
- * 带重定向日志的 HTTP 数据源
+ * 带重定向日志的 HTTP 数据源（精简日志版）
  *
  * 【功能】
  * 1. 手动处理 HTTP 重定向（301/302/303/307/308）
- * 2. 每一次重定向都打印详细日志（状态码、原始URL、目标URL、Header）
- * 3. 支持跨协议重定向（HTTP ↔ HTTPS）
- * 4. 支持相对路径的 Location
- * 5. 日志同时输出到 Logcat 和 SettingsActivity.PLAY_LOG
+ * 2. 支持跨协议重定向（HTTP ↔ HTTPS）
+ * 3. 支持相对路径的 Location
+ * 4. 支持 GZIP 解压
+ * 5. 日志精简，只输出核心信息
  *
- * 【最大重定向次数】
- * 默认 20 次，防止无限重定向死循环。
+ * 【2026-06-21 优化：精简日志输出】
+ * 【优化内容】
+ * 1. 去掉每次重定向的详细输出（从哪到哪、Headers等）
+ * 2. 去掉复杂的分隔线和 emoji
+ * 3. 只保留核心信息：请求开始、重定向次数、最终地址
+ * 4. 其他功能全部保留（GZIP、跨协议、Range、Factory等）
+ *
+ * 【日志输出示例】
+ * 有重定向：
+ *   [HTTP] 请求开始: http://xxx
+ *   [HTTP] 重定向: 2次
+ *   [HTTP] 最终地址: http://yyy
+ *
+ * 无重定向：
+ *   [HTTP] 请求开始: http://xxx
+ *   [HTTP] 无重定向
+ *   [HTTP] 最终地址: http://xxx
+ *
+ * 失败：
+ *   [HTTP] 请求开始: http://xxx
+ *   [HTTP] ❌ 失败: HTTP 404 Not Found
  */
 public class RedirectLoggingHttpDataSource extends BaseDataSource implements HttpDataSource {
 
     private static final String TAG = "RedirectHttp";
+
     /** 最大重定向次数，防止无限循环 */
     private static final int MAX_REDIRECTS = 20;
+
     /** 连接超时时间（毫秒） */
     private static final int CONNECT_TIMEOUT = 5000;
+
     /** 读取超时时间（毫秒） */
     private static final int READ_TIMEOUT = 15000;
 
     /** 默认请求头 */
     private final Map<String, String> defaultRequestProperties;
+
     /** 是否允许跨协议重定向 */
     private final boolean allowCrossProtocolRedirects;
 
     /** 当前 HTTP 连接 */
     private HttpURLConnection connection;
+
     /** 输入流 */
     private InputStream inputStream;
+
     /** 是否已经打开 */
     private boolean opened;
 
     /** 当前请求的字节数 */
     private long bytesToRead;
+
     /** 已读取的字节数 */
     private long bytesRead;
 
-    // ===== 新增：保存 HTTP 响应状态码 =====
     /** HTTP 响应状态码（用于 getResponseCode()） */
     private int responseCode = -1;
 
-    /**
-     * 构造函数
-     *
-     * @param defaultRequestProperties 默认请求头
-     * @param allowCrossProtocolRedirects 是否允许跨协议重定向
-     */
+    // ====================================================================
+    // 构造函数
+    // ====================================================================
+
     protected RedirectLoggingHttpDataSource(
             Map<String, String> defaultRequestProperties,
             boolean allowCrossProtocolRedirects) {
@@ -79,6 +102,10 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
         this.allowCrossProtocolRedirects = allowCrossProtocolRedirects;
     }
 
+    // ====================================================================
+    // open 方法
+    // ====================================================================
+
     @Override
     public long open(DataSpec dataSpec) throws HttpDataSourceException {
         try {
@@ -88,15 +115,14 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
             connection = openConnection(dataSpec);
             responseCode = connection.getResponseCode();  // 保存状态码
 
-            // ===== 获取响应头 =====
-            Map<String, List<String>> headers = connection.getHeaderFields();
-
             // ===== 处理错误响应 =====
             if (responseCode < 200 || responseCode > 299) {
                 String responseMessage = connection.getResponseMessage();
-                SettingsActivity.log("❌ HTTP 请求失败：" + responseCode + " " + responseMessage);
-                SettingsActivity.log("   URL：" + dataSpec.uri);
-                // ===== 修复：TYPE_RESPONSE_CODE_UNSUPPORTED 换成 TYPE_OPEN =====
+                // ============================================================
+                // ✅ 精简：错误日志简化
+                // ============================================================
+                SettingsActivity.log("[HTTP] ❌ 失败: HTTP " + responseCode + " " + responseMessage);
+
                 throw new HttpDataSourceException(
                         "HTTP " + responseCode + " " + responseMessage,
                         dataSpec,
@@ -110,7 +136,8 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
                 String contentEncoding = connection.getContentEncoding();
                 if (contentEncoding != null && contentEncoding.equalsIgnoreCase("gzip")) {
                     inputStream = new GZIPInputStream(inputStream);
-                    SettingsActivity.log("📦 响应已 GZIP 压缩，已自动解压");
+                    // GZIP 这个信息还是保留吧，挺有用的，而且只有一行
+                    SettingsActivity.log("[HTTP] GZIP 压缩，已自动解压");
                 }
             } catch (IOException e) {
                 // 如果获取输入流失败，尝试用错误流
@@ -131,18 +158,14 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
             }
             bytesRead = 0;
 
-            // ===== 打印最终响应信息 =====
-            SettingsActivity.log("✅ 最终响应：HTTP " + responseCode);
-            SettingsActivity.log("   Content-Length：" + (contentLength == C.LENGTH_UNSET ? "未知" : contentLength + " 字节"));
-            String contentType = connection.getContentType();
-            if (!TextUtils.isEmpty(contentType)) {
-                SettingsActivity.log("   Content-Type：" + contentType);
-            }
-            SettingsActivity.log("   最终地址：" + connection.getURL());
+            // ================================================================
+            // ✅ 精简：最终响应日志简化
+            // ================================================================
+            // 只输出最终地址，其他都去掉
+            SettingsActivity.log("[HTTP] 最终地址: " + connection.getURL());
 
             opened = true;
             transferStarted(dataSpec);
-
             return bytesToRead;
 
         } catch (IOException e) {
@@ -151,14 +174,17 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
         }
     }
 
+    // ====================================================================
+    // 打开连接，手动处理重定向
+    // ====================================================================
+
     /**
      * 打开连接，手动处理重定向
      *
      * 【重定向处理流程】
      * 1. 发起请求
      * 2. 检查状态码，如果是 3xx 就处理重定向
-     * 3. 打印每一重的日志
-     * 4. 最多重定向 20 次
+     * 3. 最多重定向 20 次
      *
      * @param dataSpec 请求参数
      * @return 最终的 HttpURLConnection
@@ -167,15 +193,15 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
         String currentUrl = dataSpec.uri.toString();
         int redirectCount = 0;
 
-        // ===== 打印初始请求 =====
-        SettingsActivity.log("========== HTTP 请求开始 ==========");
-        SettingsActivity.log("🌐 原始地址：" + currentUrl);
-        SettingsActivity.log("   方法：" + (dataSpec.httpMethod == DataSpec.HTTP_METHOD_POST ? "POST" : "GET"));
+        // ================================================================
+        // ✅ 精简：请求开始日志简化
+        // ================================================================
+        SettingsActivity.log("[HTTP] 请求开始: " + currentUrl);
 
         while (true) {
             // ===== 检查重定向次数 =====
             if (redirectCount > MAX_REDIRECTS) {
-                SettingsActivity.log("❌ 重定向次数超过限制（" + MAX_REDIRECTS + "次），可能是无限重定向");
+                SettingsActivity.log("[HTTP] ❌ 失败: 重定向次数超过限制（" + MAX_REDIRECTS + "次）");
                 throw new IOException("Too many redirects");
             }
 
@@ -200,7 +226,7 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
                     rangeValue += (dataSpec.position + dataSpec.length - 1);
                 }
                 conn.setRequestProperty("Range", rangeValue);
-                SettingsActivity.log("   Range：" + rangeValue);
+                // Range 这个信息去掉，日志太多了
             }
 
             // ===== 发起请求 =====
@@ -213,8 +239,13 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
 
             if (!isRedirect) {
                 // 不是重定向，返回这个连接
+                // ============================================================
+                // ✅ 精简：重定向次数总结（只输出一行）
+                // ============================================================
                 if (redirectCount > 0) {
-                    SettingsActivity.log("   └─ 重定向结束，共 " + redirectCount + " 重");
+                    SettingsActivity.log("[HTTP] 重定向: " + redirectCount + "次");
+                } else {
+                    SettingsActivity.log("[HTTP] 无重定向");
                 }
                 return conn;
             }
@@ -224,8 +255,7 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
             String location = conn.getHeaderField("Location");
 
             if (TextUtils.isEmpty(location)) {
-                SettingsActivity.log("❌ 第 " + redirectCount + " 重：HTTP " + respCode
-                        + "，但没有 Location 头");
+                SettingsActivity.log("[HTTP] ❌ 失败: 第 " + redirectCount + " 重定向没有 Location 头");
                 conn.disconnect();
                 throw new IOException("Redirect with no Location header");
             }
@@ -237,21 +267,21 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
             boolean isCrossProtocol = !url.getProtocol().equalsIgnoreCase(
                     Uri.parse(redirectUrl).getScheme());
             if (isCrossProtocol && !allowCrossProtocolRedirects) {
-                SettingsActivity.log("❌ 第 " + redirectCount + " 重：跨协议重定向被禁止");
-                SettingsActivity.log("   " + url.getProtocol() + " → " + Uri.parse(redirectUrl).getScheme());
+                SettingsActivity.log("[HTTP] ❌ 失败: 跨协议重定向被禁止");
                 conn.disconnect();
                 throw new IOException("Cross-protocol redirect not allowed");
             }
 
-            // ===== 打印这一重的日志 =====
-            String crossProtocolTag = isCrossProtocol ? "  [跨协议]" : "";
-            SettingsActivity.log("🔄 第 " + redirectCount + " 重：HTTP " + respCode
-                    + " " + responseMessage + crossProtocolTag);
-            SettingsActivity.log("   从：" + currentUrl);
-            SettingsActivity.log("   到：" + redirectUrl);
-
-            // ===== 打印关键响应头 =====
-            printRedirectHeaders(conn);
+            // ================================================================
+            // ✅ 精简：去掉每次重定向的详细输出
+            // ================================================================
+            // 原来的输出：
+            // 🔄 第 1 重：HTTP 302 Found
+            //    从：http://xxx
+            //    到：http://yyy
+            //    Headers：Location=http://yyy | Server=nginx
+            //
+            // 现在都去掉了，只在最后输出总次数
 
             // ===== 关闭当前连接，准备下一次请求 =====
             conn.disconnect();
@@ -259,32 +289,26 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
         }
     }
 
-    /**
-     * 解析重定向地址（处理相对路径）
-     *
-     * @param baseUrl 基础 URL
-     * @param location Location 头的值（可能是相对路径）
-     * @return 完整的重定向 URL
-     */
+    // ====================================================================
+    // 解析重定向地址（处理相对路径）
+    // ====================================================================
+
     private String resolveRedirectUrl(String baseUrl, String location) throws IOException {
         // 如果 location 已经是完整 URL，直接返回
         if (location.startsWith("http://") || location.startsWith("https://")) {
             return location;
         }
-
         // 相对路径，需要拼接
         Uri baseUri = Uri.parse(baseUrl);
         String scheme = baseUri.getScheme();
         String host = baseUri.getHost();
         int port = baseUri.getPort();
         String path = baseUri.getPath();
-
         StringBuilder sb = new StringBuilder();
         sb.append(scheme).append("://").append(host);
         if (port != -1 && port != 80 && port != 443) {
             sb.append(":").append(port);
         }
-
         if (location.startsWith("/")) {
             // 绝对路径（相对于域名）
             sb.append(location);
@@ -297,48 +321,13 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
                 sb.append("/").append(location);
             }
         }
-
         return sb.toString();
     }
 
-    /**
-     * 打印重定向时的关键响应头
-     */
-    private void printRedirectHeaders(HttpURLConnection conn) {
-        // 只打印关键的几个头，避免日志太多
-        String[] importantHeaders = {
-                "Location",
-                "Set-Cookie",
-                "Content-Type",
-                "Cache-Control",
-                "Server"
-        };
+    // ====================================================================
+    // 获取 Content-Length
+    // ====================================================================
 
-        StringBuilder sb = new StringBuilder();
-        sb.append("   Headers：");
-        boolean hasHeader = false;
-        for (String header : importantHeaders) {
-            String value = conn.getHeaderField(header);
-            if (!TextUtils.isEmpty(value)) {
-                if (hasHeader) sb.append(" | ");
-                sb.append(header).append("=");
-                // Set-Cookie 太长，截断显示
-                if ("Set-Cookie".equals(header) && value.length() > 80) {
-                    sb.append(value.substring(0, 80)).append("...");
-                } else {
-                    sb.append(value);
-                }
-                hasHeader = true;
-            }
-        }
-        if (hasHeader) {
-            SettingsActivity.log(sb.toString());
-        }
-    }
-
-    /**
-     * 获取 Content-Length
-     */
     private long getContentLength(HttpURLConnection connection) {
         String contentLength = connection.getHeaderField("Content-Length");
         if (!TextUtils.isEmpty(contentLength)) {
@@ -351,6 +340,10 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
         return C.LENGTH_UNSET;
     }
 
+    // ====================================================================
+    // read 方法
+    // ====================================================================
+
     @Override
     public int read(byte[] buffer, int offset, int readLength) throws HttpDataSourceException {
         if (readLength == 0) {
@@ -359,13 +352,11 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
         if (bytesToRead == 0) {
             return C.RESULT_END_OF_INPUT;
         }
-
         try {
             int bytesToReadThisTime = (int) Math.min(
                     readLength,
                     bytesToRead == C.LENGTH_UNSET ? Integer.MAX_VALUE : bytesToRead - bytesRead);
             int bytesReadThisTime = inputStream.read(buffer, offset, bytesToReadThisTime);
-
             if (bytesReadThisTime == -1) {
                 // 读取结束
                 if (bytesToRead != C.LENGTH_UNSET && bytesRead != bytesToRead) {
@@ -377,11 +368,9 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
                 }
                 return C.RESULT_END_OF_INPUT;
             }
-
             bytesRead += bytesReadThisTime;
             bytesTransferred(bytesReadThisTime);
             return bytesReadThisTime;
-
         } catch (IOException e) {
             throw new HttpDataSourceException(e,
                     new DataSpec(Uri.parse(connection.getURL().toString())),
@@ -389,12 +378,15 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
         }
     }
 
+    // ====================================================================
+    // 其他接口方法
+    // ====================================================================
+
     @Override
     public Uri getUri() {
         return connection == null ? null : Uri.parse(connection.getURL().toString());
     }
 
-    // ===== 新增：实现 getResponseCode() 抽象方法 =====
     /**
      * 获取 HTTP 响应状态码
      *
@@ -453,7 +445,7 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
     }
 
     // ====================================================================
-    // Factory 工厂类
+    // Factory 工厂类（完全保留，不改动）
     // ====================================================================
 
     /**
@@ -466,7 +458,6 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
      *     .createDataSource()
      */
     public static final class Factory implements HttpDataSource.Factory {
-
         private final Map<String, String> defaultRequestProperties;
         private boolean allowCrossProtocolRedirects;
 

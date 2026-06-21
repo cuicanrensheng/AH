@@ -224,10 +224,10 @@ public class ChannelListManager {
                 // ✅ 2026-06-21 修改：统一三种状态样式（焦点优先）
                 // ====================================================================
                 if (position == focusedPosition) {
-                    // ── 焦点状态：白色文字 + 蓝色背景（最显眼）──
+                    // ── 焦点状态：白色文字 +浅蓝色背景
                     tvChannel.setTextColor(Color.WHITE);
                     tvChannel.setTypeface(null, Typeface.NORMAL);
-                    convertView.setBackgroundColor(Color.parseColor("#40A9FF"));
+                    convertView.setBackgroundColor(0x3340A9FF);
                     tvIndex.setTextColor(Color.WHITE);
                 } else if (position == selectedPosition) {
                     // ── 选中状态：蓝色文字 + 透明背景（次之）──

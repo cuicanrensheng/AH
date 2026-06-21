@@ -23,7 +23,12 @@ import java.util.Set;
  * 【职责】
  * 统一管理频道分组列表的显示、选中状态、点击事件等。
  *
- * 【2026-06-21 优化：区分焦点和选中状态】
+ * 【2026-06-21 优化 V2：用 focusedPosition 准确判断焦点】
+ *
+ * 【为什么不用 view.isFocused()？】
+ * 在 ListView 里，焦点是在 ListView 控件上，不是在 item 上，
+ * 所以 view.isFocused() 一直返回 false，焦点样式不生效。
+ * 改成用 focusedPosition 变量记录焦点位置，100% 准确。
  *
  * 【三种状态说明】
  * 1. 选中状态：蓝色文字 + 加粗 + 浅蓝色背景（点击 OK 键后真正选中的分组）
@@ -33,7 +38,7 @@ import java.util.Set;
  * 【判断优先级】
  * 选中状态 > 焦点状态 > 未选中状态
  *
- * 【交互变化】
+ * 【交互逻辑】
  * - 移动焦点：只改变焦点样式，不切换分组
  * - 点击 OK 键：才真正选中，切换分组
  */
@@ -45,11 +50,12 @@ public class GroupListManager {
     private final Context context;
     /** 分组名称列表 */
     private List<String> groupList;
-    /** 当前选中位置 */
+    /** 当前选中位置（点击后才更新） */
     private int selectedPosition = 0;
+    /** 当前焦点位置（移动遥控器就更新） */
+    private int focusedPosition = 0;
     /** 列表适配器 */
     private ArrayAdapter<String> adapter;
-
     /** 分组选中监听器（供外部回调） */
     private OnGroupSelectedListener listener;
 
@@ -81,16 +87,12 @@ public class GroupListManager {
         lvGroup.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
 
         // ================================================================
-        // ✅ 修改：焦点移动时只刷新样式，不更新选中位置
+        // ✅ 焦点移动：只更新焦点位置，不更新选中位置
         // ================================================================
-        // 【说明】
-        // 原来的 onItemSelected 会更新 selectedPosition，导致焦点移动就变成选中状态。
-        // 现在改成只刷新列表，让 getView() 里的 view.isFocused() 生效，
-        // 这样焦点样式和选中样式就能区分开了。
         lvGroup.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int pos, long id) {
-                // 只刷新列表，让焦点样式生效，不更新 selectedPosition
+                focusedPosition = pos;  // 只更新焦点位置
                 if (adapter != null) {
                     adapter.notifyDataSetChanged();
                 }
@@ -101,11 +103,8 @@ public class GroupListManager {
         });
 
         // ================================================================
-        // ✅ 新增：点击选中事件（按 OK 键时触发）
+        // ✅ 点击选中：才更新选中位置，触发回调
         // ================================================================
-        // 【说明】
-        // 用户按 OK 键点击某个分组时，才真正更新选中位置，
-        // 并回调给外部，切换到该分组的频道列表。
         lvGroup.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
@@ -136,36 +135,32 @@ public class GroupListManager {
                 tv.setPadding(20, 15, 20, 15);
 
                 // ====================================================================
-                // ✅ 2026-06-21 优化：区分三种状态样式
+                // ✅ 2026-06-21 优化 V2：用 focusedPosition 准确判断
                 // ====================================================================
 
                 if (position == selectedPosition) {
                     // ================================================================
                     // ✅ 选中状态：蓝色文字 + 加粗 + 浅蓝色背景
                     // ================================================================
-                    // 【说明】点击 OK 键真正选中的分组，最明显的样式
                     tv.setTextColor(Color.parseColor("#40A9FF"));
                     tv.setTypeface(null, Typeface.BOLD);
-                    tv.setBackgroundColor(0x3340A9FF);
+                    view.setBackgroundColor(0x3340A9FF);
 
-                } else if (view.isFocused()) {
+                } else if (position == focusedPosition) {
                     // ================================================================
                     // ✅ 焦点状态：蓝色文字 + 常规 + 透明背景
                     // ================================================================
-                    // 【说明】遥控器焦点所在的项，文字变蓝提示焦点位置
-                    // 背景透明，不会和选中状态冲突
                     tv.setTextColor(Color.parseColor("#40A9FF"));
                     tv.setTypeface(null, Typeface.NORMAL);
-                    tv.setBackgroundColor(Color.TRANSPARENT);
+                    view.setBackgroundColor(Color.TRANSPARENT);
 
                 } else {
                     // ================================================================
                     // ✅ 未选中状态：白色文字 + 常规 + 透明背景
                     // ================================================================
-                    // 【说明】普通项，默认样式
                     tv.setTextColor(Color.WHITE);
                     tv.setTypeface(null, Typeface.NORMAL);
-                    tv.setBackgroundColor(Color.TRANSPARENT);
+                    view.setBackgroundColor(Color.TRANSPARENT);
                 }
 
                 return view;
@@ -175,6 +170,7 @@ public class GroupListManager {
         lvGroup.setAdapter(adapter);
         // 默认选中第一个
         selectedPosition = 0;
+        focusedPosition = 0;
         adapter.notifyDataSetChanged();
     }
 
@@ -189,6 +185,7 @@ public class GroupListManager {
         if (position < 0 || position >= groupList.size()) return;
 
         selectedPosition = position;
+        focusedPosition = position;  // 选中后焦点也移过去
         lvGroup.setItemChecked(position, true);
         lvGroup.setSelection(position);
         adapter.notifyDataSetChanged();

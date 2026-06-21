@@ -40,8 +40,7 @@ import java.util.Map;
  * 3. 支持硬解码/软解码切换
  * 4. 切台保持最后一帧，避免黑屏
  * 5. 显示真实画质、音频、码率
- * 6. ✅ 浏览器 UA + 智能 Referer，兼容更多直播源
- * 7. ✅ 2026-06-21 新增：多平台自动识别（虎牙/斗鱼/抖音/B站/快手/爱奇艺/腾讯/优酷等）
+ * 6. ✅ 2026-06-21 新增：浏览器 UA + 多平台自动识别 + 智能 Referer
  */
 public class TVPlayerManager {
     private static final String TAG = "TVPlayerLog";
@@ -87,7 +86,7 @@ public class TVPlayerManager {
     private boolean isRetrying = false;
 
     // ====================================================================
-    // ✅ 浏览器 User-Agent（模拟 Chrome 浏览器）
+    // ✅ 2026-06-21 新增：浏览器 User-Agent（模拟 Chrome 浏览器）
     // ====================================================================
     private static final String BROWSER_USER_AGENT = 
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
@@ -435,7 +434,7 @@ public class TVPlayerManager {
     }
 
     // ====================================================================
-    // ✅ 2026-06-21 增强：多平台自动识别 + 智能请求头
+    // ✅ 2026-06-21 重写：多平台自动识别 + 智能请求头
     //
     // 【支持的平台】
     // 1. 虎牙直播
@@ -453,7 +452,7 @@ public class TVPlayerManager {
     private Map<String, String> getHeaders(String url) {
         Map<String, String> headers = new HashMap<>();
 
-        // ✅ 1. 统一用浏览器 User-Agent（所有平台都用这个）
+        // ✅ 1. 统一用浏览器 User-Agent（最重要！）
         headers.put("User-Agent", BROWSER_USER_AGENT);
 
         // ✅ 2. 标准浏览器请求头
@@ -468,7 +467,7 @@ public class TVPlayerManager {
         
         if (referer != null) {
             headers.put("Referer", referer);
-            Log.d(TAG, "识别到平台：" + platform + "，设置 Referer：" + referer);
+            Log.d(TAG, "识别到平台：" + platform + "，设置 Referer");
         } else {
             Log.d(TAG, "普通直播源，不设置 Referer");
         }
@@ -603,18 +602,23 @@ public class TVPlayerManager {
         playUrlInternal(url);
     }
 
+    /**
+     * 内部播放方法
+     * 
+     * 【注意】Factory 保持原来的用法，不调用不存在的方法
+     */
     private void playUrlInternal(String url) {
         try {
             if (player == null || url == null || url.trim().isEmpty()) return;
             currentUrl = url.trim();
             Log.d(TAG, "开始播放：" + currentUrl);
 
+            // ===== 创建数据源（带重定向日志版） =====
+            // 保持原来的用法，只设置 headers 和允许跨协议重定向
             RedirectLoggingHttpDataSource.Factory httpFactory =
                     new RedirectLoggingHttpDataSource.Factory();
             httpFactory.setDefaultRequestProperties(getHeaders(currentUrl));
             httpFactory.setAllowCrossProtocolRedirects(true);
-            httpFactory.setConnectTimeoutMs(15000);
-            httpFactory.setReadTimeoutMs(15000);
 
             MediaItem mediaItem = MediaItem.fromUri(currentUrl);
             com.google.android.exoplayer2.source.MediaSource mediaSource;

@@ -60,6 +60,7 @@ public class SettingsActivity extends AppCompatActivity {
     // ====================================================================
     // ✅ 2026-06-22 新增：画中画开关变量
     // 【作用】控制画中画功能的开启和关闭
+    // 【说明】只新增，不删除原有任何变量
     // ====================================================================
     private Switch sw_pip;
 
@@ -222,6 +223,7 @@ public class SettingsActivity extends AppCompatActivity {
         // ====================================================================
         // ✅ 2026-06-22 新增：绑定画中画开关控件
         // 【作用】从布局中找到画中画开关的 Switch 控件
+        // 【说明】只新增这一行，不修改原有任何代码
         // ====================================================================
         sw_pip = findViewById(R.id.sw_pip);
 
@@ -297,6 +299,7 @@ public class SettingsActivity extends AppCompatActivity {
         //
         // 【默认值】true（默认开启画中画功能）
         // 【SP Key】"pip_enable"
+        // 【说明】只新增这段代码，不修改原有任何代码
         // ====================================================================
         sw_pip.setChecked(sp.getBoolean("pip_enable", true));
         sw_pip.setOnCheckedChangeListener((buttonView, isChecked) -> {
@@ -364,6 +367,7 @@ public class SettingsActivity extends AppCompatActivity {
         // 【作用】把画中画设置项添加到遥控器焦点列表中，
         //         这样遥控器可以聚焦到画中画开关
         // 【位置】第 6 项，在数字选台下面
+        // 【说明】只新增这一行，不修改原有任何代码
         // ====================================================================
         settingsItemList.add(findViewById(R.id.item_pip));            // 6. 画中画
 
@@ -550,6 +554,7 @@ public class SettingsActivity extends AppCompatActivity {
         // 【为什么要加这个？】
         // 因为用户可能点击的是 item 的空白区域，而不是 Switch 控件本身，
         // 这样点击整个 item 都能切换开关，用户体验更好。
+        // 【说明】只新增这段代码，不修改原有任何代码
         // ====================================================================
         findViewById(R.id.item_pip).setOnClickListener(v -> {
             sw_pip.setChecked(!sw_pip.isChecked());

@@ -68,6 +68,10 @@
             android:theme="@style/TransparentTheme"
             android:screenOrientation="sensorLandscape"
             android:configChanges="orientation|screenSize" />
+        <activity
+    android:name=".MainActivity"
+    android:supportsPictureInPicture="true"
+    android:configChanges="screenSize|orientation|smallestScreenSize"/>
 
         <activity
             android:name=".ChannelListActivity"

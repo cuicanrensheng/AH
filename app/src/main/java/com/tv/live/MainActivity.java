@@ -1039,4 +1039,4 @@ public class MainActivity extends AppCompatActivity {
                 SettingsActivity.logOperation("【画中画】onDestroy 释放资源完成");
             } catch (Exception e) {
                 log("【画中画】释放管理器失败：" + e.getMessage());
-           
+            } 

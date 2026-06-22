@@ -57,6 +57,11 @@
   - defaultFocusHighlightEnabled：控制焦点边框（黄色/橙色框）
   - listSelector：控制选中/焦点的背景色（蓝色条）
   两个都要去掉，才能完全由我们自己控制高亮。
+  ====================================================================
+  【2026-06-22 修改：移除占位图】
+  ====================================================================
+  移除了 iv_player_placeholder 防花屏占位图，
+  配合 Java 代码修改，占位图功能彻底取消。
 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
@@ -83,23 +88,6 @@
         app:resize_mode="fit"
         app:keep_content_on_player_reset="true"
         app:surface_type="surface_view" />
-
-    <!-- ==================================================================== -->
-    <!-- 防花屏占位图（退到后台时显示，黑色背景盖住 SurfaceView）            -->
-    <!-- ==================================================================== -->
-    <!--
-      【作用】退到后台时显示黑色背景，盖住 SurfaceView，防止 Surface 销毁导致花屏
-      【时机】onPause 时显示，onResume 后延迟 100ms 隐藏
-      【原理】SurfaceView 的 Surface 销毁是异步的，销毁过程中可能出现花屏、绿屏，
-             用一个 ImageView 盖在上面，用户看到的就是平滑的黑色过渡。
-    -->
-    <ImageView
-        android:id="@+id/iv_player_placeholder"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:visibility="gone"
-        android:scaleType="centerCrop"
-        android:background="@android:color/black" />
 
     <!-- ==================================================================== -->
     <!-- 频道号显示（右上角大数字，切台时显示）                              -->
@@ -420,5 +408,4 @@
                 android:ellipsize="end" />
         </LinearLayout>
     </LinearLayout>
-
 </FrameLayout>

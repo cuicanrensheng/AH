@@ -444,10 +444,14 @@ public class MainActivity extends AppCompatActivity {
                         channelPanelController.playChannel(channelIndex);
                     }
 
-                    // ✅ 修复：参数从 int 改成 String
+                    // ✅ 修复：String 转 int 后再调用
                     @Override
                     public void showChannelNumber(String number) {
-                        infoDisplayManager.showChannelNum(number);
+                        try {
+                            infoDisplayManager.showChannelNum(Integer.parseInt(number));
+                        } catch (Exception e) {
+                            // 转换失败就忽略
+                        }
                     }
 
                     @Override

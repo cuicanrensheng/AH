@@ -2569,30 +2569,41 @@ public class PictureInPictureManager {
         return LATENCY_NAMES.clone();
     }
 
-    public int getGameModeBufferMs() {
+        public int getGameModeBufferMs() {
         if (!isGameModeEnabled()) return -1;
-        switch (getGame
-            FrameRate() {
+        switch (getGameLatencyLevel()) {
+            case LATENCY_LOW: return 500;
+            case LATENCY_HIGH: return 3000;
+            default: return 1500;
+        }
+    }
+
+    public int getGameModeFrameRate() {
+        if (!isGameModeEnabled()) return -1;
+        return 60;
+    }
+
+    public String getGameModeDesc() {
+        if (!isGameModeEnabled()) return "未开启";
+        return "已开启（" + getGameLatencyName() + "）";
+    }
+
+    // ================================================
+    // 数据面板 - 格式化方法
+    // ================================================
+
+    public String getFormattedBitrate() {
+        if (currentBitrate <= 0) return "--";
+        if (currentBitrate < 1000 * 1000) {
+            return String.format(Locale.getDefault(), "%.1f Kbps", currentBitrate / 1000f);
+        } else {
+            return String.format(Locale.getDefault(), "%.2f Mbps", currentBitrate / (1000f * 1000));
+        }
+    }
+
+    public String getFormattedFrameRate() {
         if (currentFrameRate <= 0) return "--";
         return String.format(Locale.getDefault(), "%.1f fps", currentFrameRate);
-    }
-
-    public String getFormattedBuffer() {
-        if (currentBufferMs <= 0) return "--";
-        return String.format(Locale.getDefault(), "%.1f s", currentBufferMs / 1000f);
-    }
-
-    public String getFormattedResolution() {
-        if (currentWidth <= 0 || currentHeight <= 0) return "--";
-        return currentWidth + "×" + currentHeight;
-    }
-
-    public String getFormattedDuration() {
-        if (playDurationMs <= 0) return "--";
-        long seconds = playDurationMs / 1000;
-        long min = seconds / 60;
-        long sec = seconds % 60;
-        return String.format(Locale.getDefault(), "%02d:%02d", min, sec);
     }
 
     public String getDataPanelText() {

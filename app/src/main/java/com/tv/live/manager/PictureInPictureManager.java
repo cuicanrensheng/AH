@@ -23,10 +23,9 @@ import android.view.WindowManager;
 import androidx.core.app.NotificationCompat;
 import androidx.media.MediaSessionManager;
 import androidx.media.session.MediaButtonReceiver;
-
-import android.support.v4.media.MediaMetadataCompat;
-import android.support.v4.media.session.MediaSessionCompat;
-import android.support.v4.media.session.PlaybackStateCompat;
+import androidx.core.media.MediaMetadataCompat;
+import androidx.core.media.session.MediaSessionCompat;
+import androidx.core.media.session.PlaybackStateCompat;
 
 import org.json.JSONObject;
 
@@ -40,10 +39,20 @@ import java.util.Locale;
  * 1.基础画中画(进入/退出/回调) 2.4种宽高比 3.控制按钮 4.通知栏控制 5.MediaSession
  * 6.双击全屏 7.频道信息 8.播放同步 9.耳机暂停 10.超时关闭 11.省流回调
  * 12.使用统计 13.配置导入导出 14.自动进入 15.屏幕常亮 16.自动静音
+ * 
+ * 修复项：
+ * 1. 替换support包为AndroidX，解决编译兼容问题
+ * 2. 完善单例线程安全
+ * 3. 修复广播注册/解注册泄漏问题
+ * 4. 新增MainActivity交互的开关同步方法
+ * 5. 新增频道信息更新方法
+ * 6. 优化PendingIntent FLAG兼容性
+ * 7. 完善异常捕获，防止崩溃
+ * 8. 适配带PictureInPictureParams的进入方法
  */
 public class PictureInPictureManager {
-    private static final String TAG = "PIP_Fix";
-    private static PictureInPictureManager instance;
+    private static final String TAG = "PIP_Manager";
+    private static volatile PictureInPictureManager instance; // 线程安全单例
 
     // 单例上下文
     private final Context appContext;
@@ -54,6 +63,7 @@ public class PictureInPictureManager {
     // 核心状态
     private boolean isInPipMode = false;
     private boolean isPlaying = false;
+    private boolean pipEnabled = false; // 与MainActivity开关同步
     private Activity currentActivity;
 
     // 宽高比配置
@@ -96,7 +106,7 @@ public class PictureInPictureManager {
     private static final String KEY_TOTAL_TIME = "total_time";
     private long enterTime;
 
-    // ====================== 单例初始化 ======================
+    // ====================== 单例初始化（线程安全） ======================
     private PictureInPictureManager(Context context) {
         this.appContext = context.getApplicationContext();
         this.sp = appContext.getSharedPreferences(SP_NAME, Context.MODE_PRIVATE);
@@ -106,9 +116,42 @@ public class PictureInPictureManager {
 
     public static PictureInPictureManager getInstance(Context context) {
         if (instance == null) {
-            instance = new PictureInPictureManager(context);
+            synchronized (PictureInPictureManager.class) {
+                if (instance == null) {
+                    instance = new PictureInPictureManager(context);
+                }
+            }
         }
         return instance;
+    }
+
+    // ====================== 开关同步（适配MainActivity） ======================
+    public void setPipEnabled(boolean enabled) {
+        this.pipEnabled = enabled;
+        Log.d(TAG, "画中画开关已设置为：" + enabled);
+    }
+
+    public boolean isPipEnabled() {
+        return this.pipEnabled;
+    }
+
+    // ====================== 频道信息更新（适配MainActivity） ======================
+    public void updateChannelInfo(int channelNum, String channelName, String bitrate) {
+        try {
+            // 更新MediaSession元数据
+            if (mediaSession != null) {
+                MediaMetadataCompat metadata = new MediaMetadataCompat.Builder()
+                        .putString(MediaMetadataCompat.METADATA_KEY_TITLE, channelName)
+                        .putString(MediaMetadataCompat.METADATA_KEY_SUBTITLE, "频道 " + channelNum + " | 码率：" + bitrate)
+                        .build();
+                mediaSession.setMetadata(metadata);
+            }
+            // 更新通知栏
+            showNotification();
+            Log.d(TAG, "频道信息已更新：频道" + channelNum + " " + channelName);
+        } catch (Exception e) {
+            Log.e(TAG, "更新频道信息失败", e);
+        }
     }
 
     // ====================== 监听器接口 ======================
@@ -128,17 +171,30 @@ public class PictureInPictureManager {
 
     // ====================== 1.基础画中画（修复版） ======================
     public boolean isPipSupported() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return false;
-        return appContext.getPackageManager().hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE);
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            Log.d(TAG, "Android版本低于8.0，不支持画中画");
+            return false;
+        }
+        boolean supported = appContext.getPackageManager().hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE);
+        Log.d(TAG, "设备画中画支持状态：" + supported);
+        return supported;
     }
 
-    public boolean enterPictureInPicture(Activity activity) {
-        if (activity == null || activity.isFinishing() || !isPipSupported()) return false;
+    // 适配MainActivity调用：带PictureInPictureParams的进入方法
+    public boolean enterPictureInPicture(Activity activity, PictureInPictureParams params) {
+        if (!pipEnabled) {
+            Log.d(TAG, "画中画开关未开启，跳过进入");
+            return false;
+        }
+        if (activity == null || activity.isFinishing() || !isPipSupported()) {
+            Log.d(TAG, "进入画中画失败：参数无效或设备不支持");
+            return false;
+        }
         this.currentActivity = activity;
 
         try {
-            PictureInPictureParams params = buildPipParams();
-            activity.enterPictureInPictureMode(params);
+            PictureInPictureParams finalParams = params != null ? params : buildPipParams();
+            activity.enterPictureInPictureMode(finalParams);
 
             isInPipMode = true;
             enterTime = System.currentTimeMillis();
@@ -162,8 +218,16 @@ public class PictureInPictureManager {
         }
     }
 
-    public void onPipModeChanged(boolean isInPip) {
+    // 兼容旧调用方式
+    public boolean enterPictureInPicture(Activity activity) {
+        return enterPictureInPicture(activity, null);
+    }
+
+    public void onPipModeChanged(Activity activity, boolean isInPip) {
+        this.currentActivity = activity;
         this.isInPipMode = isInPip;
+        Log.d(TAG, "画中画模式变化：" + isInPip);
+        
         if (!isInPip) {
             // 退出时释放所有资源
             releaseAll();
@@ -178,7 +242,7 @@ public class PictureInPictureManager {
             enterTime = 0;
         }
 
-        unregisterReceivers();
+        unregisterReceiversSafely();
         releaseMediaSession();
         stopScreenOn();
         stopTimeout();
@@ -187,9 +251,20 @@ public class PictureInPictureManager {
         currentActivity = null;
     }
 
+    // ====================== 资源释放（供MainActivity调用） ======================
+    public void release() {
+        Log.d(TAG, "画中画管理器释放资源");
+        releaseAll();
+        isInPipMode = false;
+        pipEnabled = false;
+        instance = null; // 重置单例
+    }
+
     // ====================== 2.宽高比设置（4种，修复版） ======================
     public void setAspectRatio(int ratio) {
-        sp.edit().putInt(KEY_RATIO, Math.max(0, Math.min(3, ratio))).apply();
+        int finalRatio = Math.max(0, Math.min(3, ratio));
+        sp.edit().putInt(KEY_RATIO, finalRatio).apply();
+        Log.d(TAG, "宽高比已设置为：" + RATIO_NAMES[finalRatio]);
     }
 
     private PictureInPictureParams buildPipParams() {
@@ -199,10 +274,12 @@ public class PictureInPictureManager {
 
         PictureInPictureParams.Builder builder = new PictureInPictureParams.Builder();
         builder.setAspectRatio(rational);
+        
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             builder.setAutoEnterEnabled(true);
             builder.setSeamlessResizeEnabled(true);
         }
+        
         builder.setActions(buildControlActions());
         return builder.build();
     }
@@ -220,70 +297,102 @@ public class PictureInPictureManager {
     }
 
     private RemoteAction createAction(String action, String title, int iconRes) {
-        Intent intent = new Intent(action);
-        intent.setPackage(appContext.getPackageName());
+        try {
+            Intent intent = new Intent(action);
+            intent.setPackage(appContext.getPackageName());
 
-        int flags = android.app.PendingIntent.FLAG_UPDATE_CURRENT;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) flags |= android.app.PendingIntent.FLAG_IMMUTABLE;
+            int flags = android.app.PendingIntent.FLAG_UPDATE_CURRENT;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                flags |= android.app.PendingIntent.FLAG_IMMUTABLE;
+            }
 
-        android.app.PendingIntent pi = android.app.PendingIntent.getBroadcast(
-                appContext, action.hashCode(), intent, flags);
+            android.app.PendingIntent pi = android.app.PendingIntent.getBroadcast(
+                    appContext, action.hashCode(), intent, flags);
 
-        return new RemoteAction(
-                android.graphics.drawable.Icon.createWithResource(appContext, iconRes),
-                title, title, pi
-        );
+            return new RemoteAction(
+                    android.graphics.drawable.Icon.createWithResource(appContext, iconRes),
+                    title, title, pi
+            );
+        } catch (Exception e) {
+            Log.e(TAG, "创建RemoteAction失败", e);
+            return null;
+        }
     }
 
     // ====================== 4.通知栏控制（修复兼容性） ======================
     private void createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel channel = new NotificationChannel(
-                    CHANNEL_ID, "画中画控制", NotificationManager.IMPORTANCE_LOW);
-            channel.setShowBadge(false);
-            NotificationManager nm = (NotificationManager) appContext.getSystemService(Context.NOTIFICATION_SERVICE);
-            nm.createNotificationChannel(channel);
+            try {
+                NotificationChannel channel = new NotificationChannel(
+                        CHANNEL_ID, "画中画控制", NotificationManager.IMPORTANCE_LOW);
+                channel.setShowBadge(false);
+                NotificationManager nm = (NotificationManager) appContext.getSystemService(Context.NOTIFICATION_SERVICE);
+                nm.createNotificationChannel(channel);
+            } catch (Exception e) {
+                Log.e(TAG, "创建通知渠道失败", e);
+            }
         }
     }
 
     private void showNotification() {
-        createNotificationChannel();
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(appContext, CHANNEL_ID);
-        builder.setSmallIcon(android.R.drawable.ic_media_play);
-        builder.setContentTitle("电视直播");
-        builder.setContentText("画中画播放中");
-        builder.setOngoing(true);
-        builder.setPriority(NotificationCompat.PRIORITY_LOW);
+        try {
+            createNotificationChannel();
+            NotificationCompat.Builder builder = new NotificationCompat.Builder(appContext, CHANNEL_ID);
+            builder.setSmallIcon(android.R.drawable.ic_media_play);
+            builder.setContentTitle("电视直播");
+            builder.setContentText("画中画播放中");
+            builder.setOngoing(true);
+            builder.setPriority(NotificationCompat.PRIORITY_LOW);
 
-        // 按钮
-        builder.addAction(android.R.drawable.ic_media_previous, "上一台", getPi(ACTION_PREV));
-        builder.addAction(isPlaying ? android.R.drawable.ic_media_pause : android.R.drawable.ic_media_play,
-                isPlaying ? "暂停" : "播放", getPi(ACTION_PLAY_PAUSE));
-        builder.addAction(android.R.drawable.ic_media_next, "下一台", getPi(ACTION_NEXT));
+            // 按钮
+            builder.addAction(android.R.drawable.ic_media_previous, "上一台", getPi(ACTION_PREV));
+            builder.addAction(isPlaying ? android.R.drawable.ic_media_pause : android.R.drawable.ic_media_play,
+                    isPlaying ? "暂停" : "播放", getPi(ACTION_PLAY_PAUSE));
+            builder.addAction(android.R.drawable.ic_media_next, "下一台", getPi(ACTION_NEXT));
 
-        NotificationManager nm = (NotificationManager) appContext.getSystemService(Context.NOTIFICATION_SERVICE);
-        nm.notify(NOTIFICATION_ID, builder.build());
+            NotificationManager nm = (NotificationManager) appContext.getSystemService(Context.NOTIFICATION_SERVICE);
+            nm.notify(NOTIFICATION_ID, builder.build());
+        } catch (Exception e) {
+            Log.e(TAG, "显示通知失败", e);
+        }
     }
 
     private android.app.PendingIntent getPi(String action) {
-        Intent intent = new Intent(action);
-        intent.setPackage(appContext.getPackageName());
-        int flags = android.app.PendingIntent.FLAG_UPDATE_CURRENT;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) flags |= android.app.PendingIntent.FLAG_IMMUTABLE;
-        return android.app.PendingIntent.getBroadcast(appContext, action.hashCode(), intent, flags);
+        try {
+            Intent intent = new Intent(action);
+            intent.setPackage(appContext.getPackageName());
+            
+            int flags = android.app.PendingIntent.FLAG_UPDATE_CURRENT;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                flags |= android.app.PendingIntent.FLAG_IMMUTABLE;
+            }
+            
+            return android.app.PendingIntent.getBroadcast(appContext, action.hashCode(), intent, flags);
+        } catch (Exception e) {
+            Log.e(TAG, "创建PendingIntent失败", e);
+            return null;
+        }
     }
 
     private void cancelNotification() {
-        NotificationManager nm = (NotificationManager) appContext.getSystemService(Context.NOTIFICATION_SERVICE);
-        nm.cancel(NOTIFICATION_ID);
+        try {
+            NotificationManager nm = (NotificationManager) appContext.getSystemService(Context.NOTIFICATION_SERVICE);
+            nm.cancel(NOTIFICATION_ID);
+        } catch (Exception e) {
+            Log.e(TAG, "取消通知失败", e);
+        }
     }
 
     // ====================== 5.MediaSession（修复版） ======================
     private void initMediaSession() {
         if (mediaSession != null) return;
-        mediaSession = new MediaSessionCompat(appContext, "TV_PIP");
-        mediaSession.setActive(true);
-        updateMediaSession();
+        try {
+            mediaSession = new MediaSessionCompat(appContext, "TV_PIP");
+            mediaSession.setActive(true);
+            updateMediaSession();
+        } catch (Exception e) {
+            Log.e(TAG, "初始化MediaSession失败", e);
+        }
     }
 
     public void updatePlayState(boolean playing) {
@@ -294,20 +403,28 @@ public class PictureInPictureManager {
 
     private void updateMediaSession() {
         if (mediaSession == null) return;
-        PlaybackStateCompat state = new PlaybackStateCompat.Builder()
-                .setState(isPlaying ? PlaybackStateCompat.STATE_PLAYING : PlaybackStateCompat.STATE_PAUSED,
-                        0, 1.0f)
-                .setActions(PlaybackStateCompat.ACTION_PLAY_PAUSE |
-                        PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS |
-                        PlaybackStateCompat.ACTION_SKIP_TO_NEXT)
-                .build();
-        mediaSession.setPlaybackState(state);
+        try {
+            PlaybackStateCompat state = new PlaybackStateCompat.Builder()
+                    .setState(isPlaying ? PlaybackStateCompat.STATE_PLAYING : PlaybackStateCompat.STATE_PAUSED,
+                            0, 1.0f)
+                    .setActions(PlaybackStateCompat.ACTION_PLAY_PAUSE |
+                            PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS |
+                            PlaybackStateCompat.ACTION_SKIP_TO_NEXT)
+                    .build();
+            mediaSession.setPlaybackState(state);
+        } catch (Exception e) {
+            Log.e(TAG, "更新MediaSession状态失败", e);
+        }
     }
 
     private void releaseMediaSession() {
         if (mediaSession != null) {
-            mediaSession.setActive(false);
-            mediaSession.release();
+            try {
+                mediaSession.setActive(false);
+                mediaSession.release();
+            } catch (Exception e) {
+                Log.e(TAG, "释放MediaSession失败", e);
+            }
             mediaSession = null;
         }
     }
@@ -317,7 +434,9 @@ public class PictureInPictureManager {
         long now = System.currentTimeMillis();
         if (now - lastClickTime < DOUBLE_CLICK) {
             lastClickTime = 0;
-            if (listener != null) listener.onDoubleTapFullScreen();
+            if (listener != null) {
+                listener.onDoubleTapFullScreen();
+            }
             return true;
         }
         lastClickTime = now;
@@ -325,22 +444,29 @@ public class PictureInPictureManager {
     }
 
     // ====================== 7.耳机拔出暂停（修复版） ======================
-    private BroadcastReceiver headsetReceiver = new BroadcastReceiver() {
-        @Override
-        public void onReceive(Context context, Intent intent) {
-            if (Intent.ACTION_HEADSET_PLUG.equals(intent.getAction())) {
-                int state = intent.getIntExtra("state", 0);
-                if (state == 0 && isPlaying && listener != null) {
-                    listener.onPlayPause();
-                    Log.d(TAG, "耳机拔出，自动暂停");
+    private BroadcastReceiver getHeadsetReceiver() {
+        if (headsetReceiver == null) {
+            headsetReceiver = new BroadcastReceiver() {
+                @Override
+                public void onReceive(Context context, Intent intent) {
+                    if (Intent.ACTION_HEADSET_PLUG.equals(intent.getAction())) {
+                        int state = intent.getIntExtra("state", 0);
+                        if (state == 0 && isPlaying && listener != null) {
+                            listener.onPlayPause();
+                            Log.d(TAG, "耳机拔出，自动暂停播放");
+                        }
+                    }
                 }
-            }
+            };
         }
-    };
+        return headsetReceiver;
+    }
 
     // ====================== 8.超时自动关闭（修复内存泄漏） ======================
     public void setTimeout(int minutes) {
-        sp.edit().putInt(KEY_TIMEOUT, Math.max(0, minutes)).apply();
+        int finalMinutes = Math.max(0, minutes);
+        sp.edit().putInt(KEY_TIMEOUT, finalMinutes).apply();
+        Log.d(TAG, "画中画超时时间已设置为：" + finalMinutes + "分钟");
     }
 
     private void startTimeout() {
@@ -357,26 +483,42 @@ public class PictureInPictureManager {
     }
 
     private void stopTimeout() {
-        if (timeoutRunnable != null) mainHandler.removeCallbacks(timeoutRunnable);
+        if (timeoutRunnable != null) {
+            mainHandler.removeCallbacks(timeoutRunnable);
+            timeoutRunnable = null;
+        }
     }
 
     // ====================== 9.屏幕常亮（修复版） ======================
     private void startScreenOn() {
         if (currentActivity != null && sp.getBoolean(KEY_KEEP_SCREEN, true)) {
-            currentActivity.getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            try {
+                currentActivity.getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            } catch (Exception e) {
+                Log.e(TAG, "设置屏幕常亮失败", e);
+            }
         }
     }
 
     private void stopScreenOn() {
         if (currentActivity != null) {
-            currentActivity.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            try {
+                currentActivity.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            } catch (Exception e) {
+                Log.e(TAG, "取消屏幕常亮失败", e);
+            }
         }
     }
 
     // ====================== 10.自动静音（修复版） ======================
     private void startAutoMute() {
-        if (sp.getBoolean(KEY_AUTO_MUTE, false)) {
-            audioManager.setStreamMute(AudioManager.STREAM_MUSIC, true);
+        try {
+            if (sp.getBoolean(KEY_AUTO_MUTE, false)) {
+                audioManager.setStreamMute(AudioManager.STREAM_MUSIC, true);
+                Log.d(TAG, "画中画模式自动静音");
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "设置自动静音失败", e);
         }
     }
 
@@ -384,22 +526,32 @@ public class PictureInPictureManager {
     private void startDataSaver() {
         if (sp.getBoolean(KEY_DATA_SAVER, false) && listener != null) {
             listener.onDataSaverChanged(true);
+            Log.d(TAG, "进入省流模式");
         }
     }
 
     private void stopDataSaver() {
         if (sp.getBoolean(KEY_DATA_SAVER, false) && listener != null) {
             listener.onDataSaverChanged(false);
+            Log.d(TAG, "退出省流模式");
         }
     }
 
     // ====================== 12.使用统计 ======================
     private void incrementUseCount() {
-        sp.edit().putInt(KEY_USE_COUNT, sp.getInt(KEY_USE_COUNT, 0) + 1).apply();
+        try {
+            sp.edit().putInt(KEY_USE_COUNT, sp.getInt(KEY_USE_COUNT, 0) + 1).apply();
+        } catch (Exception e) {
+            Log.e(TAG, "统计使用次数失败", e);
+        }
     }
 
     private void addTotalTime(long time) {
-        sp.edit().putLong(KEY_TOTAL_TIME, sp.getLong(KEY_TOTAL_TIME, 0) + time).apply();
+        try {
+            sp.edit().putLong(KEY_TOTAL_TIME, sp.getLong(KEY_TOTAL_TIME, 0) + time).apply();
+        } catch (Exception e) {
+            Log.e(TAG, "统计使用时长失败", e);
+        }
     }
 
     // ====================== 13.配置导入导出（无开关） ======================
@@ -414,6 +566,7 @@ public class PictureInPictureManager {
             json.put("data_saver", sp.getBoolean(KEY_DATA_SAVER, false));
             return json.toString();
         } catch (Exception e) {
+            Log.e(TAG, "导出配置失败", e);
             return "";
         }
     }
@@ -428,46 +581,83 @@ public class PictureInPictureManager {
                     .putBoolean(KEY_KEEP_SCREEN, obj.optBoolean("keep_screen", true))
                     .putBoolean(KEY_DATA_SAVER, obj.optBoolean("data_saver", false))
                     .apply();
-        } catch (Exception ignored) {}
+            Log.d(TAG, "画中画配置导入成功");
+        } catch (Exception e) {
+            Log.e(TAG, "导入配置失败", e);
+        }
     }
 
     // ====================== 14.自动进入画中画 ======================
     public boolean autoEnterPip(Activity activity) {
-        if (sp.getBoolean(KEY_AUTO_ENTER, true) && !isInPipMode) {
+        if (sp.getBoolean(KEY_AUTO_ENTER, true) && !isInPipMode && pipEnabled) {
             return enterPictureInPicture(activity);
         }
         return false;
     }
 
-    // ====================== 广播注册（修复泄漏） ======================
+    // ====================== 广播注册（修复泄漏 + 安全解注册） ======================
     private void registerReceivers() {
         // 控制广播
-        controlReceiver = new BroadcastReceiver() {
-            @Override
-            public void onReceive(Context context, Intent intent) {
-                if (listener == null) return;
-                String action = intent.getAction();
-                switch (action) {
-                    case ACTION_PREV: listener.onPrevChannel(); break;
-                    case ACTION_PLAY_PAUSE: listener.onPlayPause(); break;
-                    case ACTION_NEXT: listener.onNextChannel(); break;
+        if (controlReceiver == null) {
+            controlReceiver = new BroadcastReceiver() {
+                @Override
+                public void onReceive(Context context, Intent intent) {
+                    if (listener == null) return;
+                    String action = intent.getAction();
+                    switch (action) {
+                        case ACTION_PREV: 
+                            listener.onPrevChannel(); 
+                            break;
+                        case ACTION_PLAY_PAUSE: 
+                            listener.onPlayPause(); 
+                            break;
+                        case ACTION_NEXT: 
+                            listener.onNextChannel(); 
+                            break;
+                    }
                 }
-            }
-        };
-        IntentFilter filter = new IntentFilter();
-        filter.addAction(ACTION_PREV);
-        filter.addAction(ACTION_PLAY_PAUSE);
-        filter.addAction(ACTION_NEXT);
-        appContext.registerReceiver(controlReceiver, filter);
+            };
+        }
+        
+        try {
+            IntentFilter filter = new IntentFilter();
+            filter.addAction(ACTION_PREV);
+            filter.addAction(ACTION_PLAY_PAUSE);
+            filter.addAction(ACTION_NEXT);
+            appContext.registerReceiver(controlReceiver, filter);
 
-        // 耳机广播
-        appContext.registerReceiver(headsetReceiver, new IntentFilter(Intent.ACTION_HEADSET_PLUG));
+            // 耳机广播
+            appContext.registerReceiver(getHeadsetReceiver(), new IntentFilter(Intent.ACTION_HEADSET_PLUG));
+        } catch (Exception e) {
+            Log.e(TAG, "注册广播失败", e);
+        }
     }
 
-    private void unregisterReceivers() {
+    // 安全解注册广播，防止IllegalArgumentException
+    private void unregisterReceiversSafely() {
         try {
-            if (controlReceiver != null) appContext.unregisterReceiver(controlReceiver);
-            if (headsetReceiver != null) appContext.unregisterReceiver(headsetReceiver);
-        } catch (Exception ignored) {}
+            if (controlReceiver != null) {
+                appContext.unregisterReceiver(controlReceiver);
+                controlReceiver = null;
+            }
+            if (headsetReceiver != null) {
+                appContext.unregisterReceiver(headsetReceiver);
+                headsetReceiver = null;
+            }
+        } catch (IllegalArgumentException e) {
+            // 忽略未注册的异常
+            Log.d(TAG, "广播未注册，无需解注册");
+        } catch (Exception e) {
+            Log.e(TAG, "解注册广播失败", e);
+        }
+    }
+
+    // ====================== 状态获取方法 ======================
+    public boolean isInPipMode() {
+        return isInPipMode;
+    }
+
+    public boolean isPlaying() {
+        return isPlaying;
     }
 }

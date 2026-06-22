@@ -55,7 +55,8 @@
             android:name=".MainActivity"
             android:exported="true"
             android:screenOrientation="sensorLandscape"
-            android:configChanges="orientation|screenSize">
+            android:supportsPictureInPicture="true"
+            android:configChanges="orientation|screenSize|smallestScreenSize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -91,7 +92,6 @@
         - HTC 快速开机：com.htc.intent.action.QUICKBOOT_POWERON
         - 应用更新后：MY_PACKAGE_REPLACED
         - 充电连接（兜底）：ACTION_POWER_CONNECTED
-
         多监听几个，总有一个能收到，大大提高自启成功率。
 
         【priority="1000" 是什么意思？】
@@ -102,26 +102,19 @@
             android:name=".BootReceiver"
             android:enabled="true"
             android:exported="true">
-
             <intent-filter android:priority="1000">
                 <!-- 标准开机完成广播（所有安卓版本都支持，最核心） -->
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
-
                 <!-- 锁屏开机完成广播（Android 7.0+，直接启动到锁屏时发送） -->
                 <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
-
                 <!-- 应用更新完成广播（应用更新后自动启动） -->
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
-
                 <!-- 小米/OPPO 等厂商的快速开机广播 -->
                 <action android:name="android.intent.action.QUICKBOOT_POWERON" />
-
                 <!-- HTC 快速开机广播 -->
                 <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
-
                 <!-- 充电连接广播（兜底方案，部分电视充电时会自动开机） -->
                 <action android:name="android.intent.action.ACTION_POWER_CONNECTED" />
-
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </receiver>
@@ -137,7 +130,6 @@
         【为什么要拆成两个 Receiver？】
         1. BootReceiver：负责接收开机广播，调度延迟启动
         2. BootStartReceiver：负责实际启动应用
-
         这样职责更清晰，而且可以避免广播接收器生命周期太短导致的问题。
 
         【为什么 exported="false"？】
@@ -147,7 +139,6 @@
             android:name=".BootStartReceiver"
             android:enabled="true"
             android:exported="false">
-
             <intent-filter>
                 <action android:name="com.tv.live.START_APP" />
             </intent-filter>

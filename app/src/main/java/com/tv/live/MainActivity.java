@@ -550,7 +550,7 @@ public class MainActivity extends AppCompatActivity {
         boolean auto_update_source = sp.getBoolean("auto_update_source", true);
 
         // ✅ 新增：加载画中画开关状态
-        pipEnable = sp.getBoolean("pip_enable", true);
+        pipEnable = sp.getBoolean("pip_enable", false);
         if (pipManager != null) {
         pipManager.setPipEnabled(pipEnable);
         SettingsActivity.logOperation("【画中画排查】loadSettings 同步开关：" + pipEnable);   

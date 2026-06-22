@@ -51,6 +51,7 @@
         <!-- 从根本上减少内存占用。                                            -->
         <!-- ================================================================ -->
 
+        <!-- 唯一的 MainActivity 声明（整合所有必要属性，删除重复项） -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -68,10 +69,6 @@
             android:theme="@style/TransparentTheme"
             android:screenOrientation="sensorLandscape"
             android:configChanges="orientation|screenSize" />
-        <activity
-    android:name=".MainActivity"
-    android:supportsPictureInPicture="true"
-    android:configChanges="screenSize|orientation|smallestScreenSize"/>
 
         <activity
             android:name=".ChannelListActivity"

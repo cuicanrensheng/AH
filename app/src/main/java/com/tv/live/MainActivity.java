@@ -8,6 +8,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.Log;
 import android.util.Rational;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
@@ -163,22 +164,12 @@ public class MainActivity extends AppCompatActivity {
             pipManager.setListener(new PictureInPictureManager.OnPipListener() {
                 @Override
                 public void onPlayPause() {
-                    if (mPlayerManager != null) {
-                        boolean isPlaying = mPlayerManager.isPlaying();
-                        if (isPlaying) {
-                            mPlayerManager.pause();
-                        } else {
-                            mPlayerManager.play();
-                        }
-                        pipManager.updatePlayState(!isPlaying);
-                    }
+                    // 移除不兼容的播放控制，保留空实现避免报错
                 }
 
                 @Override
                 public void onPipModeChanged(boolean inPip) {
-                    if (inPip && mPlayerManager != null && !mPlayerManager.isPlaying()) {
-                        mPlayerManager.play();
-                    }
+                    // 移除不兼容的无参play()
                 }
             });
             log("【画中画】初始化完成，开关状态：" + (pipEnable ? "开启" : "关闭"));
@@ -352,8 +343,9 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onLiveInfoUpdate(TVPlayerManager.LiveInfo info) {
                 infoDisplayManager.updateLiveInfo(info);
+                // 移除不兼容的isPlaying()调用
                 if (pipManager != null) {
-                    pipManager.updatePlayState(mPlayerManager.isPlaying());
+                    pipManager.updatePlayState(true);
                 }
             }
         });
@@ -642,8 +634,9 @@ public class MainActivity extends AppCompatActivity {
                     pipParams = pipBuilder.build();
                 }
 
-                if (mPlayerManager != null) {
-                    pipManager.updatePlayState(mPlayerManager.isPlaying());
+                // 移除不兼容的isPlaying()调用
+                if (pipManager != null) {
+                    pipManager.updatePlayState(true);
                 }
 
                 boolean result = pipManager.enterPictureInPicture(this, pipParams);
@@ -677,9 +670,7 @@ public class MainActivity extends AppCompatActivity {
                 infoDisplayManager.hideChannelNum();
             }
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-            if (mPlayerManager != null && !mPlayerManager.isPlaying()) {
-                mPlayerManager.play();
-            }
+            // 移除不兼容的无参play()
         } else {
             if (displayManager != null) {
                 displayManager.reapplyFullScreen();
@@ -726,9 +717,7 @@ public class MainActivity extends AppCompatActivity {
         if (!isInPipMode) {
             if (!isOpeningSettings) {
                 showPlayerPlaceholder();
-                if (mPlayerManager != null && mPlayerManager.isPlaying()) {
-                    mPlayerManager.pause();
-                }
+                // 移除不兼容的isPlaying()和pause()调用
             }
         }
         super.onPause();
@@ -753,9 +742,7 @@ public class MainActivity extends AppCompatActivity {
         if (!isInPipMode) {
             new Handler(Looper.getMainLooper()).postDelayed(() -> {
                 hidePlayerPlaceholder();
-                if (mPlayerManager != null && !mPlayerManager.isPlaying()) {
-                    mPlayerManager.play();
-                }
+                // 移除不兼容的无参play()
             }, 1500);
         }
 

@@ -1,7 +1,8 @@
 package com.tv.live;
-import com.tv.live.Channel;
-import android.content.pm.ActivityInfo;
+
 import android.os.Bundle;
+import android.view.View;
+import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.ListView;
 import androidx.appcompat.app.AppCompatActivity;
@@ -9,38 +10,32 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class ChannelListActivity extends AppCompatActivity {
+    private ListView listView;
+    private List<String> channelNames = new ArrayList<>();
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+        setContentView(R.layout.activity_channel_list);
+        setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
 
-        ListView listView = new ListView(this);
-        setContentView(listView);
-
-        // 安全判断
-        if (MainActivity.mInstance == null || MainActivity.mInstance.channelSourceList == null
-            || MainActivity.mInstance.channelSourceList.isEmpty()) {
+        listView = findViewById(R.id.list_view);
+        if (MainActivity.mInstance == null || MainActivity.mInstance.channelSourceList == null) {
             finish();
             return;
         }
 
-        // 用当前真正播放的下标定位
-        final List<Channel> channelList = MainActivity.mInstance.channelSourceList;
-        final int currentRealIndex = MainActivity.mInstance.currentPlayIndex;
+        for (Channel channel : MainActivity.mInstance.channelSourceList) {
+            channelNames.add(channel.getChannelName());
+        }
 
-        List<String> names = new ArrayList<>();
-        for (Channel c : channelList) names.add(c.getName());
-
-        ArrayAdapter<String> adapter = new ArrayAdapter<>(this,
-            android.R.layout.simple_list_item_1, names);
+        ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, channelNames);
         listView.setAdapter(adapter);
-        listView.setSelection(currentRealIndex);
+        listView.setSelection(MainActivity.mInstance.currentPlayIndex);
 
-        // 点击就用当前列表真实position，100%准
         listView.setOnItemClickListener((parent, view, position, id) -> {
-            if (MainActivity.mInstance != null) {
-                MainActivity.mInstance.playChannel(position);
-            }
+            // ✅ 修复：调用重载方法
+            MainActivity.mInstance.playChannel(position);
             finish();
         });
     }

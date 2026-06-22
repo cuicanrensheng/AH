@@ -207,36 +207,38 @@ public class MainActivity extends AppCompatActivity {
             infoDisplayManager.hideChannelNum();
         }
     }
-
-    // ====================================================================
-    // 画中画模式保持播放（直接恢复，不重新加载）
-    // ====================================================================
     private void keepPlayingInPip() {
-        try {
-            if (mPlayerManager != null) {
-                // 直接恢复播放（如果被onPause暂停了）
-                mPlayerManager.resume();
-                log("【画中画】✅ 恢复播放（防止onPause暂停）");
-            }
-        } catch (Exception e) {
-            log("【画中画】恢复播放失败：" + e.getMessage());
+    try {
+        if (mPlayerManager != null) {
+            // 先尝试直接恢复
+            mPlayerManager.resume();
+            log("【画中画】✅ 调用 resume() 恢复播放");
             
-            // 失败兜底：重新播放当前频道
-            try {
-                if (channelSourceList != null 
-                        && currentPlayIndex >= 0 && currentPlayIndex < channelSourceList.size()) {
-                    Channel channel = channelSourceList.get(currentPlayIndex);
-                    if (channel != null && channel.getPlayUrl() != null) {
-                        mPlayerManager.playUrl(channel.getPlayUrl());
-                        log("【画中画】兜底：重新加载当前频道");
-                    }
-                }
-            } catch (Exception e2) {
-                log("【画中画】兜底播放也失败：" + e2.getMessage());
+            // 如果 resume 不行，再尝试重新绑定
+            if (playerView != null) {
+                mPlayerManager.attachPlayerView(playerView);
+                mPlayerManager.resume();
+                log("【画中画】✅ 重新绑定后再次恢复");
             }
         }
+    } catch (Exception e) {
+        log("【画中画】恢复播放失败：" + e.getMessage());
+        
+        // 最后兜底：重新播放当前频道
+        try {
+            if (channelSourceList != null 
+                    && currentPlayIndex >= 0 && currentPlayIndex < channelSourceList.size()) {
+                Channel channel = channelSourceList.get(currentPlayIndex);
+                if (channel != null && channel.getPlayUrl() != null) {
+                    mPlayerManager.playUrl(channel.getPlayUrl());
+                    log("【画中画】兜底：重新加载当前频道");
+                }
+            }
+        } catch (Exception e2) {
+            log("【画中画】兜底播放也失败：" + e2.getMessage());
+        }
     }
-
+}
     // ====================================================================
     // 恢复当前频道播放
     // ====================================================================
@@ -879,71 +881,103 @@ public class MainActivity extends AppCompatActivity {
 
         SettingsActivity.logOperation("【画中画排查】========== 结束 ==========");
     }
-
-    // ====================================================================
-    // 画中画模式变化回调
-    // ====================================================================
     @Override
-    public void onPictureInPictureModeChanged(boolean isInPictureInPictureMode) {
-        super.onPictureInPictureModeChanged(isInPictureInPictureMode);
+public void onPictureInPictureModeChanged(boolean isInPictureInPictureMode) {
+    super.onPictureInPictureModeChanged(isInPictureInPictureMode);
 
-        isInPipMode = isInPictureInPictureMode;
-        isPipEntering = false;
+    isInPipMode = isInPictureInPictureMode;
+    isPipEntering = false;
 
-        SettingsActivity.logOperation("【画中画】模式变化 → " + (isInPictureInPictureMode ? "进入画中画" : "退出画中画"));
+    SettingsActivity.logOperation("【画中画】模式变化 → " + (isInPictureInPictureMode ? "进入画中画" : "退出画中画"));
 
-        if (pipManager != null) {
-            try {
-                pipManager.onPipModeChanged(this, isInPictureInPictureMode);
-            } catch (Exception e) {
-                log("【画中画】模式变化回调失败：" + e.getMessage());
-            }
-        }
-
-        if (isInPictureInPictureMode) {
-            // 进入画中画
-            if (channelPanelController != null && channelPanelController.isPanelOpen()) {
-                channelPanelController.hidePanel();
-            }
-            if (infoDisplayManager != null) {
-                infoDisplayManager.hideInfoBar();
-                infoDisplayManager.hideChannelNum();
-            }
-
-            getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-
-            // 强制确保播放器在播放
-            keepPlayingInPip();
-
-            // 双重保险：延迟50ms再恢复一次
-            new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
-                @Override
-                public void run() {
-                    keepPlayingInPip();
-                    log("【画中画】✅ 延迟恢复播放（双重保险）");
-                }
-            }, 50);
-
-        } else {
-            // 退出画中画
-            if (displayManager != null) {
-                displayManager.reapplyFullScreen();
-            }
-            syncRemoteMode();
-
-            if (infoDisplayManager != null && channelSourceList.size() > currentPlayIndex) {
-                Channel currChannel = channelSourceList.get(currentPlayIndex);
-                TVPlayerManager.LiveInfo liveInfo = mPlayerManager.getLiveInfo();
-                infoDisplayManager.showInfoBar(currChannel, liveInfo);
-                infoDisplayManager.showChannelNum(currentPlayIndex + 1);
-            }
-
-            getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-
-            log("【画中画】退出画中画完成");
+    if (pipManager != null) {
+        try {
+            pipManager.onPipModeChanged(this, isInPictureInPictureMode);
+        } catch (Exception e) {
+            log("【画中画】模式变化回调失败：" + e.getMessage());
         }
     }
 
+    if (isInPictureInPictureMode) {
+        // 进入画中画
+        if (channelPanelController != null && channelPanelController.isPanelOpen()) {
+            channelPanelController.hidePanel();
+        }
+        if (infoDisplayManager != null) {
+            infoDisplayManager.hideInfoBar();
+            infoDisplayManager.hideChannelNum();
+        }
+
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+
+        // ✅ 关键修复1：重新绑定 PlayerView（防止 Surface 丢失）
+        try {
+            if (mPlayerManager != null && playerView != null) {
+                mPlayerManager.attachPlayerView(playerView);
+                log("【画中画】✅ 重新绑定 PlayerView");
+            }
+        } catch (Exception e) {
+            log("【画中画】重新绑定 PlayerView 失败：" + e.getMessage());
+        }
+
+        // ✅ 关键修复2：强制恢复播放
+        keepPlayingInPip();
+
+        // ✅ 关键修复3：三重保险 - 延迟恢复
+        new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                keepPlayingInPip();
+                log("【画中画】✅ 延迟恢复播放（第1重保险）");
+            }
+        }, 100);
+
+        new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                keepPlayingInPip();
+                log("【画中画】✅ 延迟恢复播放（第2重保险）");
+            }
+        }, 500);
+
+        new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                keepPlayingInPip();
+                log("【画中画】✅ 延迟恢复播放（第3重保险）");
+            }
+        }, 1000);
+
+    } else {
+        // 退出画中画
+        if (displayManager != null) {
+            displayManager.reapplyFullScreen();
+        }
+        syncRemoteMode();
+
+        // ✅ 退出画中画也重新绑定
+        try {
+            if (mPlayerManager != null && playerView != null) {
+                mPlayerManager.attachPlayerView(playerView);
+                log("【画中画】✅ 退出画中画，重新绑定 PlayerView");
+            }
+        } catch (Exception e) {
+            log("【画中画】退出画中画重新绑定失败：" + e.getMessage());
+        }
+
+        if (infoDisplayManager != null && channelSourceList.size() > currentPlayIndex) {
+            Channel currChannel = channelSourceList.get(currentPlayIndex);
+            TVPlayerManager.LiveInfo liveInfo = mPlayerManager.getLiveInfo();
+            infoDisplayManager.showInfoBar(currChannel, liveInfo);
+            infoDisplayManager.showChannelNum(currentPlayIndex + 1);
+        }
+
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+
+        resumeCurrentChannel();
+        log("【画中画】退出画中画完成");
+    }
+}
     // ====================================================================
     // 日志方法
     // ====================================================================

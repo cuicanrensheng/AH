@@ -1,31 +1,76 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 应用清单文件
+  【作用】声明应用的包名、权限、四大组件（Activity、Service、BroadcastReceiver、ContentProvider）等
+  【系统】Android 系统在安装应用时会读取这个文件，了解应用的所有信息
+
+  【2026-06-22 修改：MainActivity 添加画中画支持配置】
+  【修改内容】
+  1. 新增 android:supportsPictureInPicture="true" —— 声明支持画中画
+  2. configChanges 新增 smallestScreenSize —— 防止画中画模式变化时 Activity 重建
+  【为什么要加这两个配置？】详见 MainActivity 部分的详细注释
+-->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.tv.live">
 
+    <!-- ================================================================ -->
+    <!-- 网络相关权限                                                     -->
+    <!-- ================================================================ -->
+    <!-- 访问网络（最核心，直播播放必须） -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- 获取 WiFi 状态（用于判断网络类型、获取 WiFi 信息） -->
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <!-- 获取网络状态（用于判断是否有网络连接） -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- ================================================================ -->
+    <!-- 存储相关权限                                                     -->
+    <!-- ================================================================ -->
+    <!-- 读取外部存储（读取本地直播源文件、更新包等） -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
-    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- 写入外部存储（保存日志、下载更新包等） -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+
+    <!-- ================================================================ -->
+    <!-- 安装相关权限                                                     -->
+    <!-- ================================================================ -->
+    <!-- 请求安装包权限（Android 8.0+ 安装 APK 需要） -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <!-- ==================================================================== -->
     <!-- ✅ 开机自启权限（已有，保留）                                       -->
     <!-- ==================================================================== -->
+    <!--
+      【作用】接收开机完成广播，实现开机自启
+      【Android 版本】所有版本都支持
+    -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <!-- ==================================================================== -->
     <!-- ✅ 前台服务权限（可选，Android 8.0+ 前台服务需要）                  -->
     <!-- 用于 Android 10+ 后台启动限制的兜底方案                             -->
     <!-- ==================================================================== -->
+    <!--
+      【作用】启动前台服务（Android 8.0+ 必须声明）
+      【为什么需要？】
+      Android 10+ 限制了后台启动 Activity，
+      如果需要在后台启动播放，可以用前台服务作为兜底方案。
+    -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
     <!-- ==================================================================== -->
     <!-- ✅ 唤醒锁权限（可选，AlarmManager 唤醒设备用）                      -->
     <!-- ==================================================================== -->
+    <!--
+      【作用】持有唤醒锁，防止设备休眠
+      【使用场景】AlarmManager 定时唤醒设备执行自动更新源等任务
+    -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
+    <!-- ================================================================ -->
+    <!-- 应用配置                                                         -->
+    <!-- ================================================================ -->
     <application
         android:name=".MyApplication"
         android:allowBackup="true"
@@ -51,30 +96,96 @@
         <!-- 从根本上减少内存占用。                                            -->
         <!-- ================================================================ -->
 
-        <!-- 唯一的 MainActivity 声明（整合所有必要属性，删除重复项） -->
+        <!-- ================================================================ -->
+        <!-- 主页面：直播播放页（MainActivity）                               -->
+        <!-- ================================================================ -->
+        <!--
+          【作用】应用的主页面，负责直播播放、频道切换、画中画等核心功能
+          【启动方式】桌面图标点击启动（LAUNCHER）
+
+          【属性说明】
+          - android:name=".MainActivity"：Activity 类名
+          - android:exported="true"：允许外部应用启动（启动页必须）
+          - android:screenOrientation="sensorLandscape"：强制横屏（TV 设备专用）
+
+          【2026-06-22 新增：画中画支持配置】
+          ✅ android:supportsPictureInPicture="true"
+             【作用】声明该 Activity 支持画中画模式
+             【为什么必须加？】
+             不加这个属性，调用 enterPictureInPictureMode() 会失败，
+             系统不会允许该 Activity 进入画中画模式。
+             【Android 版本】Android 8.0 (API 26) 及以上支持
+
+          ✅ android:configChanges="orientation|screenSize|smallestScreenSize"
+             【作用】配置变化时不重建 Activity，自己处理
+             【为什么必须加 smallestScreenSize？】
+             画中画模式变化时，系统会认为"最小屏幕尺寸"发生了变化，
+             如果不在 configChanges 中声明 smallestScreenSize，
+             Activity 会被销毁重建，导致：
+             1. 画中画进入/退出时黑屏
+             2. 播放器重新初始化，播放中断
+             3. 状态丢失（当前频道、播放进度等）
+             【加上之后】
+             画中画模式变化时，Activity 不会重建，
+             只会回调 onPictureInPictureModeChanged() 方法，
+             我们在这个方法里处理 UI 和播放状态同步即可。
+
+          【注意事项】
+          1. MainActivity 只能声明一次，不能重复声明（否则编译报错）
+          2. supportsPictureInPicture 必须和 configChanges 配合使用
+          3. 画中画功能仅 Android 8.0+ 支持，低版本系统会自动忽略
+        -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:screenOrientation="sensorLandscape"
             android:supportsPictureInPicture="true"
             android:configChanges="orientation|screenSize|smallestScreenSize">
+
+            <!-- 启动页 Intent 过滤器：桌面图标点击启动 -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
 
+        <!-- ================================================================ -->
+        <!-- 设置页面：SettingsActivity                                       -->
+        <!-- ================================================================ -->
+        <!--
+          【作用】设置页面，包含画中画开关、开机自启、节目单等所有设置项
+          【主题】TransparentTheme（透明主题，让设置页面以浮层形式显示）
+          【屏幕方向】强制横屏（sensorLandscape）
+          【configChanges】屏幕方向和尺寸变化时不重建
+        -->
         <activity
             android:name=".SettingsActivity"
             android:theme="@style/TransparentTheme"
             android:screenOrientation="sensorLandscape"
             android:configChanges="orientation|screenSize" />
 
+        <!-- ================================================================ -->
+        <!-- 频道列表页面：ChannelListActivity                                -->
+        <!-- ================================================================ -->
+        <!--
+          【作用】显示所有频道的列表，用户可以选择频道播放
+          【屏幕方向】强制横屏
+          【configChanges】屏幕方向和尺寸变化时不重建
+        -->
         <activity
             android:name=".ChannelListActivity"
             android:screenOrientation="sensorLandscape"
             android:configChanges="orientation|screenSize" />
 
+        <!-- ================================================================ -->
+        <!-- 崩溃页面：CrashActivity                                         -->
+        <!-- ================================================================ -->
+        <!--
+          【作用】应用崩溃时显示的页面，展示崩溃日志，方便排查问题
+          【主题】系统对话框主题（DeviceDefault.Light.Dialog）
+          【exported="false"】不对外暴露，只能应用内部启动
+          【excludeFromRecents="true"】不显示在最近任务列表中
+        -->
         <activity
             android:name=".CrashActivity"
             android:theme="@android:style/Theme.DeviceDefault.Light.Dialog"
@@ -85,19 +196,19 @@
         <!-- ✅ 开机自启广播接收器（增强版，支持多个广播）                       -->
         <!-- ==================================================================== -->
         <!--
-        【为什么要监听这么多广播？】
-        不同厂商、不同安卓版本的开机广播不一样：
-        - 原生安卓：BOOT_COMPLETED
-        - Android 7.0+ 锁屏开机：LOCKED_BOOT_COMPLETED
-        - 小米/OPPO 快速开机：QUICKBOOT_POWERON
-        - HTC 快速开机：com.htc.intent.action.QUICKBOOT_POWERON
-        - 应用更新后：MY_PACKAGE_REPLACED
-        - 充电连接（兜底）：ACTION_POWER_CONNECTED
-        多监听几个，总有一个能收到，大大提高自启成功率。
+          【为什么要监听这么多广播？】
+          不同厂商、不同安卓版本的开机广播不一样：
+          - 原生安卓：BOOT_COMPLETED
+          - Android 7.0+ 锁屏开机：LOCKED_BOOT_COMPLETED
+          - 小米/OPPO 快速开机：QUICKBOOT_POWERON
+          - HTC 快速开机：com.htc.intent.action.QUICKBOOT_POWERON
+          - 应用更新后：MY_PACKAGE_REPLACED
+          - 充电连接（兜底）：ACTION_POWER_CONNECTED
+          多监听几个，总有一个能收到，大大提高自启成功率。
 
-        【priority="1000" 是什么意思？】
-        设置较高的优先级，让我们的广播比其他应用先收到，
-        这样启动更快，也不容易被系统拦截。
+          【priority="1000" 是什么意思？】
+          设置较高的优先级，让我们的广播比其他应用先收到，
+          这样启动更快，也不容易被系统拦截。
         -->
         <receiver
             android:name=".BootReceiver"
@@ -124,17 +235,17 @@
         <!-- ✅ 延迟启动执行器（新增）                                           -->
         <!-- ==================================================================== -->
         <!--
-        【作用】
-        接收 BootReceiver 通过 AlarmManager 发送的延迟启动广播，
-        实际执行启动应用的操作。
+          【作用】
+          接收 BootReceiver 通过 AlarmManager 发送的延迟启动广播，
+          实际执行启动应用的操作。
 
-        【为什么要拆成两个 Receiver？】
-        1. BootReceiver：负责接收开机广播，调度延迟启动
-        2. BootStartReceiver：负责实际启动应用
-        这样职责更清晰，而且可以避免广播接收器生命周期太短导致的问题。
+          【为什么要拆成两个 Receiver？】
+          1. BootReceiver：负责接收开机广播，调度延迟启动
+          2. BootStartReceiver：负责实际启动应用
+          这样职责更清晰，而且可以避免广播接收器生命周期太短导致的问题。
 
-        【为什么 exported="false"？】
-        这个广播只有我们自己应用内部发送，不对外暴露，更安全。
+          【为什么 exported="false"？】
+          这个广播只有我们自己应用内部发送，不对外暴露，更安全。
         -->
         <receiver
             android:name=".BootStartReceiver"
@@ -145,6 +256,28 @@
             </intent-filter>
         </receiver>
 
+        <!-- ================================================================ -->
+        <!-- FileProvider：文件共享提供者                                     -->
+        <!-- ================================================================ -->
+        <!--
+          【作用】
+          Android 7.0+ 不能直接通过 file:// URI 共享文件，
+          必须通过 FileProvider 生成 content:// URI 来共享。
+
+          【使用场景】
+          1. 安装 APK 更新包
+          2. 分享日志文件
+          3. 其他需要共享文件的场景
+
+          【authorities】
+          使用 ${applicationId}.fileprovider，避免和其他应用冲突。
+
+          【exported="false"】
+          不对外暴露，只能通过授权的方式访问。
+
+          【grantUriPermissions="true"】
+          允许临时授权给其他应用访问文件。
+        -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -156,5 +289,4 @@
         </provider>
 
     </application>
-
 </manifest>

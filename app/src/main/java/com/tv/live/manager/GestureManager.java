@@ -29,12 +29,25 @@ import com.tv.live.SettingsActivity;
  * 【效果】
  * 手势切台和按键切台行为一致，都支持反转，
  * 而且在操作日志里可以看到是手势触发的切台。
+ * 
+ * 【2026-06-22 新增：手势启用/禁用开关 + 画中画适配】
+ * 【问题原因】
+ * 画中画模式下，PlayerView 尺寸变小，容易误触手势，
+ * 而且小窗模式下本来就不需要手势操作。
+ * 
+ * 【解决方案】
+ * 新增 setEnabled() 方法，可以动态启用/禁用手势。
+ * 画中画模式下禁用手势，退出画中画时重新启用。
+ * 启用时自动重置防抖状态，确保返回后手势立即可用。
  */
 public class GestureManager {
     private final MainActivity activity;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private static final long DEBOUNCE_DELAY_MS = 300; // 300ms防抖
     private boolean isGestureLocked = false;
+    
+    // 新增：手势总开关
+    private boolean isEnabled = true;
 
     public GestureManager(MainActivity activity) {
         this.activity = activity;
@@ -44,18 +57,30 @@ public class GestureManager {
         return new PlayerGestureHelper(activity, new PlayerGestureHelper.GestureCallback() {
             @Override
             public void onOk() {
+                // 手势禁用时直接返回
+                if (!isEnabled) {
+                    return;
+                }
                 SettingsActivity.logOperation("【手势】单击 → 切换面板");
                 activity.togglePanel();
             }
 
             @Override
             public void onLongOk() {
+                // 手势禁用时直接返回
+                if (!isEnabled) {
+                    return;
+                }
                 SettingsActivity.logOperation("【手势】长按 → 打开设置");
                 activity.openSettings();
             }
 
             @Override
             public void onMenu() {
+                // 手势禁用时直接返回
+                if (!isEnabled) {
+                    return;
+                }
                 SettingsActivity.logOperation("【手势】菜单 → 打开设置");
                 activity.openSettings();
             }
@@ -65,6 +90,10 @@ public class GestureManager {
             // ====================================================================
             @Override
             public void onPrevChannel() {
+                // 手势禁用时直接返回
+                if (!isEnabled) {
+                    return;
+                }
                 if (!isGestureLocked) {
                     isGestureLocked = true;
                     // 记录入口日志：是手势上滑触发的
@@ -92,6 +121,10 @@ public class GestureManager {
             // ====================================================================
             @Override
             public void onNextChannel() {
+                // 手势禁用时直接返回
+                if (!isEnabled) {
+                    return;
+                }
                 if (!isGestureLocked) {
                     isGestureLocked = true;
                     // 记录入口日志：是手势下滑触发的
@@ -136,5 +169,31 @@ public class GestureManager {
         // 移除所有待处理的延迟消息，确保状态干净
         mainHandler.removeCallbacksAndMessages(null);
         SettingsActivity.logOperation("【手势】✅ 状态已重置（清除防抖锁定）");
+    }
+    
+    /**
+     * 设置手势启用/禁用状态
+     * 【使用场景】
+     * 1. 进入画中画时禁用手势，防止误触
+     * 2. 退出画中画时启用手势，恢复正常操作
+     * 
+     * @param enabled true-启用，false-禁用
+     */
+    public void setEnabled(boolean enabled) {
+        isEnabled = enabled;
+        if (enabled) {
+            // 启用时顺便重置状态，确保立即可用
+            isGestureLocked = false;
+            mainHandler.removeCallbacksAndMessages(null);
+        }
+        SettingsActivity.logOperation("【手势】" + (enabled ? "✅ 已启用" : "❌ 已禁用"));
+    }
+    
+    /**
+     * 获取手势是否启用
+     * @return true-启用，false-禁用
+     */
+    public boolean isEnabled() {
+        return isEnabled;
     }
 }

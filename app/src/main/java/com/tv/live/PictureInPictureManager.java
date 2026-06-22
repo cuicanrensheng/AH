@@ -4,7 +4,6 @@ import android.app.Activity;
 import android.app.PictureInPictureParams;
 import android.content.Context;
 import android.os.Build;
-import android.util.Log;
 
 /**
  * 画中画(PIP)核心管理器
@@ -15,11 +14,12 @@ import android.util.Log;
  * - 参考 TVBox 项目 PlayActivity 的画中画实现
  * - 将画中画相关的状态判断、生命周期处理统一封装到此类
  * - Activity 只需调用此类的方法，无需自己写复杂的判断逻辑
+ * - 所有日志接入 SettingsActivity 操作日志，可在设置页面查看
  */
 public class PictureInPictureManager {
 
     // ====================== 常量 ======================
-    private static final String TAG = "PIPManager";
+    private static final String LOG_PREFIX = "【画中画】";
 
     // ====================== 单例相关 ======================
     private static PictureInPictureManager instance;
@@ -89,7 +89,7 @@ public class PictureInPictureManager {
      */
     public void setPipEnabled(boolean enabled) {
         this.pipEnabled = enabled;
-        Log.d(TAG, "画中画开关设置：" + (enabled ? "开启" : "关闭"));
+        log("开关设置：" + (enabled ? "✅ 开启" : "❌ 关闭"));
     }
 
     /**
@@ -122,6 +122,7 @@ public class PictureInPictureManager {
      */
     public void setPipEntering(boolean entering) {
         this.isPipEntering = entering;
+        log("设置正在进入标记：" + entering);
     }
 
     /**
@@ -131,6 +132,7 @@ public class PictureInPictureManager {
      */
     public void setStopCalled(boolean stopCalled) {
         this.onStopCalled = stopCalled;
+        log("设置onStop标记：" + stopCalled);
     }
 
     /**
@@ -152,7 +154,7 @@ public class PictureInPictureManager {
     }
 
     // ====================================================================
-    // ✅ 新增：是否应该进入画中画的统一判断
+    // ✅ 是否应该进入画中画的统一判断
     // 参考 TVBox PlayActivity 的 onUserLeaveHint 逻辑
     // ====================================================================
     /**
@@ -169,37 +171,50 @@ public class PictureInPictureManager {
      * @return true=应该进入 false=不应该进入
      */
     public boolean shouldEnterPip(boolean isExternalPlayer) {
+        log("========== 进入条件检查 ==========");
+
         // 条件1：设备支持
         if (!isPipSupported()) {
-            Log.d(TAG, "不进入画中画：设备不支持");
+            log("❌ 不满足：设备不支持画中画（API < 26）");
+            log("================================");
             return false;
         }
+        log("✅ 满足：设备支持画中画");
 
         // 条件2：开关开启
         if (!pipEnabled) {
-            Log.d(TAG, "不进入画中画：开关未开启");
+            log("❌ 不满足：画中画开关未开启");
+            log("================================");
             return false;
         }
+        log("✅ 满足：画中画开关已开启");
 
         // 条件3：当前不在画中画模式
         if (isInPipMode) {
-            Log.d(TAG, "不进入画中画：已在画中画模式");
+            log("❌ 不满足：已在画中画模式");
+            log("================================");
             return false;
         }
+        log("✅ 满足：不在画中画模式");
 
         // 条件4：没有正在进入（防重复）
         if (isPipEntering) {
-            Log.d(TAG, "不进入画中画：正在进入中");
+            log("❌ 不满足：正在进入画中画中");
+            log("================================");
             return false;
         }
+        log("✅ 满足：没有正在进入");
 
         // 条件5：不是外部播放器
         if (isExternalPlayer) {
-            Log.d(TAG, "不进入画中画：外部播放器");
+            log("❌ 不满足：当前是外部播放器");
+            log("================================");
             return false;
         }
+        log("✅ 满足：不是外部播放器");
 
-        Log.d(TAG, "所有条件满足，可以进入画中画");
+        log("✅ 所有条件满足，可以进入画中画");
+        log("================================");
         return true;
     }
 
@@ -220,24 +235,40 @@ public class PictureInPictureManager {
      * @return 进入成功/失败
      */
     public boolean enterPictureInPicture(Activity activity, PictureInPictureParams params) {
+        log("========== 尝试进入画中画 ==========");
+
         // 校验：设备支持 + 功能开启 + Activity有效
-        if (!isPipSupported() || !pipEnabled || activity == null || activity.isFinishing()) {
-            Log.d(TAG, "进入画中画失败：条件不满足");
+        if (!isPipSupported()) {
+            log("❌ 失败：设备不支持");
+            return false;
+        }
+        if (!pipEnabled) {
+            log("❌ 失败：开关未开启");
+            return false;
+        }
+        if (activity == null) {
+            log("❌ 失败：Activity 为 null");
+            return false;
+        }
+        if (activity.isFinishing()) {
+            log("❌ 失败：Activity 正在销毁");
             return false;
         }
 
         try {
             // 标记正在进入
             isPipEntering = true;
+            log("设置正在进入标记 = true");
 
             // 系统API：进入画中画
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 activity.enterPictureInPictureMode(params);
-                Log.d(TAG, "进入画中画成功");
+                log("✅ 调用系统API进入画中画成功");
                 return true;
             }
         } catch (Exception e) {
-            Log.e(TAG, "进入画中画失败：" + e.getMessage(), e);
+            log("❌ 进入画中画异常：" + e.getMessage());
+            e.printStackTrace();
             isPipEntering = false;
         }
 
@@ -245,7 +276,7 @@ public class PictureInPictureManager {
     }
 
     // ====================================================================
-    // ✅ 新增：处理 onPause（参考 TVBox PlayActivity 的 onPause 逻辑）
+    // ✅ 处理 onPause（参考 TVBox PlayActivity 的 onPause 逻辑）
     // ====================================================================
     /**
      * 处理 onPause 生命周期
@@ -264,8 +295,11 @@ public class PictureInPictureManager {
      * @param pauseAction 普通模式下执行的操作（暂停播放）
      */
     public void handleOnPause(Runnable resumeAction, Runnable pauseAction) {
+        log("========== onPause 处理 ==========");
+        log("当前状态：isInPipMode=" + isInPipMode + "，isPipEntering=" + isPipEntering);
+
         if (!isPipSupported()) {
-            // 不支持画中画，直接暂停
+            log("设备不支持画中画，直接暂停");
             if (pauseAction != null) {
                 pauseAction.run();
             }
@@ -274,25 +308,29 @@ public class PictureInPictureManager {
 
         if (isInPipMode || isPipEntering) {
             // ✅ 画中画模式下：继续播放（关键！防止黑屏）
-            Log.d(TAG, "onPause：画中画模式，继续播放");
+            log("✅ 画中画模式，继续播放");
             if (resumeAction != null) {
                 try {
                     resumeAction.run();
+                    log("✅ 恢复播放执行成功");
                 } catch (Exception e) {
-                    Log.e(TAG, "onPause 恢复播放失败：" + e.getMessage(), e);
+                    log("❌ 恢复播放失败：" + e.getMessage());
                 }
             }
         } else {
             // 普通模式下：暂停播放
-            Log.d(TAG, "onPause：普通模式，暂停播放");
+            log("普通模式，暂停播放");
             if (pauseAction != null) {
                 try {
                     pauseAction.run();
+                    log("✅ 暂停播放执行成功");
                 } catch (Exception e) {
-                    Log.e(TAG, "onPause 暂停播放失败：" + e.getMessage(), e);
+                    log("❌ 暂停播放失败：" + e.getMessage());
                 }
             }
         }
+
+        log("================================");
     }
 
     /**
@@ -312,24 +350,29 @@ public class PictureInPictureManager {
      * @param isInPip 是否进入画中画模式
      */
     public void onPipModeChanged(Activity activity, boolean isInPip) {
+        log("========== 模式变化回调 ==========");
+        log("新模式：" + (isInPip ? "✅ 进入画中画" : "❌ 退出画中画"));
+
         // 更新状态
         this.isInPipMode = isInPip;
         this.isPipEntering = false;  // 进入完成，清除标记
-
-        Log.d(TAG, "画中画模式变化：" + (isInPip ? "进入" : "退出"));
+        log("更新状态：isInPipMode=" + isInPip + "，isPipEntering=false");
 
         // 回调给监听者
         if (listener != null) {
             try {
                 listener.onPipModeChanged(isInPip);
+                log("✅ 监听器回调成功");
             } catch (Exception e) {
-                Log.e(TAG, "画中画模式变化回调失败：" + e.getMessage(), e);
+                log("❌ 监听器回调失败：" + e.getMessage());
             }
         }
+
+        log("================================");
     }
 
     // ====================================================================
-    // ✅ 新增：处理退出画中画（参考 TVBox PlayActivity 的实现）
+    // ✅ 处理退出画中画（参考 TVBox PlayActivity 的实现）
     // ====================================================================
     /**
      * 处理退出画中画的逻辑
@@ -346,27 +389,34 @@ public class PictureInPictureManager {
      * @param releaseAction 关闭应用时执行的释放操作
      */
     public void handleExitPip(Runnable releaseAction) {
+        log("========== 退出画中画处理 ==========");
+        log("onStopCalled = " + onStopCalled);
+
         if (!isPipSupported()) {
+            log("设备不支持画中画，跳过");
             return;
         }
 
         if (onStopCalled) {
             // 用户关闭了应用：释放播放器
-            Log.d(TAG, "退出画中画：应用已关闭，释放播放器");
+            log("用户关闭了应用，释放播放器");
             if (releaseAction != null) {
                 try {
                     releaseAction.run();
+                    log("✅ 释放播放器执行成功");
                 } catch (Exception e) {
-                    Log.e(TAG, "释放播放器失败：" + e.getMessage(), e);
+                    log("❌ 释放播放器失败：" + e.getMessage());
                 }
             }
         } else {
             // 用户返回应用：不释放，继续播放
-            Log.d(TAG, "退出画中画：返回应用，继续播放");
+            log("用户返回应用，继续播放（不释放）");
         }
 
         // 重置 onStop 标记
         onStopCalled = false;
+        log("重置 onStopCalled = false");
+        log("================================");
     }
 
     // ====================================================================
@@ -377,8 +427,7 @@ public class PictureInPictureManager {
      * @param isPlaying 是否正在播放
      */
     public void updatePlayState(boolean isPlaying) {
-        // 预留：后续可扩展画中画自定义操作（暂停/播放按钮）
-        Log.d(TAG, "更新播放状态：" + (isPlaying ? "播放中" : "已暂停"));
+        log("更新播放状态：" + (isPlaying ? "▶ 播放中" : "⏸ 已暂停"));
     }
 
     /**
@@ -388,8 +437,7 @@ public class PictureInPictureManager {
      * @param bitrate 码率
      */
     public void updateChannelInfo(int num, String name, String bitrate) {
-        // 预留：后续可扩展画中画显示频道信息
-        Log.d(TAG, "更新频道信息：" + num + " - " + name + " - " + bitrate);
+        log("更新频道信息：" + num + " - " + name + " - " + bitrate);
     }
 
     // ====================================================================
@@ -399,10 +447,26 @@ public class PictureInPictureManager {
      * 释放资源（防止内存泄漏）
      */
     public void release() {
+        log("========== 释放资源 ==========");
         listener = null;
         isInPipMode = false;
         isPipEntering = false;
         onStopCalled = false;
-        Log.d(TAG, "PictureInPictureManager 资源已释放");
+        log("✅ 资源释放完成");
+    }
+
+    // ====================================================================
+    // 日志方法（接入 SettingsActivity 操作日志）
+    // ====================================================================
+    /**
+     * 输出日志到设置页面的操作日志
+     * @param msg 日志内容
+     */
+    private void log(String msg) {
+        try {
+            SettingsActivity.logOperation(LOG_PREFIX + msg);
+        } catch (Exception e) {
+            // 兜底：如果 SettingsActivity 不可用，忽略
+        }
     }
 }

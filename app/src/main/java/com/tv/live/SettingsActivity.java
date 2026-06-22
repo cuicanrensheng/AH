@@ -41,6 +41,7 @@ import java.util.List;
  * 10. 解析&播放日志查看
  * 11. 操作日志查看
  * 12. 检查更新（委托给 UpdateManager）
+ * 13. ✅ 画中画（后台小窗播放）开关（2026-06-22 新增）
  *
  * 【2026-06-20 新增：接入 TvRemoteManager 统一遥控器管理】
  * 【集成说明】
@@ -91,21 +92,50 @@ import java.util.List;
  *
  * 【判断优先级】
  * 选中状态 > 焦点状态 > 未选中状态
+ *
+ * 【2026-06-22 新增：画中画开关功能】
+ * 【功能说明】
+ * 开启后，按 Home 键退到后台时自动进入画中画小窗播放；
+ * 关闭后，退到后台不会进入小窗。
+ * 【存储 Key】pip_enable，默认 false（关闭）
+ * 【兼容性】仅 Android 8.0 (API 26) 及以上系统支持
  */
 public class SettingsActivity extends AppCompatActivity {
 
     // ====================== 控件声明 ======================
 
-    /** 5个开关控件 */
+    /**
+     * 开关控件集合
+     * 【说明】所有带 Switch 开关的设置项
+     */
     private Switch sw_boot, sw_epg, sw_auto_update, sw_reverse, sw_num_channel;
-    /** 纯文本点击项 */
+
+    /**
+     * ✅ 画中画开关控件（2026-06-22 新增）
+     * 【作用】控制画中画功能的开启/关闭
+     * 【对应布局ID】R.id.sw_pip
+     */
+    private Switch sw_pip;
+
+    /**
+     * 纯文本点击项
+     * 【说明】没有开关，点击后弹出对话框的设置项
+     */
     private TextView tv_screen_ratio, tv_custom_source, tv_custom_epg, tv_multi_source, tv_multi_epg, tv_qr_code;
-    /** 开机自启状态描述文本 */
+
+    /**
+     * 开机自启状态描述文本
+     * 【作用】显示开机自启的当前状态（已开启/已关闭/不支持等）
+     */
     private TextView tv_boot_status;
 
     // ====================== 配置相关 ======================
 
-    /** SharedPreferences 配置存储 */
+    /**
+     * SharedPreferences 配置存储
+     * 【作用】轻量级本地存储，保存用户的设置项
+     * 【文件名】app_settings
+     */
     private SharedPreferences sp;
 
     // ====================================================================
@@ -139,44 +169,109 @@ public class SettingsActivity extends AppCompatActivity {
      */
     private List<View> settingsItemList = new ArrayList<>();
 
-    /** 滚动视图（用于滚动到可见区域） */
+    /**
+     * 滚动视图（用于滚动到可见区域）
+     * 【作用】当焦点移动到屏幕外时，自动滚动让用户看到
+     */
     private ScrollView scrollView;
 
     // ====================================================================
     // 管理器相关（全部拆分后）
     // ====================================================================
 
+    /**
+     * 开机自启管理器
+     * 【作用】管理开机自启功能的开启/关闭、状态显示
+     */
     private BootStartManager bootStartManager;
+
+    /**
+     * 自动更新管理器
+     * 【作用】管理直播源的自动更新（每天凌晨4点）
+     */
     private AutoUpdateManager autoUpdateManager;
+
+    /**
+     * 订阅源对话框管理器
+     * 【作用】管理多订阅源/多节目单的历史记录
+     */
     private SourceDialogManager sourceDialogManager;
+
+    /**
+     * 扫码管理器
+     * 【作用】显示二维码，支持手机扫码添加直播源
+     */
     private QRCodeManager qrCodeManager;
+
+    /**
+     * 网页后台管理器
+     * 【作用】启动本地 HTTP 服务器，支持网页端管理
+     */
     private WebServerManager webServerManager;
+
+    /**
+     * 网页后台端口号
+     * 【默认值】10481
+     */
     private static final int WEB_SERVER_PORT = 10481;
+
+    /**
+     * 当前网页后台访问地址
+     * 【格式】http://IP:端口
+     */
     private String currentWebUrl;
 
     // ====================================================================
     // 应用更新管理器
     // ====================================================================
 
+    /**
+     * 应用更新管理器
+     * 【作用】检查更新、下载安装包、自动安装
+     */
     private UpdateManager updateManager;
 
     // ====================== SP Key 常量 ======================
 
+    /**
+     * 自定义直播源地址的存储 Key
+     */
     private static final String KEY_CUSTOM_LIVE = "custom_live_url";
+
+    /**
+     * 自定义 EPG 节目单地址的存储 Key
+     */
     private static final String KEY_CUSTOM_EPG = "custom_epg_url";
 
     // ====================================================================
     // 全局日志系统（加回兼容层）
     // ====================================================================
 
+    /**
+     * 解析&播放日志（静态，全局可访问）
+     * 【作用】记录播放器的解析、缓冲、播放等详细日志
+     */
     public static volatile StringBuilder PLAY_LOG = new StringBuilder();
+
+    /**
+     * 操作日志（静态，全局可访问）
+     * 【作用】记录用户的所有操作行为，方便排查问题
+     */
     public static volatile StringBuilder OPERATION_LOG = new StringBuilder();
 
+    /**
+     * 记录播放日志（静态方法，全局可调用）
+     * @param msg 日志内容
+     */
     public static void log(String msg) {
         LogManager.log(msg);
         PLAY_LOG = new StringBuilder(LogManager.getPlayLog());
     }
 
+    /**
+     * 记录操作日志（静态方法，全局可调用）
+     * @param msg 日志内容
+     */
     public static void logOperation(String msg) {
         LogManager.logOperation(msg);
         OPERATION_LOG = new StringBuilder(LogManager.getOperationLog());
@@ -186,6 +281,7 @@ public class SettingsActivity extends AppCompatActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+
         // ====================================================================
         // 全面屏设置（隐藏状态栏 + 导航栏）
         // ====================================================================
@@ -244,6 +340,12 @@ public class SettingsActivity extends AppCompatActivity {
         sw_auto_update = findViewById(R.id.sw_auto_update);
         sw_reverse = findViewById(R.id.sw_reverse);
         sw_num_channel = findViewById(R.id.sw_num_channel);
+
+        // ====================================================================
+        // ✅ 绑定画中画开关控件（2026-06-22 新增）
+        // ====================================================================
+        sw_pip = findViewById(R.id.sw_pip);
+
         tv_screen_ratio = findViewById(R.id.tv_screen_ratio);
         tv_custom_source = findViewById(R.id.tv_custom_source);
         tv_custom_epg = findViewById(R.id.tv_custom_epg);
@@ -279,6 +381,7 @@ public class SettingsActivity extends AppCompatActivity {
         findViewById(R.id.log_viewer).setOnClickListener(v -> {
             showLogDialog();
         });
+
         findViewById(R.id.log_operation).setOnClickListener(v -> {
             showOperationLogDialog();
         });
@@ -300,8 +403,11 @@ public class SettingsActivity extends AppCompatActivity {
             return true;
         });
 
+        // ====================================================================
         // 2. 节目单开关
+        // ====================================================================
         sw_epg.setChecked(sp.getBoolean("epg_enable", true));
+
         findViewById(R.id.item_epg).setOnClickListener(v -> {
             boolean isChecked = !sw_epg.isChecked();
             sw_epg.setChecked(isChecked);
@@ -314,6 +420,7 @@ public class SettingsActivity extends AppCompatActivity {
         // 自动更新源（委托给 AutoUpdateManager）
         // ====================================================================
         sw_auto_update.setChecked(sp.getBoolean("auto_update_source", true));
+
         findViewById(R.id.item_auto_update).setOnClickListener(v -> {
             boolean isChecked = !sw_auto_update.isChecked();
             sw_auto_update.setChecked(isChecked);
@@ -331,8 +438,11 @@ public class SettingsActivity extends AppCompatActivity {
             autoUpdateManager.setAutoUpdateAlarm();
         }
 
+        // ====================================================================
         // 4. 换台反转
+        // ====================================================================
         sw_reverse.setChecked(sp.getBoolean("channel_reverse", false));
+
         findViewById(R.id.item_reverse).setOnClickListener(v -> {
             boolean isChecked = !sw_reverse.isChecked();
             sw_reverse.setChecked(isChecked);
@@ -341,14 +451,59 @@ public class SettingsActivity extends AppCompatActivity {
             Toast.makeText(this, "换台反转" + (isChecked ? "已开启" : "已关闭"), Toast.LENGTH_SHORT).show();
         });
 
+        // ====================================================================
         // 5. 数字选台
+        // ====================================================================
         sw_num_channel.setChecked(sp.getBoolean("number_channel_enable", true));
+
         findViewById(R.id.item_num_channel).setOnClickListener(v -> {
             boolean isChecked = !sw_num_channel.isChecked();
             sw_num_channel.setChecked(isChecked);
             sp.edit().putBoolean("number_channel_enable", isChecked).apply();
             logOperation("【设置】数字选台" + (isChecked ? "已开启" : "已关闭"));
             Toast.makeText(this, "数字选台" + (isChecked ? "已开启" : "已关闭"), Toast.LENGTH_SHORT).show();
+        });
+
+        // ====================================================================
+        // ✅ 画中画开关（2026-06-22 新增）
+        // ====================================================================
+        /**
+         * 【功能说明】
+         * 开启后，用户按 Home 键退到后台时，自动进入画中画小窗播放；
+         * 关闭后，退到后台不会进入小窗，正常暂停播放。
+         *
+         * 【存储 Key】pip_enable
+         * 【默认值】false（默认关闭，用户手动开启）
+         *
+         * 【兼容性说明】
+         * 仅 Android 8.0 (API 26) 及以上系统支持画中画功能，
+         * 低版本系统即使开启开关也不会生效（PictureInPictureManager 会自动判断）。
+         *
+         * 【联动说明】
+         * MainActivity 的 loadSettings() 方法会读取这个开关，
+         * 同步到 PictureInPictureManager 中控制画中画行为。
+         */
+        // 从本地读取画中画开关状态（默认关闭）
+        sw_pip.setChecked(sp.getBoolean("pip_enable", false));
+
+        // 画中画设置项点击事件
+        findViewById(R.id.item_pip).setOnClickListener(v -> {
+            // 切换开关状态（点击整个项也能切换，不只是点开关）
+            boolean isChecked = !sw_pip.isChecked();
+            sw_pip.setChecked(isChecked);
+
+            // 保存到本地配置
+            sp.edit().putBoolean("pip_enable", isChecked).apply();
+
+            // 记录操作日志
+            logOperation("【设置】画中画（后台小窗播放）" + (isChecked ? "已开启" : "已关闭"));
+
+            // Toast 提示用户
+            if (isChecked) {
+                Toast.makeText(this, "画中画已开启，按Home键自动小窗播放", Toast.LENGTH_SHORT).show();
+            } else {
+                Toast.makeText(this, "画中画已关闭", Toast.LENGTH_SHORT).show();
+            }
         });
 
         // ====================================================================
@@ -396,6 +551,9 @@ public class SettingsActivity extends AppCompatActivity {
      * 1. 给每个设置项设置 focusableInTouchMode=true（手机点击时也能获得焦点）
      * 2. 给每个设置项设置 OnFocusChangeListener（焦点变化时自动更新高亮）
      * 这样无论是遥控器操作还是手机点击，光标都会跟着移动。
+     *
+     * 【2026-06-22 修改：添加画中画设置项到焦点列表】
+     * 【位置】放在"数字选台"之后，"屏幕比例"之前，符合播放相关设置的逻辑顺序
      */
     private void initSettingsItemList() {
         settingsItemList.clear();
@@ -406,15 +564,23 @@ public class SettingsActivity extends AppCompatActivity {
         settingsItemList.add(findViewById(R.id.item_auto_update));    // 3. 自动更新源
         settingsItemList.add(findViewById(R.id.item_reverse));        // 4. 换台反转
         settingsItemList.add(findViewById(R.id.item_num_channel));    // 5. 数字选台
-        settingsItemList.add(findViewById(R.id.tv_screen_ratio));     // 6. 屏幕比例
-        settingsItemList.add(findViewById(R.id.tv_custom_source));    // 7. 自定义订阅源
-        settingsItemList.add(findViewById(R.id.tv_custom_epg));       // 8. 自定义节目单
-        settingsItemList.add(findViewById(R.id.tv_multi_source));     // 9. 多订阅源
-        settingsItemList.add(findViewById(R.id.tv_multi_epg));        // 10. 多节目单
-        settingsItemList.add(findViewById(R.id.tv_qr_code));          // 11. 扫码添加
-        settingsItemList.add(findViewById(R.id.log_viewer));          // 12. 查看解析日志
-        settingsItemList.add(findViewById(R.id.log_operation));       // 13. 操作日志
-        settingsItemList.add(findViewById(R.id.item_check_update));   // 14. 检查更新
+
+        // ====================================================================
+        // ✅ 画中画设置项（2026-06-22 新增，第6项）
+        // ====================================================================
+        // 【位置说明】放在数字选台之后，屏幕比例之前
+        // 【原因】画中画属于播放相关设置，和数字选台、换台反转归为一类
+        settingsItemList.add(findViewById(R.id.item_pip));            // 6. 画中画（后台小窗播放）
+
+        settingsItemList.add(findViewById(R.id.tv_screen_ratio));     // 7. 屏幕比例
+        settingsItemList.add(findViewById(R.id.tv_custom_source));    // 8. 自定义订阅源
+        settingsItemList.add(findViewById(R.id.tv_custom_epg));       // 9. 自定义节目单
+        settingsItemList.add(findViewById(R.id.tv_multi_source));     // 10. 多订阅源
+        settingsItemList.add(findViewById(R.id.tv_multi_epg));        // 11. 多节目单
+        settingsItemList.add(findViewById(R.id.tv_qr_code));          // 12. 扫码添加
+        settingsItemList.add(findViewById(R.id.log_viewer));          // 13. 查看解析日志
+        settingsItemList.add(findViewById(R.id.log_operation));       // 14. 操作日志
+        settingsItemList.add(findViewById(R.id.item_check_update));   // 15. 检查更新
 
         // 移除 null 的项（防止有的 View 找不到）
         for (int i = settingsItemList.size() - 1; i >= 0; i--) {
@@ -535,6 +701,7 @@ public class SettingsActivity extends AppCompatActivity {
 
             /**
              * OK键：选中当前项
+             * 【作用】模拟点击事件，触发该设置项的 OnClickListener
              */
             @Override
             public void onSettingsConfirm() {
@@ -544,6 +711,7 @@ public class SettingsActivity extends AppCompatActivity {
 
             /**
              * 返回键：关闭设置页面
+             * @return true=已处理，不再向下传递
              */
             @Override
             public boolean onSettingsBack() {
@@ -561,6 +729,7 @@ public class SettingsActivity extends AppCompatActivity {
 
             /**
              * 焦点变化：更新高亮显示
+             * @param position 新的焦点位置
              */
             @Override
             public void onSettingsFocusChanged(int position) {
@@ -576,6 +745,7 @@ public class SettingsActivity extends AppCompatActivity {
 
     /**
      * 初始化纯文本项的点击事件
+     * 【说明】没有开关，点击后弹出对话框的设置项
      */
     private void initListeners() {
         // 屏幕比例
@@ -673,7 +843,6 @@ public class SettingsActivity extends AppCompatActivity {
     private void updateSettingsFocus() {
         // 获取当前选中位置（遥控器管理器记录的位置）
         int selectedPosition = remoteManager.getSettingsFocusPosition();
-
         SettingsActivity.logOperation("【设置遥控】准备更新焦点，选中位置：" + (selectedPosition + 1));
 
         // ====================================================================
@@ -778,9 +947,11 @@ public class SettingsActivity extends AppCompatActivity {
      */
     private TextView findFirstTextView(ViewGroup viewGroup) {
         if (viewGroup == null) return null;
+
         // 遍历所有子 View
         for (int i = 0; i < viewGroup.getChildCount(); i++) {
             View child = viewGroup.getChildAt(i);
+
             if (child instanceof TextView) {
                 // 找到了，直接返回
                 return (TextView) child;
@@ -792,6 +963,7 @@ public class SettingsActivity extends AppCompatActivity {
                 }
             }
         }
+
         // 没找到
         return null;
     }
@@ -815,10 +987,12 @@ public class SettingsActivity extends AppCompatActivity {
      */
     private void scrollToView(View view) {
         if (scrollView == null || view == null) return;
+
         // 计算 View 在 ScrollView 中的位置
         int viewTop = view.getTop();
         int viewBottom = view.getBottom();
         int scrollViewHeight = scrollView.getHeight();
+
         // 如果 View 在当前可见区域上方，滚动到顶部
         if (viewTop < scrollView.getScrollY()) {
             scrollView.smoothScrollTo(0, viewTop - 50);
@@ -846,6 +1020,7 @@ public class SettingsActivity extends AppCompatActivity {
         if (position < 0 || position >= settingsItemList.size()) return;
         View item = settingsItemList.get(position);
         if (item == null) return;
+
         // 模拟点击（触发 OnClickListener）
         item.performClick();
         logOperation("【设置遥控】选中第 " + (position + 1) + " 项");
@@ -855,9 +1030,11 @@ public class SettingsActivity extends AppCompatActivity {
 
     /**
      * 显示屏幕比例选择对话框
+     * 【选项】全屏、填充、原始
      */
     private void showRatioDialog() {
         final String[] ratios = {"全屏", "填充", "原始"};
+
         new AlertDialog.Builder(this)
                 .setTitle("屏幕比例")
                 .setItems(ratios, (d, w) -> {
@@ -871,11 +1048,17 @@ public class SettingsActivity extends AppCompatActivity {
 
     /**
      * 显示输入对话框
+     * 【用途】自定义订阅源、自定义节目单
+     *
+     * @param title 对话框标题
+     * @param hint 输入框提示文字
+     * @param key  存储的 SharedPreferences Key
      */
     private void showInputDialog(String title, String hint, String key) {
         EditText ed = new EditText(this);
         ed.setHint(hint);
         ed.setText(sp.getString(key, ""));
+
         new AlertDialog.Builder(this)
                 .setTitle(title)
                 .setView(ed)
@@ -883,9 +1066,11 @@ public class SettingsActivity extends AppCompatActivity {
                     String url = ed.getText().toString().trim();
                     if (!url.isEmpty()) {
                         sp.edit().putString(key, url).apply();
+
                         SourceManager sourceManager = new SourceManager(this,
                                 key.contains("live") ? "live_history" : "epg_history");
                         sourceManager.addSource(url.substring(0, Math.min(10, url.length())) + "...", url);
+
                         sendBroadcast(new Intent("com.tv.live.REFRESH_LIVE_AND_EPG"));
                         logOperation("【设置】" + title + "已更新：" + url);
                         Toast.makeText(this, "已保存，正在刷新…", Toast.LENGTH_SHORT).show();
@@ -901,16 +1086,21 @@ public class SettingsActivity extends AppCompatActivity {
 
     /**
      * 显示操作日志对话框
+     * 【内容】记录用户的所有操作行为
+     * 【特点】最新的日志显示在最上面（倒序）
      */
     private void showOperationLogDialog() {
         ScrollView scrollView = new ScrollView(this);
         TextView tv = new TextView(this);
+
         if (OPERATION_LOG == null || OPERATION_LOG.length() == 0) {
             tv.setText("暂无操作日志。\n\n操作日志会记录您的切台、切换分组、打开设置等操作，\n以及网页后台的启动、请求、响应等详细信息。");
         } else {
             String originalLog = OPERATION_LOG.toString();
             String[] lines = originalLog.split("\n");
             StringBuilder reversedLog = new StringBuilder();
+
+            // 倒序排列（最新的在最上面）
             for (int i = lines.length - 1; i >= 0; i--) {
                 if (!lines[i].trim().isEmpty()) {
                     reversedLog.append(lines[i]).append("\n");
@@ -918,10 +1108,12 @@ public class SettingsActivity extends AppCompatActivity {
             }
             tv.setText(reversedLog.toString());
         }
+
         tv.setTextSize(12);
         tv.setPadding(40, 40, 40, 40);
         tv.setTextColor(Color.BLACK);
         scrollView.addView(tv);
+
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("📌 操作日志");
         builder.setView(scrollView);
@@ -938,16 +1130,21 @@ public class SettingsActivity extends AppCompatActivity {
 
     /**
      * 显示解析&播放日志对话框
+     * 【内容】记录播放器的解析、缓冲、播放等详细日志
+     * 【特点】最新的日志显示在最上面（倒序）
      */
     private void showLogDialog() {
         ScrollView scrollView = new ScrollView(this);
         TextView tv = new TextView(this);
+
         if (PLAY_LOG == null || PLAY_LOG.length() == 0) {
             tv.setText("暂无日志内容，请先播放一个频道再查看。");
         } else {
             String originalLog = PLAY_LOG.toString();
             String[] lines = originalLog.split("\n");
             StringBuilder reversedLog = new StringBuilder();
+
+            // 倒序排列（最新的在最上面）
             for (int i = lines.length - 1; i >= 0; i--) {
                 if (!lines[i].trim().isEmpty()) {
                     reversedLog.append(lines[i]).append("\n");
@@ -955,10 +1152,12 @@ public class SettingsActivity extends AppCompatActivity {
             }
             tv.setText(reversedLog.toString());
         }
+
         tv.setTextSize(12);
         tv.setPadding(40, 40, 40, 40);
         tv.setTextColor(Color.BLACK);
         scrollView.addView(tv);
+
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("📄 解析 & 播放日志");
         builder.setView(scrollView);
@@ -980,7 +1179,9 @@ public class SettingsActivity extends AppCompatActivity {
     @Override
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
+
         if (hasFocus) {
+            // 重新设置全面屏（隐藏状态栏 + 导航栏）
             int uiOptions = View.SYSTEM_UI_FLAG_LAYOUT_STABLE
                     | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
                     | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
@@ -989,6 +1190,7 @@ public class SettingsActivity extends AppCompatActivity {
                     | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY;
             getWindow().getDecorView().setSystemUiVisibility(uiOptions);
 
+            // 刘海屏适配
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
                 WindowManager.LayoutParams lp = getWindow().getAttributes();
                 lp.layoutInDisplayCutoutMode =
@@ -996,6 +1198,7 @@ public class SettingsActivity extends AppCompatActivity {
                 getWindow().setAttributes(lp);
             }
 
+            // 清除背景变暗
             getWindow().clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
             WindowManager.LayoutParams layoutParams = getWindow().getAttributes();
             layoutParams.dimAmount = 0f;
@@ -1009,15 +1212,19 @@ public class SettingsActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
+
         logOperation("【设置】关闭设置页面");
+
         // 停止网页后台
         if (webServerManager != null) {
             webServerManager.stop();
         }
+
         // 释放更新管理器
         if (updateManager != null) {
             updateManager.release();
         }
+
         // 释放遥控器管理器
         remoteManager = null;
         settingsItemList.clear();

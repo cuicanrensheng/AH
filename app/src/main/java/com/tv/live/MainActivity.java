@@ -14,7 +14,6 @@ import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
-import android.widget.ImageView;
 import android.widget.ListView;
 import android.widget.ProgressBar;
 import android.widget.TextView;
@@ -46,7 +45,6 @@ public class MainActivity extends AppCompatActivity {
 
     // ====================== 视图相关 ======================
     private PlayerView playerView;
-    private ImageView ivPlayerPlaceholder;
 
     // ====================== 管理器相关 ======================
     public TVPlayerManager mPlayerManager;
@@ -71,7 +69,7 @@ public class MainActivity extends AppCompatActivity {
     private TvRemoteManager remoteManager;
 
     // ====================================================================
-    // ✅ 画中画相关变量
+    // 画中画相关变量
     // ====================================================================
     private PictureInPictureManager pipManager;
     private boolean pipEnable = false;      // 画中画开关状态
@@ -133,12 +131,6 @@ public class MainActivity extends AppCompatActivity {
         playerView = findViewById(R.id.player_view);
         playerView.setUseController(false);
         playerView.setControllerVisibilityListener(null);
-
-        ivPlayerPlaceholder = findViewById(R.id.iv_player_placeholder);
-        // ====================================================================
-        // ✅ 取消占位图：启动时直接隐藏，永远不显示
-        // ====================================================================
-        hidePlayerPlaceholder();
 
         initChannelPanelController();
         initRemoteManager();
@@ -214,7 +206,6 @@ public class MainActivity extends AppCompatActivity {
             infoDisplayManager.hideInfoBar();
             infoDisplayManager.hideChannelNum();
         }
-        // 占位图已取消，这里不需要再处理
     }
 
     // ====================================================================
@@ -610,10 +601,6 @@ public class MainActivity extends AppCompatActivity {
             pipManager.setPipEnabled(pipEnable);
         }
 
-        // ====================================================================
-        // ✅ 已取消占位图联动，移除 syncPlaceholderByPipEnable() 调用
-        // ====================================================================
-
         SettingsActivity.logOperation("【设置】EPG开关：" + epg_enable);
         SettingsActivity.logOperation("【设置】切台反转：" + channel_reverse);
         SettingsActivity.logOperation("【设置】数字选台：" + number_channel_enable);
@@ -859,7 +846,6 @@ public class MainActivity extends AppCompatActivity {
         if (pipEnable && supported && enabled) {
             SettingsActivity.logOperation("【画中画排查】所有条件满足，尝试进入画中画...");
             try {
-                // 占位图已取消，不需要再隐藏
                 isPipEntering = true;
 
                 PictureInPictureParams pipParams = null;
@@ -925,8 +911,6 @@ public class MainActivity extends AppCompatActivity {
             }
 
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-            
-            // 占位图已取消，不需要处理
 
             // 强制确保播放器在播放
             keepPlayingInPip();
@@ -955,26 +939,8 @@ public class MainActivity extends AppCompatActivity {
             }
 
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-            
-            // 占位图已取消，不需要处理
 
             log("【画中画】退出画中画完成");
-        }
-    }
-
-    // ====================================================================
-    // ✅ 【关键修改】占位图显示/隐藏 - 已取消占位图功能
-    // showPlayerPlaceholder() 改为空实现，永远不显示
-    // ====================================================================
-    private void showPlayerPlaceholder() {
-        // 已取消占位图功能，什么都不做
-        log("【占位图】已取消，不显示");
-    }
-
-    private void hidePlayerPlaceholder() {
-        if (ivPlayerPlaceholder != null) {
-            ivPlayerPlaceholder.setVisibility(View.GONE);
-            log("【占位图】隐藏");
         }
     }
 
@@ -988,13 +954,10 @@ public class MainActivity extends AppCompatActivity {
 
     // ====================== 生命周期方法 ======================
     // ====================================================================
-    // ✅ onPause 中画中画模式下不暂停播放器
-    // 占位图已取消，移除相关逻辑
+    // onPause 中画中画模式下不暂停播放器
     // ====================================================================
     @Override
     protected void onPause() {
-        // 占位图已取消，不需要显示
-
         super.onPause();
 
         // 先调用 onPause（让其他逻辑正常执行）
@@ -1025,8 +988,6 @@ public class MainActivity extends AppCompatActivity {
         
         screenRatioManager.apply();
         displayManager.reapplyFullScreen();
-        
-        // 占位图已取消，不需要隐藏
 
         if (!isInPipMode) {
             new Handler(Looper.getMainLooper()).postDelayed(this::resumeCurrentChannel, 200);

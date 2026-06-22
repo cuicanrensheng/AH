@@ -2537,8 +2537,7 @@ public class PictureInPictureManager {
         if (sb.length() == 0) sb.append("未开启");
         return sb.toString();
     }
-
-    // ================================================
+        // ================================================
     // 🆕 二十三、游戏模式
     // ================================================
 
@@ -2569,7 +2568,7 @@ public class PictureInPictureManager {
         return LATENCY_NAMES.clone();
     }
 
-        public int getGameModeBufferMs() {
+    public int getGameModeBufferMs() {
         if (!isGameModeEnabled()) return -1;
         switch (getGameLatencyLevel()) {
             case LATENCY_LOW: return 500;
@@ -2589,6 +2588,334 @@ public class PictureInPictureManager {
     }
 
     // ================================================
+    // 🆕 二十四、多音频模式
+    // ================================================
+
+    public boolean isMultiAudioEnabled() {
+        return sp.getBoolean(KEY_PIP_MULTI_AUDIO, false);
+    }
+
+    public void setMultiAudioEnabled(boolean enabled) {
+        sp.edit().putBoolean(KEY_PIP_MULTI_AUDIO, enabled).apply();
+        Log.d(TAG, "多音频模式：" + enabled);
+        if (!enabled) isMultiAudioMode = false;
+    }
+
+    public float getMainVolume() {
+        return sp.getFloat(KEY_PIP_MAIN_VOLUME, 1.0f);
+    }
+
+    public void setMainVolume(float volume) {
+        volume = Math.max(0, Math.min(1, volume));
+        sp.edit().putFloat(KEY_PIP_MAIN_VOLUME, volume).apply();
+        Log.d(TAG, "主音量：" + (int) (volume * 100) + "%");
+    }
+
+    public float getSecondVolume() {
+        return sp.getFloat(KEY_PIP_SECOND_VOLUME, 0.3f);
+    }
+
+    public void setSecondVolume(float volume) {
+        volume = Math.max(0, Math.min(1, volume));
+        sp.edit().putFloat(KEY_PIP_SECOND_VOLUME, volume).apply();
+        Log.d(TAG, "副音量：" + (int) (volume * 100) + "%");
+    }
+
+    public boolean enterMultiAudioMode() {
+        if (!isMultiAudioEnabled()) {
+            Log.w(TAG, "多音频模式未开启");
+            return false;
+        }
+        if (isMultiAudioMode) return false;
+        isMultiAudioMode = true;
+        Log.d(TAG, "进入多音频模式");
+        return true;
+    }
+
+    public boolean exitMultiAudioMode() {
+        if (!isMultiAudioMode) return false;
+        isMultiAudioMode = false;
+        Log.d(TAG, "退出多音频模式");
+        return true;
+    }
+
+    public boolean isInMultiAudioMode() {
+        return isMultiAudioMode;
+    }
+
+    public String getMultiAudioDesc() {
+        if (!isMultiAudioEnabled()) return "未开启";
+        return "主 " + (int) (getMainVolume() * 100) + "% / 副 " + (int) (getSecondVolume() * 100) + "%";
+    }
+
+    // ================================================
+    // 🆕 二十五、弹幕功能
+    // ================================================
+
+    public boolean isDanmakuEnabled() {
+        return sp.getBoolean(KEY_PIP_DANMAKU, false);
+    }
+
+    public void setDanmakuEnabled(boolean enabled) {
+        sp.edit().putBoolean(KEY_PIP_DANMAKU, enabled).apply();
+        Log.d(TAG, "画中画弹幕：" + enabled);
+        if (!enabled) hideDanmaku();
+    }
+
+    public int getDanmakuSize() {
+        return sp.getInt(KEY_PIP_DANMAKU_SIZE, DANMAKU_SIZE_MEDIUM);
+    }
+
+    public void setDanmakuSize(int size) {
+        if (size < 0 || size >= DANMAKU_SIZE_NAMES.length) size = DANMAKU_SIZE_MEDIUM;
+        sp.edit().putInt(KEY_PIP_DANMAKU_SIZE, size).apply();
+        Log.d(TAG, "弹幕大小：" + DANMAKU_SIZE_NAMES[size]);
+    }
+
+    public String getDanmakuSizeName() {
+        return DANMAKU_SIZE_NAMES[getDanmakuSize()];
+    }
+
+    public int getDanmakuSpeed() {
+        return sp.getInt(KEY_PIP_DANMAKU_SPEED, DANMAKU_SPEED_NORMAL);
+    }
+
+    public void setDanmakuSpeed(int speed) {
+        if (speed < 0 || speed >= DANMAKU_SPEED_NAMES.length) speed = DANMAKU_SPEED_NORMAL;
+        sp.edit().putInt(KEY_PIP_DANMAKU_SPEED, speed).apply();
+        Log.d(TAG, "弹幕速度：" + DANMAKU_SPEED_NAMES[speed]);
+    }
+
+    public String getDanmakuSpeedName() {
+        return DANMAKU_SPEED_NAMES[getDanmakuSpeed()];
+    }
+
+    public int getDanmakuOpacity() {
+        return sp.getInt(KEY_PIP_DANMAKU_OPACITY, 80);
+    }
+
+    public void setDanmakuOpacity(int opacity) {
+        opacity = Math.max(10, Math.min(100, opacity));
+        sp.edit().putInt(KEY_PIP_DANMAKU_OPACITY, opacity).apply();
+        Log.d(TAG, "弹幕透明度：" + opacity + "%");
+    }
+
+    public boolean showDanmaku() {
+        if (!isDanmakuEnabled()) {
+            Log.w(TAG, "弹幕未开启");
+            return false;
+        }
+        if (isDanmakuShowing) return true;
+        isDanmakuShowing = true;
+        Log.d(TAG, "显示弹幕");
+        return true;
+    }
+
+    public boolean hideDanmaku() {
+        if (!isDanmakuShowing) return false;
+        isDanmakuShowing = false;
+        Log.d(TAG, "隐藏弹幕");
+        return true;
+    }
+
+    public boolean toggleDanmaku() {
+        if (isDanmakuShowing) {
+            hideDanmaku();
+            return false;
+        } else {
+            showDanmaku();
+            return true;
+        }
+    }
+
+    public boolean isDanmakuShowing() {
+        return isDanmakuShowing;
+    }
+
+    public void sendDanmaku(String text, int color, boolean isSelf) {
+        if (!isDanmakuShowing) return;
+        Log.d(TAG, "发送弹幕：" + text + "（" + (isSelf ? "自己" : "他人") + "）");
+    }
+
+    public String getDanmakuDesc() {
+        if (!isDanmakuEnabled()) return "未开启";
+        return getDanmakuSizeName() + " / " + getDanmakuSpeedName() + " / " + getDanmakuOpacity() + "%";
+    }
+
+    // ================================================
+    // 🆕 二十六、滤镜效果
+    // ================================================
+
+    public int getFilter() {
+        return sp.getInt(KEY_PIP_FILTER, FILTER_NONE);
+    }
+
+    public void setFilter(int filter) {
+        if (filter < 0 || filter >= FILTER_NAMES.length) filter = FILTER_NONE;
+        sp.edit().putInt(KEY_PIP_FILTER, filter).apply();
+        currentFilter = filter;
+        Log.d(TAG, "滤镜：" + FILTER_NAMES[filter]);
+    }
+
+    public String getFilterName() {
+        return FILTER_NAMES[getFilter()];
+    }
+
+    public String[] getAllFilterNames() {
+        return FILTER_NAMES.clone();
+    }
+
+    public int getFilterIntensity() {
+        return sp.getInt(KEY_PIP_FILTER_INTENSITY, 100);
+    }
+
+    public void setFilterIntensity(int intensity) {
+        intensity = Math.max(0, Math.min(100, intensity));
+        sp.edit().putInt(KEY_PIP_FILTER_INTENSITY, intensity).apply();
+        Log.d(TAG, "滤镜强度：" + intensity + "%");
+    }
+
+    public int nextFilter() {
+        int current = getFilter();
+        int next = (current + 1) % FILTER_NAMES.length;
+        setFilter(next);
+        return next;
+    }
+
+    public int prevFilter() {
+        int current = getFilter();
+        int prev = (current - 1 + FILTER_NAMES.length) % FILTER_NAMES.length;
+        setFilter(prev);
+        return prev;
+    }
+
+    public float[] getFilterColorMatrix() {
+        float intensity = getFilterIntensity() / 100f;
+        float[] matrix = new float[20];
+        matrix[0] = 1; matrix[5] = 1; matrix[10] = 1; matrix[15] = 1;
+
+        switch (getFilter()) {
+            case FILTER_VIVID:
+                float sat = 1.0f + 0.3f * intensity;
+                matrix[0] = sat; matrix[5] = sat; matrix[10] = sat;
+                break;
+            case FILTER_MONOCHROME:
+                matrix[0] = 0.3f; matrix[1] = 0.59f; matrix[2] = 0.11f;
+                matrix[5] = 0.3f; matrix[6] = 0.59f; matrix[7] = 0.11f;
+                matrix[10] = 0.3f; matrix[11] = 0.59f; matrix[12] = 0.11f;
+                break;
+            case FILTER_SEPIA:
+                matrix[0] = 0.393f; matrix[1] = 0.769f; matrix[2] = 0.189f;
+                matrix[5] = 0.349f; matrix[6] = 0.686f; matrix[7] = 0.168f;
+                matrix[10] = 0.272f; matrix[11] = 0.534f; matrix[12] = 0.131f;
+                break;
+            case FILTER_COOL:
+                matrix[10] = 1.0f + 0.2f * intensity;
+                break;
+            case FILTER_WARM:
+                matrix[0] = 1.0f + 0.2f * intensity;
+                break;
+            case FILTER_NIGHT:
+                matrix[5] = 1.0f + 0.5f * intensity;
+                matrix[0] = 0.3f;
+                matrix[10] = 0.3f;
+                break;
+            case FILTER_CINEMA:
+                matrix[4] = -20 * intensity;
+                matrix[9] = -20 * intensity;
+                matrix[14] = -20 * intensity;
+                break;
+        }
+        return matrix;
+    }
+
+    public String getFilterDesc() {
+        if (getFilter() == FILTER_NONE) return "无";
+        return getFilterName() + "（" + getFilterIntensity() + "%）";
+    }
+
+    // ================================================
+    // 🆕 二十七、实时数据面板
+    // ================================================
+
+    public boolean isDataPanelEnabled() {
+        return sp.getBoolean(KEY_PIP_DATA_PANEL, false);
+    }
+
+    public void setDataPanelEnabled(boolean enabled) {
+        sp.edit().putBoolean(KEY_PIP_DATA_PANEL, enabled).apply();
+        Log.d(TAG, "实时数据面板：" + enabled);
+        if (!enabled) hideDataPanel();
+    }
+
+    public int getDataItems() {
+        return sp.getInt(KEY_PIP_DATA_ITEMS,
+                DATA_BITRATE | DATA_FRAMERATE | DATA_BUFFER | DATA_RESOLUTION);
+    }
+
+    public void setDataItems(int items) {
+        sp.edit().putInt(KEY_PIP_DATA_ITEMS, items).apply();
+        Log.d(TAG, "数据面板显示项：" + items);
+    }
+
+    public boolean showDataPanel() {
+        if (!isDataPanelEnabled()) {
+            Log.w(TAG, "数据面板未开启");
+            return false;
+        }
+        if (isDataPanelShowing) return true;
+        isDataPanelShowing = true;
+        Log.d(TAG, "显示实时数据面板");
+        return true;
+    }
+
+    public boolean hideDataPanel() {
+        if (!isDataPanelShowing) return false;
+        isDataPanelShowing = false;
+        Log.d(TAG, "隐藏实时数据面板");
+        return true;
+    }
+
+    public boolean toggleDataPanel() {
+        if (isDataPanelShowing) {
+            hideDataPanel();
+            return false;
+        } else {
+            showDataPanel();
+            return true;
+        }
+    }
+
+    public boolean isDataPanelShowing() {
+        return isDataPanelShowing;
+    }
+
+    public void updateBitrate(long bitrate) {
+        this.currentBitrate = bitrate;
+    }
+
+    public void updateFrameRate(float frameRate) {
+        this.currentFrameRate = frameRate;
+    }
+
+    public void updateBuffer(long bufferMs) {
+        this.currentBufferMs = bufferMs;
+    }
+
+    public void updateResolution(int width, int height) {
+        this.currentWidth = width;
+        this.currentHeight = height;
+    }
+
+    public void updatePlayDuration(long durationMs) {
+        this.playDurationMs = durationMs;
+    }
+
+    public void updateNetworkType(String type) {
+        this.currentNetworkType = type;
+    }
+
+    // ================================================
     // 数据面板 - 格式化方法
     // ================================================
 
@@ -2604,6 +2931,24 @@ public class PictureInPictureManager {
     public String getFormattedFrameRate() {
         if (currentFrameRate <= 0) return "--";
         return String.format(Locale.getDefault(), "%.1f fps", currentFrameRate);
+    }
+
+    public String getFormattedBuffer() {
+        if (currentBufferMs <= 0) return "--";
+        return String.format(Locale.getDefault(), "%.1f s", currentBufferMs / 1000f);
+    }
+
+    public String getFormattedResolution() {
+        if (currentWidth <= 0 || currentHeight <= 0) return "--";
+        return currentWidth + "×" + currentHeight;
+    }
+
+    public String getFormattedDuration() {
+        if (playDurationMs <= 0) return "--";
+        long seconds = playDurationMs / 1000;
+        long min = seconds / 60;
+        long sec = seconds % 60;
+        return String.format(Locale.getDefault(), "%02d:%02d", min, sec);
     }
 
     public String getDataPanelText() {
@@ -3107,4 +3452,4 @@ public class PictureInPictureManager {
 
         Log.d(TAG, "画中画管理器已释放");
     }
-}    
+}

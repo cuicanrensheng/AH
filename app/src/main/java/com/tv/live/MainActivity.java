@@ -750,6 +750,12 @@ public class MainActivity extends AppCompatActivity {
 
         if (isInPictureInPictureMode) {
             SettingsActivity.logOperation("【画中画】========== 进入画中画 ==========");
+            
+            // ✅ 新增：画中画模式下禁用手势，防止误触
+            if (gestureManager != null) {
+                gestureManager.setEnabled(false);
+            }
+            
             hideAllUiForPip();
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
@@ -766,6 +772,11 @@ public class MainActivity extends AppCompatActivity {
             SettingsActivity.logOperation("【画中画】================================");
         } else {
             SettingsActivity.logOperation("【画中画】========== 退出画中画 ==========");
+            
+            // ✅ 新增：退出画中画时启用手势（自动重置防抖状态）
+            if (gestureManager != null) {
+                gestureManager.setEnabled(true);
+            }
 
             if (pipManager != null) {
                 pipManager.handleExitPip(new Runnable() {
@@ -845,16 +856,6 @@ public class MainActivity extends AppCompatActivity {
             }
 
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-
-            // 新增：重置手势管理器状态
-            if (gestureManager != null) {
-                try {
-                    gestureManager.reset();
-                    SettingsActivity.logOperation("【画中画】手势管理器已重置");
-                } catch (Exception e) {
-                    SettingsActivity.logOperation("【画中画】手势重置失败：" + e.getMessage());
-                }
-            }
 
             resumeCurrentChannel();
 

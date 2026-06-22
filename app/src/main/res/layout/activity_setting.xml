@@ -1,169 +1,665 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView
-    xmlns:android="http://schemas.android.com/apk/res/android"
+<!--
+  设置页面布局（右侧滑出式菜单风格）
+
+  【作用】
+  设置页面的整体布局，以浮层形式显示在播放界面上方
+
+  【效果】
+  - 屏幕右侧显示
+  - 四个角圆角
+  - 半透明深色背景
+  - 能看到后面的播放界面
+
+  【结构】
+  FrameLayout（全屏透明）
+    ├── view_outside（左侧空白区域，点击关闭）
+    └── ScrollView（右侧设置面板，包含所有设置项）
+
+  【2026-06-19 修改：改成四个角圆角 + 右侧滑出菜单样式】
+  1. 根布局改成 FrameLayout，背景透明
+  2. 内容区域靠右对齐，固定宽度 240dp
+  3. 离右边 20dp 距离，让右侧圆角能看到
+  4. 上下各 20dp 边距
+  5. 背景：settings_panel_bg（四个角圆角，半透明深色）
+  6. 和频道面板风格完全统一，一个在左一个在右，对称
+
+  【2026-06-20 修改：添加点击空白区域关闭功能】
+  新增 view_outside（左侧空白区域），点击它就关闭设置页面。
+  和频道面板的交互方式一致：点击面板外的区域就退出。
+
+  【2026-06-20 修改：背景改成和频道面板一样的 panel_bg】
+  【修改原因】
+  原来用的是 settings_panel_bg，和频道面板的 panel_bg 可能颜色/透明度不一样。
+  现在统一用 panel_bg，两个面板的背景颜色、透明度、圆角完全一致。
+
+  【2026-06-22 新增：画中画（后台小窗播放）开关项】
+  【位置】放在"数字选台"之后、第一条分隔线之前
+  【样式】和其他开关项完全一致（55dp 高度、Switch 开关、可聚焦可点击）
+  【ID】外层 item_pip，开关 sw_pip（与 SettingsActivity.java 中对应）
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#121212">
+    android:background="@android:color/transparent">
 
-    <LinearLayout
+    <!-- ================================================================ -->
+    <!-- 左侧空白区域（点击关闭设置）                                    -->
+    <!-- ================================================================ -->
+    <!--
+      【作用】
+      1. 占满左侧空间，让后面的播放界面能透过来（因为背景是透明的）
+      2. 点击这个区域就关闭设置页面（类似点击弹窗外部关闭）
+
+      【为什么放在 ScrollView 前面？】
+      FrameLayout 的特点是：后面的子 View 会盖在前面的子 View 上面。
+      把 view_outside 放在前面，ScrollView 放在后面，
+      这样：
+      - 点击左侧空白区域 → 触发 view_outside 的点击事件 → 关闭设置
+      - 点击右侧面板区域 → 点击的是 ScrollView（盖在上面）→ 不触发关闭
+
+      【为什么不用 setFinishOnTouchOutside(true)？】
+      因为那是 Dialog 的方法，Activity 没有这个方法。
+      用透明 View 模拟是最通用的方案。
+    -->
+    <View
+        android:id="@+id/view_outside"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="18dp">
+        android:layout_height="match_parent"
+        android:background="@android:color/transparent"
+        android:clickable="true"
+        android:focusable="true" />
 
-        <!-- 开机自启 -->
+    <!-- ================================================================ -->
+    <!-- 设置面板：靠右显示，离右边有 20dp 距离，四个角圆角半透明背景  -->
+    <!-- ================================================================ -->
+    <!--
+      【样式说明】
+      - layout_gravity="end"：靠右显示
+      - layout_marginEnd="20dp"：离右边 20dp，让右侧圆角能看到
+      - layout_marginTop/Bottom="20dp"：上下各 20dp 边距
+      - background="@drawable/panel_bg"：✅ 改成和频道面板一样的背景
+      - 和频道面板（左侧）完全对称，一个左一个右
+
+      【为什么用 ScrollView？】
+      因为设置项比较多，小屏幕可能显示不下，
+      用 ScrollView 可以上下滚动查看所有设置项。
+
+      【内部结构】
+      LinearLayout（垂直排列）
+        ├── 开机自启（两行：文字+开关 + 状态文本）
+        ├── 节目单开关
+        ├── 自动更新源
+        ├── 换台反转
+        ├── 数字选台
+        ├── ✅ 画中画（后台小窗播放）← 2026-06-22 新增
+        ├── 分隔线
+        ├── 屏幕比例
+        ├── 自定义订阅源
+        ├── 自定义节目单
+        ├── 多订阅源
+        ├── 多节目单
+        ├── 扫码添加
+        ├── 分隔线
+        ├── 查看解析日志
+        ├── 操作崩溃日志
+        ├── 检查更新
+        └── 网页设置提示
+    -->
+    <ScrollView
+        android:id="@+id/settings_content"
+        android:layout_width="240dp"
+        android:layout_height="match_parent"
+        android:layout_gravity="end"
+        android:layout_marginEnd="20dp"
+        android:layout_marginTop="20dp"
+        android:layout_marginBottom="20dp"
+        android:background="@drawable/panel_bg"
+        android:paddingTop="20dp"
+        android:paddingBottom="20dp"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp">
+
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="55dp"
-            android:gravity="center_vertical">
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <!-- ============================================================ -->
+            <!-- 开机自启（两行布局：文字+开关 + 状态文本）                  -->
+            <!-- ============================================================ -->
+            <!--
+              【特殊说明】
+              开机自启是两行布局，因为下面还有状态文本（显示"未开启"/"已开启"等）
+              其他开关项都是单行布局（55dp 固定高度）
+
+              【ID说明】
+              - item_boot：外层 LinearLayout，用于点击事件和遥控器焦点
+              - sw_boot：Switch 开关控件
+              - tv_boot_status：状态文本（显示在开关下面）
+            -->
+            <LinearLayout
+                android:id="@+id/item_boot"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:paddingTop="10dp"
+                android:paddingBottom="10dp"
+                android:background="@drawable/setting_item_bg"
+                android:focusable="true"
+                android:clickable="true">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_weight="1"
+                        android:layout_height="wrap_content"
+                        android:text="开机自启"
+                        android:textColor="#FFFFFF"
+                        android:textSize="16sp" />
+
+                    <Switch
+                        android:id="@+id/sw_boot"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:focusable="false"
+                        android:clickable="false" />
+                </LinearLayout>
+
+                <!-- 开机自启状态文本（显示在开关下面） -->
+                <TextView
+                    android:id="@+id/tv_boot_status"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="未开启"
+                    android:textColor="#80FFFFFF"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <!-- ============================================================ -->
+            <!-- 节目单开关                                                  -->
+            <!-- ============================================================ -->
+            <!--
+              【作用】控制 EPG 节目单的显示/隐藏
+              【样式】单行，55dp 固定高度，左侧文字 + 右侧 Switch 开关
+              【ID说明】
+              - item_epg：外层 LinearLayout，用于点击事件和遥控器焦点
+              - sw_epg：Switch 开关控件
+
+              【为什么 Switch 设 focusable=false、clickable=false？】
+              因为整个项（LinearLayout）已经可以点击和获得焦点了，
+              如果 Switch 也能获得焦点，遥控器操作时焦点会跳到开关上，
+              导致用户体验不好（焦点在开关上时看不到整行高亮）。
+              所以让 Switch 不可聚焦不可点击，整行统一处理点击事件。
+            -->
+            <LinearLayout
+                android:id="@+id/item_epg"
+                android:layout_width="match_parent"
+                android:layout_height="55dp"
+                android:gravity="center_vertical"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:background="@drawable/setting_item_bg"
+                android:focusable="true"
+                android:clickable="true">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content"
+                    android:text="节目单开关"
+                    android:textColor="#FFFFFF"
+                    android:textSize="16sp" />
+
+                <Switch
+                    android:id="@+id/sw_epg"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:focusable="false"
+                    android:clickable="false" />
+            </LinearLayout>
+
+            <!-- ============================================================ -->
+            <!-- 自动更新源                                                  -->
+            <!-- ============================================================ -->
+            <!--
+              【作用】控制直播源是否每天凌晨4点自动更新
+              【样式】同节目单开关（单行 55dp）
+              【ID】item_auto_update / sw_auto_update
+            -->
+            <LinearLayout
+                android:id="@+id/item_auto_update"
+                android:layout_width="match_parent"
+                android:layout_height="55dp"
+                android:gravity="center_vertical"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:background="@drawable/setting_item_bg"
+                android:focusable="true"
+                android:clickable="true">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content"
+                    android:text="自动更新源"
+                    android:textColor="#FFFFFF"
+                    android:textSize="16sp" />
+
+                <Switch
+                    android:id="@+id/sw_auto_update"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:focusable="false"
+                    android:clickable="false" />
+            </LinearLayout>
+
+            <!-- ============================================================ -->
+            <!-- 换台反转                                                    -->
+            <!-- ============================================================ -->
+            <!--
+              【作用】控制上下键/手势切台的方向是否反转
+              【样式】同节目单开关（单行 55dp）
+              【ID】item_reverse / sw_reverse
+            -->
+            <LinearLayout
+                android:id="@+id/item_reverse"
+                android:layout_width="match_parent"
+                android:layout_height="55dp"
+                android:gravity="center_vertical"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:background="@drawable/setting_item_bg"
+                android:focusable="true"
+                android:clickable="true">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content"
+                    android:text="换台反转"
+                    android:textColor="#FFFFFF"
+                    android:textSize="16sp" />
+
+                <Switch
+                    android:id="@+id/sw_reverse"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:focusable="false"
+                    android:clickable="false" />
+            </LinearLayout>
+
+            <!-- ============================================================ -->
+            <!-- 数字选台                                                    -->
+            <!-- ============================================================ -->
+            <!--
+              【作用】控制是否支持遥控器数字键直接选台
+              【样式】同节目单开关（单行 55dp）
+              【ID】item_num_channel / sw_num_channel
+            -->
+            <LinearLayout
+                android:id="@+id/item_num_channel"
+                android:layout_width="match_parent"
+                android:layout_height="55dp"
+                android:gravity="center_vertical"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:background="@drawable/setting_item_bg"
+                android:focusable="true"
+                android:clickable="true">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content"
+                    android:text="数字选台"
+                    android:textColor="#FFFFFF"
+                    android:textSize="16sp" />
+
+                <Switch
+                    android:id="@+id/sw_num_channel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:focusable="false"
+                    android:clickable="false" />
+            </LinearLayout>
+
+            <!-- ============================================================ -->
+            <!-- ✅ 画中画（后台小窗播放）（2026-06-22 新增）               -->
+            <!-- ============================================================ -->
+            <!--
+              【功能说明】
+              开启后，用户按 Home 键退到后台时，自动进入画中画小窗播放；
+              关闭后，退到后台不会进入小窗，正常暂停播放。
+
+              【位置说明】
+              放在"数字选台"之后、第一条分隔线之前，
+              属于"播放相关设置"分类（和数字选台、换台反转归为一类）。
+
+              【样式说明】
+              与其他开关项完全一致：
+              - 55dp 固定高度
+              - 垂直居中对齐
+              - 左右各 8dp padding
+              - setting_item_bg 背景
+              - 可聚焦（focusable=true）、可点击（clickable=true）
+              - 左侧文字 + 右侧 Switch 开关
+
+              【ID说明】
+              - item_pip：外层 LinearLayout，用于点击事件和遥控器焦点
+                （与 SettingsActivity.java 中 findViewById(R.id.item_pip) 对应）
+              - sw_pip：Switch 开关控件
+                （与 SettingsActivity.java 中 findViewById(R.id.sw_pip) 对应）
+
+              【为什么 Switch 设 focusable=false、clickable=false？】
+              与其他开关项保持一致：整行统一处理点击和焦点，
+              避免遥控器焦点跳到开关上，保证用户体验统一。
+
+              【兼容性说明】
+              仅 Android 8.0 (API 26) 及以上系统支持画中画，
+              低版本系统即使开启开关也不会生效（代码中会自动判断）。
+            -->
+            <LinearLayout
+                android:id="@+id/item_pip"
+                android:layout_width="match_parent"
+                android:layout_height="55dp"
+                android:gravity="center_vertical"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:background="@drawable/setting_item_bg"
+                android:focusable="true"
+                android:clickable="true">
+
+                <!-- 左侧：设置项名称 -->
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content"
+                    android:text="后台小窗播放"
+                    android:textColor="#FFFFFF"
+                    android:textSize="16sp" />
+
+                <!-- 右侧：Switch 开关 -->
+                <Switch
+                    android:id="@+id/sw_pip"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:focusable="false"
+                    android:clickable="false" />
+            </LinearLayout>
+
+            <!-- ============================================================ -->
+            <!-- 分隔线（播放设置与其他设置的分界线）                        -->
+            <!-- ============================================================ -->
+            <!--
+              【作用】视觉上分隔两组设置项
+              【样式】1dp 高度，半透明白色（#33FFFFFF = 20% 透明度）
+              【上下边距】各 8dp，留出呼吸空间
+            -->
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="#33FFFFFF"
+                android:layout_marginTop="8dp"
+                android:layout_marginBottom="8dp" />
+
+            <!-- ============================================================ -->
+            <!-- 屏幕比例                                                    -->
+            <!-- ============================================================ -->
+            <!--
+              【作用】点击弹出对话框，选择屏幕比例（全屏/填充/原始）
+              【样式】单行 55dp，纯 TextView（没有开关）
+              【ID】tv_screen_ratio
+            -->
             <TextView
-                android:layout_width="0dp"
-                android:layout_weight="1"
-                android:text="开机自启"
-                android:textColor="#fff"
-                android:textSize="16sp"/>
-            <Switch
-                android:id="@+id/sw_boot"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"/>
-        </LinearLayout>
+                android:id="@+id/tv_screen_ratio"
+                android:layout_width="match_parent"
+                android:layout_height="55dp"
+                android:gravity="center_vertical"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:text="屏幕比例"
+                android:textColor="#FFFFFF"
+                android:textSize="16sp"
+                android:background="@drawable/setting_item_bg"
+                android:focusable="true"
+                android:clickable="true" />
 
-        <!-- 节目单开关 -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="55dp"
-            android:gravity="center_vertical">
+            <!-- ============================================================ -->
+            <!-- 自定义订阅源                                                -->
+            <!-- ============================================================ -->
+            <!--
+              【作用】点击弹出输入框，输入自定义直播源地址
+              【样式】同屏幕比例（单行 TextView）
+              【ID】tv_custom_source
+            -->
             <TextView
-                android:layout_width="0dp"
-                android:layout_weight="1"
-                android:text="节目单开关"
-                android:textColor="#fff"
-                android:textSize="16sp"/>
-            <Switch
-                android:id="@+id/sw_epg"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"/>
-        </LinearLayout>
+                android:id="@+id/tv_custom_source"
+                android:layout_width="match_parent"
+                android:layout_height="55dp"
+                android:gravity="center_vertical"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:text="自定义订阅源"
+                android:textColor="#FFFFFF"
+                android:textSize="16sp"
+                android:background="@drawable/setting_item_bg"
+                android:focusable="true"
+                android:clickable="true" />
 
-        <!-- 自动更新 -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="55dp"
-            android:gravity="center_vertical">
+            <!-- ============================================================ -->
+            <!-- 自定义节目单                                                -->
+            <!-- ============================================================ -->
+            <!--
+              【作用】点击弹出输入框，输入自定义 EPG 节目单地址
+              【样式】同屏幕比例
+              【ID】tv_custom_epg
+            -->
             <TextView
-                android:layout_width="0dp"
-                android:layout_weight="1"
-                android:text="自动更新"
-                android:textColor="#fff"
-                android:textSize="16sp"/>
-            <Switch
-                android:id="@+id/sw_auto_update"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"/>
-        </LinearLayout>
+                android:id="@+id/tv_custom_epg"
+                android:layout_width="match_parent"
+                android:layout_height="55dp"
+                android:gravity="center_vertical"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:text="自定义节目单"
+                android:textColor="#FFFFFF"
+                android:textSize="16sp"
+                android:background="@drawable/setting_item_bg"
+                android:focusable="true"
+                android:clickable="true" />
 
-        <!-- 换台反转 -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="55dp"
-            android:gravity="center_vertical">
+            <!-- ============================================================ -->
+            <!-- 多订阅源                                                    -->
+            <!-- ============================================================ -->
+            <!--
+              【作用】点击查看直播源历史记录，可切换不同的订阅源
+              【样式】同屏幕比例
+              【ID】tv_multi_source
+            -->
             <TextView
-                android:layout_width="0dp"
-                android:layout_weight="1"
-                android:text="换台反转"
-                android:textColor="#fff"
-                android:textSize="16sp"/>
-            <Switch
-                android:id="@+id/sw_reverse"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"/>
-        </LinearLayout>
+                android:id="@+id/tv_multi_source"
+                android:layout_width="match_parent"
+                android:layout_height="55dp"
+                android:gravity="center_vertical"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:text="多订阅源"
+                android:textColor="#FFFFFF"
+                android:textSize="16sp"
+                android:background="@drawable/setting_item_bg"
+                android:focusable="true"
+                android:clickable="true" />
 
-        <!-- 数字选台 -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="55dp"
-            android:gravity="center_vertical">
+            <!-- ============================================================ -->
+            <!-- 多节目单                                                    -->
+            <!-- ============================================================ -->
+            <!--
+              【作用】点击查看节目单历史记录，可切换不同的 EPG
+              【样式】同屏幕比例
+              【ID】tv_multi_epg
+            -->
             <TextView
-                android:layout_width="0dp"
-                android:layout_weight="1"
-                android:text="数字选台"
-                android:textColor="#fff"
-                android:textSize="16sp"/>
-            <Switch
-                android:id="@+id/sw_num_channel"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"/>
+                android:id="@+id/tv_multi_epg"
+                android:layout_width="match_parent"
+                android:layout_height="55dp"
+                android:gravity="center_vertical"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:text="多节目单"
+                android:textColor="#FFFFFF"
+                android:textSize="16sp"
+                android:background="@drawable/setting_item_bg"
+                android:focusable="true"
+                android:clickable="true" />
+
+            <!-- ============================================================ -->
+            <!-- 扫码添加                                                    -->
+            <!-- ============================================================ -->
+            <!--
+              【作用】点击显示二维码，手机扫码后可在网页端添加直播源/节目单
+              【样式】同屏幕比例，文字稍长（"扫码添加直播源/节目单"）
+              【ID】tv_qr_code
+            -->
+            <TextView
+                android:id="@+id/tv_qr_code"
+                android:layout_width="match_parent"
+                android:layout_height="55dp"
+                android:gravity="center_vertical"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:text="扫码添加直播源/节目单"
+                android:textColor="#FFFFFF"
+                android:textSize="16sp"
+                android:background="@drawable/setting_item_bg"
+                android:focusable="true"
+                android:clickable="true" />
+
+            <!-- ============================================================ -->
+            <!-- 分隔线（设置与日志/更新的分界线）                            -->
+            <!-- ============================================================ -->
+            <!--
+              【作用】视觉上分隔"设置项"和"工具项"（日志、检查更新）
+              【样式】同第一条分隔线（1dp 高度、半透明白色、上下 8dp 边距）
+            -->
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="#33FFFFFF"
+                android:layout_marginTop="8dp"
+                android:layout_marginBottom="8dp" />
+
+            <!-- ============================================================ -->
+            <!-- 查看解析日志                                                -->
+            <!-- ============================================================ -->
+            <!--
+              【作用】点击弹出对话框，查看播放器的解析、缓冲、播放日志
+              【样式】同屏幕比例，带 emoji 图标（📄）增强辨识度
+              【ID】log_viewer
+            -->
+            <TextView
+                android:id="@+id/log_viewer"
+                android:layout_width="match_parent"
+                android:layout_height="55dp"
+                android:gravity="center_vertical"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:text="📄 查看解析日志"
+                android:textColor="#FFFFFF"
+                android:textSize="16sp"
+                android:background="@drawable/setting_item_bg"
+                android:focusable="true"
+                android:clickable="true" />
+
+            <!-- ============================================================ -->
+            <!-- 操作崩溃日志                                                -->
+            <!-- ============================================================ -->
+            <!--
+              【作用】点击弹出对话框，查看用户操作记录和崩溃日志
+              【样式】同查看解析日志，带 emoji 图标（📌）
+              【ID】log_operation
+            -->
+            <TextView
+                android:id="@+id/log_operation"
+                android:layout_width="match_parent"
+                android:layout_height="55dp"
+                android:gravity="center_vertical"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:text="📌 操作崩溃日志"
+                android:textColor="#FFFFFF"
+                android:textSize="16sp"
+                android:background="@drawable/setting_item_bg"
+                android:focusable="true"
+                android:clickable="true" />
+
+            <!-- ============================================================ -->
+            <!-- 检查更新                                                    -->
+            <!-- ============================================================ -->
+            <!--
+              【作用】点击检查应用更新，有新版本则自动下载安装
+              【样式】特殊：左侧文字 + 右侧按钮（不是 Switch）
+              【ID】
+              - item_check_update：外层 LinearLayout
+              - btn_check_update：检查更新按钮
+
+              【为什么按钮设 focusable=false、clickable=false？】
+              与开关项同理：整行统一处理点击，避免遥控器焦点混乱。
+              点击整行就触发检查更新，不用单独点按钮。
+            -->
+            <LinearLayout
+                android:id="@+id/item_check_update"
+                android:layout_width="match_parent"
+                android:layout_height="55dp"
+                android:gravity="center_vertical"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:background="@drawable/setting_item_bg"
+                android:focusable="true"
+                android:clickable="true">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content"
+                    android:text="检查更新"
+                    android:textColor="#FFFFFF"
+                    android:textSize="16sp" />
+
+                <Button
+                    android:id="@+id/btn_check_update"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="检查更新"
+                    android:focusable="false"
+                    android:clickable="false" />
+            </LinearLayout>
+
+            <!-- ============================================================ -->
+            <!-- 网页设置提示                                                -->
+            <!-- ============================================================ -->
+            <!--
+              【作用】在底部显示网页后台的访问地址，提示用户
+              【样式】居中、灰色小字（#80FFFFFF = 50% 透明度）、12sp
+              【上边距】16dp，与上面的设置项拉开距离
+            -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:gravity="center"
+                android:text="网页设置：http://设备IP:10481"
+                android:textColor="#80FFFFFF"
+                android:textSize="12sp" />
+
         </LinearLayout>
-
-        <!-- 屏幕比例 -->
-        <TextView
-            android:id="@+id/tv_screen_ratio"
-            android:layout_width="match_parent"
-            android:layout_height="55dp"
-            android:clickable="true"
-            android:focusable="true"
-            android:gravity="center_vertical"
-            android:text="屏幕比例"
-            android:textColor="#fff"
-            android:textSize="16sp"/>
-
-        <!-- 自定义订阅源 -->
-        <TextView
-            android:id="@+id/tv_custom_source"
-            android:layout_width="match_parent"
-            android:layout_height="55dp"
-            android:clickable="true"
-            android:focusable="true"
-            android:gravity="center_vertical"
-            android:text="自定义订阅源"
-            android:textColor="#fff"
-            android:textSize="16sp"/>
-
-        <!-- 自定义节目单 -->
-        <TextView
-            android:id="@+id/tv_custom_epg"
-            android:layout_width="match_parent"
-            android:layout_height="55dp"
-            android:clickable="true"
-            android:focusable="true"
-            android:gravity="center_vertical"
-            android:text="自定义节目单"
-            android:textColor="#fff"
-            android:textSize="16sp"/>
-
-        <!-- 多订阅源 -->
-        <TextView
-            android:id="@+id/tv_multi_source"
-            android:layout_width="match_parent"
-            android:layout_height="55dp"
-            android:clickable="true"
-            android:focusable="true"
-            android:gravity="center_vertical"
-            android:text="多订阅源"
-            android:textColor="#fff"
-            android:textSize="16sp"/>
-
-        <!-- 多节目单 -->
-        <TextView
-            android:id="@+id/tv_multi_epg"
-            android:layout_width="match_parent"
-            android:layout_height="55dp"
-            android:clickable="true"
-            android:focusable="true"
-            android:gravity="center_vertical"
-            android:text="多节目单"
-            android:textColor="#fff"
-            android:textSize="16sp"/>
-
-        <!-- 提示文本 -->
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="60dp"
-            android:gravity="center"
-            android:text="网页设置：http://&lt;设备IP&gt;:10481"
-            android:textColor="#999"
-            android:textSize="14sp"/>
-
-    </LinearLayout>
-</ScrollView>
+    </ScrollView>
+</FrameLayout>

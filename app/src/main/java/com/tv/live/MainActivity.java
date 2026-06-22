@@ -553,6 +553,7 @@ public class MainActivity extends AppCompatActivity {
         pipEnable = sp.getBoolean("pip_enable", true);
         if (pipManager != null) {
         pipManager.setPipEnabled(pipEnable);
+        SettingsActivity.logOperation("【画中画排查】loadSettings 同步开关：" + pipEnable);   
 }
 
         if (channelNumberManager != null) {
@@ -771,31 +772,70 @@ public class MainActivity extends AppCompatActivity {
     public void onReceiveConfig(final String liveUrl, final String epgUrl) {
         appCoreManager.onReceiveConfig(liveUrl, epgUrl);
     }
-    // ====================================================================
+     // ====================================================================
 // ✅ 画中画：用户按 Home 键时自动进入画中画
-// 【说明】使用 PictureInPictureManager 统一管理
+// 【排查版】每一步都输出日志，精准定位问题
 // ====================================================================
 @Override
 protected void onUserLeaveHint() {
     super.onUserLeaveHint();
     
-    // 打开设置页面时不进入画中画（避免误触发）
+    SettingsActivity.logOperation("【画中画排查】========== 开始 ==========");
+    SettingsActivity.logOperation("【画中画排查】onUserLeaveHint 被调用");
+    
+    // 1. 检查是否打开设置页面
     if (isOpeningSettings) {
+        SettingsActivity.logOperation("【画中画排查】打开设置页面，跳过");
+        SettingsActivity.logOperation("【画中画排查】========== 结束 ==========");
         return;
     }
     
-    // 如果画中画开关开启，并且设备支持画中画，就自动进入
-    if (pipEnable && pipManager != null && pipManager.isPipSupported()) {
-        SettingsActivity.logOperation("【画中画】用户按 Home 键 → 自动进入画中画");
+    // 2. 检查 MainActivity 的开关状态
+    SettingsActivity.logOperation("【画中画排查】MainActivity开关状态：" + pipEnable);
+    
+    // 3. 检查 PictureInPictureManager 是否存在
+    if (pipManager == null) {
+        SettingsActivity.logOperation("【画中画排查】❌ pipManager 为 null，初始化失败");
+        SettingsActivity.logOperation("【画中画排查】========== 结束 ==========");
+        return;
+    }
+    SettingsActivity.logOperation("【画中画排查】✅ pipManager 已初始化");
+    
+    // 4. 检查设备是否支持画中画
+    boolean supported = pipManager.isPipSupported();
+    SettingsActivity.logOperation("【画中画排查】设备支持画中画：" + supported);
+    
+    // 5. 检查 PictureInPictureManager 内部开关
+    boolean enabled = pipManager.isPipEnabled();
+    SettingsActivity.logOperation("【画中画排查】PIP管理器内部开关：" + enabled);
+    
+    // 6. 如果开关不同步，尝试同步
+    if (!enabled && pipEnable) {
+        SettingsActivity.logOperation("【画中画排查】⚠️ 开关不同步，尝试同步...");
+        pipManager.setPipEnabled(pipEnable);
+        enabled = pipManager.isPipEnabled();
+        SettingsActivity.logOperation("【画中画排查】同步后开关状态：" + enabled);
+    }
+    
+    // 7. 尝试进入画中画
+    if (pipEnable && supported && enabled) {
+        SettingsActivity.logOperation("【画中画排查】所有条件满足，尝试进入画中画...");
         try {
-            pipManager.enterPictureInPicture(this);
+            boolean result = pipManager.enterPictureInPicture(this);
+            SettingsActivity.logOperation("【画中画排查】进入结果：" + (result ? "✅ 成功" : "❌ 失败"));
         } catch (Exception e) {
-            SettingsActivity.logOperation("【画中画】进入失败：" + e.getMessage());
+            SettingsActivity.logOperation("【画中画排查】❌ 异常：" + e.getMessage());
             e.printStackTrace();
         }
+    } else {
+        SettingsActivity.logOperation("【画中画排查】❌ 条件不满足，不进入画中画");
+        SettingsActivity.logOperation("【画中画排查】  - MainActivity开关：" + pipEnable);
+        SettingsActivity.logOperation("【画中画排查】  - 设备支持：" + supported);
+        SettingsActivity.logOperation("【画中画排查】  - PIP管理器开关：" + enabled);
     }
+    
+    SettingsActivity.logOperation("【画中画排查】========== 结束 ==========");
 }
-
     // ====================================================================
     // ✅ 画中画：模式变化回调（新增）
     // ====================================================================

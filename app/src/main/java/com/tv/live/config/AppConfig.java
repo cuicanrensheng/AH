@@ -215,4 +215,26 @@ public class AppConfig {
         }
         appSp.edit().putString(KEY_RECENT_CHANNELS, sb.toString()).apply();
     }
+        // ====================================================================
+    // ✅ 画中画开关（统一管理）
+    // ====================================================================
+    private static final String KEY_PIP_ENABLE = "pip_enable";
+    
+    /**
+     * 获取画中画开关状态
+     *
+     * @return true=开启，false=关闭（默认关闭）
+     */
+    public boolean isPipEnabled() {
+        return appSp.getBoolean(KEY_PIP_ENABLE, false);
+    }
+    
+    /**
+     * 设置画中画开关状态
+     *
+     * @param enabled true=开启，false=关闭
+     */
+    public void setPipEnabled(boolean enabled) {
+        appSp.edit().putBoolean(KEY_PIP_ENABLE, enabled).apply();
+    }
 }

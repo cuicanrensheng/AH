@@ -356,11 +356,11 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // ====================================================================
-    // 信息展示管理器初始化
+    // 信息展示管理器初始化（✅ 已修复编译错误）
     // ====================================================================
     private void initInfoDisplayManager() {
         TextView tv_channel_num = findViewById(R.id.tv_channel_num);
-        View info_bar = R.id.info_bar;
+        View info_bar = findViewById(R.id.info_bar); // 修复：正确findViewById
         TextView tv_channel_name = findViewById(R.id.tv_channel_name);
         TextView tv_tag_fhd = findViewById(R.id.tv_tag_fhd);
         TextView tv_tag_audio = findViewById(R.id.tv_tag_audio);
@@ -620,7 +620,7 @@ public class MainActivity extends AppCompatActivity {
             hidePlayerPlaceholder();
             log("【联动】画中画已开启 → 自动隐藏占位图");
         } else {
-            // 关闭画中画：恢复正常逻辑（不主动显示，跟随生命周期）
+            // 关闭画中画：恢复正常逻辑
             log("【联动】画中画已关闭 → 自动恢复占位图功能");
         }
     }
@@ -637,7 +637,7 @@ public class MainActivity extends AppCompatActivity {
     // ====================================================================
     public void playChannel(int index) {
         if (channelSourceList == null || channelSourceList.isEmpty()) return;
-        if (index < 0 || index >= channelSourceList.size()) return;
+        if (index < 0 && index >= channelSourceList.size()) return;
         Channel channel = channelSourceList.get(index);
         playChannel(channel, index);
     }

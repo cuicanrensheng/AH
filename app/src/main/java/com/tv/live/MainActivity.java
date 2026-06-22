@@ -76,6 +76,7 @@ public class MainActivity extends AppCompatActivity {
     private PictureInPictureManager pipManager;
     private boolean pipEnable = false;      // 画中画开关状态
     private boolean isInPipMode = false;    // 当前是否在画中画模式
+    private boolean isPipEntering = false;  // 【新增】是否正在进入画中画（防止重复触发）
 
     // ====================== 状态标志 ======================
     private boolean channel_reverse;
@@ -192,22 +193,9 @@ public class MainActivity extends AppCompatActivity {
             pipManager.setListener(new PictureInPictureManager.OnPipListener() {
                 @Override
                 public void onPipModeChanged(boolean inPip) {
-                    isInPipMode = inPip;
-                    if (inPip) {
-                        // 进入画中画：隐藏所有UI，保持播放
-                        hideAllUiForPip();
-                        keepPlayingInPip();
-                    } else {
-                        // 退出画中画：恢复UI，重新播放（防止黑屏）
-                        showPlayerPlaceholder();
-                        new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
-                            @Override
-                            public void run() {
-                                resumeCurrentChannel();
-                                hidePlayerPlaceholder();
-                            }
-                        }, 300);
-                    }
+                    log("【画中画】监听器回调：" + (inPip ? "进入" : "退出"));
+                    // 状态同步交给 onPictureInPictureModeChanged 系统回调统一处理
+                    // 这里只做日志记录，避免重复处理导致状态混乱
                 }
             });
             log("【画中画】初始化完成，开关状态：" + (pipEnable ? "开启" : "关闭"));
@@ -847,6 +835,7 @@ public class MainActivity extends AppCompatActivity {
 
     // ====================================================================
     // ✅ 画中画：用户按 Home 键时自动进入画中画（核心方法）
+    // 【优化】添加防重复触发判断，避免多次进入画中画
     // ====================================================================
     @Override
     protected void onUserLeaveHint() {
@@ -854,6 +843,20 @@ public class MainActivity extends AppCompatActivity {
 
         SettingsActivity.logOperation("【画中画排查】========== 开始 ==========");
         SettingsActivity.logOperation("【画中画排查】onUserLeaveHint 被调用");
+
+        // 【优化1】如果已经在画中画模式，直接返回，防止重复触发
+        if (isInPipMode) {
+            SettingsActivity.logOperation("【画中画排查】已在画中画模式，跳过");
+            SettingsActivity.logOperation("【画中画排查】========== 结束 ==========");
+            return;
+        }
+
+        // 【优化2】如果正在进入画中画，直接返回，防止重复触发
+        if (isPipEntering) {
+            SettingsActivity.logOperation("【画中画排查】正在进入画中画，跳过");
+            SettingsActivity.logOperation("【画中画排查】========== 结束 ==========");
+            return;
+        }
 
         // 1. 检查是否打开设置页面
         if (isOpeningSettings) {
@@ -893,6 +896,9 @@ public class MainActivity extends AppCompatActivity {
         if (pipEnable && supported && enabled) {
             SettingsActivity.logOperation("【画中画排查】所有条件满足，尝试进入画中画...");
             try {
+                // 标记正在进入画中画（防止重复触发）
+                isPipEntering = true;
+
                 // 构建画中画参数（16:9 比例，适配直播画面）
                 PictureInPictureParams pipParams = null;
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -907,13 +913,21 @@ public class MainActivity extends AppCompatActivity {
                 }
 
                 boolean result = pipManager.enterPictureInPicture(this, pipParams);
+
                 // 同步画中画状态
                 isInPipMode = result;
                 SettingsActivity.logOperation("【画中画排查】进入结果：" + (result ? "✅ 成功" : "❌ 失败"));
 
+                // 进入失败时重置标记
+                if (!result) {
+                    isPipEntering = false;
+                }
+
             } catch (Exception e) {
                 SettingsActivity.logOperation("【画中画排查】❌ 异常：" + e.getMessage());
                 e.printStackTrace();
+                // 异常时重置标记
+                isPipEntering = false;
             }
         } else {
             SettingsActivity.logOperation("【画中画排查】❌ 条件不满足，不进入画中画");
@@ -927,6 +941,7 @@ public class MainActivity extends AppCompatActivity {
 
     // ====================================================================
     // ✅ 画中画：模式变化回调（核心方法）
+    // 【优化】统一处理状态切换，避免监听器和系统回调重复处理
     // ====================================================================
     @Override
     public void onPictureInPictureModeChanged(boolean isInPictureInPictureMode) {
@@ -934,6 +949,9 @@ public class MainActivity extends AppCompatActivity {
 
         // 强制同步状态
         isInPipMode = isInPictureInPictureMode;
+        // 重置进入中标记
+        isPipEntering = false;
+
         SettingsActivity.logOperation("【画中画】模式变化 → " + (isInPictureInPictureMode ? "进入画中画" : "退出画中画"));
 
         // 同步状态到PIP管理器
@@ -946,7 +964,9 @@ public class MainActivity extends AppCompatActivity {
         }
 
         if (isInPictureInPictureMode) {
-            // 进入画中画：隐藏所有面板 + 隐藏信息栏 + 保持播放
+            // ============================================================
+            // 进入画中画：隐藏所有UI + 保持播放
+            // ============================================================
             if (channelPanelController != null && channelPanelController.isPanelOpen()) {
                 channelPanelController.hidePanel();
             }
@@ -956,15 +976,23 @@ public class MainActivity extends AppCompatActivity {
             }
             // 画中画模式下保持屏幕常亮
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            // 【重要】隐藏占位图，确保小窗有画面
+            hidePlayerPlaceholder();
             // 确保PIP模式下播放器继续播放（防止黑屏）
             keepPlayingInPip();
 
         } else {
-            // 退出画中画：恢复全屏 + 同步遥控器模式 + 显示信息栏
+            // ============================================================
+            // 退出画中画：恢复全屏 + 恢复UI
+            // ============================================================
             if (displayManager != null) {
                 displayManager.reapplyFullScreen();
             }
             syncRemoteMode();
+
+            // 【优化】不显示占位图，直接恢复播放（防止黑屏闪烁）
+            // 退出画中画时播放器通常还在播放，不需要重新播放
+            // 只需要恢复UI展示即可
 
             // 恢复当前频道的信息展示
             if (infoDisplayManager != null && channelSourceList.size() > currentPlayIndex) {
@@ -976,6 +1004,8 @@ public class MainActivity extends AppCompatActivity {
 
             // 退出PIP后仍保持屏幕常亮
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+
+            log("【画中画】退出画中画完成，不显示占位图");
         }
     }
 
@@ -1042,16 +1072,21 @@ public class MainActivity extends AppCompatActivity {
         screenRatioManager.apply();
         displayManager.reapplyFullScreen();
 
-        // ✅ 画中画模式下不隐藏占位图（优化：非PIP模式才恢复）
+        // ============================================================
+        // 【优化】从后台返回时的处理
+        // ============================================================
         if (!isInPipMode) {
+            // 非画中画模式：立即隐藏占位图，不延迟（防止黑屏）
+            hidePlayerPlaceholder();
+
+            // 如果播放器可能被暂停了，恢复播放
+            // 延迟一小会儿，等Activity完全恢复后再播放
             new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
                 @Override
                 public void run() {
-                    hidePlayerPlaceholder();
-                    // 恢复播放（防止切后台回来黑屏）
                     resumeCurrentChannel();
                 }
-            }, 1500);
+            }, 200);  // 从1500ms改为200ms，几乎无感知
         }
 
         syncRemoteMode();

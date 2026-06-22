@@ -31,7 +31,6 @@ import com.tv.live.SettingsActivity;
  * 而且在操作日志里可以看到是手势触发的切台。
  */
 public class GestureManager {
-
     private final MainActivity activity;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private static final long DEBOUNCE_DELAY_MS = 300; // 300ms防抖
@@ -68,13 +67,11 @@ public class GestureManager {
             public void onPrevChannel() {
                 if (!isGestureLocked) {
                     isGestureLocked = true;
-
                     // 记录入口日志：是手势上滑触发的
                     boolean isReverse = activity.isChannelReverse();
                     SettingsActivity.logOperation("【手势】上滑 → 反转状态：" 
                             + (isReverse ? "开启" : "关闭")
                             + " → 实际方向：" + (isReverse ? "下一台" : "上一台"));
-
                     // 根据反转状态决定调用哪个方法
                     if (isReverse) {
                         // 反转开启：上滑 = 下一台
@@ -83,7 +80,6 @@ public class GestureManager {
                         // 反转关闭：上滑 = 上一台
                         activity.playPrev();
                     }
-
                     // 解锁
                     mainHandler.postDelayed(() -> isGestureLocked = false, DEBOUNCE_DELAY_MS);
                 } else {
@@ -98,13 +94,11 @@ public class GestureManager {
             public void onNextChannel() {
                 if (!isGestureLocked) {
                     isGestureLocked = true;
-
                     // 记录入口日志：是手势下滑触发的
                     boolean isReverse = activity.isChannelReverse();
                     SettingsActivity.logOperation("【手势】下滑 → 反转状态：" 
                             + (isReverse ? "开启" : "关闭")
                             + " → 实际方向：" + (isReverse ? "上一台" : "下一台"));
-
                     // 根据反转状态决定调用哪个方法
                     if (isReverse) {
                         // 反转开启：下滑 = 上一台
@@ -113,7 +107,6 @@ public class GestureManager {
                         // 反转关闭：下滑 = 下一台
                         activity.playNext();
                     }
-
                     // 解锁
                     mainHandler.postDelayed(() -> isGestureLocked = false, DEBOUNCE_DELAY_MS);
                 } else {
@@ -121,5 +114,18 @@ public class GestureManager {
                 }
             }
         });
+    }
+
+    /**
+     * 重置手势状态（清除防抖锁定）
+     * 【使用场景】
+     * 1. 退出画中画时，防止残留的锁定状态影响正常手势
+     * 2. 页面恢复时，确保手势可用
+     */
+    public void reset() {
+        isGestureLocked = false;
+        // 移除所有待处理的延迟消息，确保状态干净
+        mainHandler.removeCallbacksAndMessages(null);
+        SettingsActivity.logOperation("【手势】✅ 状态已重置（清除防抖锁定）");
     }
 }

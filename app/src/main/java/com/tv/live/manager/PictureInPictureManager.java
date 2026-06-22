@@ -885,8 +885,7 @@ public class PictureInPictureManager {
     // ================================================
     // ✅ 五、进入/退出画中画
     // ================================================
-
-    public boolean enterPictureInPicture(Activity activity) {
+        public boolean enterPictureInPicture(Activity activity) {
         if (activity == null) {
             Log.e(TAG, "Activity 为空，无法进入画中画");
             return false;
@@ -895,14 +894,10 @@ public class PictureInPictureManager {
             Log.w(TAG, "设备不支持画中画");
             return false;
         }
-        if (!isPipEnabled()) {
-            Log.d(TAG, "画中画开关未开启");
-            return false;
-        }
+        // ✅ 去掉了 isPipEnabled() 判断，开关由 MainActivity 统一控制
         if (isMultiWindowMode) {
             exitMultiWindowMode();
         }
-
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 PictureInPictureParams params = buildPipParams();

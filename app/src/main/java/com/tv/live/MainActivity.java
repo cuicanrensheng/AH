@@ -114,7 +114,6 @@ public class MainActivity extends AppCompatActivity {
         displayManager.applyFullScreen();
 
         setContentView(R.layout.activity_main);
-
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
         initInfoDisplayManager();
@@ -156,7 +155,6 @@ public class MainActivity extends AppCompatActivity {
 
         gestureManager = new GestureManager(this);
         final PlayerGestureHelper gestureHelper = gestureManager.create();
-
         playerView.setOnTouchListener(new View.OnTouchListener() {
             @Override
             public boolean onTouch(View v, MotionEvent event) {
@@ -273,47 +271,12 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // ====================================================================
-    // ✅ 补充缺失的方法（供GestureManager/KeyEventManager调用）
-    // ====================================================================
-    public boolean isChannelReverse() {
-        return channel_reverse;
-    }
-
-    public void playNext() {
-        if (channelSourceList == null || channelSourceList.isEmpty()) return;
-        int next;
-        if (channel_reverse) {
-            next = (currentPlayIndex - 1 + channelSourceList.size()) % channelSourceList.size();
-        } else {
-            next = (currentPlayIndex + 1) % channelSourceList.size();
-        }
-        playChannel(channelSourceList.get(next), next);
-    }
-
-    public void playPrev() {
-        if (channelSourceList == null || channelSourceList.isEmpty()) return;
-        int prev;
-        if (channel_reverse) {
-            prev = (currentPlayIndex + 1) % channelSourceList.size();
-        } else {
-            prev = (currentPlayIndex - 1 + channelSourceList.size()) % channelSourceList.size();
-        }
-        playChannel(channelSourceList.get(prev), prev);
-    }
-
-    // 重载方法，兼容单参数调用
-    public void playChannel(int position) {
-        if (position >= 0 && position < channelSourceList.size()) {
-            playChannel(channelSourceList.get(position), position);
-        }
-    }
-
-    // ====================================================================
     // 初始化遥控器管理器
     // ====================================================================
     private void initRemoteManager() {
         remoteManager = new TvRemoteManager();
         remoteManager.setMode(TvRemoteManager.Mode.PLAY_MODE);
+
         remoteManager.setOnRemoteActionListener(new TvRemoteManager.OnRemoteActionListener() {
 
             // ================== 播放模式回调 ==================
@@ -571,6 +534,7 @@ public class MainActivity extends AppCompatActivity {
         appCoreManager = new AppCoreManager(this, mPlayerManager, appConfig);
 
         appCoreManager.setOnDataLoadListener(new AppCoreManager.OnDataLoadListener() {
+
             @Override
             public void onLiveSourceLoaded(List<Channel> channels, boolean fromCache) {
                 runOnUiThread(new Runnable() {
@@ -645,6 +609,7 @@ public class MainActivity extends AppCompatActivity {
     // ====================== 设置加载 ======================
     private void loadSettings() {
         SharedPreferences sp = getSharedPreferences("app_settings", MODE_PRIVATE);
+
         boolean epg_enable = sp.getBoolean("epg_enable", true);
         channel_reverse = sp.getBoolean("channel_reverse", false);
         number_channel_enable = sp.getBoolean("number_channel_enable", true);
@@ -710,7 +675,6 @@ public class MainActivity extends AppCompatActivity {
 
         playerStateListener.setCurrentChannelName(channel.getName());
         appConfig.setLastPlayIndex(index);
-
         mPlayerManager.playUrl(channel.getPlayUrl());
 
         TVPlayerManager.LiveInfo live = mPlayerManager.getLiveInfo();
@@ -797,11 +761,13 @@ public class MainActivity extends AppCompatActivity {
                         + (channel_reverse ? "开启" : "关闭"));
                 channelPanelController.switchUp();
                 return true;
+
             case KeyEvent.KEYCODE_DPAD_DOWN:
                 SettingsActivity.logOperation("【按键】handleDirectionKey 下键 → 反转状态："
                         + (channel_reverse ? "开启" : "关闭"));
                 channelPanelController.switchDown();
                 return true;
+
             case KeyEvent.KEYCODE_DPAD_CENTER:
             case KeyEvent.KEYCODE_ENTER:
                 if (channelNumberManager.isInputting()) {
@@ -810,10 +776,12 @@ public class MainActivity extends AppCompatActivity {
                 }
                 togglePanel();
                 return true;
+
             case KeyEvent.KEYCODE_DPAD_LEFT:
             case KeyEvent.KEYCODE_DPAD_RIGHT:
                 togglePanel();
                 return true;
+
             default:
                 return false;
         }
@@ -942,6 +910,7 @@ public class MainActivity extends AppCompatActivity {
                 // 同步画中画状态
                 isInPipMode = result;
                 SettingsActivity.logOperation("【画中画排查】进入结果：" + (result ? "✅ 成功" : "❌ 失败"));
+
             } catch (Exception e) {
                 SettingsActivity.logOperation("【画中画排查】❌ 异常：" + e.getMessage());
                 e.printStackTrace();
@@ -989,12 +958,14 @@ public class MainActivity extends AppCompatActivity {
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
             // 确保PIP模式下播放器继续播放（防止黑屏）
             keepPlayingInPip();
+
         } else {
             // 退出画中画：恢复全屏 + 同步遥控器模式 + 显示信息栏
             if (displayManager != null) {
                 displayManager.reapplyFullScreen();
             }
             syncRemoteMode();
+
             // 恢复当前频道的信息展示
             if (infoDisplayManager != null && channelSourceList.size() > currentPlayIndex) {
                 Channel currChannel = channelSourceList.get(currentPlayIndex);
@@ -1002,6 +973,7 @@ public class MainActivity extends AppCompatActivity {
                 infoDisplayManager.showInfoBar(currChannel, liveInfo);
                 infoDisplayManager.showChannelNum(currentPlayIndex + 1);
             }
+
             // 退出PIP后仍保持屏幕常亮
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         }
@@ -1060,6 +1032,7 @@ public class MainActivity extends AppCompatActivity {
 
         // 重新加载设置（防止设置页面修改了画中画开关）
         loadSettings();
+
         // 同步画中画开关到管理器
         if (pipManager != null) {
             pipManager.setPipEnabled(pipEnable);
@@ -1087,11 +1060,9 @@ public class MainActivity extends AppCompatActivity {
     @Override
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
-
         if (hasFocus) {
             displayManager.reapplyFullScreen();
         }
-
         appCoreManager.onWindowFocusChanged(hasFocus);
     }
 

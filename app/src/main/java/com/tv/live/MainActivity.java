@@ -122,26 +122,57 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // ✅ 修复画中画初始化（无闪退）
+    // ✅ 修复：补充缺失的 isChannelReverse()
+    public boolean isChannelReverse() {
+        return channel_reverse;
+    }
+
+    // ✅ 修复：补充缺失的 playNext()
+    public void playNext() {
+        if (channelSourceList == null || channelSourceList.isEmpty()) return;
+        int next;
+        if (channel_reverse) {
+            next = (currentPlayIndex - 1 + channelSourceList.size()) % channelSourceList.size();
+        } else {
+            next = (currentPlayIndex + 1) % channelSourceList.size();
+        }
+        playChannel(channelSourceList.get(next), next);
+    }
+
+    // ✅ 修复：补充缺失的 playPrev()
+    public void playPrev() {
+        if (channelSourceList == null || channelSourceList.isEmpty()) return;
+        int prev;
+        if (channel_reverse) {
+            prev = (currentPlayIndex + 1) % channelSourceList.size();
+        } else {
+            prev = (currentPlayIndex - 1 + channelSourceList.size()) % channelSourceList.size();
+        }
+        playChannel(channelSourceList.get(prev), prev);
+    }
+
+    // ✅ 修复：重载方法，适配 ChannelListActivity 单参数调用
+    public void playChannel(int position) {
+        if (position >= 0 && position < channelSourceList.size()) {
+            playChannel(channelSourceList.get(position), position);
+        }
+    }
+
     private void initPictureInPicture() {
         pipManager = PictureInPictureManager.getInstance(this);
         pipManager.setPipEnabled(pipEnable);
         pipManager.setListener(inPip -> {
             isInPipMode = inPip;
             if (inPip) {
-                // ✅ 画中画模式自动播放（核心修复）
                 resumePlay();
-                // 隐藏所有UI，避免黑屏/重叠
                 hideAllUi();
             } else {
-                // 退出画中画恢复UI
                 showPlayerPlaceholder();
                 new Handler(Looper.getMainLooper()).postDelayed(this::resumePlay, 500);
             }
         });
     }
 
-    // ✅ 核心：恢复播放（复用当前频道地址）
     private void resumePlay() {
         try {
             if (channelSourceList == null || currentPlayIndex < 0 || currentPlayIndex >= channelSourceList.size())
@@ -284,7 +315,6 @@ public class MainActivity extends AppCompatActivity {
         startActivity(new Intent(this, SettingsActivity.class));
     }
 
-    // ✅ 退后台自动进入画中画 + 自动播放（核心修复）
     @Override
     protected void onUserLeaveHint() {
         super.onUserLeaveHint();
@@ -302,7 +332,6 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // ✅ 画中画模式变化（无黑屏、无重复小窗）
     @Override
     public void onPictureInPictureModeChanged(boolean isInPictureInPictureMode) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode);
@@ -325,7 +354,6 @@ public class MainActivity extends AppCompatActivity {
         Log.d("MainActivity", msg);
     }
 
-    // ✅ 修复生命周期：画中画模式不暂停、不黑屏
     @Override
     protected void onPause() {
         if (!isInPipMode && !isOpeningSettings) {

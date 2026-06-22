@@ -10,7 +10,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class ChannelListActivity extends AppCompatActivity {
-    private ListView listView;
+    // 修复：适配项目正确的ListView ID + Channel类正确方法名
+    private ListView lvChannel;
     private List<String> channelNames = new ArrayList<>();
 
     @Override
@@ -19,22 +20,24 @@ public class ChannelListActivity extends AppCompatActivity {
         setContentView(R.layout.activity_channel_list);
         setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
 
-        listView = findViewById(R.id.list_view);
-        if (MainActivity.mInstance == null || MainActivity.mInstance.channelSourceList == null) {
+        // 修复1：替换为项目正确的控件ID lv_channel
+        lvChannel = findViewById(R.id.lv_channel);
+        
+        if (MainActivity.mInstance == null || MainActivity.mInstance.channelSourceList == null || lvChannel == null) {
             finish();
             return;
         }
 
         for (Channel channel : MainActivity.mInstance.channelSourceList) {
-            channelNames.add(channel.getChannelName());
+            // 修复2：Channel类正确的获取名称方法 getName()
+            channelNames.add(channel.getName());
         }
 
         ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, channelNames);
-        listView.setAdapter(adapter);
-        listView.setSelection(MainActivity.mInstance.currentPlayIndex);
+        lvChannel.setAdapter(adapter);
+        lvChannel.setSelection(MainActivity.mInstance.currentPlayIndex);
 
-        listView.setOnItemClickListener((parent, view, position, id) -> {
-            // ✅ 修复：调用重载方法
+        lvChannel.setOnItemClickListener((parent, view, position, id) -> {
             MainActivity.mInstance.playChannel(position);
             finish();
         });

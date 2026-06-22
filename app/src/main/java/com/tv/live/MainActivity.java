@@ -76,7 +76,7 @@ public class MainActivity extends AppCompatActivity {
     private PictureInPictureManager pipManager;
     private boolean pipEnable = false;      // 画中画开关状态
     private boolean isInPipMode = false;    // 当前是否在画中画模式
-    private boolean isPipEntering = false;  // 正在进入画中画（防止onPause显示占位图）
+    private boolean isPipEntering = false;  // 正在进入画中画
 
     // ====================== 状态标志 ======================
     private boolean channel_reverse;
@@ -360,7 +360,7 @@ public class MainActivity extends AppCompatActivity {
     // ====================================================================
     private void initInfoDisplayManager() {
         TextView tv_channel_num = findViewById(R.id.tv_channel_num);
-        View info_bar = findViewById(R.id.info_bar);
+        View info_bar = R.id.info_bar;
         TextView tv_channel_name = findViewById(R.id.tv_channel_name);
         TextView tv_tag_fhd = findViewById(R.id.tv_tag_fhd);
         TextView tv_tag_audio = findViewById(R.id.tv_tag_audio);
@@ -598,11 +598,31 @@ public class MainActivity extends AppCompatActivity {
             pipManager.setPipEnabled(pipEnable);
         }
 
+        // ====================================================================
+        // ✅ 【核心联动】根据画中画开关自动控制占位图
+        // ====================================================================
+        syncPlaceholderByPipEnable();
+
         SettingsActivity.logOperation("【设置】EPG开关：" + epg_enable);
         SettingsActivity.logOperation("【设置】切台反转：" + channel_reverse);
         SettingsActivity.logOperation("【设置】数字选台：" + number_channel_enable);
         SettingsActivity.logOperation("【设置】自动更新源：" + auto_update_source);
         SettingsActivity.logOperation("【设置】画中画开关：" + pipEnable);
+    }
+
+    // ====================================================================
+    // ✅ 新增方法：画中画开关 ↔ 占位图 自动联动
+    // 开启PIP → 隐藏占位图；关闭PIP → 恢复正常
+    // ====================================================================
+    private void syncPlaceholderByPipEnable() {
+        if (pipEnable) {
+            // 开启画中画：永久隐藏占位图
+            hidePlayerPlaceholder();
+            log("【联动】画中画已开启 → 自动隐藏占位图");
+        } else {
+            // 关闭画中画：恢复正常逻辑（不主动显示，跟随生命周期）
+            log("【联动】画中画已关闭 → 自动恢复占位图功能");
+        }
     }
 
     // ====================================================================
@@ -795,8 +815,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // ====================================================================
-    // ✅ 画中画：用户按 Home 键时自动进入画中画
-    // 【关键修复】进入画中画前立即隐藏占位图 + 标记isPipEntering
+    // 画中画：用户按 Home 键时自动进入画中画
     // ====================================================================
     @Override
     protected void onUserLeaveHint() {
@@ -805,21 +824,18 @@ public class MainActivity extends AppCompatActivity {
         SettingsActivity.logOperation("【画中画排查】========== 开始 ==========");
         SettingsActivity.logOperation("【画中画排查】onUserLeaveHint 被调用");
 
-        // 防重复：已在画中画模式
         if (isInPipMode) {
             SettingsActivity.logOperation("【画中画排查】已在画中画模式，跳过");
             SettingsActivity.logOperation("【画中画排查】========== 结束 ==========");
             return;
         }
 
-        // 防重复：正在进入画中画
         if (isPipEntering) {
             SettingsActivity.logOperation("【画中画排查】正在进入画中画，跳过");
             SettingsActivity.logOperation("【画中画排查】========== 结束 ==========");
             return;
         }
 
-        // 打开设置页面不进入画中画
         if (isOpeningSettings) {
             SettingsActivity.logOperation("【画中画排查】打开设置页面，跳过");
             SettingsActivity.logOperation("【画中画排查】========== 结束 ==========");
@@ -848,17 +864,9 @@ public class MainActivity extends AppCompatActivity {
         if (pipEnable && supported && enabled) {
             SettingsActivity.logOperation("【画中画排查】所有条件满足，尝试进入画中画...");
             try {
-                // ============================================================
-                // 【关键修复1】进入画中画前立即隐藏占位图
-                // 防止 onPause 执行时占位图还在显示，导致小窗里有占位图
-                // ============================================================
                 hidePlayerPlaceholder();
-                SettingsActivity.logOperation("【画中画排查】✅ 进入前已隐藏占位图");
-
-                // 标记正在进入画中画（onPause会检查这个标记）
                 isPipEntering = true;
 
-                // 构建画中画参数
                 PictureInPictureParams pipParams = null;
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     PictureInPictureParams.Builder pipBuilder = new PictureInPictureParams.Builder();
@@ -892,15 +900,14 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // ====================================================================
-    // ✅ 画中画：模式变化回调
-    // 【关键修复】进入画中画时再次确保隐藏占位图（双重保险）
+    // 画中画：模式变化回调
     // ====================================================================
     @Override
     public void onPictureInPictureModeChanged(boolean isInPictureInPictureMode) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode);
 
         isInPipMode = isInPictureInPictureMode;
-        isPipEntering = false; // 重置进入中标记
+        isPipEntering = false;
 
         SettingsActivity.logOperation("【画中画】模式变化 → " + (isInPictureInPictureMode ? "进入画中画" : "退出画中画"));
 
@@ -913,9 +920,6 @@ public class MainActivity extends AppCompatActivity {
         }
 
         if (isInPictureInPictureMode) {
-            // ============================================================
-            // 进入画中画
-            // ============================================================
             if (channelPanelController != null && channelPanelController.isPanelOpen()) {
                 channelPanelController.hidePanel();
             }
@@ -925,24 +929,15 @@ public class MainActivity extends AppCompatActivity {
             }
 
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-
-            // 【关键修复2】再次确保隐藏占位图（双重保险）
             hidePlayerPlaceholder();
-            SettingsActivity.logOperation("【画中画】✅ 模式变化回调中再次隐藏占位图");
-
-            // 保持播放
             keepPlayingInPip();
 
         } else {
-            // ============================================================
-            // 退出画中画：不显示占位图，直接恢复
-            // ============================================================
             if (displayManager != null) {
                 displayManager.reapplyFullScreen();
             }
             syncRemoteMode();
 
-            // 恢复信息展示
             if (infoDisplayManager != null && channelSourceList.size() > currentPlayIndex) {
                 Channel currChannel = channelSourceList.get(currentPlayIndex);
                 TVPlayerManager.LiveInfo liveInfo = mPlayerManager.getLiveInfo();
@@ -951,19 +946,19 @@ public class MainActivity extends AppCompatActivity {
             }
 
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-
-            // 【关键修复3】退出画中画时也确保隐藏占位图
-            hidePlayerPlaceholder();
+            // 退出画中画，根据开关决定是否显示占位图
+            syncPlaceholderByPipEnable();
 
             log("【画中画】退出画中画完成");
         }
     }
 
     // ====================================================================
-    // 占位图显示/隐藏
+    // ✅ 重写占位图方法：画中画开启时，强制不显示
     // ====================================================================
     private void showPlayerPlaceholder() {
-        if (ivPlayerPlaceholder != null && !isInPipMode) {
+        // 核心规则：画中画开关开启 → 永远不显示占位图
+        if (ivPlayerPlaceholder != null && !pipEnable && !isInPipMode) {
             ivPlayerPlaceholder.setVisibility(View.VISIBLE);
             log("【占位图】显示");
         }
@@ -985,58 +980,34 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // ====================== 生命周期方法 ======================
-    // ====================================================================
-    // ✅ onPause 关键修复：正在进入画中画时也不显示占位图
-    // ====================================================================
     @Override
     protected void onPause() {
-        // 【关键修复4】正在进入画中画 或 已在画中画模式，都不显示占位图
-        if (!isInPipMode && !isPipEntering) {
+        // 画中画开启/进入中 → 不显示占位图
+        if (!isInPipMode && !isPipEntering && !pipEnable) {
             if (!isOpeningSettings) {
                 showPlayerPlaceholder();
-            } else {
-                SettingsActivity.logOperation("【防花屏】打开设置页面，不显示占位图");
             }
-        } else {
-            SettingsActivity.logOperation("【画中画】onPause - PIP模式或进入中，不显示占位图");
         }
-
         super.onPause();
         appCoreManager.onPause();
     }
 
-    // ====================================================================
-    // ✅ onResume 关键修复：立即隐藏占位图，不要延迟
-    // ====================================================================
     @Override
     protected void onResume() {
         super.onResume();
 
         isOpeningSettings = false;
-        SettingsActivity.logOperation("【设置】从设置页面返回，重置标志位");
+        appCoreManager.onResume();
 
-        boolean resumed = appCoreManager.onResume();
-
+        // 从设置页返回，重新加载开关+同步占位图
         loadSettings();
-
-        if (pipManager != null) {
-            pipManager.setPipEnabled(pipEnable);
-        }
-
+        
         screenRatioManager.apply();
         displayManager.reapplyFullScreen();
-
-        // 【关键修复5】立即隐藏占位图，不要等
         hidePlayerPlaceholder();
 
-        // 非画中画模式下，延迟恢复播放（确保Activity完全恢复）
         if (!isInPipMode) {
-            new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
-                @Override
-                public void run() {
-                    resumeCurrentChannel();
-                }
-            }, 200);
+            new Handler(Looper.getMainLooper()).postDelayed(this::resumeCurrentChannel, 200);
         }
 
         syncRemoteMode();
@@ -1055,13 +1026,9 @@ public class MainActivity extends AppCompatActivity {
     protected void onDestroy() {
         super.onDestroy();
 
-        SettingsActivity.logOperation("【主页】onDestroy -> 页面销毁");
-
         if (mPanelAutoHideHandler != null) {
             mPanelAutoHideHandler.removeCallbacks(mPanelAutoHideRunnable);
-            mPanelAutoHideHandler = null;
         }
-
         if (infoDisplayManager != null) infoDisplayManager.release();
         if (channelNumberManager != null) channelNumberManager.release();
         if (displayManager != null) displayManager.release();
@@ -1069,14 +1036,7 @@ public class MainActivity extends AppCompatActivity {
         if (appCoreManager != null) appCoreManager.release();
 
         if (pipManager != null) {
-            try {
-                pipManager.release();
-                isInPipMode = false;
-                pipEnable = false;
-                SettingsActivity.logOperation("【画中画】onDestroy 释放资源完成");
-            } catch (Exception e) {
-                log("【画中画】释放管理器失败：" + e.getMessage());
-            }
+            pipManager.release();
         }
 
         mInstance = null;

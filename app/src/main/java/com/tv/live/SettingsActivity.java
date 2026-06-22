@@ -457,25 +457,41 @@ public class SettingsActivity extends AppCompatActivity {
     // 更新设置项焦点高亮显示
     // ====================================================================
     private void updateSettingsFocus() {
+        // 获取当前选中位置（遥控器管理器记录的位置）
         int selectedPosition = remoteManager.getSettingsFocusPosition();
         SettingsActivity.logOperation("【设置遥控】准备更新焦点，选中位置：" + (selectedPosition + 1));
 
+        // ====================================================================
+        // 遍历所有设置项，分别设置对应的样式
+        // ====================================================================
         for (int i = 0; i < settingsItemList.size(); i++) {
             View item = settingsItemList.get(i);
             if (item == null) continue;
 
             if (i == selectedPosition) {
-                // 选中状态：蓝色文字 + 加粗 + 浅蓝色背景
+                // ================================================================
+                // ✅ 选中状态：蓝色文字 + 加粗 + 浅蓝色背景
+                // ================================================================
+                // 【说明】当前选中的设置项，最明显的样式
                 setItemStyle(item, "#40A9FF", Typeface.BOLD, 0x3340A9FF);
                 SettingsActivity.logOperation("【设置遥控】第 " + (i + 1) + " 项 → 选中状态");
+                // 请求焦点（让系统知道焦点在哪）
                 item.requestFocus();
+                // 滚动到可见区域
                 scrollToView(item);
             } else if (item.isFocused()) {
-                // 焦点状态：蓝色文字 + 常规 + 透明背景
+                // ================================================================
+                // ✅ 焦点状态：蓝色文字 + 常规 + 透明背景
+                // ================================================================
+                // 【说明】遥控器焦点所在的项，文字变蓝提示焦点位置
+                // 背景透明，不会和选中状态冲突
                 setItemStyle(item, "#40A9FF", Typeface.NORMAL, Color.TRANSPARENT);
                 SettingsActivity.logOperation("【设置遥控】第 " + (i + 1) + " 项 → 焦点状态");
             } else {
-                // 未选中状态：白色文字 + 常规 + 透明背景
+                // ================================================================
+                // ✅ 未选中状态：白色文字 + 常规 + 透明背景
+                // ================================================================
+                // 【说明】普通项，默认样式
                 setItemStyle(item, "#FFFFFF", Typeface.NORMAL, Color.TRANSPARENT);
             }
         }
@@ -485,14 +501,34 @@ public class SettingsActivity extends AppCompatActivity {
     // ====================================================================
     // 辅助方法 - 设置单个设置项的样式
     // ====================================================================
+    /**
+     * 设置单个设置项的样式（文字颜色 + 字重 + 背景色）
+     *
+     * 【作用】
+     * 统一封装设置项样式的逻辑，避免在 updateSettingsFocus() 里重复写代码。
+     *
+     * 【处理两种类型的设置项】
+     * 1. TextView 类型：直接设置文字颜色和字重
+     * 2. ViewGroup 类型：找到第一个 TextView，设置文字颜色和字重
+     *
+     * @param item 设置项 View
+     * @param textColor 文字颜色（十六进制字符串，如 "#40A9FF"）
+     * @param typeface 字重（Typeface.BOLD 或 Typeface.NORMAL）
+     * @param bgColor 背景色（如 0x3340A9FF 或 Color.TRANSPARENT）
+     */
     private void setItemStyle(View item, String textColor, int typeface, int bgColor) {
+        // 设置背景色
         item.setBackgroundColor(bgColor);
 
+        // 设置文字颜色和字重
         if (item instanceof TextView) {
+            // 情况 A：当前项就是 TextView（简单项，比如"屏幕比例"）
             TextView tv = (TextView) item;
             tv.setTextColor(Color.parseColor(textColor));
             tv.setTypeface(null, typeface);
         } else if (item instanceof ViewGroup) {
+            // 情况 B：当前项是 ViewGroup（复杂项，比如"开机自启"，里面有文字和开关）
+            // 找第一个 TextView，设置文字颜色和字重
             TextView tv = findFirstTextView((ViewGroup) item);
             if (tv != null) {
                 tv.setTextColor(Color.parseColor(textColor));
@@ -504,36 +540,71 @@ public class SettingsActivity extends AppCompatActivity {
     // ====================================================================
     // 辅助方法 - 在 ViewGroup 中找到第一个 TextView
     // ====================================================================
+    /**
+     * 在 ViewGroup 中递归查找第一个 TextView
+     *
+     * 【作用】
+     * 对于复杂的设置项（比如开机自启，LinearLayout 里有文字和开关），
+     * 找到里面的标题 TextView，用来设置文字颜色。
+     *
+     * 【为什么用递归？】
+     * 因为有的布局可能嵌套多层（比如 LinearLayout 里又套了一个 LinearLayout），
+     * 递归查找能确保找到第一个 TextView。
+     *
+     * @param viewGroup 要查找的 ViewGroup
+     * @return 找到的第一个 TextView，如果没找到返回 null
+     */
     private TextView findFirstTextView(ViewGroup viewGroup) {
         if (viewGroup == null) return null;
 
+        // 遍历所有子 View
         for (int i = 0; i < viewGroup.getChildCount(); i++) {
             View child = viewGroup.getChildAt(i);
             if (child instanceof TextView) {
+                // 找到了，直接返回
                 return (TextView) child;
             } else if (child instanceof ViewGroup) {
+                // 子 View 也是 ViewGroup，递归查找
                 TextView result = findFirstTextView((ViewGroup) child);
                 if (result != null) {
                     return result;
                 }
             }
         }
+        // 没找到
         return null;
     }
 
     // ====================================================================
     // 辅助方法：滚动到指定 View 可见
     // ====================================================================
+    /**
+     * 滚动到指定 View，让它显示在可见区域内
+     *
+     * 【作用】
+     * 当焦点移动到屏幕外的项时，自动滚动，让用户能看到焦点在哪里。
+     *
+     * 【滚动规则】
+     * - 如果 View 在可见区域上方：滚动到顶部（留 50dp 边距）
+     * - 如果 View 在可见区域下方：滚动到底部（留 50dp 边距）
+     * - 如果 View 已经在可见区域内：不滚动
+     *
+     * @param view 要滚动到的 View
+     */
     private void scrollToView(View view) {
         if (scrollView == null || view == null) return;
 
+        // 计算 View 在 ScrollView 中的位置
         int viewTop = view.getTop();
         int viewBottom = view.getBottom();
         int scrollViewHeight = scrollView.getHeight();
 
+        // 如果 View 在当前可见区域上方，滚动到顶部
         if (viewTop < scrollView.getScrollY()) {
             scrollView.smoothScrollTo(0, viewTop - 50);
-        } else if (viewBottom > scrollView.getScrollY() + scrollViewHeight) {
+        }
+        // 如果 View 在当前可见区域下方，滚动到底部
+        else if (viewBottom > scrollView.getScrollY() + scrollViewHeight) {
             scrollView.smoothScrollTo(0, viewBottom - scrollViewHeight + 50);
         }
     }
@@ -541,29 +612,45 @@ public class SettingsActivity extends AppCompatActivity {
     // ====================================================================
     // 辅助方法 - 处理设置项点击
     // ====================================================================
+    /**
+     * 处理设置项点击/选中
+     *
+     * @param position 选中项的位置索引
+     *
+     * 【说明】
+     * 模拟点击事件，触发该 View 的 OnClickListener，
+     * 这样就不用重复写一遍点击逻辑了。
+     */
     private void handleSettingsItemClick(int position) {
         if (position < 0 || position >= settingsItemList.size()) return;
         View item = settingsItemList.get(position);
         if (item == null) return;
 
+        // 模拟点击（触发 OnClickListener）
         item.performClick();
         logOperation("【设置遥控】选中第 " + (position + 1) + " 项");
     }
 
     // ====================== 屏幕比例对话框 ======================
+    /**
+     * 显示屏幕比例选择对话框
+     */
     private void showRatioDialog() {
         final String[] ratios = {"全屏", "填充", "原始"};
         new AlertDialog.Builder(this)
                 .setTitle("屏幕比例")
                 .setItems(ratios, (d, w) -> {
                     sp.edit().putString("screen_ratio", ratios[w]).apply();
-                    Toast.makeText(this, "已设置", Toast.LENGTH_SHORT).show();
                     logOperation("【设置】屏幕比例设为：" + ratios[w]);
+                    Toast.makeText(this, "已设置", Toast.LENGTH_SHORT).show();
                 })
                 .show();
     }
 
     // ====================== 输入对话框（自定义源/节目单） ======================
+    /**
+     * 显示输入对话框
+     */
     private void showInputDialog(String title, String hint, String key) {
         EditText ed = new EditText(this);
         ed.setHint(hint);
@@ -588,7 +675,9 @@ public class SettingsActivity extends AppCompatActivity {
                 .show();
     }
 
-    // ====================== 日志对话框 ======================
+    // ====================================================================
+    // 日志对话框（加回兼容层）
+    // ====================================================================
     /**
      * 显示操作日志对话框
      */

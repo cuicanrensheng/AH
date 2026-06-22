@@ -1284,16 +1284,35 @@ public class MainActivity extends AppCompatActivity {
         }
         appCoreManager.onWindowFocusChanged(hasFocus);
     }
-
-    @Override
+        @Override
     protected void onDestroy() {
         super.onDestroy();
 
         if (mPanelAutoHideHandler != null) {
             mPanelAutoHideHandler.removeCallbacks(mPanelAutoHideRunnable);
         }
-        if (infoDisplayManager != null) infoDisplayManager.release();
-        if (channelNumberManager != null) channelNumberManager.release();
-        if (displayManager != null) displayManager.release();
-        if (channelPanelController != null) channelPanelController.release();
-        if (appCoreManager != null) appCoreManager
+        if (infoDisplayManager != null) {
+            infoDisplayManager.release();
+        }
+        if (channelNumberManager != null) {
+            channelNumberManager.release();
+        }
+        if (displayManager != null) {
+            displayManager.release();
+        }
+        if (channelPanelController != null) {
+            channelPanelController.release();
+        }
+        if (appCoreManager != null) {
+            appCoreManager.release();
+        }
+
+        if (pipManager != null) {
+            pipManager.release();
+        }
+
+        mInstance = null;
+    }
+}
+
+  

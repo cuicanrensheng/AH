@@ -34,7 +34,7 @@ import java.util.List;
  * 3. 自动更新源
  * 4. 换台反转
  * 5. 数字选台
- * 6. 画中画开关 ✅ 新增
+ * 6. 画中画开关 ✅ 2026-06-22 新增
  * 7. 屏幕比例设置
  * 8. 自定义订阅源/节目单
  * 9. 多订阅源/节目单历史
@@ -51,10 +51,24 @@ import java.util.List;
 public class SettingsActivity extends AppCompatActivity {
 
     // ====================== 控件声明 ======================
-    /** 6个开关控件 */
-    private Switch sw_boot, sw_epg, sw_auto_update, sw_reverse, sw_num_channel, sw_pip;
-    /** 纯文本点击项 */
+    /**
+     * 开关控件列表
+     * 按页面从上到下的顺序排列
+     */
+    private Switch sw_boot, sw_epg, sw_auto_update, sw_reverse, sw_num_channel;
+
+    // ====================================================================
+    // ✅ 2026-06-22 新增：画中画开关变量
+    // 【作用】控制画中画功能的开启和关闭
+    // ====================================================================
+    private Switch sw_pip;
+
+    /**
+     * 纯文本点击项
+     * 这些是点击后弹出对话框的设置项
+     */
     private TextView tv_screen_ratio, tv_custom_source, tv_custom_epg, tv_multi_source, tv_multi_epg, tv_qr_code;
+
     /** 开机自启状态描述文本 */
     private TextView tv_boot_status;
 
@@ -65,10 +79,15 @@ public class SettingsActivity extends AppCompatActivity {
     // ====================================================================
     // 遥控器统一管理器
     // ====================================================================
+    /**
+     * 遥控器统一管理器
+     * 【作用】统一处理所有遥控器按键事件，和 MainActivity、ChannelPanelController 用同一套体系
+     */
     private TvRemoteManager remoteManager;
 
     /**
      * 可聚焦的设置项列表（按从上到下的顺序排列）
+     * 【作用】遥控器在这些项之间上下移动焦点
      */
     private List<View> settingsItemList = new ArrayList<>();
 
@@ -85,25 +104,50 @@ public class SettingsActivity extends AppCompatActivity {
     private WebServerManager webServerManager;
     private UpdateManager updateManager;
 
+    /** 网页后台端口号 */
     private static final int WEB_SERVER_PORT = 10481;
+
+    /** 当前网页后台访问地址 */
     private String currentWebUrl;
 
     // ====================== SP Key 常量 ======================
+    /** 自定义直播源地址的 SP Key */
     private static final String KEY_CUSTOM_LIVE = "custom_live_url";
+
+    /** 自定义 EPG 地址的 SP Key */
     private static final String KEY_CUSTOM_EPG = "custom_epg_url";
 
     // ====================================================================
     // 全局日志系统（兼容 WebServerManager）
     // ====================================================================
+    /**
+     * 操作日志 StringBuilder
+     * 【作用】记录用户的所有操作，供网页后台查看
+     * 【注意】WebServerManager 会引用这个静态变量，所以必须声明为 public static
+     */
     public static StringBuilder OPERATION_LOG = new StringBuilder();
+
+    /**
+     * 解析&播放日志 StringBuilder
+     * 【作用】记录直播源解析和播放的详细日志，供网页后台查看
+     * 【注意】WebServerManager 会引用这个静态变量，所以必须声明为 public static
+     */
     public static StringBuilder PLAY_LOG = new StringBuilder();
 
+    /**
+     * 记录操作日志
+     * @param msg 日志内容
+     */
     public static void logOperation(String msg) {
         if (OPERATION_LOG == null) OPERATION_LOG = new StringBuilder();
         OPERATION_LOG.append(msg).append("\n");
         LogManager.logOperation(msg);
     }
 
+    /**
+     * 记录解析&播放日志
+     * @param msg 日志内容
+     */
     public static void log(String msg) {
         if (PLAY_LOG == null) PLAY_LOG = new StringBuilder();
         PLAY_LOG.append(msg).append("\n");
@@ -136,6 +180,8 @@ public class SettingsActivity extends AppCompatActivity {
 
         // ====================================================================
         // 彻底清除背景变暗（三重保险）
+        // 【为什么要三重保险？】
+        // 不同 Android 版本的变暗机制不一样，三重保险确保所有版本都生效
         // ====================================================================
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
         WindowManager.LayoutParams layoutParams = getWindow().getAttributes();
@@ -153,6 +199,7 @@ public class SettingsActivity extends AppCompatActivity {
 
         // ====================================================================
         // 点击左侧空白区域关闭设置
+        // 【作用】设置页面是右侧滑出的浮层，点击左侧空白区域可以关闭
         // ====================================================================
         View viewOutside = findViewById(R.id.view_outside);
         viewOutside.setOnClickListener(new View.OnClickListener() {
@@ -171,7 +218,13 @@ public class SettingsActivity extends AppCompatActivity {
         sw_auto_update = findViewById(R.id.sw_auto_update);
         sw_reverse = findViewById(R.id.sw_reverse);
         sw_num_channel = findViewById(R.id.sw_num_channel);
-        sw_pip = findViewById(R.id.sw_pip); // ✅ 新增：画中画开关
+
+        // ====================================================================
+        // ✅ 2026-06-22 新增：绑定画中画开关控件
+        // 【作用】从布局中找到画中画开关的 Switch 控件
+        // ====================================================================
+        sw_pip = findViewById(R.id.sw_pip);
+
         tv_screen_ratio = findViewById(R.id.tv_screen_ratio);
         tv_custom_source = findViewById(R.id.tv_custom_source);
         tv_custom_epg = findViewById(R.id.tv_custom_epg);
@@ -195,6 +248,7 @@ public class SettingsActivity extends AppCompatActivity {
 
         // ====================================================================
         // 初始化设置项列表（遥控器焦点顺序）
+        // 【作用】告诉遥控器管理器，哪些设置项可以聚焦，以及顺序是什么
         // ====================================================================
         initSettingsItemList();
 
@@ -203,6 +257,7 @@ public class SettingsActivity extends AppCompatActivity {
 
         // ====================================================================
         // 初始化各个开关的状态
+        // 【作用】从 SharedPreferences 读取保存的设置，初始化开关状态
         // ====================================================================
 
         // 1. 开机自启
@@ -234,11 +289,20 @@ public class SettingsActivity extends AppCompatActivity {
         });
 
         // ====================================================================
-        // ✅ 6. 画中画开关（新增）
+        // ✅ 2026-06-22 新增：6. 画中画开关
+        // 【作用】
+        // 1. 从 SharedPreferences 读取保存的画中画开关状态
+        // 2. 设置开关状态变化监听器，切换时保存到 SharedPreferences
+        // 3. 记录操作日志
+        //
+        // 【默认值】true（默认开启画中画功能）
+        // 【SP Key】"pip_enable"
         // ====================================================================
         sw_pip.setChecked(sp.getBoolean("pip_enable", true));
         sw_pip.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            // 保存到 SharedPreferences
             sp.edit().putBoolean("pip_enable", isChecked).apply();
+            // 记录操作日志
             logOperation("【设置】画中画 → " + (isChecked ? "开启" : "关闭"));
         });
 
@@ -261,6 +325,30 @@ public class SettingsActivity extends AppCompatActivity {
     // ====================================================================
     // 初始化设置项列表（遥控器焦点顺序）
     // ====================================================================
+    /**
+     * 初始化设置项列表
+     *
+     * 【作用】
+     * 把所有可聚焦的设置项按页面从上到下的顺序添加到列表中，
+     * 遥控器管理器会根据这个列表来移动焦点。
+     *
+     * 【顺序说明】
+     * 1. 开机自启
+     * 2. 节目单开关
+     * 3. 自动更新源
+     * 4. 换台反转
+     * 5. 数字选台
+     * 6. 画中画 ✅ 新增
+     * 7. 屏幕比例
+     * 8. 自定义订阅源
+     * 9. 自定义节目单
+     * 10. 多订阅源
+     * 11. 多节目单
+     * 12. 扫码添加
+     * 13. 查看解析日志
+     * 14. 操作日志
+     * 15. 检查更新
+     */
     private void initSettingsItemList() {
         settingsItemList.clear();
 
@@ -270,7 +358,15 @@ public class SettingsActivity extends AppCompatActivity {
         settingsItemList.add(findViewById(R.id.item_auto_update));    // 3. 自动更新源
         settingsItemList.add(findViewById(R.id.item_reverse));        // 4. 换台反转
         settingsItemList.add(findViewById(R.id.item_num_channel));    // 5. 数字选台
-        settingsItemList.add(findViewById(R.id.item_pip));            // 6. 画中画 ✅ 新增
+
+        // ====================================================================
+        // ✅ 2026-06-22 新增：画中画设置项
+        // 【作用】把画中画设置项添加到遥控器焦点列表中，
+        //         这样遥控器可以聚焦到画中画开关
+        // 【位置】第 6 项，在数字选台下面
+        // ====================================================================
+        settingsItemList.add(findViewById(R.id.item_pip));            // 6. 画中画
+
         settingsItemList.add(findViewById(R.id.tv_screen_ratio));     // 7. 屏幕比例
         settingsItemList.add(findViewById(R.id.tv_custom_source));    // 8. 自定义订阅源
         settingsItemList.add(findViewById(R.id.tv_custom_epg));       // 9. 自定义节目单
@@ -292,6 +388,16 @@ public class SettingsActivity extends AppCompatActivity {
     // ====================================================================
     // 初始化遥控器管理器
     // ====================================================================
+    /**
+     * 初始化遥控器管理器
+     *
+     * 【作用】
+     * 1. 创建遥控器管理器实例
+     * 2. 设置模式为设置页面模式
+     * 3. 设置可聚焦的设置项列表
+     * 4. 设置滚动视图（用于滚动到可见区域）
+     * 5. 设置遥控器动作监听器，处理各种按键事件
+     */
     private void initRemoteManager() {
         remoteManager = new TvRemoteManager();
         remoteManager.setMode(TvRemoteManager.Mode.SETTINGS_MODE);
@@ -359,6 +465,10 @@ public class SettingsActivity extends AppCompatActivity {
     // ====================== 其他点击事件初始化 ======================
     /**
      * 初始化纯文本项的点击事件
+     *
+     * 【作用】
+     * 给所有纯文本类型的设置项设置点击监听器，
+     * 点击后弹出对应的对话框。
      */
     private void initListeners() {
         // 屏幕比例
@@ -435,7 +545,11 @@ public class SettingsActivity extends AppCompatActivity {
         });
 
         // ====================================================================
-        // ✅ 画中画 item 点击（新增）
+        // ✅ 2026-06-22 新增：画中画 item 点击
+        // 【作用】点击整个画中画设置项时，切换开关状态
+        // 【为什么要加这个？】
+        // 因为用户可能点击的是 item 的空白区域，而不是 Switch 控件本身，
+        // 这样点击整个 item 都能切换开关，用户体验更好。
         // ====================================================================
         findViewById(R.id.item_pip).setOnClickListener(v -> {
             sw_pip.setChecked(!sw_pip.isChecked());
@@ -445,8 +559,21 @@ public class SettingsActivity extends AppCompatActivity {
     // ====================================================================
     // 按键事件处理（直接调用 TvRemoteManager）
     // ====================================================================
+    /**
+     * 按键事件处理
+     *
+     * 【直接调用 TvRemoteManager】
+     * 所有按键都交给 remoteManager.dispatchKeyEvent() 统一处理，
+     * 不需要在这里写任何按键逻辑，全部在回调里处理。
+     *
+     * 【为什么这么设计？】
+     * 1. 按键逻辑统一管理，不分散在 Activity 里
+     * 2. 新增按键功能只需要改 TvRemoteManager，不用改 Activity
+     * 3. 和 MainActivity、ChannelPanelController 用同一套体系
+     */
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
+        // 直接交给遥控器管理器处理
         if (remoteManager != null && remoteManager.dispatchKeyEvent(keyCode)) {
             return true;
         }
@@ -456,6 +583,32 @@ public class SettingsActivity extends AppCompatActivity {
     // ====================================================================
     // 更新设置项焦点高亮显示
     // ====================================================================
+    /**
+     * 更新设置项焦点高亮显示
+     *
+     * 【2026-06-21 优化：从两种状态改成三种状态，和列表完全统一】
+     *
+     * 【原来的两种状态】
+     * 1. 高亮状态：蓝色文字 + 浅蓝色背景
+     * 2. 普通状态：白色文字 + 透明背景
+     *
+     * 【现在的三种状态】
+     * 1. ✅ 选中状态：蓝色文字 + 加粗 + 浅蓝色背景（当前选中的设置项）
+     * 2. ✅ 焦点状态：蓝色文字 + 常规 + 透明背景（遥控器焦点所在的项）
+     * 3. ✅ 未选中状态：白色文字 + 常规 + 透明背景（普通项）
+     *
+     * 【为什么改成三种状态？】
+     * 和频道分组、频道列表、日期列表、节目单列表保持一致的样式体系，
+     * 整个应用的高亮样式统一，用户体验一致。
+     *
+     * 【判断优先级】
+     * 选中状态 > 焦点状态 > 未选中状态
+     * 如果一个项既是选中又是焦点，显示选中样式
+     *
+     * 【处理两种类型的设置项】
+     * 1. TextView 类型：比如"屏幕比例"、"自定义订阅源"等
+     * 2. ViewGroup 类型：比如"开机自启"、"检查更新"等（LinearLayout 包裹文字和开关）
+     */
     private void updateSettingsFocus() {
         // 获取当前选中位置（遥控器管理器记录的位置）
         int selectedPosition = remoteManager.getSettingsFocusPosition();
@@ -794,20 +947,19 @@ public class SettingsActivity extends AppCompatActivity {
         super.onDestroy();
         logOperation("【设置】关闭设置页面");
 
+        // 停止网页后台
         if (webServerManager != null) {
-            webServerManager.stopServer();
+            webServerManager.stop();
         }
 
-        if (bootStartManager != null) {
-            bootStartManager.release();
-        }
-
+        // 释放更新管理器
         if (updateManager != null) {
             updateManager.release();
         }
 
+        // 释放遥控器管理器
+        remoteManager = null;
         settingsItemList.clear();
         settingsItemList = null;
-        remoteManager = null;
     }
 }

@@ -332,7 +332,7 @@ public class SettingsActivity extends AppCompatActivity {
         // 【SP Key】"pip_enable"
         // 【说明】写法与其他开关完全一致，仅新增逻辑，不修改原有代码
         // ====================================================================
-        sw_pip.setChecked(sp.getBoolean("pip_enable", true));
+        sw_pip.setChecked(sp.getBoolean("pip_enable",false));
         findViewById(R.id.item_pip).setOnClickListener(v -> {
             boolean isChecked = !sw_pip.isChecked();
             sw_pip.setChecked(isChecked);

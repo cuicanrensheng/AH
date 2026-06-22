@@ -135,6 +135,10 @@ public class MainActivity extends AppCompatActivity {
         playerView.setControllerVisibilityListener(null);
 
         ivPlayerPlaceholder = findViewById(R.id.iv_player_placeholder);
+        // ====================================================================
+        // ✅ 取消占位图：启动时直接隐藏，永远不显示
+        // ====================================================================
+        hidePlayerPlaceholder();
 
         initChannelPanelController();
         initRemoteManager();
@@ -210,23 +214,35 @@ public class MainActivity extends AppCompatActivity {
             infoDisplayManager.hideInfoBar();
             infoDisplayManager.hideChannelNum();
         }
-        hidePlayerPlaceholder();
+        // 占位图已取消，这里不需要再处理
     }
 
     // ====================================================================
-    // 画中画模式保持播放
+    // 画中画模式保持播放（直接恢复，不重新加载）
     // ====================================================================
     private void keepPlayingInPip() {
         try {
-            if (mPlayerManager != null && channelSourceList != null 
-                    && currentPlayIndex >= 0 && currentPlayIndex < channelSourceList.size()) {
-                Channel channel = channelSourceList.get(currentPlayIndex);
-                if (channel != null && channel.getPlayUrl() != null) {
-                    mPlayerManager.playUrl(channel.getPlayUrl());
-                }
+            if (mPlayerManager != null) {
+                // 直接恢复播放（如果被onPause暂停了）
+                mPlayerManager.resume();
+                log("【画中画】✅ 恢复播放（防止onPause暂停）");
             }
         } catch (Exception e) {
-            log("【画中画】保持播放失败：" + e.getMessage());
+            log("【画中画】恢复播放失败：" + e.getMessage());
+            
+            // 失败兜底：重新播放当前频道
+            try {
+                if (channelSourceList != null 
+                        && currentPlayIndex >= 0 && currentPlayIndex < channelSourceList.size()) {
+                    Channel channel = channelSourceList.get(currentPlayIndex);
+                    if (channel != null && channel.getPlayUrl() != null) {
+                        mPlayerManager.playUrl(channel.getPlayUrl());
+                        log("【画中画】兜底：重新加载当前频道");
+                    }
+                }
+            } catch (Exception e2) {
+                log("【画中画】兜底播放也失败：" + e2.getMessage());
+            }
         }
     }
 
@@ -235,12 +251,8 @@ public class MainActivity extends AppCompatActivity {
     // ====================================================================
     private void resumeCurrentChannel() {
         try {
-            if (mPlayerManager != null && channelSourceList != null 
-                    && currentPlayIndex >= 0 && currentPlayIndex < channelSourceList.size()) {
-                Channel channel = channelSourceList.get(currentPlayIndex);
-                if (channel != null && channel.getPlayUrl() != null) {
-                    mPlayerManager.playUrl(channel.getPlayUrl());
-                }
+            if (mPlayerManager != null) {
+                mPlayerManager.resume();
             }
         } catch (Exception e) {
             log("【画中画】恢复播放失败：" + e.getMessage());
@@ -356,11 +368,11 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // ====================================================================
-    // 信息展示管理器初始化（✅ 已修复编译错误）
+    // 信息展示管理器初始化
     // ====================================================================
     private void initInfoDisplayManager() {
         TextView tv_channel_num = findViewById(R.id.tv_channel_num);
-        View info_bar = findViewById(R.id.info_bar); // 修复：正确findViewById
+        View info_bar = findViewById(R.id.info_bar);
         TextView tv_channel_name = findViewById(R.id.tv_channel_name);
         TextView tv_tag_fhd = findViewById(R.id.tv_tag_fhd);
         TextView tv_tag_audio = findViewById(R.id.tv_tag_audio);
@@ -599,30 +611,14 @@ public class MainActivity extends AppCompatActivity {
         }
 
         // ====================================================================
-        // ✅ 【核心联动】根据画中画开关自动控制占位图
+        // ✅ 已取消占位图联动，移除 syncPlaceholderByPipEnable() 调用
         // ====================================================================
-        syncPlaceholderByPipEnable();
 
         SettingsActivity.logOperation("【设置】EPG开关：" + epg_enable);
         SettingsActivity.logOperation("【设置】切台反转：" + channel_reverse);
         SettingsActivity.logOperation("【设置】数字选台：" + number_channel_enable);
         SettingsActivity.logOperation("【设置】自动更新源：" + auto_update_source);
         SettingsActivity.logOperation("【设置】画中画开关：" + pipEnable);
-    }
-
-    // ====================================================================
-    // ✅ 新增方法：画中画开关 ↔ 占位图 自动联动
-    // 开启PIP → 隐藏占位图；关闭PIP → 恢复正常
-    // ====================================================================
-    private void syncPlaceholderByPipEnable() {
-        if (pipEnable) {
-            // 开启画中画：永久隐藏占位图
-            hidePlayerPlaceholder();
-            log("【联动】画中画已开启 → 自动隐藏占位图");
-        } else {
-            // 关闭画中画：恢复正常逻辑
-            log("【联动】画中画已关闭 → 自动恢复占位图功能");
-        }
     }
 
     // ====================================================================
@@ -637,7 +633,7 @@ public class MainActivity extends AppCompatActivity {
     // ====================================================================
     public void playChannel(int index) {
         if (channelSourceList == null || channelSourceList.isEmpty()) return;
-        if (index < 0 && index >= channelSourceList.size()) return;
+        if (index < 0 || index >= channelSourceList.size()) return;
         Channel channel = channelSourceList.get(index);
         playChannel(channel, index);
     }
@@ -804,7 +800,6 @@ public class MainActivity extends AppCompatActivity {
     // ====================== 打开设置页面 ======================
     public void openSettings() {
         isOpeningSettings = true;
-        SettingsActivity.logOperation("【设置】打开设置页面，不显示占位图");
         appCoreManager.beforeOpenSettings();
         startActivity(new Intent(this, SettingsActivity.class));
     }
@@ -864,7 +859,7 @@ public class MainActivity extends AppCompatActivity {
         if (pipEnable && supported && enabled) {
             SettingsActivity.logOperation("【画中画排查】所有条件满足，尝试进入画中画...");
             try {
-                hidePlayerPlaceholder();
+                // 占位图已取消，不需要再隐藏
                 isPipEntering = true;
 
                 PictureInPictureParams pipParams = null;
@@ -900,7 +895,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // ====================================================================
-    // 画中画：模式变化回调
+    // 画中画模式变化回调
     // ====================================================================
     @Override
     public void onPictureInPictureModeChanged(boolean isInPictureInPictureMode) {
@@ -920,6 +915,7 @@ public class MainActivity extends AppCompatActivity {
         }
 
         if (isInPictureInPictureMode) {
+            // 进入画中画
             if (channelPanelController != null && channelPanelController.isPanelOpen()) {
                 channelPanelController.hidePanel();
             }
@@ -929,10 +925,23 @@ public class MainActivity extends AppCompatActivity {
             }
 
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-            hidePlayerPlaceholder();
+            
+            // 占位图已取消，不需要处理
+
+            // 强制确保播放器在播放
             keepPlayingInPip();
 
+            // 双重保险：延迟50ms再恢复一次
+            new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    keepPlayingInPip();
+                    log("【画中画】✅ 延迟恢复播放（双重保险）");
+                }
+            }, 50);
+
         } else {
+            // 退出画中画
             if (displayManager != null) {
                 displayManager.reapplyFullScreen();
             }
@@ -946,22 +955,20 @@ public class MainActivity extends AppCompatActivity {
             }
 
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-            // 退出画中画，根据开关决定是否显示占位图
-            syncPlaceholderByPipEnable();
+            
+            // 占位图已取消，不需要处理
 
             log("【画中画】退出画中画完成");
         }
     }
 
     // ====================================================================
-    // ✅ 重写占位图方法：画中画开启时，强制不显示
+    // ✅ 【关键修改】占位图显示/隐藏 - 已取消占位图功能
+    // showPlayerPlaceholder() 改为空实现，永远不显示
     // ====================================================================
     private void showPlayerPlaceholder() {
-        // 核心规则：画中画开关开启 → 永远不显示占位图
-        if (ivPlayerPlaceholder != null && !pipEnable && !isInPipMode) {
-            ivPlayerPlaceholder.setVisibility(View.VISIBLE);
-            log("【占位图】显示");
-        }
+        // 已取消占位图功能，什么都不做
+        log("【占位图】已取消，不显示");
     }
 
     private void hidePlayerPlaceholder() {
@@ -980,16 +987,30 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // ====================== 生命周期方法 ======================
+    // ====================================================================
+    // ✅ onPause 中画中画模式下不暂停播放器
+    // 占位图已取消，移除相关逻辑
+    // ====================================================================
     @Override
     protected void onPause() {
-        // 画中画开启/进入中 → 不显示占位图
-        if (!isInPipMode && !isPipEntering && !pipEnable) {
-            if (!isOpeningSettings) {
-                showPlayerPlaceholder();
+        // 占位图已取消，不需要显示
+
+        super.onPause();
+
+        // 先调用 onPause（让其他逻辑正常执行）
+        appCoreManager.onPause();
+
+        // 画中画模式下，立即恢复播放（防止被 onPause 暂停了）
+        if (isInPipMode || isPipEntering) {
+            try {
+                if (mPlayerManager != null) {
+                    mPlayerManager.resume();
+                    log("【画中画】✅ onPause后立即恢复播放（防止暂停）");
+                }
+            } catch (Exception e) {
+                log("【画中画】onPause恢复播放失败：" + e.getMessage());
             }
         }
-        super.onPause();
-        appCoreManager.onPause();
     }
 
     @Override
@@ -999,12 +1020,13 @@ public class MainActivity extends AppCompatActivity {
         isOpeningSettings = false;
         appCoreManager.onResume();
 
-        // 从设置页返回，重新加载开关+同步占位图
+        // 从设置页返回，重新加载开关
         loadSettings();
         
         screenRatioManager.apply();
         displayManager.reapplyFullScreen();
-        hidePlayerPlaceholder();
+        
+        // 占位图已取消，不需要隐藏
 
         if (!isInPipMode) {
             new Handler(Looper.getMainLooper()).postDelayed(this::resumeCurrentChannel, 200);

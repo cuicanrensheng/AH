@@ -551,6 +551,9 @@ public class MainActivity extends AppCompatActivity {
 
         // ✅ 新增：加载画中画开关状态
         pipEnable = sp.getBoolean("pip_enable", true);
+        if (pipManager != null) {
+        pipManager.setPipEnabled(pipEnable);
+}
 
         if (channelNumberManager != null) {
             channelNumberManager.setEnable(number_channel_enable);

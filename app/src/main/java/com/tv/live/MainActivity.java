@@ -53,6 +53,18 @@ import java.util.List;
  * - 使用 PictureInPictureManager 统一管理画中画状态
  * - 所有画中画日志接入 SettingsActivity.logOperation，可在设置页面查看
  * - 退出画中画时记录详细尺寸日志，用于排查"返回播放界面变小窗"问题
+ * 
+ * 【2026-06-22 新增：退出画中画时重置手势状态】
+ * 【问题原因】
+ * 画中画模式下，PlayerView 尺寸变小，可能误触发手势检测，
+ * 导致 isGestureLocked = true（防抖锁定）。
+ * 退出画中画后，锁定状态还没解除（300ms 后才自动解锁），
+ * 用户立即滑动就会被防抖拦截，手势失效。
+ * 
+ * 【解决方案】
+ * 在 onPictureInPictureModeChanged 退出分支中，
+ * 调用 gestureManager.reset() 强制重置手势状态，
+ * 确保用户返回全屏后手势立即可用。
  */
 public class MainActivity extends AppCompatActivity {
 
@@ -113,6 +125,7 @@ public class MainActivity extends AppCompatActivity {
             }
         }
     };
+
     private boolean mIsFirstLaunch = true;
 
     // ====================== 其他 ======================
@@ -122,7 +135,6 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
         SettingsActivity.logOperation("【主页】onCreate -> 页面创建");
         SettingsActivity.logOperation("【系统】APP启动");
 
@@ -162,10 +174,10 @@ public class MainActivity extends AppCompatActivity {
         }
 
         initPlayer();
-
         screenRatioManager = new ScreenRatioManager(mPlayerManager, appConfig);
         screenRatioManager.apply();
 
+        // 初始化手势管理器
         gestureManager = new GestureManager(this);
         final PlayerGestureHelper gestureHelper = gestureManager.create();
         playerView.setOnTouchListener(new View.OnTouchListener() {
@@ -188,7 +200,6 @@ public class MainActivity extends AppCompatActivity {
         }
 
         initAppCoreManager();
-
         displayManager.showLoading("正在加载直播源...");
         appCoreManager.loadLiveAndEpg();
     }
@@ -228,37 +239,37 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void keepPlayingInPip() {
-    try {
-        if (mPlayerManager != null) {
-            // 先尝试直接恢复
-            mPlayerManager.resume();
-            log("【画中画】✅ 调用 resume() 恢复播放");
-            
-            // 如果 resume 不行，再尝试重新绑定
-            if (playerView != null) {
-                mPlayerManager.attachPlayerView(playerView);
-                mPlayerManager.resume();
-                log("【画中画】✅ 重新绑定后再次恢复");
-            }
-        }
-    } catch (Exception e) {
-        log("【画中画】恢复播放失败：" + e.getMessage());
-        
-        // 最后兜底：重新播放当前频道
         try {
-            if (channelSourceList != null 
-                    && currentPlayIndex >= 0 && currentPlayIndex < channelSourceList.size()) {
-                Channel channel = channelSourceList.get(currentPlayIndex);
-                if (channel != null && channel.getPlayUrl() != null) {
-                    mPlayerManager.playUrl(channel.getPlayUrl());
-                    log("【画中画】兜底：重新加载当前频道");
+            if (mPlayerManager != null) {
+                // 先尝试直接恢复
+                mPlayerManager.resume();
+                log("【画中画】✅ 调用 resume() 恢复播放");
+                
+                // 如果 resume 不行，再尝试重新绑定
+                if (playerView != null) {
+                    mPlayerManager.attachPlayerView(playerView);
+                    mPlayerManager.resume();
+                    log("【画中画】✅ 重新绑定后再次恢复");
                 }
             }
-        } catch (Exception e2) {
-            log("【画中画】兜底播放也失败：" + e2.getMessage());
+        } catch (Exception e) {
+            log("【画中画】恢复播放失败：" + e.getMessage());
+            
+            // 最后兜底：重新播放当前频道
+            try {
+                if (channelSourceList != null 
+                        && currentPlayIndex >= 0 && currentPlayIndex < channelSourceList.size()) {
+                    Channel channel = channelSourceList.get(currentPlayIndex);
+                    if (channel != null && channel.getPlayUrl() != null) {
+                        mPlayerManager.playUrl(channel.getPlayUrl());
+                        log("【画中画】兜底：重新加载当前频道");
+                    }
+                }
+            } catch (Exception e2) {
+                log("【画中画】兜底播放也失败：" + e2.getMessage());
+            }
         }
     }
-}
 
     // ====================================================================
     // 恢复当前频道播放
@@ -279,9 +290,7 @@ public class MainActivity extends AppCompatActivity {
     private void initRemoteManager() {
         remoteManager = new TvRemoteManager();
         remoteManager.setMode(TvRemoteManager.Mode.PLAY_MODE);
-
         remoteManager.setOnRemoteActionListener(new TvRemoteManager.OnRemoteActionListener() {
-
             @Override
             public void onPlayChannelUp() {
                 channelPanelController.switchUp();
@@ -431,7 +440,6 @@ public class MainActivity extends AppCompatActivity {
         TextView btn_back_group = findViewById(R.id.btn_back_group);
 
         EpgManager.getInstance(this);
-
         ChannelListManager channelListManager = new ChannelListManager(this, lvChannelList);
         ChannelListManager channelListManagerEpg = new ChannelListManager(this, lvChannelListEpg);
         GroupListManager groupListManager = new GroupListManager(this, lvGroup);
@@ -526,9 +534,7 @@ public class MainActivity extends AppCompatActivity {
     // ====================================================================
     private void initAppCoreManager() {
         appCoreManager = new AppCoreManager(this, mPlayerManager, appConfig);
-
         appCoreManager.setOnDataLoadListener(new AppCoreManager.OnDataLoadListener() {
-
             @Override
             public void onLiveSourceLoaded(List<Channel> channels, boolean fromCache) {
                 runOnUiThread(new Runnable() {
@@ -603,23 +609,19 @@ public class MainActivity extends AppCompatActivity {
     // ====================== 设置加载 ======================
     private void loadSettings() {
         SharedPreferences sp = getSharedPreferences("app_settings", MODE_PRIVATE);
-
         boolean epg_enable = sp.getBoolean("epg_enable", true);
         channel_reverse = sp.getBoolean("channel_reverse", false);
         number_channel_enable = sp.getBoolean("number_channel_enable", true);
         boolean auto_update_source = sp.getBoolean("auto_update_source", true);
-
         pipEnable = sp.getBoolean("pip_enable", false);
 
         if (channelNumberManager != null) {
             channelNumberManager.setEnable(number_channel_enable);
         }
-
         if (channelPanelController != null) {
             channelPanelController.setEpgEnable(epg_enable);
             channelPanelController.setReverse(channel_reverse);
         }
-
         if (pipManager != null) {
             pipManager.setPipEnabled(pipEnable);
         }
@@ -662,6 +664,7 @@ public class MainActivity extends AppCompatActivity {
 
         playerStateListener.setCurrentChannelName(channel.getName());
         appConfig.setLastPlayIndex(index);
+
         mPlayerManager.playUrl(channel.getPlayUrl());
 
         TVPlayerManager.LiveInfo live = mPlayerManager.getLiveInfo();
@@ -834,7 +837,6 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onUserLeaveHint() {
         super.onUserLeaveHint();
-
         SettingsActivity.logOperation("【画中画排查】========== 开始 ==========");
         SettingsActivity.logOperation("【画中画排查】onUserLeaveHint 被调用");
 
@@ -880,7 +882,6 @@ public class MainActivity extends AppCompatActivity {
                 // ✅ 调用管理器进入画中画
                 boolean result = pipManager.enterPictureInPicture(this, pipParams);
                 SettingsActivity.logOperation("【画中画排查】进入结果：" + (result ? "✅ 成功" : "❌ 失败"));
-
             } catch (Exception e) {
                 SettingsActivity.logOperation("【画中画排查】❌ 异常：" + e.getMessage());
                 e.printStackTrace();
@@ -908,7 +909,8 @@ public class MainActivity extends AppCompatActivity {
     // 3. 强制刷新 PlayerView 布局（解决小窗问题）
     // 4. 同步遥控器模式
     // 5. 恢复信息栏显示
-    // 6. 恢复播放
+    // 6. 重置手势管理器状态（解决手势被拦截问题）
+    // 7. 恢复播放
     // 
     // 尺寸日志说明：
     // - 记录4个时间点的尺寸变化，用于排查"返回播放界面变小窗"问题
@@ -916,11 +918,15 @@ public class MainActivity extends AppCompatActivity {
     // - 日志点2：reapplyFullScreen 后的尺寸
     // - 日志点3：立即 requestLayout 后的尺寸
     // - 日志点4：延迟200ms刷新 + 重新绑定后的尺寸
+    // 
+    // 【2026-06-22 新增：退出画中画时重置手势状态】
+    // 【问题】退出画中画后，手势滑动被防抖拦截，无法切台
+    // 【原因】画中画模式下可能误触发手势，导致 isGestureLocked = true
+    // 【解决】退出画中画时调用 gestureManager.reset() 强制重置
     // ====================================================================
     @Override
     public void onPictureInPictureModeChanged(boolean isInPictureInPictureMode) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode);
-
         SettingsActivity.logOperation("【画中画】模式变化 → " + (isInPictureInPictureMode ? "进入" : "退出"));
 
         // ✅ 通知管理器状态变化
@@ -956,8 +962,8 @@ public class MainActivity extends AppCompatActivity {
 
             // 记录进入画中画时的尺寸
             logPipViewSize("进入画中画时", playerView);
-            SettingsActivity.logOperation("【画中画】================================");
 
+            SettingsActivity.logOperation("【画中画】================================");
         } else {
             // ================================================================
             // ✅ 退出画中画：强制恢复全屏（带详细尺寸日志）
@@ -1082,6 +1088,35 @@ public class MainActivity extends AppCompatActivity {
             }
 
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+
+            // ================================================================
+            // ✅ 5. 重置手势管理器状态（2026-06-22 新增）
+            // 
+            // 【为什么要加这个？】
+            // 画中画模式下，PlayerView 尺寸变小，触摸事件的坐标计算可能出问题，
+            // 导致误触发手势检测（比如小窗边缘的触摸被识别为滑动）。
+            // 误触发后，手势管理器的 isGestureLocked 会被设为 true（防抖锁定），
+            // 300ms 后才会自动解除。
+            // 
+            // 如果用户退出画中画后立即滑动，就会被防抖拦截，手势失效。
+            // 
+            // 【解决方案】
+            // 退出画中画时，强制调用 gestureManager.reset()，
+            // 立即重置 isGestureLocked 为 false，并清除所有待处理的延迟消息。
+            // 
+            // 【效果】
+            // 用户返回全屏后，手势立即可用，不会被防抖拦截。
+            // ================================================================
+            if (gestureManager != null) {
+                try {
+                    gestureManager.reset();
+                    SettingsActivity.logOperation("【画中画】✅ 手势管理器已重置");
+                } catch (Exception e) {
+                    SettingsActivity.logOperation("【画中画】手势重置失败：" + e.getMessage());
+                }
+            }
+
+            // 6. 恢复播放
             resumeCurrentChannel();
 
             SettingsActivity.logOperation("【画中画】退出画中画完成");
@@ -1107,7 +1142,6 @@ public class MainActivity extends AppCompatActivity {
             SettingsActivity.logOperation("【画中画尺寸】" + tag + "：View 为 null");
             return;
         }
-
         try {
             // 打印位置和尺寸
             SettingsActivity.logOperation("【画中画尺寸】" + tag + "位置：left=" + view.getLeft() 
@@ -1137,7 +1171,6 @@ public class MainActivity extends AppCompatActivity {
             String visStr = visibility == View.VISIBLE ? "VISIBLE" :
                             visibility == View.INVISIBLE ? "INVISIBLE" : "GONE";
             SettingsActivity.logOperation("【画中画尺寸】" + tag + "可见性：" + visStr);
-
         } catch (Exception e) {
             SettingsActivity.logOperation("【画中画尺寸】" + tag + "获取尺寸失败：" + e.getMessage());
         }
@@ -1167,7 +1200,6 @@ public class MainActivity extends AppCompatActivity {
             // DecorView 尺寸（Activity 根视图）
             View decorView = getWindow().getDecorView();
             SettingsActivity.logOperation("【画中画尺寸】DecorView：宽=" + decorView.getWidth() + "，高=" + decorView.getHeight());
-
         } catch (Exception e) {
             SettingsActivity.logOperation("【画中画尺寸】获取窗口尺寸失败：" + e.getMessage());
         }
@@ -1182,6 +1214,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // ====================== 生命周期方法 ======================
+
     // ====================================================================
     // ✅ onPause（集成版：画中画模式下保持播放）
     // 
@@ -1254,65 +1287,4 @@ public class MainActivity extends AppCompatActivity {
     protected void onResume() {
         super.onResume();
 
-        isOpeningSettings = false;
-        appCoreManager.onResume();
-
-        // ✅ 重置 onStop 标记（用户返回应用了）
-        if (pipManager != null) {
-            pipManager.setStopCalled(false);
-        }
-
-        // 从设置页返回，重新加载开关
-        loadSettings();
-
-        screenRatioManager.apply();
-        displayManager.reapplyFullScreen();
-
-        // 非画中画模式下恢复播放
-        if (pipManager == null || !pipManager.isInPipMode()) {
-            new Handler(Looper.getMainLooper()).postDelayed(this::resumeCurrentChannel, 200);
-        }
-
-        syncRemoteMode();
-    }
-
-    @Override
-    public void onWindowFocusChanged(boolean hasFocus) {
-        super.onWindowFocusChanged(hasFocus);
-        if (hasFocus) {
-            displayManager.reapplyFullScreen();
-        }
-        appCoreManager.onWindowFocusChanged(hasFocus);
-    }
-        @Override
-    protected void onDestroy() {
-        super.onDestroy();
-
-        if (mPanelAutoHideHandler != null) {
-            mPanelAutoHideHandler.removeCallbacks(mPanelAutoHideRunnable);
-        }
-        if (infoDisplayManager != null) {
-            infoDisplayManager.release();
-        }
-        if (channelNumberManager != null) {
-            channelNumberManager.release();
-        }
-        if (displayManager != null) {
-            displayManager.release();
-        }
-        if (channelPanelController != null) {
-            channelPanelController.release();
-        }
-        if (appCoreManager != null) {
-            appCoreManager.release();
-        }
-
-        if (pipManager != null) {
-            pipManager.release();
-        }
-
-        mInstance = null;
-    }
-}
-
-  
+        is

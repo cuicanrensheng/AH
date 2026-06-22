@@ -881,14 +881,14 @@ public class MainActivity extends AppCompatActivity {
 
         SettingsActivity.logOperation("【画中画排查】========== 结束 ==========");
     }
-    @Override
+        @Override
 public void onPictureInPictureModeChanged(boolean isInPictureInPictureMode) {
     super.onPictureInPictureModeChanged(isInPictureInPictureMode);
 
     isInPipMode = isInPictureInPictureMode;
     isPipEntering = false;
 
-    SettingsActivity.logOperation("【画中画】模式变化 → " + (isInPictureInPictureMode ? "进入画中画" : "退出画中画"));
+    log("【画中画】模式变化 → " + (isInPictureInPictureMode ? "进入" : "退出"));
 
     if (pipManager != null) {
         try {
@@ -900,71 +900,71 @@ public void onPictureInPictureModeChanged(boolean isInPictureInPictureMode) {
 
     if (isInPictureInPictureMode) {
         // 进入画中画
-        if (channelPanelController != null && channelPanelController.isPanelOpen()) {
-            channelPanelController.hidePanel();
-        }
-        if (infoDisplayManager != null) {
-            infoDisplayManager.hideInfoBar();
-            infoDisplayManager.hideChannelNum();
-        }
-
+        hideAllUiForPip();
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
-        // ✅ 关键修复1：重新绑定 PlayerView（防止 Surface 丢失）
-        try {
-            if (mPlayerManager != null && playerView != null) {
-                mPlayerManager.attachPlayerView(playerView);
-                log("【画中画】✅ 重新绑定 PlayerView");
+        // 确保播放器在播放
+        if (mPlayerManager != null) {
+            try {
+                mPlayerManager.resume();
+                log("【画中画】✅ 恢复播放");
+            } catch (Exception e) {
+                log("【画中画】恢复播放失败：" + e.getMessage());
             }
-        } catch (Exception e) {
-            log("【画中画】重新绑定 PlayerView 失败：" + e.getMessage());
         }
 
-        // ✅ 关键修复2：强制恢复播放
-        keepPlayingInPip();
-
-        // ✅ 关键修复3：三重保险 - 延迟恢复
-        new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                keepPlayingInPip();
-                log("【画中画】✅ 延迟恢复播放（第1重保险）");
-            }
-        }, 100);
-
-        new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                keepPlayingInPip();
-                log("【画中画】✅ 延迟恢复播放（第2重保险）");
-            }
-        }, 500);
-
-        new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                keepPlayingInPip();
-                log("【画中画】✅ 延迟恢复播放（第3重保险）");
-            }
-        }, 1000);
-
     } else {
-        // 退出画中画
+        // ================================================================
+        // ✅ 退出画中画：强制恢复全屏
+        // ================================================================
+        
+        // 1. 重新应用全屏设置
         if (displayManager != null) {
             displayManager.reapplyFullScreen();
         }
+        
+        // 2. ✅ 关键：强制刷新 PlayerView 布局
+        if (playerView != null) {
+            playerView.post(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        // 强制重新测量和布局
+                        playerView.requestLayout();
+                        playerView.invalidate();
+                        log("【画中画】✅ 刷新 PlayerView 布局");
+                    } catch (Exception e) {
+                        log("【画中画】刷新 PlayerView 失败：" + e.getMessage());
+                    }
+                }
+            });
+            
+            // 再延迟刷新一次（确保系统尺寸变化完成后再刷新）
+            playerView.postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        playerView.requestLayout();
+                        playerView.invalidate();
+                        
+                        // 重新绑定播放器，确保渲染尺寸正确
+                        if (mPlayerManager != null) {
+                            mPlayerManager.attachPlayerView(playerView);
+                            mPlayerManager.resume();
+                        }
+                        
+                        log("【画中画】✅ 延迟刷新 PlayerView + 重新绑定");
+                    } catch (Exception e) {
+                        log("【画中画】延迟刷新失败：" + e.getMessage());
+                    }
+                }
+            }, 200);
+        }
+        
+        // 3. 同步遥控器模式
         syncRemoteMode();
 
-        // ✅ 退出画中画也重新绑定
-        try {
-            if (mPlayerManager != null && playerView != null) {
-                mPlayerManager.attachPlayerView(playerView);
-                log("【画中画】✅ 退出画中画，重新绑定 PlayerView");
-            }
-        } catch (Exception e) {
-            log("【画中画】退出画中画重新绑定失败：" + e.getMessage());
-        }
-
+        // 4. 恢复信息栏显示
         if (infoDisplayManager != null && channelSourceList.size() > currentPlayIndex) {
             Channel currChannel = channelSourceList.get(currentPlayIndex);
             TVPlayerManager.LiveInfo liveInfo = mPlayerManager.getLiveInfo();
@@ -973,11 +973,12 @@ public void onPictureInPictureModeChanged(boolean isInPictureInPictureMode) {
         }
 
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-
         resumeCurrentChannel();
+        
         log("【画中画】退出画中画完成");
     }
 }
+
     // ====================================================================
     // 日志方法
     // ====================================================================

@@ -444,8 +444,9 @@ public class MainActivity extends AppCompatActivity {
                         channelPanelController.playChannel(channelIndex);
                     }
 
+                    // ✅ 修复：参数从 int 改成 String
                     @Override
-                    public void showChannelNumber(int number) {
+                    public void showChannelNumber(String number) {
                         infoDisplayManager.showChannelNum(number);
                     }
 

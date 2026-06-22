@@ -768,24 +768,34 @@ public class MainActivity extends AppCompatActivity {
     public void onReceiveConfig(final String liveUrl, final String epgUrl) {
         appCoreManager.onReceiveConfig(liveUrl, epgUrl);
     }
-
     // ====================================================================
-    // ✅ 画中画：用户按 Home 键时自动进入画中画（新增）
-    // ====================================================================
-    @Override
-    protected void onUserLeaveHint() {
-        super.onUserLeaveHint();
-
-        // 如果画中画开关开启，并且设备支持画中画，就自动进入
-        if (pipEnable && pipManager != null && pipManager.isPipSupported()) {
-            SettingsActivity.logOperation("【画中画】用户按 Home 键 → 自动进入画中画");
-            try {
-                pipManager.enterPictureInPicture(this);
-            } catch (Exception e) {
-                SettingsActivity.logOperation("【画中画】进入失败：" + e.getMessage());
-            }
+// ✅ 画中画：用户按 Home 键时自动进入画中画
+// 【修复说明】直接调用系统 API，不用 PictureInPictureManager，避免中间层出问题
+// ====================================================================
+@Override
+protected void onUserLeaveHint() {
+    super.onUserLeaveHint();
+    
+    // 打开设置页面时不进入画中画
+    if (isOpeningSettings) {
+        return;
+    }
+    
+    // 只有开关开启 + Android 8.0+ 才生效
+    if (pipEnable && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        SettingsActivity.logOperation("【画中画】用户按 Home 键 → 自动进入画中画");
+        try {
+            // 直接调用系统 API，设置 16:9 的视频比例
+            PictureInPictureParams.Builder paramsBuilder = new PictureInPictureParams.Builder();
+            paramsBuilder.setAspectRatio(new Rational(16, 9));
+            enterPictureInPictureMode(paramsBuilder.build());
+        } catch (Exception e) {
+            SettingsActivity.logOperation("【画中画】进入失败：" + e.getMessage());
+            e.printStackTrace();
         }
     }
+}
+
 
     // ====================================================================
     // ✅ 画中画：模式变化回调（新增）

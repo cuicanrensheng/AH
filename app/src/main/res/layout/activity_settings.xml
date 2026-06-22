@@ -446,7 +446,7 @@
                 android:gravity="center_vertical"
                 android:paddingStart="8dp"
                 android:paddingEnd="8dp"
-                android:text="📌 操作崩溃日志"
+                android:text="📌 查看操作日志"
                 android:textColor="#FFFFFF"
                 android:textSize="16sp"
                 android:background="@drawable/setting_item_bg"

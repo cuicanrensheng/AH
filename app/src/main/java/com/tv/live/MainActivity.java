@@ -191,6 +191,11 @@ public class MainActivity extends AppCompatActivity {
         SettingsActivity.logOperation("【播放】记录上次播放索引：" + currentPlayIndex);
 
         initChannelNumberManager();
+        // ✅ 修复：loadSettings中channelNumberManager可能未初始化，这里重新同步一次
+        if (channelNumberManager != null) {
+            channelNumberManager.setEnable(number_channel_enable);
+        }
+
         initAppCoreManager();
 
         displayManager.showLoading("正在加载直播源...");
@@ -205,6 +210,30 @@ public class MainActivity extends AppCompatActivity {
             pipManager = PictureInPictureManager.getInstance(this);
             // 强制同步开关状态
             pipManager.setPipEnabled(pipEnable);
+            // 设置PIP监听器（同步播放状态）
+            pipManager.setListener(new PictureInPictureManager.OnPipListener() {
+                @Override
+                public void onPlayPause() {
+                    // 耳机拔出时暂停/恢复播放
+                    if (mPlayerManager != null) {
+                        boolean isPlaying = mPlayerManager.isPlaying();
+                        if (isPlaying) {
+                            mPlayerManager.pause();
+                        } else {
+                            mPlayerManager.play();
+                        }
+                        pipManager.updatePlayState(!isPlaying);
+                    }
+                }
+
+                @Override
+                public void onPipModeChanged(boolean inPip) {
+                    // 同步播放状态：PIP模式下保持播放
+                    if (inPip && mPlayerManager != null && !mPlayerManager.isPlaying()) {
+                        mPlayerManager.play();
+                    }
+                }
+            });
             log("【画中画】初始化完成，开关状态：" + (pipEnable ? "开启" : "关闭"));
             SettingsActivity.logOperation("【画中画】初始化完成，设备支持：" + pipManager.isPipSupported());
         } catch (Exception e) {
@@ -431,6 +460,10 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onLiveInfoUpdate(TVPlayerManager.LiveInfo info) {
                 infoDisplayManager.updateLiveInfo(info);
+                // ✅ 同步播放状态到PIP管理器
+                if (pipManager != null) {
+                    pipManager.updatePlayState(mPlayerManager.isPlaying());
+                }
             }
         });
     }
@@ -554,8 +587,11 @@ public class MainActivity extends AppCompatActivity {
         // ✅ 优化：先读取开关，再同步给管理器
         pipEnable = sp.getBoolean("pip_enable", false);
 
+        // ✅ 修复：channelNumberManager可能未初始化，增加判空
         if (channelNumberManager != null) {
             channelNumberManager.setEnable(number_channel_enable);
+        } else {
+            log("【设置】channelNumberManager未初始化，暂不同步数字选台开关");
         }
 
         if (channelPanelController != null) {
@@ -625,8 +661,8 @@ public class MainActivity extends AppCompatActivity {
         // ====================================================================
         if (pipManager != null && isInPipMode && channel != null) {
             try {
-                pipManager.updateChannelInfo(index + 1, 
-                        channel.getName() != null ? channel.getName() : "", 
+                pipManager.updateChannelInfo(index + 1,
+                        channel.getName() != null ? channel.getName() : "",
                         live != null ? live.bitrate : "");
             } catch (Exception e) {
                 log("【画中画】同步频道信息失败：" + e.getMessage());
@@ -772,27 +808,27 @@ public class MainActivity extends AppCompatActivity {
     public void onReceiveConfig(final String liveUrl, final String epgUrl) {
         appCoreManager.onReceiveConfig(liveUrl, epgUrl);
     }
-    
+
     // ====================================================================
-    // ✅ 画中画：用户按 Home 键时自动进入画中画（优化：完善参数 + 状态同步）
+    // ✅ 画中画：用户按 Home 键时自动进入画中画（优化：完善参数 + 状态同步 + 版本兼容）
     // ====================================================================
     @Override
     protected void onUserLeaveHint() {
         super.onUserLeaveHint();
-        
+
         SettingsActivity.logOperation("【画中画排查】========== 开始 ==========");
         SettingsActivity.logOperation("【画中画排查】onUserLeaveHint 被调用");
-        
+
         // 1. 检查是否打开设置页面
         if (isOpeningSettings) {
             SettingsActivity.logOperation("【画中画排查】打开设置页面，跳过");
             SettingsActivity.logOperation("【画中画排查】========== 结束 ==========");
             return;
         }
-        
+
         // 2. 检查 MainActivity 的开关状态
         SettingsActivity.logOperation("【画中画排查】MainActivity开关状态：" + pipEnable);
-        
+
         // 3. 检查 PictureInPictureManager 是否存在
         if (pipManager == null) {
             SettingsActivity.logOperation("【画中画排查】❌ pipManager 为 null，初始化失败");
@@ -800,15 +836,15 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         SettingsActivity.logOperation("【画中画排查】✅ pipManager 已初始化");
-        
+
         // 4. 检查设备是否支持画中画
         boolean supported = pipManager.isPipSupported();
         SettingsActivity.logOperation("【画中画排查】设备支持画中画：" + supported);
-        
+
         // 5. 检查 PictureInPictureManager 内部开关
         boolean enabled = pipManager.isPipEnabled();
         SettingsActivity.logOperation("【画中画排查】PIP管理器内部开关：" + enabled);
-        
+
         // 6. 如果开关不同步，尝试同步
         if (!enabled && pipEnable) {
             SettingsActivity.logOperation("【画中画排查】⚠️ 开关不同步，尝试同步...");
@@ -816,18 +852,25 @@ public class MainActivity extends AppCompatActivity {
             enabled = pipManager.isPipEnabled();
             SettingsActivity.logOperation("【画中画排查】同步后开关状态：" + enabled);
         }
-        
-        // 7. 尝试进入画中画（优化：传递合理的PictureInPictureParams参数）
+
+        // 7. 尝试进入画中画（优化：版本兼容 + 参数校验 + 播放状态同步）
         if (pipEnable && supported && enabled) {
             SettingsActivity.logOperation("【画中画排查】所有条件满足，尝试进入画中画...");
             try {
-                // 构建画中画参数（16:9 比例，适配直播画面）
-                PictureInPictureParams.Builder pipBuilder = new PictureInPictureParams.Builder();
+                // 构建画中画参数（16:9 比例，适配直播画面，版本兼容）
+                PictureInPictureParams pipParams = null;
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    PictureInPictureParams.Builder pipBuilder = new PictureInPictureParams.Builder();
                     pipBuilder.setAspectRatio(new Rational(16, 9));
+                    pipParams = pipBuilder.build();
                 }
-                
-                boolean result = pipManager.enterPictureInPicture(this, pipBuilder.build());
+
+                // 同步播放状态到PIP管理器
+                if (mPlayerManager != null) {
+                    pipManager.updatePlayState(mPlayerManager.isPlaying());
+                }
+
+                boolean result = pipManager.enterPictureInPicture(this, pipParams);
                 // 同步画中画状态
                 isInPipMode = result;
                 SettingsActivity.logOperation("【画中画排查】进入结果：" + (result ? "✅ 成功" : "❌ 失败"));
@@ -841,12 +884,12 @@ public class MainActivity extends AppCompatActivity {
             SettingsActivity.logOperation("【画中画排查】  - 设备支持：" + supported);
             SettingsActivity.logOperation("【画中画排查】  - PIP管理器开关：" + enabled);
         }
-        
+
         SettingsActivity.logOperation("【画中画排查】========== 结束 ==========");
     }
 
     // ====================================================================
-    // ✅ 画中画：模式变化回调（优化：精准同步状态 + 完善视图处理）
+    // ✅ 画中画：模式变化回调（优化：精准同步状态 + 完善视图处理 + 播放状态保持）
     // ====================================================================
     @Override
     public void onPictureInPictureModeChanged(boolean isInPictureInPictureMode) {
@@ -856,6 +899,7 @@ public class MainActivity extends AppCompatActivity {
         isInPipMode = isInPictureInPictureMode;
         SettingsActivity.logOperation("【画中画】模式变化 → " + (isInPictureInPictureMode ? "进入画中画" : "退出画中画"));
 
+        // 同步状态到PIP管理器
         if (pipManager != null) {
             try {
                 pipManager.onPipModeChanged(this, isInPictureInPictureMode);
@@ -865,7 +909,7 @@ public class MainActivity extends AppCompatActivity {
         }
 
         if (isInPictureInPictureMode) {
-            // 进入画中画：隐藏所有面板 + 隐藏信息栏
+            // 进入画中画：隐藏所有面板 + 隐藏信息栏 + 保持播放
             if (channelPanelController != null && channelPanelController.isPanelOpen()) {
                 channelPanelController.hidePanel();
             }
@@ -875,6 +919,10 @@ public class MainActivity extends AppCompatActivity {
             }
             // 画中画模式下保持屏幕常亮
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            // 确保PIP模式下播放器继续播放
+            if (mPlayerManager != null && !mPlayerManager.isPlaying()) {
+                mPlayerManager.play();
+            }
         } else {
             // 退出画中画：恢复全屏 + 同步遥控器模式 + 显示信息栏
             if (displayManager != null) {
@@ -888,19 +936,28 @@ public class MainActivity extends AppCompatActivity {
                 infoDisplayManager.showInfoBar(currChannel, liveInfo);
                 infoDisplayManager.showChannelNum(currentPlayIndex + 1);
             }
+            // 退出PIP后仍保持屏幕常亮
+            getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         }
     }
 
     // ====================== 生命周期方法 ======================
     @Override
     protected void onPause() {
-        // ✅ 画中画模式下不显示占位图（优化：状态判断更精准）
+        // ✅ 画中画模式下不显示占位图、不暂停播放（优化：状态判断更精准）
         if (!isInPipMode) {
             if (!isOpeningSettings) {
                 showPlayerPlaceholder();
+                // 非PIP模式下暂停播放
+                if (mPlayerManager != null && mPlayerManager.isPlaying()) {
+                    mPlayerManager.pause();
+                }
             } else {
                 SettingsActivity.logOperation("【防花屏】打开设置页面，不显示占位图");
             }
+        } else {
+            // PIP模式下保持播放
+            SettingsActivity.logOperation("【画中画】onPause - PIP模式，保持播放");
         }
 
         super.onPause();
@@ -918,18 +975,23 @@ public class MainActivity extends AppCompatActivity {
 
         // 重新加载设置（防止设置页面修改了画中画开关）
         loadSettings();
-        // 同步画中画开关到管理器
+        // 同步画中画开关到管理器（增加非空判断）
         if (pipManager != null) {
             pipManager.setPipEnabled(pipEnable);
+            SettingsActivity.logOperation("【画中画】onResume 同步开关状态：" + pipEnable);
         }
-        
+
         screenRatioManager.apply();
         displayManager.reapplyFullScreen();
 
-        // ✅ 画中画模式下不隐藏占位图（优化：延迟更合理）
+        // ✅ 画中画模式下不隐藏占位图（优化：延迟更合理 + 状态判断）
         if (!isInPipMode) {
             new Handler(Looper.getMainLooper()).postDelayed(() -> {
                 hidePlayerPlaceholder();
+                // 恢复播放
+                if (mPlayerManager != null && !mPlayerManager.isPlaying()) {
+                    mPlayerManager.play();
+                }
             }, 1500); // 缩短延迟，提升体验
         }
 
@@ -964,56 +1026,17 @@ public class MainActivity extends AppCompatActivity {
         if (channelPanelController != null) channelPanelController.release();
         if (appCoreManager != null) appCoreManager.release();
 
-        // ✅ 释放画中画管理器（优化：增加状态重置）
+        // ✅ 释放画中画管理器（优化：增加状态重置 + 播放暂停）
         if (pipManager != null) {
             try {
+                // PIP模式下先退出
+                if (isInPipMode && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    this.finish(); // 退出PIP并销毁Activity
+                }
                 pipManager.release();
                 isInPipMode = false;
                 pipEnable = false;
+                SettingsActivity.logOperation("【画中画】onDestroy 释放资源完成");
             } catch (Exception e) {
                 log("【画中画】释放管理器失败：" + e.getMessage());
-            }
-            pipManager = null;
-        }
-
-        remoteManager = null;
-        mInstance = null;
-    }
-
-    // ====================================================================
-    // 防花屏：占位图显示/隐藏方法
-    // ====================================================================
-    private void showPlayerPlaceholder() {
-        if (ivPlayerPlaceholder != null) {
-            ivPlayerPlaceholder.setVisibility(View.VISIBLE);
-            SettingsActivity.logOperation("【防花屏】显示占位图");
-        }
-    }
-
-    private void hidePlayerPlaceholder() {
-        if (ivPlayerPlaceholder != null) {
-            ivPlayerPlaceholder.setVisibility(View.GONE);
-            SettingsActivity.logOperation("【防花屏】隐藏占位图");
-        }
-    }
-
-    // ====================== 日志方法 ======================
-    private void log(String msg) {
-        logList.add(msg);
-        if (logList.size() > 100) {
-            logList.remove(0);
-        }
-        SettingsActivity.log(msg);
-    }
-
-    // ====================================================================
-    // 兼容方法
-    // ====================================================================
-    public TVPlayerManager getPlayerManager() {
-        return mPlayerManager;
-    }
-
-    public static MainActivity getInstance() {
-        return mInstance;
-    }
-}
+           

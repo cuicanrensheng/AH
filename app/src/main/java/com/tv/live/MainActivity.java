@@ -18,8 +18,11 @@ import android.widget.TextView;
 import androidx.appcompat.app.AppCompatActivity;
 
 // ====================================================================
-// ✅ Media3 迁移：PlayerView 从 exoplayer2.ui 改为 media3.ui
+// ✅ 2026-06-23 修改：升级到 Media3 1.10.1
 // ====================================================================
+// 包名从 com.google.android.exoplayer2.ui.PlayerView
+// 改成 androidx.media3.ui.PlayerView
+// 这是 ExoPlayer 升级到 Media3 后的包名变化。
 import androidx.media3.ui.PlayerView;
 
 import com.tv.live.config.AppConfig;
@@ -121,12 +124,9 @@ import java.util.List;
  * 【修复方案】
  * 把 loadSettings() 和 screenRatioManager.apply() 移到 if (resumed) 外面，
  * 确保每次 onResume 都重新加载设置和应用屏幕比例。
- *
- * 【2026-06-23 Media3 迁移说明】
- * PlayerView 从 com.google.android.exoplayer2.ui.PlayerView
- * 改为 androidx.media3.ui.PlayerView
  */
 public class MainActivity extends AppCompatActivity {
+
     // ====================== 单例 ======================
     /** Activity 单例，供其他类访问 */
     public static MainActivity mInstance;
@@ -139,6 +139,7 @@ public class MainActivity extends AppCompatActivity {
      * 【兼容说明】内部数据来自 appCoreManager，外部访问方式不变
      */
     public List<Channel> channelSourceList = new ArrayList<>();
+
     /**
      * 当前正在播放的频道索引（全局索引，对应 channelSourceList）
      * 【兼容说明】内部数据来自 channelPanelController，外部访问方式不变
@@ -146,7 +147,7 @@ public class MainActivity extends AppCompatActivity {
     public int currentPlayIndex = 0;
 
     // ====================== 视图相关 ======================
-    /** 播放器视图（ExoPlayer 的 PlayerView） */
+    /** 播放器视图（Media3 的 PlayerView） */
     private PlayerView playerView;
 
     // ====================================================================
@@ -164,16 +165,21 @@ public class MainActivity extends AppCompatActivity {
     private ImageView ivPlayerPlaceholder;
 
     // ====================== 管理器相关 ======================
-    /** 播放器管理器（单例，基于 ExoPlayer 封装） */
+    /** 播放器管理器（单例，基于 Media3 ExoPlayer 封装） */
     public TVPlayerManager mPlayerManager;
+
     /** 应用配置管理（SP 封装） */
     private AppConfig appConfig;
+
     /** 屏幕比例管理（全屏/填充/原始） */
     private ScreenRatioManager screenRatioManager;
+
     /** 手势管理（滑动、点击等手势处理） */
     private GestureManager gestureManager;
+
     /** 按键事件管理（遥控器按键分发） */
     private KeyEventManager keyEventManager;
+
     /** 播放器状态监听器（空实现，不弹 Toast） */
     private PlayerStateListenerImpl playerStateListener;
 
@@ -182,18 +188,23 @@ public class MainActivity extends AppCompatActivity {
     // ====================================================================
     /** 数字选台管理器 */
     private ChannelNumberManager channelNumberManager;
+
     /** 显示管理器（全面屏适配 + 加载动画） */
     private DisplayManager displayManager;
+
     /** 信息展示管理器（频道号 + 信息栏 + EPG 节目单） */
     private InfoDisplayManager infoDisplayManager;
+
     /** 频道面板控制器（分组 + 频道切换 + 面板控制 + 焦点管理） */
     private ChannelPanelController channelPanelController;
+
     /** 应用核心管理器（数据加载 + 广播 + 生命周期） */
     private AppCoreManager appCoreManager;
 
     // ====================== 状态标志 ======================
     /** 频道切换是否反向（上键=下一台，下键=上一台） */
     private boolean channel_reverse;
+
     /** 数字选台是否启用 */
     private boolean number_channel_enable;
 
@@ -243,6 +254,7 @@ public class MainActivity extends AppCompatActivity {
      * Handler 可以方便地实现延迟执行和取消任务。
      */
     private Handler mPanelAutoHideHandler = new Handler(Looper.getMainLooper());
+
     /**
      * 自动隐藏面板的 Runnable
      *
@@ -262,6 +274,7 @@ public class MainActivity extends AppCompatActivity {
             }
         }
     };
+
     /**
      * 是否是首次打开 app
      *
@@ -288,6 +301,7 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         log("【主页】onCreate -> 页面创建");
         SettingsActivity.logOperation("【系统】APP启动");
+
         mInstance = this;
 
         // ===== 自动旋转横屏 =====
@@ -323,12 +337,25 @@ public class MainActivity extends AppCompatActivity {
         // ====================================================================
         playerView = findViewById(R.id.player_view);
         playerView.setUseController(false);
+
         // ====================================================================
-        // ⚠️ Media3 注意：setControllerVisibilityListener 有两个重载
-        // 传 null 时存在歧义，可能编译报错。这里强转一下明确类型。
-        // 如果编译报错，可以改成：playerView.setControllerVisibilityListener((PlayerControlView.VisibilityListener) null);
+        // ✅ 2026-06-23 修复：setControllerVisibilityListener 歧义问题
         // ====================================================================
-        playerView.setControllerVisibilityListener(null);
+        //
+        // 【问题原因】
+        // Media3 的 PlayerView 有两个重载的 setControllerVisibilityListener 方法：
+        // 1. setControllerVisibilityListener(ControllerVisibilityListener)
+        // 2. setControllerVisibilityListener(VisibilityListener) （已废弃）
+        //
+        // 传 null 的时候，编译器不知道该调用哪个，所以报"引用不明确"错误。
+        //
+        // 【解决方案】
+        // 强制类型转换为 ControllerVisibilityListener，告诉编译器调用哪个方法。
+        //
+        // 【为什么用 ControllerVisibilityListener 而不是 VisibilityListener？】
+        // 因为 VisibilityListener 已经被标记为废弃（deprecated），
+        // 应该使用新的 ControllerVisibilityListener。
+        playerView.setControllerVisibilityListener((PlayerView.ControllerVisibilityListener) null);
 
         // 绑定防花屏占位图
         ivPlayerPlaceholder = findViewById(R.id.iv_player_placeholder);
@@ -479,7 +506,6 @@ public class MainActivity extends AppCompatActivity {
         // 【布局 ID】
         // lv_channel_list_epg：节目单页面的频道列表，在 ll_right_panel 里面
         ListView lvChannelListEpg = findViewById(R.id.lv_channel_list_epg);
-
         ListView lvDate = findViewById(R.id.lv_date);
         ListView lvEpg = findViewById(R.id.lv_epg);
 
@@ -568,8 +594,10 @@ public class MainActivity extends AppCompatActivity {
     private void initPlayer() {
         mPlayerManager = TVPlayerManager.getInstance(this);
         mPlayerManager.attachPlayerView(playerView);
+
         playerStateListener = new PlayerStateListenerImpl(this);
         mPlayerManager.setOnPlayStateListener(playerStateListener);
+
         mPlayerManager.setOnLiveInfoUpdateListener(new TVPlayerManager.OnLiveInfoUpdateListener() {
             @Override
             public void onLiveInfoUpdate(TVPlayerManager.LiveInfo info) {
@@ -684,6 +712,7 @@ public class MainActivity extends AppCompatActivity {
                 });
             }
         });
+
         appCoreManager.registerReceivers();
     }
 
@@ -732,6 +761,7 @@ public class MainActivity extends AppCompatActivity {
      */
     private void playChannel(Channel channel, int index) {
         if (channel == null || channel.getPlayUrl() == null) return;
+
         // ✅ 同步到兼容变量
         currentPlayIndex = index;
 
@@ -811,6 +841,7 @@ public class MainActivity extends AppCompatActivity {
                 SettingsActivity.logOperation("【切台】上键 → "
                         + (channel_reverse ? "下一台" : "上一台"));
                 return true;
+
             case KeyEvent.KEYCODE_DPAD_DOWN:
                 if (channel_reverse) {
                     playPrev();
@@ -820,6 +851,7 @@ public class MainActivity extends AppCompatActivity {
                 SettingsActivity.logOperation("【切台】下键 → "
                         + (channel_reverse ? "上一台" : "下一台"));
                 return true;
+
             case KeyEvent.KEYCODE_DPAD_CENTER:
             case KeyEvent.KEYCODE_ENTER:
                 if (channelNumberManager.isInputting()) {
@@ -828,10 +860,12 @@ public class MainActivity extends AppCompatActivity {
                 }
                 togglePanel();
                 return true;
+
             case KeyEvent.KEYCODE_DPAD_LEFT:
             case KeyEvent.KEYCODE_DPAD_RIGHT:
                 togglePanel();
                 return true;
+
             default:
                 return false;
         }
@@ -1128,6 +1162,7 @@ public class MainActivity extends AppCompatActivity {
         if (displayManager != null) displayManager.release();
         if (channelPanelController != null) channelPanelController.release();
         if (appCoreManager != null) appCoreManager.release();
+
         mInstance = null;
     }
 

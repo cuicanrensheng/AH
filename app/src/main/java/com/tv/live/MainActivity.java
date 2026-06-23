@@ -1,5 +1,4 @@
 package com.tv.live;
-
 import android.app.PictureInPictureParams;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -20,9 +19,7 @@ import android.view.WindowManager;
 import android.widget.ListView;
 import android.widget.ProgressBar;
 import android.widget.TextView;
-
 import androidx.appcompat.app.AppCompatActivity;
-
 import com.google.android.exoplayer2.ui.PlayerView;
 import com.tv.live.config.AppConfig;
 import com.tv.live.listener.PlayerStateListenerImpl;
@@ -31,10 +28,8 @@ import com.tv.live.widget.ChannelListManager;
 import com.tv.live.widget.DateListManager;
 import com.tv.live.widget.EpgManagerWrapper;
 import com.tv.live.widget.GroupListManager;
-
 import java.util.ArrayList;
 import java.util.List;
-
 /**
  * 主播放页面
  * 核心功能：直播播放、频道切换、画中画(PIP)、手势控制、遥控器适配、EPG展示等
@@ -78,7 +73,6 @@ public class MainActivity extends AppCompatActivity implements PictureInPictureM
     };
     private boolean mIsFirstLaunch = true;
     public static List<String> logList = new ArrayList<>();
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -134,7 +128,6 @@ public class MainActivity extends AppCompatActivity implements PictureInPictureM
         displayManager.showLoading("正在加载直播源...");
         appCoreManager.loadLiveAndEpg();
     }
-
     /**
      * 初始化画中画管理器
      * 修改点：
@@ -152,7 +145,8 @@ public class MainActivity extends AppCompatActivity implements PictureInPictureM
                 }
             });
             // ✅ 核心修改：注册画中画完成监听（稳定监听）
-            pipManager.setPipCompleteListener(this);
+            // 注意：方法名是 setCompleteListener，不是 setPipCompleteListener
+            pipManager.setCompleteListener(this);
             log("【画中画】初始化完成，开关状态：" + (pipEnable ? "开启" : "关闭"));
             SettingsActivity.logOperation("【画中画】初始化完成，设备支持：" + pipManager.isPipSupported());
         } catch (Exception e) {
@@ -160,7 +154,6 @@ public class MainActivity extends AppCompatActivity implements PictureInPictureM
             pipManager = null;
         }
     }
-
     /**
      * 统一恢复所有交互能力（手势 + 触摸监听 + 焦点 + 切台逻辑）
      * 抽取该方法目的：统一管理退出画中画后的交互恢复，便于维护和多次调用
@@ -168,14 +161,12 @@ public class MainActivity extends AppCompatActivity implements PictureInPictureM
     private void restoreAllInteraction() {
         try {
             SettingsActivity.logOperation("【画中画】执行 restoreAllInteraction 恢复交互");
-
             // 1. 恢复手势功能（启用 + 重置防抖）
             if (gestureManager != null) {
                 gestureManager.setEnabled(true);
                 gestureManager.reset();
                 SettingsActivity.logOperation("【画中画】✅ 恢复手势功能");
             }
-
             // 2. 重新绑定PlayerView触摸监听（修复画中画导致的监听失效）
             if (playerView != null && gestureHelper != null) {
                 playerView.setOnTouchListener(new View.OnTouchListener() {
@@ -187,37 +178,31 @@ public class MainActivity extends AppCompatActivity implements PictureInPictureM
                 });
                 SettingsActivity.logOperation("【画中画】✅ 重新绑定触摸监听");
             }
-
             // 3. 恢复PlayerView焦点（确保按键/遥控交互正常）
             if (playerView != null) {
                 playerView.requestFocus();
                 SettingsActivity.logOperation("【画中画】✅ 恢复PlayerView焦点");
             }
-
             // 4. 同步遥控器模式（确保切台/面板操作正常）
             syncRemoteMode();
             SettingsActivity.logOperation("【画中画】✅ 同步遥控器模式");
-
             // 5. 刷新PlayerView布局（确保显示正常）
             if (playerView != null) {
                 playerView.requestLayout();
                 playerView.invalidate();
                 SettingsActivity.logOperation("【画中画】✅ 刷新PlayerView布局");
             }
-
             // 6. 重新绑定播放器（确保播放正常）
             if (mPlayerManager != null && playerView != null) {
                 mPlayerManager.attachPlayerView(playerView);
                 mPlayerManager.resume();
                 SettingsActivity.logOperation("【画中画】✅ 重新绑定播放器并恢复播放");
             }
-
         } catch (Exception e) {
             SettingsActivity.logOperation("【画中画】restoreAllInteraction 异常：" + e.getMessage());
             e.printStackTrace();
         }
     }
-
     private void hideAllUiForPip() {
         if (channelPanelController != null && channelPanelController.isPanelOpen()) {
             channelPanelController.hidePanel();
@@ -227,7 +212,6 @@ public class MainActivity extends AppCompatActivity implements PictureInPictureM
             infoDisplayManager.hideChannelNum();
         }
     }
-
     private void keepPlayingInPip() {
         try {
             if (mPlayerManager != null) {
@@ -255,7 +239,6 @@ public class MainActivity extends AppCompatActivity implements PictureInPictureM
             }
         }
     }
-
     private void resumeCurrentChannel() {
         try {
             if (mPlayerManager != null) {
@@ -265,7 +248,6 @@ public class MainActivity extends AppCompatActivity implements PictureInPictureM
             log("【画中画】恢复播放失败：" + e.getMessage());
         }
     }
-
     private void initRemoteManager() {
         remoteManager = new TvRemoteManager();
         remoteManager.setMode(TvRemoteManager.Mode.PLAY_MODE);
@@ -274,53 +256,43 @@ public class MainActivity extends AppCompatActivity implements PictureInPictureM
             public void onPlayChannelUp() {
                 channelPanelController.switchUp();
             }
-
             @Override
             public void onPlayChannelDown() {
                 channelPanelController.switchDown();
             }
-
             @Override
             public void onPlayTogglePanel() {
                 togglePanel();
                 syncRemoteMode();
             }
-
             @Override
             public void onPlayOpenSettings() {
                 openSettings();
             }
-
             @Override
             public boolean onPlayBack() {
                 return false;
             }
-
             @Override
             public void onPanelMoveUp() {
                 channelPanelController.dispatchKeyEvent(KeyEvent.KEYCODE_DPAD_UP);
             }
-
             @Override
             public void onPanelMoveDown() {
                 channelPanelController.dispatchKeyEvent(KeyEvent.KEYCODE_DPAD_DOWN);
             }
-
             @Override
             public void onPanelMoveLeft() {
                 channelPanelController.dispatchKeyEvent(KeyEvent.KEYCODE_DPAD_LEFT);
             }
-
             @Override
             public void onPanelMoveRight() {
                 channelPanelController.dispatchKeyEvent(KeyEvent.KEYCODE_DPAD_RIGHT);
             }
-
             @Override
             public void onPanelConfirm() {
                 channelPanelController.dispatchKeyEvent(KeyEvent.KEYCODE_DPAD_CENTER);
             }
-
             @Override
             public boolean onPanelBack() {
                 boolean handled = channelPanelController.handleBackPressed();
@@ -329,52 +301,42 @@ public class MainActivity extends AppCompatActivity implements PictureInPictureM
                 }
                 return handled;
             }
-
             @Override
             public void onPanelMenu() {
                 boolean isFavorite = channelPanelController.toggleCurrentFavorite();
                 SettingsActivity.logOperation("【遥控】菜单键 → "
                         + (isFavorite ? "已添加收藏" : "已取消收藏"));
             }
-
             @Override
             public void onPanelNumber(int number) {
                 int keyCode = KeyEvent.KEYCODE_0 + number;
                 channelNumberManager.handleNumberKey(keyCode);
             }
-
             @Override
             public void onPanelFocusChanged(TvRemoteManager.PanelFocus newFocus) {
                 SettingsActivity.logOperation("【遥控】面板焦点切换：" + newFocus);
             }
-
             @Override
             public void onSettingsMoveUp() {
             }
-
             @Override
             public void onSettingsMoveDown() {
             }
-
             @Override
             public void onSettingsConfirm() {
             }
-
             @Override
             public boolean onSettingsBack() {
                 return false;
             }
-
             @Override
             public void onSettingsMenu() {
             }
-
             @Override
             public void onSettingsFocusChanged(int position) {
             }
         });
     }
-
     private void syncRemoteMode() {
         if (channelPanelController != null && channelPanelController.isPanelOpen()) {
             remoteManager.setMode(TvRemoteManager.Mode.CHANNEL_PANEL_MODE);
@@ -383,7 +345,6 @@ public class MainActivity extends AppCompatActivity implements PictureInPictureM
             remoteManager.setMode(TvRemoteManager.Mode.PLAY_MODE);
         }
     }
-
     private void initInfoDisplayManager() {
         TextView tv_channel_num = findViewById(R.id.tv_channel_num);
         View info_bar = findViewById(R.id.info_bar);
@@ -413,7 +374,6 @@ public class MainActivity extends AppCompatActivity implements PictureInPictureM
                 tv_next_time_range
         );
     }
-
     private void initChannelPanelController() {
         View panel_layout = findViewById(R.id.panel_layout);
         View ll_left_panel = findViewById(R.id.ll_left_panel);
@@ -462,7 +422,6 @@ public class MainActivity extends AppCompatActivity implements PictureInPictureM
             }
         });
     }
-
     private void initPlayer() {
         mPlayerManager = TVPlayerManager.getInstance(this);
         mPlayerManager.attachPlayerView(playerView);
@@ -478,7 +437,6 @@ public class MainActivity extends AppCompatActivity implements PictureInPictureM
             }
         });
     }
-
     private void initChannelNumberManager() {
         channelNumberManager = new ChannelNumberManager(
                 new ChannelNumberManager.OnChannelNumberListener() {
@@ -486,7 +444,6 @@ public class MainActivity extends AppCompatActivity implements PictureInPictureM
                     public void onChannelSelected(int channelIndex) {
                         channelPanelController.playChannel(channelIndex);
                     }
-
                     @Override
                     public void showChannelNumber(String number) {
                         try {
@@ -494,7 +451,6 @@ public class MainActivity extends AppCompatActivity implements PictureInPictureM
                         } catch (Exception e) {
                         }
                     }
-
                     @Override
                     public void hideChannelNumber() {
                         infoDisplayManager.hideChannelNum();
@@ -503,7 +459,6 @@ public class MainActivity extends AppCompatActivity implements PictureInPictureM
                 number_channel_enable
         );
     }
-
     private void initAppCoreManager() {
         appCoreManager = new AppCoreManager(this, mPlayerManager, appConfig);
         appCoreManager.setOnDataLoadListener(new AppCoreManager.OnDataLoadListener() {
@@ -527,7 +482,6 @@ public class MainActivity extends AppCompatActivity implements PictureInPictureM
                     }
                 });
             }
-
             @Override
             public void onLiveSourceFailed(String errorMsg) {
                 runOnUiThread(new Runnable() {
@@ -543,7 +497,6 @@ public class MainActivity extends AppCompatActivity implements PictureInPictureM
                     }
                 });
             }
-
             @Override
             public void onEpgLoaded() {
                 runOnUiThread(new Runnable() {
@@ -556,7 +509,6 @@ public class MainActivity extends AppCompatActivity implements PictureInPictureM
                     }
                 });
             }
-
             @Override
             public void onLoadTimeout(boolean hasData) {
                 runOnUiThread(new Runnable() {
@@ -574,7 +526,6 @@ public class MainActivity extends AppCompatActivity implements PictureInPictureM
         });
         appCoreManager.registerReceivers();
     }
-
     private void loadSettings() {
         SharedPreferences sp = getSharedPreferences("app_settings", MODE_PRIVATE);
         boolean epg_enable = sp.getBoolean("epg_enable", true);
@@ -598,18 +549,15 @@ public class MainActivity extends AppCompatActivity implements PictureInPictureM
         SettingsActivity.logOperation("【设置】自动更新源：" + auto_update_source);
         SettingsActivity.logOperation("【设置】画中画开关：" + pipEnable);
     }
-
     public boolean isChannelReverse() {
         return channel_reverse;
     }
-
     public void playChannel(int index) {
         if (channelSourceList == null || channelSourceList.isEmpty()) return;
         if (index < 0 || index >= channelSourceList.size()) return;
         Channel channel = channelSourceList.get(index);
         playChannel(channel, index);
     }
-
     private void playChannel(Channel channel, int index) {
         if (channel == null || channel.getPlayUrl() == null) return;
         currentPlayIndex = index;
@@ -638,20 +586,16 @@ public class MainActivity extends AppCompatActivity implements PictureInPictureM
             }
         }
     }
-
     public void togglePanel() {
         channelPanelController.togglePanel();
         syncRemoteMode();
     }
-
     public void playPrev() {
         channelPanelController.playPrev();
     }
-
     public void playNext() {
         channelPanelController.playNext();
     }
-
     @Override
     public void onBackPressed() {
         if (pipManager != null && pipManager.isInPipMode()) {
@@ -674,7 +618,6 @@ public class MainActivity extends AppCompatActivity implements PictureInPictureM
         }
         super.onBackPressed();
     }
-
     private boolean handleDirectionKey(int keyCode) {
         switch (keyCode) {
             case KeyEvent.KEYCODE_DPAD_UP:
@@ -703,7 +646,6 @@ public class MainActivity extends AppCompatActivity implements PictureInPictureM
                 return false;
         }
     }
-
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         if (pipManager != null && pipManager.isInPipMode()) {
@@ -725,23 +667,19 @@ public class MainActivity extends AppCompatActivity implements PictureInPictureM
         if (keyEventManager.dispatchKey(keyCode)) return true;
         return super.onKeyDown(keyCode, event);
     }
-
     private void cancelPanelAutoHide() {
         if (mPanelAutoHideHandler != null && mPanelAutoHideRunnable != null) {
             mPanelAutoHideHandler.removeCallbacks(mPanelAutoHideRunnable);
         }
     }
-
     public void openSettings() {
         isOpeningSettings = true;
         appCoreManager.beforeOpenSettings();
         startActivity(new Intent(this, SettingsActivity.class));
     }
-
     public void onReceiveConfig(final String liveUrl, final String epgUrl) {
         appCoreManager.onReceiveConfig(liveUrl, epgUrl);
     }
-
     @Override
     protected void onUserLeaveHint() {
         super.onUserLeaveHint();
@@ -786,7 +724,6 @@ public class MainActivity extends AppCompatActivity implements PictureInPictureM
         }
         SettingsActivity.logOperation("【画中画排查】========== 结束 ==========");
     }
-
     @Override
     public void onPictureInPictureModeChanged(boolean isInPictureInPictureMode) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode);
@@ -800,12 +737,10 @@ public class MainActivity extends AppCompatActivity implements PictureInPictureM
         }
         if (isInPictureInPictureMode) {
             SettingsActivity.logOperation("【画中画】========== 进入画中画 ==========");
-
             // ✅ 画中画模式下禁用手势，防止误触
             if (gestureManager != null) {
                 gestureManager.setEnabled(false);
             }
-
             hideAllUiForPip();
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
             if (mPlayerManager != null) {
@@ -820,17 +755,13 @@ public class MainActivity extends AppCompatActivity implements PictureInPictureM
             SettingsActivity.logOperation("【画中画】================================");
         } else {
             SettingsActivity.logOperation("【画中画】========== 退出画中画 ==========");
-
             // ✅ 核心修改：三重保险恢复交互
             // 保险1：立即恢复（保证基础交互快速恢复）
             restoreAllInteraction();
-
             // 保险2：延迟200ms恢复（处理布局尚未完成渲染的场景）
             playerView.postDelayed(this::restoreAllInteraction, 200);
-
             // 保险3：延迟500ms再次确认恢复（兜底，确保100%恢复）
             playerView.postDelayed(this::restoreAllInteraction, 500);
-
             if (pipManager != null) {
                 pipManager.handleExitPip(new Runnable() {
                     @Override
@@ -841,11 +772,9 @@ public class MainActivity extends AppCompatActivity implements PictureInPictureM
             }
             SettingsActivity.logOperation("【画中画尺寸】===== 1. 刚退出画中画（初始状态） =====");
             logPipViewSize("PlayerView", playerView);
-
             if (playerView != null && playerView.getParent() instanceof View) {
                 logPipViewSize("父布局", (View) playerView.getParent());
             }
-
             logPipWindowSize();
             if (displayManager != null) {
                 SettingsActivity.logOperation("【画中画尺寸】执行 displayManager.reapplyFullScreen()");
@@ -876,11 +805,9 @@ public class MainActivity extends AppCompatActivity implements PictureInPictureM
                             SettingsActivity.logOperation("【画中画】延迟刷新 PlayerView（restoreAllInteraction已处理）");
                             SettingsActivity.logOperation("【画中画尺寸】===== 4. 延迟200ms刷新后 =====");
                             logPipViewSize("PlayerView", playerView);
-
                             if (playerView.getParent() instanceof View) {
                                 logPipViewSize("父布局", (View) playerView.getParent());
                             }
-
                             SettingsActivity.logOperation("【画中画尺寸】========================================");
                         } catch (Exception e) {
                             SettingsActivity.logOperation("【画中画】延迟刷新失败：" + e.getMessage());
@@ -888,7 +815,6 @@ public class MainActivity extends AppCompatActivity implements PictureInPictureM
                     }
                 }, 200);
             }
-
             if (infoDisplayManager != null && channelSourceList.size() > currentPlayIndex) {
                 Channel currChannel = channelSourceList.get(currentPlayIndex);
                 TVPlayerManager.LiveInfo liveInfo = mPlayerManager.getLiveInfo();
@@ -901,7 +827,6 @@ public class MainActivity extends AppCompatActivity implements PictureInPictureM
             SettingsActivity.logOperation("【画中画】================================");
         }
     }
-
     /**
      * 画中画进入完成回调（实现 OnPipCompleteListener 接口）
      */
@@ -910,7 +835,6 @@ public class MainActivity extends AppCompatActivity implements PictureInPictureM
         SettingsActivity.logOperation("【画中画】OnPipCompleteListener → 进入画中画完成");
         // 可选：进入画中画完成后的额外逻辑
     }
-
     /**
      * 画中画退出完成回调（实现 OnPipCompleteListener 接口）
      */
@@ -920,7 +844,6 @@ public class MainActivity extends AppCompatActivity implements PictureInPictureM
         // 最终兜底：即使前面的三重保险失效，此处再执行一次恢复
         restoreAllInteraction();
     }
-
     private void logPipViewSize(String tag, View view) {
         if (view == null) {
             SettingsActivity.logOperation("【画中画尺寸】" + tag + "：View 为 null");
@@ -931,7 +854,6 @@ public class MainActivity extends AppCompatActivity implements PictureInPictureM
                     + "，top=" + view.getTop()
                     + "，right=" + view.getRight()
                     + "，bottom=" + view.getBottom());
-
             SettingsActivity.logOperation("【画中画尺寸】" + tag + "尺寸：宽=" + view.getWidth()
                     + "，高=" + view.getHeight());
             ViewGroup.LayoutParams lp = view.getLayoutParams();
@@ -946,7 +868,6 @@ public class MainActivity extends AppCompatActivity implements PictureInPictureM
             SettingsActivity.logOperation("【画中画尺寸】" + tag + "获取失败：" + e.getMessage());
         }
     }
-
     private void logPipWindowSize() {
         try {
             DisplayMetrics metrics = new DisplayMetrics();
@@ -959,7 +880,6 @@ public class MainActivity extends AppCompatActivity implements PictureInPictureM
             SettingsActivity.logOperation("【画中画尺寸】获取窗口尺寸失败：" + e.getMessage());
         }
     }
-
     private void log(String msg) {
         Log.d("MainActivity", msg);
         logList.add(msg);

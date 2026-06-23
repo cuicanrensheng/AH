@@ -13,50 +13,19 @@ import android.webkit.CookieSyncManager;
 import android.widget.TextView;
 
 // ====================================================================
-// ✅ 2026-06-23 升级：ExoPlayer 2.x → Media3 1.x 包名迁移
+// ✅ Media3 迁移：所有 import 从 com.google.android.exoplayer2 改成 androidx.media3
 // ====================================================================
-// 【包名变化对照表】
-// 旧包名 (ExoPlayer 2.x)                          → 新包名 (Media3 1.x)
-// com.google.android.exoplayer2.DefaultLoadControl  → androidx.media3.exoplayer.DefaultLoadControl
-// com.google.android.exoplayer2.DefaultRenderersFactory → androidx.media3.exoplayer.DefaultRenderersFactory
-// com.google.android.exoplayer2.ExoPlayer           → androidx.media3.exoplayer.ExoPlayer
-// com.google.android.exoplayer2.Format              → androidx.media3.common.Format
-// com.google.android.exoplayer2.MediaItem           → androidx.media3.common.MediaItem
-// com.google.android.exoplayer2.PlaybackException   → androidx.media3.common.PlaybackException
-// com.google.android.exoplayer2.Player              → androidx.media3.common.Player
-// com.google.android.exoplayer2.source.ProgressiveMediaSource → androidx.media3.exoplayer.source.ProgressiveMediaSource
-// com.google.android.exoplayer2.source.hls.HlsMediaSource    → androidx.media3.exoplayer.hls.HlsMediaSource
-// com.google.android.exoplayer2.ui.PlayerView       → androidx.media3.ui.PlayerView
-// com.google.android.exoplayer2.video.VideoSize     → androidx.media3.common.VideoSize
-//
-// 【API 变化】
-// 1. Player.EventListener → Player.Listener
-//    （接口名简化，功能不变）
-//
-// 2. SimpleExoPlayer → ExoPlayer
-//    （类名简化，Media3 中只有 ExoPlayer，没有 SimpleExoPlayer 了）
-//
-// 3. 包名整体从 com.google.android.exoplayer2.* 改为 androidx.media3.*
-//    （ExoPlayer 项目捐献给了 AndroidX，成为 Media3 的一部分）
-// ====================================================================
-
-// ✅ 播放器核心类
-import androidx.media3.exoplayer.DefaultLoadControl;
-import androidx.media3.exoplayer.DefaultRenderersFactory;
-import androidx.media3.exoplayer.ExoPlayer;
-
-// ✅ 通用数据类（Format、MediaItem、PlaybackException、Player、VideoSize 等）
 import androidx.media3.common.Format;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
 import androidx.media3.common.VideoSize;
-
-// ✅ 媒体源（HLS、Progressive）
-import androidx.media3.exoplayer.source.ProgressiveMediaSource;
+import androidx.media3.exoplayer.DefaultLoadControl;
+import androidx.media3.exoplayer.DefaultRenderersFactory;
+import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.hls.HlsMediaSource;
-
-// ✅ UI 组件（PlayerView）
+import androidx.media3.exoplayer.source.MediaSource;
+import androidx.media3.exoplayer.source.ProgressiveMediaSource;
 import androidx.media3.ui.PlayerView;
 
 import java.text.SimpleDateFormat;
@@ -67,7 +36,7 @@ import java.util.Map;
 
 /**
  * 播放器管理类（单例模式）
- * 基于 Media3 ExoPlayer 封装，提供直播播放、状态监听、画质切换、Header 设置等功能
+ * 基于ExoPlayer封装，提供直播播放、状态监听、画质切换、Header设置等功能
  *
  * 【防卡优化版 + 切台优化版 + 真实数据版】
  * 1. 增大缓冲（从15秒→50秒），抗网络波动
@@ -78,32 +47,18 @@ import java.util.Map;
  * 6. 优化缓冲参数，更快出画
  * 7. 显示真实画质、音频、码率
  *
- * 【2026-06-23 升级】
- * 从 ExoPlayer 2.19.1 升级到 Media3 1.10.1：
- * - 包名从 com.google.android.exoplayer2.* → androidx.media3.*
- * - Player.EventListener → Player.Listener（接口名简化）
- * - SimpleExoPlayer → ExoPlayer（类名简化）
+ * 【2026-06-23 Media3 迁移说明】
+ * 从 ExoPlayer 2.x 升级到 Media3 1.10.1：
+ * - 包名从 com.google.android.exoplayer2 改为 androidx.media3
+ * - 公共API（Player, Format, MediaItem等）移到 common 包
+ * - ExoPlayer 实现移到 exoplayer 包
+ * - UI 组件移到 ui 包
  */
 public class TVPlayerManager {
     private static final String TAG = "TVPlayerLog";
     private static TVPlayerManager instance;
-
-    // ====================================================================
-    // ✅ 播放器实例
-    // ====================================================================
-    // 【注意】Media3 中没有 SimpleExoPlayer 了，统一用 ExoPlayer
-    // 原来的 SimpleExoPlayer 功能都合并到 ExoPlayer 里了
-    // ====================================================================
     private ExoPlayer player;
-
     private Context context;
-
-    // ====================================================================
-    // ✅ 播放器视图
-    // ====================================================================
-    // 包名从 com.google.android.exoplayer2.ui.PlayerView
-    // 改为 androidx.media3.ui.PlayerView
-    // ====================================================================
     private PlayerView playerView;
 
     // 屏幕缩放模式枚举
@@ -111,43 +66,24 @@ public class TVPlayerManager {
 
     // 播放状态监听器
     private OnPlayStateListener listener;
-
     // 当前播放地址
     private String currentUrl = "";
-
     // 是否正在播放
     private boolean isPlaying = false;
-
     // 当前频道号
     private int currentChannelNumber = 0;
-
     // 频道号显示TextView
     private TextView channelNumText;
-
     // 主线程Handler，用于UI操作
     private final Handler mHandler = new Handler(Looper.getMainLooper());
-
     // 频道号显示时长（3秒）
     private static final long CHANNEL_SHOW_DURATION = 3000L;
-
     // 日志时间格式化
     private final SimpleDateFormat logSdf = new SimpleDateFormat("HH:mm:ss", Locale.getDefault());
 
     // 直播信息更新监听器
     private OnLiveInfoUpdateListener infoUpdateListener;
-
-    // ====================================================================
-    // ✅ 播放状态监听器（成员变量，只添加一次）
-    // ====================================================================
-    // 【API 变化】
-    // 旧版：Player.EventListener
-    // 新版：Player.Listener
-    //
-    // 【为什么改名？】
-    // Media3 统一了命名规范，所有事件监听接口都叫 Listener，
-    // 不再用 EventListener 这种比较长的名字。
-    // 功能完全一样，只是接口名简化了。
-    // ====================================================================
+    // 播放状态监听器（成员变量，只添加一次）
     private Player.Listener playerListener;
 
     // ================================================
@@ -155,21 +91,16 @@ public class TVPlayerManager {
     // ================================================
     // 是否使用软解码（默认硬解码，硬解码有问题再切软解码）
     private boolean useSoftwareDecoder = false;
-
     // 卡住检测：记录上次播放位置的时间
     private long lastPositionUpdateTime = 0;
     private long lastPosition = 0;
-
     // 卡住检测超时时间（5秒没动就算卡住了）
     private static final long STUCK_TIMEOUT = 5000;
-
     // 自动重试次数限制（防止无限重试）
     private int retryCount = 0;
     private static final int MAX_RETRY_COUNT = 3;
-
     // 卡住检测的Handler
     private final Handler stuckHandler = new Handler(Looper.getMainLooper());
-
     // 是否正在重试中
     private boolean isRetrying = false;
 
@@ -197,7 +128,7 @@ public class TVPlayerManager {
     public LiveInfo getLiveInfo() {
         LiveInfo info = new LiveInfo();
         info.channelNum = currentChannelNumber;
-
+        
         // ====================================================================
         // ✅ 从播放器获取真实的视频/音频信息
         // ====================================================================
@@ -206,18 +137,11 @@ public class TVPlayerManager {
                 // ========================================
                 // 1. 画质（根据真实分辨率判断）
                 // ========================================
-                // 【注意】Format 类的包名变了
-                // 旧版：com.google.android.exoplayer2.Format
-                // 新版：androidx.media3.common.Format
-                //
-                // 但 getVideoFormat()、getAudioFormat() 方法名没变，
-                // 返回的 Format 对象的字段（width、height、bitrate、channelCount 等）也没变。
-                // ========================================
                 Format videoFormat = player.getVideoFormat();
                 if (videoFormat != null && videoFormat.width != Format.NO_VALUE) {
                     info.videoWidth = videoFormat.width;
                     info.videoHeight = videoFormat.height;
-
+                    
                     // 根据分辨率判断画质等级
                     if (videoFormat.width >= 1920 || videoFormat.height >= 1080) {
                         info.quality = "FHD";  // 全高清
@@ -226,7 +150,7 @@ public class TVPlayerManager {
                     } else {
                         info.quality = "SD";   // 标清
                     }
-
+                    
                     // ========================================
                     // 2. 码率（从视频格式获取，单位 MB/s）
                     // ========================================
@@ -243,7 +167,7 @@ public class TVPlayerManager {
                     info.videoWidth = 0;
                     info.videoHeight = 0;
                 }
-
+                
                 // ========================================
                 // 3. 音频（根据真实声道数判断）
                 // ========================================
@@ -273,7 +197,7 @@ public class TVPlayerManager {
             info.audio = "—";
             info.bitrate = "—";
         }
-
+        
         return info;
     }
 
@@ -366,10 +290,6 @@ public class TVPlayerManager {
          * 【注意】
          * minBufferMs 必须 >= bufferForPlaybackAfterRebufferMs
          * 否则 ExoPlayer 会崩溃
-         *
-         * 【2026-06-23 Media3 升级说明】
-         * DefaultLoadControl.Builder 的 API 没变，
-         * 只是包名从 com.google.android.exoplayer2 改成了 androidx.media3.exoplayer
          */
         DefaultLoadControl loadControl = new DefaultLoadControl.Builder()
                 .setBufferDurationsMs(
@@ -381,20 +301,7 @@ public class TVPlayerManager {
                 .setPrioritizeTimeOverSizeThresholds(true) // 优先保证时间缓冲
                 .build();
 
-        // ====================================================================
-        // ✅ 创建 ExoPlayer 实例
-        // ====================================================================
-        // 【API 变化】
-        // 旧版：new SimpleExoPlayer.Builder(context).build()
-        // 新版：new ExoPlayer.Builder(context).build()
-        //
-        // 【为什么改名？】
-        // Media3 中只有一个 ExoPlayer 类，不再区分 ExoPlayer 和 SimpleExoPlayer。
-        // 原来 SimpleExoPlayer 的所有功能都合并到 ExoPlayer 里了。
-        //
-        // 【Builder 方法没变】
-        // setRenderersFactory()、setLoadControl()、build() 等方法名完全一样。
-        // ====================================================================
+        // 创建ExoPlayer实例
         player = new ExoPlayer.Builder(context)
                 .setRenderersFactory(renderersFactory)
                 .setLoadControl(loadControl)
@@ -412,21 +319,6 @@ public class TVPlayerManager {
      * ✅ 初始化播放状态监听器
      */
     private void initPlayerListener() {
-        // ====================================================================
-        // ✅ Player.Listener（旧版叫 Player.EventListener）
-        // ====================================================================
-        // 【API 变化】
-        // 旧版：new Player.EventListener() { ... }
-        // 新版：new Player.Listener() { ... }
-        //
-        // 【为什么改名？】
-        // Media3 统一了命名规范，所有事件监听接口都叫 Listener。
-        // 功能完全一样，只是接口名简化了。
-        //
-        // 【回调方法没变】
-        // onPlayerError()、onPlaybackStateChanged()、onIsPlayingChanged()、
-        // onVideoSizeChanged() 等方法名和参数都没变。
-        // ====================================================================
         playerListener = new Player.Listener() {
             @Override
             public void onPlayerError(PlaybackException error) {
@@ -474,20 +366,13 @@ public class TVPlayerManager {
             }
 
             // ====================================================================
-            // ✅ 视频分辨率变化时触发
+            // ✅ 视频分辨率变化时触发（新版本 ExoPlayer 签名）
             // ====================================================================
             /**
              * 为什么需要这个？
              * 有些直播流刚开始时分辨率还没确定，
              * 等视频解码器初始化完成后，才会回调真实的分辨率。
              * 这时候我们需要更新一下信息栏的画质标签。
-             *
-             * 【2026-06-23 Media3 升级说明】
-             * VideoSize 类的包名变了：
-             * 旧版：com.google.android.exoplayer2.video.VideoSize
-             * 新版：androidx.media3.common.VideoSize
-             *
-             * 但字段（width、height）和回调方法名（onVideoSizeChanged）都没变。
              */
             @Override
             public void onVideoSizeChanged(VideoSize videoSize) {
@@ -498,13 +383,13 @@ public class TVPlayerManager {
                 notifyLiveInfoUpdate();
             }
         };
-
         player.addListener(playerListener);
     }
 
     // ================================================
     // ✅ 优化2：卡住检测 + 自动重试
     // ================================================
+
     /**
      * 开始卡住检测
      * 每隔2秒检查一次播放位置，如果长时间没动，说明卡住了
@@ -534,11 +419,9 @@ public class TVPlayerManager {
                 stuckHandler.postDelayed(this, 2000);
                 return;
             }
-
             try {
                 long currentPosition = player.getCurrentPosition();
                 long now = System.currentTimeMillis();
-
                 if (currentPosition != lastPosition) {
                     // 播放位置在动，正常
                     lastPosition = currentPosition;
@@ -555,7 +438,6 @@ public class TVPlayerManager {
             } catch (Exception e) {
                 Log.e(TAG, "卡住检测异常", e);
             }
-
             // 继续下一次检测
             stuckHandler.postDelayed(this, 2000);
         }
@@ -571,11 +453,9 @@ public class TVPlayerManager {
             Log.w(TAG, "重试次数已达上限：" + MAX_RETRY_COUNT);
             return;
         }
-
         isRetrying = true;
         retryCount++;
         Log.w(TAG, "自动重试（第" + retryCount + "次），原因：" + reason);
-
         // 延迟1秒后重新加载
         mHandler.postDelayed(new Runnable() {
             @Override
@@ -594,10 +474,8 @@ public class TVPlayerManager {
      */
     public void setSoftwareDecoder(boolean useSoftware) {
         if (useSoftwareDecoder == useSoftware) return;
-
         useSoftwareDecoder = useSoftware;
         Log.d(TAG, "切换解码器：" + (useSoftware ? "软解码" : "硬解码"));
-
         // 重新创建播放器
         if (player != null) {
             try {
@@ -611,13 +489,10 @@ public class TVPlayerManager {
                 Log.e(TAG, "释放播放器异常", e);
             }
         }
-
         initPlayer();
-
         if (playerView != null) {
             playerView.setPlayer(player);
         }
-
         // 重新播放当前地址
         if (!TextUtils.isEmpty(currentUrl)) {
             retryCount = 0;
@@ -647,15 +522,6 @@ public class TVPlayerManager {
         }
     }
 
-    // ====================================================================
-    // ✅ 绑定播放器视图
-    // ====================================================================
-    // 【注意】PlayerView 的包名变了
-    // 旧版：com.google.android.exoplayer2.ui.PlayerView
-    // 新版：androidx.media3.ui.PlayerView
-    //
-    // 但方法名（setPlayer()、setUseController() 等）都没变。
-    // ====================================================================
     public void attachPlayerView(PlayerView view) {
         playerView = view;
         playerView.setPlayer(player);
@@ -733,7 +599,6 @@ public class TVPlayerManager {
     private void playUrlInternal(String url) {
         try {
             if (player == null || url == null || url.trim().isEmpty()) return;
-
             currentUrl = url.trim();
             Log.d(TAG, "开始播放：" + currentUrl);
 
@@ -770,59 +635,22 @@ public class TVPlayerManager {
             httpFactory.setDefaultRequestProperties(getHeaders(currentUrl));
             httpFactory.setAllowCrossProtocolRedirects(true);
 
-            // ====================================================================
-            // ✅ MediaItem（包名变了）
-            // ====================================================================
-            // 旧版：com.google.android.exoplayer2.MediaItem
-            // 新版：androidx.media3.common.MediaItem
-            //
-            // 但 fromUri() 静态方法名没变。
-            // ====================================================================
             MediaItem mediaItem = MediaItem.fromUri(currentUrl);
 
             // ====================================================================
-            // ✅ MediaSource（包名变了）
+            // ✅ Media3 迁移：MediaSource 从 exoplayer.source 包改为 androidx.media3.exoplayer.source
             // ====================================================================
-            // 旧版：com.google.android.exoplayer2.source.MediaSource
-            // 新版：androidx.media3.exoplayer.source.MediaSource
-            //
-            // 【注意】这里用的是全限定名，所以也要改。
-            // 也可以直接 import androidx.media3.exoplayer.source.MediaSource，
-            // 然后用 MediaSource mediaSource; 这样写。
-            // ====================================================================
-            androidx.media3.exoplayer.source.MediaSource mediaSource;
-
+            MediaSource mediaSource;
             if (currentUrl.toLowerCase().contains("m3u8")) {
                 Log.d(TAG, "流格式：HLS (m3u8)");
-                // ====================================================================
-                // ✅ HlsMediaSource（包名变了）
-                // ====================================================================
-                // 旧版：com.google.android.exoplayer2.source.hls.HlsMediaSource
-                // 新版：androidx.media3.exoplayer.hls.HlsMediaSource
-                //
-                // 但 Factory 的用法没变：
-                // new HlsMediaSource.Factory(httpFactory).createMediaSource(mediaItem)
-                // ====================================================================
                 mediaSource = new HlsMediaSource.Factory(httpFactory).createMediaSource(mediaItem);
             } else {
                 Log.d(TAG, "流格式：普通流 (Progressive)");
-                // ====================================================================
-                // ✅ ProgressiveMediaSource（包名变了）
-                // ====================================================================
-                // 旧版：com.google.android.exoplayer2.source.ProgressiveMediaSource
-                // 新版：androidx.media3.exoplayer.source.ProgressiveMediaSource
-                //
-                // 但 Factory 的用法没变。
-                // ====================================================================
                 mediaSource = new ProgressiveMediaSource.Factory(httpFactory).createMediaSource(mediaItem);
             }
 
             // ====================================================================
             // ✅ 关键修改：直接设置新的媒体源，第二个参数 true = 重置到开头
-            // ====================================================================
-            // 【2026-06-23 Media3 升级说明】
-            // setMediaSource() 方法名和参数都没变，
-            // 只是参数类型从旧的 MediaSource 变成了新的 MediaSource（包名不同）。
             // ====================================================================
             player.setMediaSource(mediaSource, true);
             player.prepare();
@@ -830,7 +658,6 @@ public class TVPlayerManager {
 
             // 开始卡住检测
             startStuckDetection();
-
         } catch (Exception e) {
             Log.e(TAG, "播放异常", e);
             autoRetry("播放异常：" + e.getMessage());
@@ -840,17 +667,11 @@ public class TVPlayerManager {
     public void setScaleMode(ScaleMode mode) {
         try {
             if (playerView == null) return;
-
+            // ====================================================================
+            // ✅ Media3 迁移：AspectRatioFrameLayout 从 exoplayer2.ui 改为 media3.ui
+            // ====================================================================
             switch (mode) {
                 case FIT:
-                    // ====================================================================
-                    // ✅ AspectRatioFrameLayout（包名变了）
-                    // ====================================================================
-                    // 旧版：com.google.android.exoplayer2.ui.AspectRatioFrameLayout
-                    // 新版：androidx.media3.ui.AspectRatioFrameLayout
-                    //
-                    // 但常量名（RESIZE_MODE_FIT、RESIZE_MODE_FILL、RESIZE_MODE_ZOOM）都没变。
-                    // ====================================================================
                     playerView.setResizeMode(androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT);
                     break;
                 case FILL:
@@ -894,7 +715,6 @@ public class TVPlayerManager {
             stopStuckDetection();
             mHandler.removeCallbacks(hideChannelRunnable);
             updateWakeLock(false);
-
             if (player != null) {
                 if (playerListener != null) {
                     player.removeListener(playerListener);

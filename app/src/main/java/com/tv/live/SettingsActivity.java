@@ -1,5 +1,4 @@
 package com.tv.live;
-
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
@@ -13,10 +12,8 @@ import android.widget.ScrollView;
 import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
-
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
-
 /**
  * 设置页面 Activity
  *
@@ -32,8 +29,7 @@ import androidx.appcompat.app.AppCompatActivity;
  * 9. 扫码添加（委托给 QRCodeManager）
  * 10. 解析&播放日志查看
  * 11. 操作日志查看
- * 12. 检查更新（委托给 UpdateManager）
- * 13. 崩溃日志查看 ← ✅ 2026-06-23 新增
+ * 12. 检查更新（委托给 UpdateManager）← ✅ 新增：真正的检查更新功能
  *
  * 【架构说明】
  * 本 Activity 只负责 UI 展示和用户交互，
@@ -44,8 +40,7 @@ import androidx.appcompat.app.AppCompatActivity;
  * - QRCodeManager：二维码管理
  * - WebServerManager：网页后台 HTTP 服务器
  * - SourceManager：多源数据管理
- * - UpdateManager：应用更新管理
- * - CrashHandler：崩溃捕获和日志管理 ← ✅ 新增
+ * - UpdateManager：应用更新管理 ← ✅ 新增：应用更新管理器
  *
  * 【日志兼容说明】
  * 为了兼容其他文件调用 SettingsActivity.log() 和 SettingsActivity.logOperation()，
@@ -100,7 +95,7 @@ import androidx.appcompat.app.AppCompatActivity;
  * 【效果】
  * 播放画面完全正常，和打开设置页面前一模一样，没有任何变暗。
  *
- * 【2026-06-20 新增：真正的检查更新功能】
+ * 【2026-06-20 新增：真正的检查更新功能】 ← ✅ 本次新增的功能
  * 【功能说明】
  * 原来的检查更新只有一个 Toast "已是最新版本"，没有实际功能。
  * 现在改成真正的检查更新，委托给 UpdateManager：
@@ -113,49 +108,13 @@ import androidx.appcompat.app.AppCompatActivity;
  * 【配置方式】
  * 修改 UpdateManager.java 中的 UPDATE_JSON_URL 为你自己的地址。
  * （GitHub 项目的话，用 raw.githubusercontent.com 链接）
- *
- * 【2026-06-23 新增：崩溃日志查看功能】
- * 【功能说明】
- * 在设置页面增加"崩溃日志"入口，点击后可以：
- * 1. 查看所有历史崩溃记录列表（最多保留 10 条）
- * 2. 点击某条崩溃记录，查看详细堆栈信息
- * 3. 一键清空所有崩溃日志
- *
- * 【数据来源】
- * 崩溃日志由 CrashHandler 保存到本地文件，
- * 这里通过 CrashHandler.getAllCrashLogs() 读取。
- *
- * 【为什么要加这个功能？】
- * 方便用户查看和导出崩溃日志，反馈给开发者排查问题。
- * 不用用户去文件管理器里找，直接在设置里就能看。
  */
 public class SettingsActivity extends AppCompatActivity {
-
     // ====================== 控件声明 ======================
     /** 5个开关控件 */
     private Switch sw_boot, sw_epg, sw_auto_update, sw_reverse, sw_num_channel;
-
     /** 纯文本点击项 */
     private TextView tv_screen_ratio, tv_custom_source, tv_custom_epg, tv_multi_source, tv_multi_epg, tv_qr_code;
-
-    // ====================================================================
-    // ✅ 新增：崩溃日志入口控件
-    // ====================================================================
-    /**
-     * 崩溃日志入口
-     *
-     * 【功能】
-     * 点击后弹出历史崩溃记录列表对话框。
-     *
-     * 【为什么单独声明？】
-     * 因为崩溃日志是一个独立的设置项，
-     * 和其他纯文本点击项（tv_screen_ratio 等）是同一类。
-     *
-     * 【什么时候初始化？】
-     * 在 onCreate() 的 findViewById 中绑定。
-     */
-    private TextView tv_crash_log;
-
     // ====================================================================
     // 开机自启状态显示
     // ====================================================================
@@ -163,11 +122,9 @@ public class SettingsActivity extends AppCompatActivity {
      * 开机自启状态描述文本（显示在开关下面）
      */
     private TextView tv_boot_status;
-
     // ====================== 配置相关 ======================
     /** SharedPreferences 配置存储 */
     private SharedPreferences sp;
-
     // ====================================================================
     // 管理器相关（全部拆分后）
     // ====================================================================
@@ -175,37 +132,30 @@ public class SettingsActivity extends AppCompatActivity {
      * 开机自启管理器
      */
     private BootStartManager bootStartManager;
-
     /**
      * 自动更新闹钟管理器
      */
     private AutoUpdateManager autoUpdateManager;
-
     /**
      * 多源对话框管理器
      */
     private SourceDialogManager sourceDialogManager;
-
     /**
      * 二维码管理器
      */
     private QRCodeManager qrCodeManager;
-
     /**
      * 网页后台管理器
      */
     private WebServerManager webServerManager;
-
     /**
      * 网页后台端口号
      */
     private static final int WEB_SERVER_PORT = 10481;
-
     /**
      * 网页后台访问地址（用于生成二维码）
      */
     private String currentWebUrl;
-
     // ====================================================================
     // ✅ 新增：应用更新管理器
     // ====================================================================
@@ -230,13 +180,11 @@ public class SettingsActivity extends AppCompatActivity {
      * 在 onDestroy() 中释放，防止内存泄漏。
      */
     private UpdateManager updateManager;
-
     // ====================== SP Key 常量 ======================
     /** 自定义直播源地址 */
     private static final String KEY_CUSTOM_LIVE = "custom_live_url";
     /** 自定义节目单地址 */
     private static final String KEY_CUSTOM_EPG = "custom_epg_url";
-
     // ====================================================================
     // 全局日志系统（加回兼容层）
     // ====================================================================
@@ -249,7 +197,6 @@ public class SettingsActivity extends AppCompatActivity {
      * 内部实际存储在 LogManager 里。
      */
     public static volatile StringBuilder PLAY_LOG = new StringBuilder();
-
     /**
      * 操作日志
      * 记录用户的所有操作 + 网页后台日志
@@ -259,7 +206,6 @@ public class SettingsActivity extends AppCompatActivity {
      * 内部实际存储在 LogManager 里。
      */
     public static volatile StringBuilder OPERATION_LOG = new StringBuilder();
-
     /**
      * 记录解析&播放日志
      * @param msg 日志内容
@@ -275,7 +221,6 @@ public class SettingsActivity extends AppCompatActivity {
         // 注意：WebServerManager 直接访问了这个变量，所以需要同步
         PLAY_LOG = new StringBuilder(LogManager.getPlayLog());
     }
-
     /**
      * 记录操作日志
      * @param msg 操作内容
@@ -291,7 +236,6 @@ public class SettingsActivity extends AppCompatActivity {
         // 注意：WebServerManager 直接访问了这个变量，所以需要同步
         OPERATION_LOG = new StringBuilder(LogManager.getOperationLog());
     }
-
     // ====================== onCreate 生命周期 ======================
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -314,7 +258,6 @@ public class SettingsActivity extends AppCompatActivity {
                 | View.SYSTEM_UI_FLAG_FULLSCREEN            // 隐藏状态栏
                 | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY;     // 沉浸式，滑动后自动隐藏
         getWindow().getDecorView().setSystemUiVisibility(uiOptions);
-
         // ====================================================================
         // ✅ 刘海屏/挖孔屏适配（让内容延伸到刘海区域）
         // ====================================================================
@@ -344,7 +287,6 @@ public class SettingsActivity extends AppCompatActivity {
                     WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
             getWindow().setAttributes(lp);
         }
-
         // ====================================================================
         // ✅ 彻底清除背景变暗（三重保险）
         // ====================================================================
@@ -373,24 +315,22 @@ public class SettingsActivity extends AppCompatActivity {
         //
         // 【效果】
         // 播放画面完全正常，和打开设置页面前一模一样，没有任何变暗。
-
+        
         // 第 1 重：清除变暗标志位
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
-
+        
         // 第 2 重：明确设置暗度为 0（完全透明）
         WindowManager.LayoutParams layoutParams = getWindow().getAttributes();
         layoutParams.dimAmount = 0f;  // 0 = 完全不变暗
         getWindow().setAttributes(layoutParams);
-
+        
         // 第 3 重：再清除一次（保险起见）
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
-
         // ===== 窗口设置 =====
         // 保持屏幕常亮
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         // 窗口背景设为透明（关键：让后面的播放界面能透过来）
         getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-
         // ====================================================================
         // 【2026-06-19 修改：删除背景变暗遮罩】
         // ====================================================================
@@ -410,15 +350,11 @@ public class SettingsActivity extends AppCompatActivity {
         // 即使 styles.xml 中设置了 backgroundDimEnabled=false，
         // 但 Java 代码中又调用了 setFlags(FLAG_DIM_BEHIND, ...)，
         // 代码的设置会覆盖主题中的设置，最终还是会生效。
-
         super.onCreate(savedInstanceState);
-
         // 强制横屏（和 MainActivity 保持一致）
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
-
         // 加载布局
         setContentView(R.layout.activity_settings);
-
         // ====================================================================
         // ✅ 点击左侧空白区域关闭设置
         // ====================================================================
@@ -447,38 +383,24 @@ public class SettingsActivity extends AppCompatActivity {
                 finish();
             }
         });
-
         // ===== 初始化 SharedPreferences =====
         sp = getSharedPreferences("app_settings", MODE_PRIVATE);
-
         // ===== 绑定控件 =====
         sw_boot = findViewById(R.id.sw_boot);
         sw_epg = findViewById(R.id.sw_epg);
         sw_auto_update = findViewById(R.id.sw_auto_update);
         sw_reverse = findViewById(R.id.sw_reverse);
         sw_num_channel = findViewById(R.id.sw_num_channel);
-
         tv_screen_ratio = findViewById(R.id.tv_screen_ratio);
         tv_custom_source = findViewById(R.id.tv_custom_source);
         tv_custom_epg = findViewById(R.id.tv_custom_epg);
         tv_multi_source = findViewById(R.id.tv_multi_source);
         tv_multi_epg = findViewById(R.id.tv_multi_epg);
         tv_qr_code = findViewById(R.id.tv_qr_code);
-
-        // ====================================================================
-        // ✅ 新增：绑定崩溃日志入口控件
-        // ====================================================================
-        //
-        // 【作用】
-        // 绑定布局中的 tv_crash_log 控件，
-        // 后面才能设置点击事件。
-        tv_crash_log = findViewById(R.id.tv_crash_log);
-
         // ====================================================================
         // 绑定开机自启状态文本
         // ====================================================================
         tv_boot_status = findViewById(R.id.tv_boot_status);
-
         // ====================================================================
         // 初始化所有管理器
         // ====================================================================
@@ -492,7 +414,6 @@ public class SettingsActivity extends AppCompatActivity {
         qrCodeManager = new QRCodeManager(this);
         // 网页后台管理器
         webServerManager = new WebServerManager(this, WEB_SERVER_PORT);
-
         // ====================================================================
         // ✅ 初始化应用更新管理器
         // ====================================================================
@@ -509,31 +430,13 @@ public class SettingsActivity extends AppCompatActivity {
         // UpdateManager 内部会用到 runOnUiThread，
         // 所以传入的 Context 必须是 Activity。
         updateManager = new UpdateManager(this);
-
         // ===== 日志查看按钮 =====
         findViewById(R.id.log_viewer).setOnClickListener(v -> {
             showLogDialog();
         });
-
         findViewById(R.id.log_operation).setOnClickListener(v -> {
             showOperationLogDialog();
         });
-
-        // ====================================================================
-        // ✅ 新增：崩溃日志入口点击事件
-        // ====================================================================
-        //
-        // 【作用】
-        // 点击"崩溃日志"后，弹出历史崩溃记录列表对话框。
-        //
-        // 【为什么放在这里？】
-        // 和其他日志相关的点击事件（log_viewer、log_operation）放在一起，
-        // 代码结构更清晰。
-        tv_crash_log.setOnClickListener(v -> {
-            showCrashLogDialog();
-            logOperation("【设置】打开崩溃日志");
-        });
-
         // ====================================================================
         // 开机自启（委托给 BootStartManager）
         // ====================================================================
@@ -554,7 +457,6 @@ public class SettingsActivity extends AppCompatActivity {
             bootStartManager.showBootStatusDialog();
             return true;
         });
-
         // 2. 节目单开关
         sw_epg.setChecked(sp.getBoolean("epg_enable", true));
         findViewById(R.id.item_epg).setOnClickListener(v -> {
@@ -564,7 +466,6 @@ public class SettingsActivity extends AppCompatActivity {
             logOperation("【设置】节目单" + (isChecked ? "已开启" : "已关闭"));
             Toast.makeText(this, "节目单" + (isChecked ? "已开启" : "已关闭"), Toast.LENGTH_SHORT).show();
         });
-
         // ====================================================================
         // 自动更新源（委托给 AutoUpdateManager）
         // ====================================================================
@@ -585,7 +486,6 @@ public class SettingsActivity extends AppCompatActivity {
         if (sp.getBoolean("auto_update_source", true)) {
             autoUpdateManager.setAutoUpdateAlarm();
         }
-
         // 4. 换台反转
         sw_reverse.setChecked(sp.getBoolean("channel_reverse", false));
         findViewById(R.id.item_reverse).setOnClickListener(v -> {
@@ -595,7 +495,6 @@ public class SettingsActivity extends AppCompatActivity {
             logOperation("【设置】换台反转" + (isChecked ? "已开启" : "已关闭"));
             Toast.makeText(this, "换台反转" + (isChecked ? "已开启" : "已关闭"), Toast.LENGTH_SHORT).show();
         });
-
         // 5. 数字选台
         sw_num_channel.setChecked(sp.getBoolean("number_channel_enable", true));
         findViewById(R.id.item_num_channel).setOnClickListener(v -> {
@@ -605,7 +504,6 @@ public class SettingsActivity extends AppCompatActivity {
             logOperation("【设置】数字选台" + (isChecked ? "已开启" : "已关闭"));
             Toast.makeText(this, "数字选台" + (isChecked ? "已开启" : "已关闭"), Toast.LENGTH_SHORT).show();
         });
-
         // ====================================================================
         // ✅ 检查更新（真正的版本检测 + 自动下载安装）
         // ====================================================================
@@ -649,17 +547,13 @@ public class SettingsActivity extends AppCompatActivity {
             updateManager.checkUpdate();
             logOperation("【设置】点击检查更新");
         });
-
         // ===== 其他点击事件 =====
         initListeners();
-
         // ===== 启动网页后台 =====
         webServerManager.start();
         currentWebUrl = webServerManager.getAccessUrl();
-
         logOperation("【设置】打开设置页面");
     }
-
     // ====================== 其他点击事件初始化 ======================
     /**
      * 初始化纯文本项的点击事件
@@ -670,19 +564,16 @@ public class SettingsActivity extends AppCompatActivity {
             showRatioDialog();
             logOperation("【设置】打开屏幕比例设置");
         });
-
         // 自定义订阅源
         tv_custom_source.setOnClickListener(v -> {
             showInputDialog("自定义订阅源", "请输入直播源地址", KEY_CUSTOM_LIVE);
             logOperation("【设置】打开自定义订阅源");
         });
-
         // 自定义节目单
         tv_custom_epg.setOnClickListener(v -> {
             showInputDialog("自定义节目单", "请输入EPG地址", KEY_CUSTOM_EPG);
             logOperation("【设置】打开自定义节目单");
         });
-
         // ====================================================================
         // 多订阅源（委托给 SourceDialogManager）
         // ====================================================================
@@ -690,12 +581,10 @@ public class SettingsActivity extends AppCompatActivity {
             sourceDialogManager.showHistoryDialog("直播源历史", "live_history");
             logOperation("【设置】打开直播源历史");
         });
-
         tv_multi_epg.setOnClickListener(v -> {
             sourceDialogManager.showHistoryDialog("节目单历史", "epg_history");
             logOperation("【设置】打开节目单历史");
         });
-
         // ====================================================================
         // 扫码添加（委托给 QRCodeManager）
         // ====================================================================
@@ -704,7 +593,6 @@ public class SettingsActivity extends AppCompatActivity {
             logOperation("【设置】打开扫码管理");
         });
     }
-
     // ====================== 屏幕比例对话框 ======================
     /**
      * 显示屏幕比例选择对话框
@@ -723,7 +611,6 @@ public class SettingsActivity extends AppCompatActivity {
                     Toast.makeText(this, "已设置", Toast.LENGTH_SHORT).show();
                 }).show();
     }
-
     // ====================== 输入对话框（自定义源/节目单） ======================
     /**
      * 显示输入对话框
@@ -737,7 +624,6 @@ public class SettingsActivity extends AppCompatActivity {
         EditText ed = new EditText(this);
         ed.setHint(hint);
         ed.setText(sp.getString(key, ""));
-
         new AlertDialog.Builder(this)
                 .setTitle(title)
                 .setView(ed)
@@ -757,11 +643,9 @@ public class SettingsActivity extends AppCompatActivity {
                 .setNegativeButton("取消", null)
                 .show();
     }
-
     // ====================================================================
     // 日志对话框（加回兼容层）
     // ====================================================================
-
     /**
      * 显示操作日志对话框
      * 最新的日志显示在最上面（倒序）
@@ -772,7 +656,6 @@ public class SettingsActivity extends AppCompatActivity {
     private void showOperationLogDialog() {
         ScrollView scrollView = new ScrollView(this);
         TextView tv = new TextView(this);
-
         if (OPERATION_LOG == null || OPERATION_LOG.length() == 0) {
             tv.setText("暂无操作日志。\n\n操作日志会记录您的切台、切换分组、打开设置等操作，\n以及网页后台的启动、请求、响应等详细信息。");
         } else {
@@ -787,12 +670,10 @@ public class SettingsActivity extends AppCompatActivity {
             }
             tv.setText(reversedLog.toString());
         }
-
         tv.setTextSize(12);
         tv.setPadding(40, 40, 40, 40);
         tv.setTextColor(Color.BLACK);
         scrollView.addView(tv);
-
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("📌 操作日志");
         builder.setView(scrollView);
@@ -807,7 +688,6 @@ public class SettingsActivity extends AppCompatActivity {
         });
         builder.show();
     }
-
     /**
      * 显示解析&播放日志对话框
      * 最新的日志显示在最上面（倒序）
@@ -818,7 +698,6 @@ public class SettingsActivity extends AppCompatActivity {
     private void showLogDialog() {
         ScrollView scrollView = new ScrollView(this);
         TextView tv = new TextView(this);
-
         if (PLAY_LOG == null || PLAY_LOG.length() == 0) {
             tv.setText("暂无日志内容，请先播放一个频道再查看。");
         } else {
@@ -833,12 +712,10 @@ public class SettingsActivity extends AppCompatActivity {
             }
             tv.setText(reversedLog.toString());
         }
-
         tv.setTextSize(12);
         tv.setPadding(40, 40, 40, 40);
         tv.setTextColor(Color.BLACK);
         scrollView.addView(tv);
-
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("📄 解析 & 播放日志");
         builder.setView(scrollView);
@@ -853,172 +730,6 @@ public class SettingsActivity extends AppCompatActivity {
         });
         builder.show();
     }
-
-    // ====================================================================
-    // ✅ 新增：崩溃日志对话框
-    // ====================================================================
-
-    /**
-     * 显示崩溃日志对话框
-     *
-     * 【功能】
-     * 1. 先显示崩溃列表（时间 + 异常类型 + 简要信息）
-     * 2. 点击某一条后，显示该次崩溃的详细堆栈信息
-     * 3. 支持一键清空所有崩溃日志
-     *
-     * 【数据来源】
-     * 通过 CrashHandler.getAllCrashLogs() 读取本地保存的崩溃日志文件。
-     *
-     * 【为什么用两级对话框？】
-     * 如果直接把所有崩溃日志都显示在一个对话框里，
-     * 内容太多，用户不好找。
-     * 先显示列表，点进去看详情，体验更好。
-     */
-    private void showCrashLogDialog() {
-        // 1. 获取所有历史崩溃日志
-        String[] crashLogs = CrashHandler.getAllCrashLogs(this);
-
-        if (crashLogs == null || crashLogs.length == 0) {
-            // 没有崩溃日志，直接提示
-            new AlertDialog.Builder(this)
-                    .setTitle("💥 崩溃日志")
-                    .setMessage("暂无崩溃记录。\n\n应用运行得很稳定，继续保持！🎉")
-                    .setPositiveButton("关闭", null)
-                    .show();
-            return;
-        }
-
-        // 2. 生成列表项显示文本（时间 + 异常类型）
-        final String[] listItems = new String[crashLogs.length];
-        for (int i = 0; i < crashLogs.length; i++) {
-            listItems[i] = parseCrashLogForList(crashLogs[i]);
-        }
-
-        // 3. 显示崩溃列表对话框
-        final String[] finalCrashLogs = crashLogs;
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("💥 历史崩溃记录 (" + crashLogs.length + ")");
-        builder.setItems(listItems, (dialog, which) -> {
-            // 点击某一条，显示详细信息
-            showCrashDetailDialog(finalCrashLogs[which]);
-        });
-        builder.setPositiveButton("关闭", null);
-        builder.setNeutralButton("清空日志", (dialog, which) -> {
-            // 二次确认：清空崩溃日志
-            new AlertDialog.Builder(this)
-                    .setTitle("确认清空")
-                    .setMessage("确定要清空所有崩溃日志吗？\n清空后无法恢复。")
-                    .setPositiveButton("确定清空", (d, w) -> {
-                        CrashHandler.clearAllCrashLogs(this);
-                        logOperation("【设置】清空崩溃日志");
-                        Toast.makeText(this, "崩溃日志已清空", Toast.LENGTH_SHORT).show();
-                    })
-                    .setNegativeButton("取消", null)
-                    .show();
-        });
-        builder.show();
-    }
-
-    /**
-     * 解析崩溃日志，生成列表项显示文本
-     *
-     * 【格式】
-     * 时间：异常类型
-     * 异常信息（第一行）
-     *
-     * 【示例】
-     * 2026-06-23 15:30:45
-     * NullPointerException: Attempt to invoke...
-     *
-     * @param crashLog 完整的崩溃日志
-     * @return 列表项显示文本
-     */
-    private String parseCrashLogForList(String crashLog) {
-        try {
-            String time = "";
-            String exceptionType = "";
-            String exceptionMsg = "";
-
-            String[] lines = crashLog.split("\n");
-            for (String line : lines) {
-                if (line.startsWith("时间：")) {
-                    time = line.replace("时间：", "").trim();
-                } else if (line.startsWith("异常类型：")) {
-                    // 只取类名（去掉包名，显示更简洁）
-                    String fullType = line.replace("异常类型：", "").trim();
-                    int dotIndex = fullType.lastIndexOf('.');
-                    if (dotIndex >= 0 && dotIndex < fullType.length() - 1) {
-                        exceptionType = fullType.substring(dotIndex + 1);
-                    } else {
-                        exceptionType = fullType;
-                    }
-                } else if (line.startsWith("异常信息：")) {
-                    exceptionMsg = line.replace("异常信息：", "").trim();
-                    // 太长的话截断
-                    if (exceptionMsg.length() > 50) {
-                        exceptionMsg = exceptionMsg.substring(0, 50) + "...";
-                    }
-                }
-            }
-
-            // 组合显示文本
-            StringBuilder sb = new StringBuilder();
-            if (!time.isEmpty()) {
-                sb.append(time).append("\n");
-            }
-            if (!exceptionType.isEmpty()) {
-                sb.append(exceptionType);
-                if (!exceptionMsg.isEmpty()) {
-                    sb.append(": ").append(exceptionMsg);
-                }
-            } else {
-                sb.append("未知异常");
-            }
-
-            return sb.toString();
-
-        } catch (Exception e) {
-            return "解析失败";
-        }
-    }
-
-    /**
-     * 显示单条崩溃的详细信息对话框
-     *
-     * 【功能】
-     * 显示完整的崩溃堆栈信息，支持滚动查看。
-     *
-     * @param crashLog 完整的崩溃日志内容
-     */
-    private void showCrashDetailDialog(String crashLog) {
-        ScrollView scrollView = new ScrollView(this);
-        TextView tv = new TextView(this);
-
-        tv.setText(crashLog);
-        tv.setTextSize(11);
-        tv.setPadding(40, 40, 40, 40);
-        tv.setTextColor(Color.BLACK);
-        tv.setBackgroundColor(0xFFF5F5F5);
-        scrollView.addView(tv);
-
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("📋 崩溃详情");
-        builder.setView(scrollView);
-        builder.setPositiveButton("关闭", null);
-        builder.setNeutralButton("复制日志", (dialog, which) -> {
-            // 复制到剪贴板
-            android.content.ClipboardManager clipboard =
-                    (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-            if (clipboard != null) {
-                android.content.ClipData clip =
-                        android.content.ClipData.newPlainText("崩溃日志", crashLog);
-                clipboard.setPrimaryClip(clip);
-                Toast.makeText(this, "已复制到剪贴板", Toast.LENGTH_SHORT).show();
-            }
-        });
-        builder.show();
-    }
-
     // ====================================================================
     // ✅ 窗口焦点变化时，重新隐藏状态栏（防止被系统恢复）
     // ====================================================================
@@ -1046,7 +757,6 @@ public class SettingsActivity extends AppCompatActivity {
                     | View.SYSTEM_UI_FLAG_FULLSCREEN
                     | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY;
             getWindow().getDecorView().setSystemUiVisibility(uiOptions);
-
             // ====================================================================
             // ✅ 刘海屏适配（重新设置）
             // ====================================================================
@@ -1057,7 +767,6 @@ public class SettingsActivity extends AppCompatActivity {
                         WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
                 getWindow().setAttributes(lp);
             }
-
             // ====================================================================
             // ✅ 重新清除背景变暗（保险起见）
             // ====================================================================
@@ -1069,18 +778,15 @@ public class SettingsActivity extends AppCompatActivity {
             getWindow().clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
         }
     }
-
     // ====================== onDestroy 生命周期 ======================
     @Override
     protected void onDestroy() {
         super.onDestroy();
         logOperation("【设置】关闭设置页面");
-
         // 停止网页后台
         if (webServerManager != null) {
             webServerManager.stop();
         }
-
         // ====================================================================
         // ✅ 释放更新管理器
         // ====================================================================

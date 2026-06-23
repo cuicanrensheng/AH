@@ -1,16 +1,12 @@
 package com.tv.live.config;
-
 import android.content.Context;
 import android.content.SharedPreferences;
-
 import java.util.ArrayList;
 import java.util.List;
-
 public class AppConfig {
     private static AppConfig instance;
     private final SharedPreferences appSp;
     private final SharedPreferences playSp;
-
     // ====================================================================
     // ✅ 2026-06-21 新增：收藏和最近观看的分隔符
     //
@@ -20,63 +16,51 @@ public class AppConfig {
     // ====================================================================
     private static final String SEPARATOR = "|||";
     private static final String SEPARATOR_REGEX = "\\|\\|\\|"; // ✅ 转义后的分隔符，用于 split
-
     private AppConfig(Context context) {
         appSp = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE);
         playSp = context.getSharedPreferences("play_config", Context.MODE_PRIVATE);
     }
-
     public static AppConfig getInstance(Context context) {
         if (instance == null) {
             instance = new AppConfig(context.getApplicationContext());
         }
         return instance;
     }
-
     // 直播源/节目单URL
     public String getCustomLiveUrl() {
         return appSp.getString("custom_live_url", null);
     }
-
     public String getCustomEpgUrl() {
         return appSp.getString("custom_epg_url", null);
     }
-
     public void setCustomUrls(String liveUrl, String epgUrl) {
         SharedPreferences.Editor editor = appSp.edit();
         if (liveUrl != null) editor.putString("custom_live_url", liveUrl);
         if (epgUrl != null) editor.putString("custom_epg_url", epgUrl);
         editor.apply();
     }
-
     // 频道切换方向
     public boolean isChannelReverse() {
         return appSp.getBoolean("channel_reverse", false);
     }
-
     // 屏幕比例
     public String getScreenRatio() {
         return appSp.getString("screen_ratio", "全屏");
     }
-
     // 上次播放的频道索引
     public int getLastPlayIndex() {
         return playSp.getInt("last_play_index", 0);
     }
-
     public void setLastPlayIndex(int index) {
         playSp.edit().putInt("last_play_index", index).apply();
     }
-
     public int getCurrentRatioIndex() {
         return playSp.getInt("play_ratio", 2);
     }
-
     // ====================================================================
     // ✅ 2026-06-21 新增：收藏频道相关
     // ====================================================================
     private static final String KEY_FAVORITE_CHANNELS = "favorite_channels";
-
     /**
      * 获取收藏的频道列表
      *
@@ -94,7 +78,6 @@ public class AppConfig {
         }
         return list;
     }
-
     /**
      * 添加收藏频道
      *
@@ -107,7 +90,6 @@ public class AppConfig {
             saveFavorites(favorites);
         }
     }
-
     /**
      * 取消收藏频道
      *
@@ -118,7 +100,6 @@ public class AppConfig {
         favorites.remove(channelName);
         saveFavorites(favorites);
     }
-
     /**
      * 判断频道是否已收藏
      *
@@ -128,7 +109,6 @@ public class AppConfig {
     public boolean isFavorite(String channelName) {
         return getFavoriteChannels().contains(channelName);
     }
-
     /**
      * 切换收藏状态（已收藏则取消，未收藏则添加）
      *
@@ -144,7 +124,6 @@ public class AppConfig {
             return true;
         }
     }
-
     /**
      * 保存收藏列表到 SharedPreferences
      */
@@ -156,13 +135,11 @@ public class AppConfig {
         }
         appSp.edit().putString(KEY_FAVORITE_CHANNELS, sb.toString()).apply();
     }
-
     // ====================================================================
     // ✅ 2026-06-21 新增：最近观看相关
     // ====================================================================
     private static final String KEY_RECENT_CHANNELS = "recent_channels";
     private static final int MAX_RECENT_COUNT = 10; // 最多保存 10 个
-
     /**
      * 获取最近观看的频道列表
      *
@@ -180,7 +157,6 @@ public class AppConfig {
         }
         return list;
     }
-
     /**
      * 添加到最近观看
      *
@@ -203,7 +179,6 @@ public class AppConfig {
         }
         saveRecent(recent);
     }
-
     /**
      * 保存最近观看列表到 SharedPreferences
      */
@@ -214,5 +189,141 @@ public class AppConfig {
             sb.append(recent.get(i));
         }
         appSp.edit().putString(KEY_RECENT_CHANNELS, sb.toString()).apply();
+    }
+    // ====================================================================
+    // ✅ 2026-06-23 新增：一键清空收藏和最近观看
+    // ====================================================================
+    /**
+     * 一键清空全部收藏
+     */
+    public void clearAllFavorites() {
+        appSp.edit().remove(KEY_FAVORITE_CHANNELS).apply();
+    }
+    /**
+     * 一键清空全部最近观看
+     */
+    public void clearAllRecent() {
+        appSp.edit().remove(KEY_RECENT_CHANNELS).apply();
+    }
+    // ====================================================================
+    // ✅ 2026-06-23 新增：分类（分组）管理相关
+    // ====================================================================
+    /**
+     * 隐藏的分组列表存储 Key
+     */
+    private static final String KEY_HIDDEN_GROUPS = "hidden_groups";
+    /**
+     * 分组顺序存储 Key
+     */
+    private static final String KEY_GROUP_ORDER = "group_order";
+    /**
+     * 所有分组列表存储 Key（用于设置页面显示）
+     */
+    private static final String KEY_ALL_GROUPS = "all_groups";
+    /**
+     * 获取隐藏的分组列表
+     *
+     * @return 隐藏的分组名列表
+     */
+    public List<String> getHiddenGroups() {
+        String saved = appSp.getString(KEY_HIDDEN_GROUPS, "");
+        List<String> list = new ArrayList<>();
+        if (saved.isEmpty()) return list;
+        String[] names = saved.split(SEPARATOR_REGEX);
+        for (String name : names) {
+            if (!name.isEmpty()) {
+                list.add(name);
+            }
+        }
+        return list;
+    }
+    /**
+     * 保存隐藏的分组列表
+     *
+     * @param hiddenGroups 隐藏的分组名列表
+     */
+    public void setHiddenGroups(List<String> hiddenGroups) {
+        StringBuilder sb = new StringBuilder();
+        if (hiddenGroups != null) {
+            for (int i = 0; i < hiddenGroups.size(); i++) {
+                if (i > 0) sb.append(SEPARATOR);
+                sb.append(hiddenGroups.get(i));
+            }
+        }
+        appSp.edit().putString(KEY_HIDDEN_GROUPS, sb.toString()).apply();
+    }
+    /**
+     * 判断某个分组是否被隐藏
+     *
+     * @param groupName 分组名
+     * @return true=已隐藏，false=显示
+     */
+    public boolean isGroupHidden(String groupName) {
+        if (groupName == null) return false;
+        return getHiddenGroups().contains(groupName);
+    }
+    /**
+     * 获取分组顺序列表
+     *
+     * @return 按顺序排列的分组名列表
+     */
+    public List<String> getGroupOrder() {
+        String saved = appSp.getString(KEY_GROUP_ORDER, "");
+        List<String> list = new ArrayList<>();
+        if (saved.isEmpty()) return list;
+        String[] names = saved.split(SEPARATOR_REGEX);
+        for (String name : names) {
+            if (!name.isEmpty()) {
+                list.add(name);
+            }
+        }
+        return list;
+    }
+    /**
+     * 保存分组顺序
+     *
+     * @param groupOrder 按顺序排列的分组名列表
+     */
+    public void setGroupOrder(List<String> groupOrder) {
+        StringBuilder sb = new StringBuilder();
+        if (groupOrder != null) {
+            for (int i = 0; i < groupOrder.size(); i++) {
+                if (i > 0) sb.append(SEPARATOR);
+                sb.append(groupOrder.get(i));
+            }
+        }
+        appSp.edit().putString(KEY_GROUP_ORDER, sb.toString()).apply();
+    }
+    /**
+     * 获取所有分组列表（用于设置页面显示管理）
+     *
+     * @return 所有分组名列表
+     */
+    public List<String> getAllGroups() {
+        String saved = appSp.getString(KEY_ALL_GROUPS, "");
+        List<String> list = new ArrayList<>();
+        if (saved.isEmpty()) return list;
+        String[] names = saved.split(SEPARATOR_REGEX);
+        for (String name : names) {
+            if (!name.isEmpty()) {
+                list.add(name);
+            }
+        }
+        return list;
+    }
+    /**
+     * 保存所有分组列表（主界面加载完直播源后调用）
+     *
+     * @param allGroups 所有分组名列表
+     */
+    public void setAllGroups(List<String> allGroups) {
+        StringBuilder sb = new StringBuilder();
+        if (allGroups != null) {
+            for (int i = 0; i < allGroups.size(); i++) {
+                if (i > 0) sb.append(SEPARATOR);
+                sb.append(allGroups.get(i));
+            }
+        }
+        appSp.edit().putString(KEY_ALL_GROUPS, sb.toString()).apply();
     }
 }

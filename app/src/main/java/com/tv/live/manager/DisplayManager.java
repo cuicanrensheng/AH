@@ -1,5 +1,4 @@
 package com.tv.live.manager;
-
 import android.app.Activity;
 import android.graphics.Color;
 import android.os.Build;
@@ -11,9 +10,7 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
-
 import com.tv.live.SettingsActivity;
-
 /**
  * 显示管理器
  *
@@ -35,9 +32,11 @@ import com.tv.live.SettingsActivity;
  * 2. 调用 applyFullScreen() 应用全面屏适配
  * 3. 调用 showLoading() / hideLoading() 控制加载动画
  * 4. 在 onDestroy 中调用 release() 释放资源
+ * 
+ * 【修复记录】
+ * 2026-06-23：增加多层 null 判断，修复 setContentView 前调用导致的空指针异常
  */
 public class DisplayManager {
-
     // ====================== 成员变量 ======================
     /** 宿主 Activity */
     private final Activity activity;
@@ -47,7 +46,6 @@ public class DisplayManager {
     private TextView tvLoadingText;
     /** 是否已初始化加载视图 */
     private boolean loadingViewInitialized = false;
-
     // ====================== 构造函数 ======================
     /**
      * 构造函数
@@ -57,11 +55,9 @@ public class DisplayManager {
     public DisplayManager(Activity activity) {
         this.activity = activity;
     }
-
     // ====================================================================
     // ✅ 功能一：全面屏适配
     // ====================================================================
-
     /**
      * 应用全面屏适配
      *
@@ -72,7 +68,7 @@ public class DisplayManager {
      * 4. Android 11+ 的 WindowInsetsController 新方式
      *
      * 【调用时机】
-     * 在 onCreate 中调用，setContentView 之前或之后都可以。
+     * 在 onCreate 中调用，建议在 setContentView 之后调用。
      *
      * 【为什么分这么多方式？】
      * 不同 Android 版本的全面屏 API 不一样：
@@ -84,16 +80,80 @@ public class DisplayManager {
     public void applyFullScreen() {
         try {
             // ================================================
+            // ✅ 修复：先检查 Window 和 DecorView 是否为 null
+            // 原因：setContentView 之前调用时，DecorView 可能还没初始化完成
+            // ================================================
+            if (activity == null) {
+                SettingsActivity.logOperation("【适配】全面屏适配跳过：Activity 为 null");
+                return;
+            }
+            
+            android.view.Window window = activity.getWindow();
+            if (window == null) {
+                SettingsActivity.logOperation("【适配】全面屏适配跳过：Window 为 null");
+                return;
+            }
+            
+            View decorView = window.getDecorView();
+            if (decorView == null) {
+                SettingsActivity.logOperation("【适配】全面屏适配跳过：DecorView 为 null");
+                return;
+            }
+            
+            // ✅ 额外检查：DecorView 是否已挂载到窗口
+            // 未挂载时调用某些 API 也可能返回 null
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+                if (!decorView.isAttachedToWindow()) {
+                    SettingsActivity.logOperation("【适配】全面屏适配跳过：DecorView 未挂载到窗口");
+                    // 延迟到挂载后再执行
+                    decorView.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
+                        @Override
+                        public void onViewAttachedToWindow(View v) {
+                            v.removeOnAttachStateChangeListener(this);
+                            applyFullScreenInternal(window, decorView);
+                        }
+                        @Override
+                        public void onViewDetachedFromWindow(View v) {
+                            v.removeOnAttachStateChangeListener(this);
+                        }
+                    });
+                    return;
+                }
+            }
+            
+            // DecorView 已就绪，执行实际的全面屏适配
+            applyFullScreenInternal(window, decorView);
+            
+        } catch (Exception e) {
+            // ✅ 全面屏适配失败不影响正常使用
+            // 【为什么要 try-catch？】
+            // 有些电视盒子的 Android 系统是定制的，不支持这些 API，
+            // 直接调用会崩溃。加个 try-catch，失败了就不用全屏效果，
+            // 至少保证应用能正常运行。
+            e.printStackTrace();
+            SettingsActivity.logOperation("【适配】全面屏适配失败：" + e.getMessage());
+        }
+    }
+    
+    /**
+     * 内部方法：实际执行全面屏适配逻辑
+     * 抽取出这个方法是为了支持延迟执行（等 DecorView 挂载后）
+     * 
+     * @param window Window 对象（已确认非 null）
+     * @param decorView DecorView 对象（已确认非 null）
+     */
+    private void applyFullScreenInternal(android.view.Window window, View decorView) {
+        try {
+            // ================================================
             // 第一部分：刘海屏适配 + 全屏标志 + 旧版沉浸式
             // ================================================
-
             // 1. 刘海屏适配（Android P 及以上）
             // 【为什么需要这个？】
             // 默认情况下，内容不会布局到刘海区域，会有一条黑边。
             // 设置 LAYOUT_IN_DISPLAY_CUTOUT_MODE 后，内容可以延伸到刘海区域，
             // 真正实现全屏效果。
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                WindowManager.LayoutParams lp = activity.getWindow().getAttributes();
+                WindowManager.LayoutParams lp = window.getAttributes();
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                     // Android 12+：always 模式，所有边都允许布局到刘海区域
                     // 【为什么用 always？】
@@ -109,23 +169,21 @@ public class DisplayManager {
                     lp.layoutInDisplayCutoutMode =
                             WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
                 }
-                activity.getWindow().setAttributes(lp);
+                window.setAttributes(lp);
             }
-
             // 2. 全屏标志
             // 【作用】告诉 WindowManager 我们要全屏显示，
             // 这样系统会自动隐藏状态栏的一些元素。
-            activity.getWindow().setFlags(
+            window.setFlags(
                     WindowManager.LayoutParams.FLAG_FULLSCREEN,
                     WindowManager.LayoutParams.FLAG_FULLSCREEN
             );
-
             // 3. Android 10 及以下的沉浸式（旧方式）
             // 【为什么 Android 10 及以下才用？】
             // Android 11+ 推荐用 WindowInsetsController，
             // 但旧版本没有这个 API，只能用 setSystemUiVisibility。
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
-                activity.getWindow().getDecorView().setSystemUiVisibility(
+                decorView.setSystemUiVisibility(
                         View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
                                 | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
                                 | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
@@ -134,18 +192,15 @@ public class DisplayManager {
                                 | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
                 );
             }
-
             // ================================================
             // 第二部分：Android 11+ 的 WindowInsetsController（新方式）
             // ================================================
-
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                android.view.WindowInsetsController controller =
-                        activity.getWindow().getInsetsController();
+                android.view.WindowInsetsController controller = window.getInsetsController();
+                // ✅ 保留原有的 null 判断
                 if (controller != null) {
                     // 隐藏系统栏（状态栏 + 导航栏）
                     controller.hide(android.view.WindowInsets.Type.systemBars());
-
                     // 临时显示行为：滑动显示，过一会自动隐藏
                     // 【为什么用这个？】
                     // 用户从顶部往下滑或者从底部往上滑，系统栏会临时显示出来，
@@ -153,45 +208,49 @@ public class DisplayManager {
                     controller.setSystemBarsBehavior(
                             android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
                     );
+                } else {
+                    SettingsActivity.logOperation("【适配】WindowInsetsController 为 null，跳过新方式适配");
                 }
-
                 // 让内容布局到系统栏下面（沉浸式）
                 // 【为什么设为 false？】
                 // 默认是 true，内容不会布局到系统栏区域，
                 // 设为 false 后，内容可以延伸到状态栏和导航栏下面，
                 // 真正实现全屏沉浸式效果。
-                activity.getWindow().setDecorFitsSystemWindows(false);
+                window.setDecorFitsSystemWindows(false);
             }
-
             SettingsActivity.logOperation("【适配】全面屏适配成功");
-
         } catch (Exception e) {
-            // ✅ 全面屏适配失败不影响正常使用
-            // 【为什么要 try-catch？】
-            // 有些电视盒子的 Android 系统是定制的，不支持这些 API，
-            // 直接调用会崩溃。加个 try-catch，失败了就不用全屏效果，
-            // 至少保证应用能正常运行。
             e.printStackTrace();
-            SettingsActivity.logOperation("【适配】全面屏适配失败：" + e.getMessage());
+            SettingsActivity.logOperation("【适配】全面屏内部适配失败：" + e.getMessage());
         }
     }
-
     /**
      * 重新应用全面屏（页面获得焦点时调用）
      *
      * 【为什么需要这个？】
      * 有些情况下系统栏会重新显示出来（比如弹出对话框后），
      * 在 onWindowFocusChanged 里重新调用一下，保证一直是全屏状态。
+     * 
+     * 【优化】增加延迟二次应用，确保画中画退出后全面屏能恢复
      */
     public void reapplyFullScreen() {
-        // 简单起见，直接重新调用 applyFullScreen
+        // 立即应用一次
         applyFullScreen();
+        
+        // 延迟 100ms 再应用一次，确保窗口状态稳定后生效
+        if (activity != null) {
+            activity.getWindow().getDecorView().postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    applyFullScreen();
+                    SettingsActivity.logOperation("【适配】延迟重新应用全面屏完成");
+                }
+            }, 100);
+        }
     }
-
     // ====================================================================
     // ✅ 功能二：加载动画
     // ====================================================================
-
     /**
      * 初始化加载视图（动态创建）
      *
@@ -208,11 +267,9 @@ public class DisplayManager {
      */
     private void initLoadingView() {
         if (loadingViewInitialized) return;
-
         try {
             // 获取 Activity 的根布局（android.R.id.content 是 FrameLayout）
             FrameLayout rootLayout = activity.findViewById(android.R.id.content);
-
             // ===== 加载容器（黑色半透明背景，全屏） =====
             FrameLayout loadingLayout = new FrameLayout(activity);
             loadingLayout.setBackgroundColor(0xEE000000);  // 93% 不透明度的黑色
@@ -221,7 +278,6 @@ public class DisplayManager {
                     FrameLayout.LayoutParams.MATCH_PARENT));
             // 默认隐藏
             loadingLayout.setVisibility(View.GONE);
-
             // ===== 垂直布局（进度条 + 文字，居中） =====
             LinearLayout linearLayout = new LinearLayout(activity);
             linearLayout.setOrientation(LinearLayout.VERTICAL);
@@ -231,11 +287,9 @@ public class DisplayManager {
                     FrameLayout.LayoutParams.WRAP_CONTENT);
             llParams.gravity = Gravity.CENTER;
             linearLayout.setLayoutParams(llParams);
-
             // ===== 圆形进度条 =====
             ProgressBar progressBar = new ProgressBar(activity);
             linearLayout.addView(progressBar);
-
             // ===== 加载文字 =====
             tvLoadingText = new TextView(activity);
             tvLoadingText.setText("加载中...");
@@ -247,24 +301,18 @@ public class DisplayManager {
             textParams.setMargins(0, 20, 0, 0);  // 上边距 20px
             tvLoadingText.setLayoutParams(textParams);
             linearLayout.addView(tvLoadingText);
-
             // 把垂直布局加到加载容器里
             loadingLayout.addView(linearLayout);
-
             // 把加载容器加到根布局
             rootLayout.addView(loadingLayout);
-
             loadingView = loadingLayout;
             loadingViewInitialized = true;
-
             SettingsActivity.logOperation("【加载】加载视图初始化完成");
-
         } catch (Exception e) {
             e.printStackTrace();
             SettingsActivity.logOperation("【加载】加载视图初始化失败：" + e.getMessage());
         }
     }
-
     /**
      * 显示加载动画
      *
@@ -275,24 +323,20 @@ public class DisplayManager {
         if (!loadingViewInitialized) {
             initLoadingView();
         }
-
         if (loadingView != null) {
             loadingView.setVisibility(View.VISIBLE);
         }
         if (tvLoadingText != null && text != null) {
             tvLoadingText.setText(text);
         }
-
         SettingsActivity.logOperation("【加载】显示加载动画：" + text);
     }
-
     /**
      * 显示加载动画（使用默认文字）
      */
     public void showLoading() {
         showLoading("加载中...");
     }
-
     /**
      * 更新加载文字
      *
@@ -303,7 +347,6 @@ public class DisplayManager {
             tvLoadingText.setText(text);
         }
     }
-
     /**
      * 隐藏加载动画
      */
@@ -313,7 +356,6 @@ public class DisplayManager {
         }
         SettingsActivity.logOperation("【加载】隐藏加载动画");
     }
-
     /**
      * 加载动画是否正在显示
      *
@@ -322,11 +364,9 @@ public class DisplayManager {
     public boolean isLoadingShowing() {
         return loadingView != null && loadingView.getVisibility() == View.VISIBLE;
     }
-
     // ====================================================================
     // 资源释放
     // ====================================================================
-
     /**
      * 释放资源
      *

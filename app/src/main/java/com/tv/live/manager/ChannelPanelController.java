@@ -26,33 +26,34 @@ import java.util.List;
  * 5. 按键处理（左右键移动焦点、OK键选中、菜单键收藏）
  *
  * 【2026-06-21 新增：收藏 + 最近观看 + 菜单键】
- * 【功能说明】
- * 1. 分组列表增加「收藏」和「最近观看」两个特殊分组
- * 2. 菜单键（KEYCODE_MENU）可以快速收藏/取消收藏当前频道
- * 3. 切换频道时自动添加到最近观看
- *
  * 【2026-06-21 新增：长按收藏（触屏模式）】
- * 【功能说明】
- * 触屏模式下，长按频道项可以收藏/取消收藏该频道。
- *
- * 【2026-06-21 新增：排查日志】
- * 【说明】
- * 在关键位置加上日志，方便排查收藏和最近观看功能的问题。
- *
- * 【2026-06-21 新增：调试日志 - 频道名对比】
- * 【说明】
- * 加上详细的频道名对比日志，找出为什么匹配不上。
- * 
  * 【2026-06-22 修改：取消切台防抖拦截】
+ * 
+ * 【2026-06-22 修复：特殊分组下切台循环错误】
  * 【问题原因】
- * 原有的 300ms 切台冷却时间会拦截快速连续切台，
- * 用户觉得操作不跟手，希望每次都立即响应。
+ * 之前 playNext/playPrev 是用频道自身的 group 字段来筛选分组的，
+ * 导致在「收藏」「最近观看」等特殊分组里切台时，会跑到频道自身的普通分组里循环，
+ * 而不是在当前显示的分组列表里循环。
  * 
  * 【解决方案】
- * 完全移除切台防抖逻辑，每次调用 playNext/playPrev 都立即执行切台。
+ * 1. 切台时统一使用 currentGroupChannelList（当前显示的分组列表）
+ * 2. 先找到当前频道在分组列表中的索引，再计算上/下一个
+ * 3. 确保在哪个分组里切台，就在哪个分组里循环
  * 
  * 【效果】
- * 连续滑动/按键会连续切台，响应零延迟。
+ * 「全部」→ 在全部频道里循环
+ * 「收藏」→ 在收藏列表里循环
+ * 「最近观看」→ 在最近观看列表里循环
+ * 普通分组 → 在该分组里循环
+ * 
+ * 【2026-06-22 修复：初始化时当前分组状态为空】
+ * 【问题原因】
+ * setChannels() 里只初始化了分组列表和频道列表，
+ * 但是没有初始化 currentGroupName 和 currentGroupChannelList，
+ * 导致刚进入 App 还没点击过分组时，切台逻辑可能出问题。
+ * 
+ * 【解决方案】
+ * setChannels() 末尾默认选中「全部」分组，并初始化 currentGroupChannelList。
  */
 public class ChannelPanelController {
     // ====================== 上下文与视图 ======================
@@ -88,22 +89,14 @@ public class ChannelPanelController {
     // ====================================================================
     // 换台反转相关
     // ====================================================================
-    /**
-     * 是否开启换台反转
-     * 默认 false = 不反转
-     */
     private boolean isReverse = false;
-    /**
-     * 设置是否开启换台反转
-     */
+
     public void setReverse(boolean reverse) {
         this.isReverse = reverse;
         SettingsActivity.logOperation("【设置】反转状态同步到 ChannelPanelController：" 
                 + (reverse ? "开启" : "关闭"));
     }
-    /**
-     * 获取当前反转状态
-     */
+
     public boolean isReverse() {
         return isReverse;
     }
@@ -183,20 +176,16 @@ public class ChannelPanelController {
                 onChannelClicked(pos);
             }
         });
-        // ✅ 2026-06-21 新增：长按收藏（左侧频道列表）【加了日志】
         channelListManager.setOnChannelLongClickListener(new ChannelListManager.OnChannelLongClickListener() {
             @Override
             public boolean onChannelLongClick(String channelName, int position) {
-                // ✅ 日志：确认回调触发了
                 SettingsActivity.logOperation("【面板】左侧长按回调触发，channelName=" + channelName);
                 return handleChannelLongClick(channelName, false);
             }
         });
-        // ✅ 2026-06-21 新增：长按收藏（右侧节目单页面的频道列表）【加了日志】
         channelListManagerEpg.setOnChannelLongClickListener(new ChannelListManager.OnChannelLongClickListener() {
             @Override
             public boolean onChannelLongClick(String channelName, int position) {
-                // ✅ 日志：确认回调触发了
                 SettingsActivity.logOperation("【面板】右侧长按回调触发，channelName=" + channelName);
                 return handleChannelLongClick(channelName, true);
             }
@@ -287,20 +276,26 @@ public class ChannelPanelController {
     // ====================================================================
     /**
      * 设置频道列表
-     *
-     * 【2026-06-21 修改：初始化时获取收藏和最近观看数量】
+     * 
+     * 【2026-06-22 修复：默认初始化当前分组为「全部」】
+     * 【问题原因】
+     * 之前只初始化了分组列表，没有设置当前分组状态，
+     * 导致刚进入 App 还没点击分组时，currentGroupChannelList 为空，
+     * 切台逻辑可能出问题。
+     * 
+     * 【解决方案】
+     * 设置完分组列表后，默认选中「全部」分组，并初始化 currentGroupChannelList。
      */
     public void setChannels(List<Channel> channels) {
         if (channels == null) return;
         this.channelSourceList = channels;
-        // ✅ 新增：获取收藏和最近观看的数量
+
         int favoriteCount = 0;
         int recentCount = 0;
         try {
             AppConfig appConfig = AppConfig.getInstance(context);
             List<String> favorites = appConfig.getFavoriteChannels();
             List<String> recent = appConfig.getRecentChannels();
-            // 计算实际存在的频道数量
             for (String name : favorites) {
                 for (Channel c : channels) {
                     if (name.equals(c.getName())) {
@@ -320,15 +315,20 @@ public class ChannelPanelController {
         } catch (Exception e) {
             // 忽略错误
         }
-        // ✅ 修改：传入收藏和最近观看数量
+
         groupListManager.setGroups(channels, favoriteCount, recentCount);
         channelListManager.setChannels(channels, currentPlayIndex);
         channelListManagerEpg.setChannels(channels, currentPlayIndex);
+
+        // ✅ 新增：默认初始化当前分组为「全部」
+        currentGroupName = GroupListManager.GROUP_ALL;
+        currentGroupChannelList.clear();
+        currentGroupChannelList.addAll(channels);
+        SettingsActivity.logOperation("【分组】初始化完成，默认选中「全部」，频道数：" + channels.size());
     }
+
     /**
      * 分组被点击了
-     *
-     * 【2026-06-21 修改：支持「全部」「收藏」「最近观看」三个特殊分组】
      */
     private void onGroupClicked(int position) {
         groupListManager.setSelectedPosition(position);
@@ -336,6 +336,7 @@ public class ChannelPanelController {
         lvGroup.setSelection(position);
         String groupName = groupListManager.getCurrentGroup(position);
         currentGroupName = groupName;
+
         if (GroupListManager.GROUP_ALL.equals(groupName)) {
             // 「全部」分组：显示所有频道
             currentGroupChannelList.clear();
@@ -343,7 +344,7 @@ public class ChannelPanelController {
             channelListManager.setChannels(channelSourceList, currentPlayIndex);
             SettingsActivity.logOperation("【分组】选中「全部」，频道数：" + channelSourceList.size());
         } else if (GroupListManager.GROUP_FAVORITE.equals(groupName)) {
-            // ✅ 新增：「收藏」分组
+            // 「收藏」分组
             currentGroupChannelList.clear();
             try {
                 AppConfig appConfig = AppConfig.getInstance(context);
@@ -359,7 +360,6 @@ public class ChannelPanelController {
             } catch (Exception e) {
                 // 忽略
             }
-            // 用筛选后的列表刷新
             String currentChannelName = "";
             if (currentPlayIndex >= 0 && currentPlayIndex < channelSourceList.size()) {
                 currentChannelName = channelSourceList.get(currentPlayIndex).getName();
@@ -367,7 +367,7 @@ public class ChannelPanelController {
             channelListManager.setFilteredChannels(currentGroupChannelList, currentChannelName);
             SettingsActivity.logOperation("【分组】选中「收藏」，频道数：" + currentGroupChannelList.size());
         } else if (GroupListManager.GROUP_RECENT.equals(groupName)) {
-            // ✅ 新增：「最近观看」分组
+            // 「最近观看」分组
             currentGroupChannelList.clear();
             try {
                 AppConfig appConfig = AppConfig.getInstance(context);
@@ -383,7 +383,6 @@ public class ChannelPanelController {
             } catch (Exception e) {
                 // 忽略
             }
-            // 用筛选后的列表刷新
             String currentChannelName = "";
             if (currentPlayIndex >= 0 && currentPlayIndex < channelSourceList.size()) {
                 currentChannelName = channelSourceList.get(currentPlayIndex).getName();
@@ -403,12 +402,15 @@ public class ChannelPanelController {
                     + "，频道数：" + currentGroupChannelList.size());
         }
     }
+
     public String getCurrentGroupName() {
         return currentGroupName;
     }
+
     public List<Channel> getCurrentGroupChannels() {
         return currentGroupChannelList;
     }
+
     public void setEpgEnable(boolean enable) {
         this.epgEnable = enable;
     }
@@ -416,30 +418,39 @@ public class ChannelPanelController {
     // 3. 频道切换相关（核心）
     // ====================================================================
     /**
-     * 播放上一个频道（分组内循环）- 底层方法
+     * 播放上一个频道（在当前显示的分组内循环）
      * 
-     * 【2026-06-22 修改：已取消防抖，每次都立即执行】
+     * 【2026-06-22 修复：在当前分组内循环，不是按频道自身的 group 循环】
      */
     public void playPrev() {
         if (channelSourceList == null || channelSourceList.isEmpty()) {
             SettingsActivity.logOperation("【切台】playPrev 失败：频道列表为空");
             return;
         }
-        // 获取当前频道和分组
-        Channel currentChannel = channelSourceList.get(currentPlayIndex);
-        String currentGroup = currentChannel.getGroup();
-        // 筛选当前分组的频道
-        List<Channel> groupChannels = new ArrayList<>();
-        for (Channel c : channelSourceList) {
-            if (currentGroup.equals(c.getGroup())) {
-                groupChannels.add(c);
-            }
+
+        // ✅ 使用当前显示的分组列表
+        List<Channel> groupChannels = currentGroupChannelList;
+        if (groupChannels == null || groupChannels.isEmpty()) {
+            // 兜底：如果当前分组列表为空，用全部频道
+            groupChannels = channelSourceList;
         }
+
         if (groupChannels.size() <= 1) {
             SettingsActivity.logOperation("【切台】playPrev 失败：分组内只有1个频道");
             return;
         }
-        // 找到当前频道在分组中的索引
+
+        // 获取当前播放的频道
+        Channel currentChannel = null;
+        if (currentPlayIndex >= 0 && currentPlayIndex < channelSourceList.size()) {
+            currentChannel = channelSourceList.get(currentPlayIndex);
+        }
+        if (currentChannel == null) {
+            SettingsActivity.logOperation("【切台】playPrev 失败：当前频道为空");
+            return;
+        }
+
+        // 找到当前频道在分组列表中的索引
         int groupIndex = -1;
         for (int i = 0; i < groupChannels.size(); i++) {
             if (groupChannels.get(i).getName().equals(currentChannel.getName())) {
@@ -447,43 +458,61 @@ public class ChannelPanelController {
                 break;
             }
         }
-        if (groupIndex == -1) return;
+        if (groupIndex == -1) {
+            // 当前频道不在这个分组里（比如从普通分组切到收藏，当前频道没收藏）
+            // 兜底：从第一个开始
+            groupIndex = 0;
+        }
+
         // 计算上一个频道的索引（分组内循环）
         int prevGroupIndex = (groupIndex - 1 + groupChannels.size()) % groupChannels.size();
         Channel prevChannel = groupChannels.get(prevGroupIndex);
-        int globalIndex = channelSourceList.indexOf(prevChannel);
+
+        // 找到全局索引
+        int globalIndex = findChannelGlobalIndex(prevChannel);
         if (globalIndex != -1) {
             SettingsActivity.logOperation("【切台】playPrev 上一台 → " 
                     + currentPlayIndex + " → " + globalIndex 
-                    + "（" + prevChannel.getName() + "）");
+                    + "（" + prevChannel.getName() + "）"
+                    + "，分组：" + currentGroupName);
             playChannel(globalIndex);
         }
     }
+
     /**
-     * 播放下一个频道（分组内循环）- 底层方法
+     * 播放下一个频道（在当前显示的分组内循环）
      * 
-     * 【2026-06-22 修改：已取消防抖，每次都立即执行】
+     * 【2026-06-22 修复：在当前分组内循环，不是按频道自身的 group 循环】
      */
     public void playNext() {
         if (channelSourceList == null || channelSourceList.isEmpty()) {
             SettingsActivity.logOperation("【切台】playNext 失败：频道列表为空");
             return;
         }
-        // 获取当前频道和分组
-        Channel currentChannel = channelSourceList.get(currentPlayIndex);
-        String currentGroup = currentChannel.getGroup();
-        // 筛选当前分组的频道
-        List<Channel> groupChannels = new ArrayList<>();
-        for (Channel c : channelSourceList) {
-            if (currentGroup.equals(c.getGroup())) {
-                groupChannels.add(c);
-            }
+
+        // ✅ 使用当前显示的分组列表
+        List<Channel> groupChannels = currentGroupChannelList;
+        if (groupChannels == null || groupChannels.isEmpty()) {
+            // 兜底：如果当前分组列表为空，用全部频道
+            groupChannels = channelSourceList;
         }
+
         if (groupChannels.size() <= 1) {
             SettingsActivity.logOperation("【切台】playNext 失败：分组内只有1个频道");
             return;
         }
-        // 找到当前频道在分组中的索引
+
+        // 获取当前播放的频道
+        Channel currentChannel = null;
+        if (currentPlayIndex >= 0 && currentPlayIndex < channelSourceList.size()) {
+            currentChannel = channelSourceList.get(currentPlayIndex);
+        }
+        if (currentChannel == null) {
+            SettingsActivity.logOperation("【切台】playNext 失败：当前频道为空");
+            return;
+        }
+
+        // 找到当前频道在分组列表中的索引
         int groupIndex = -1;
         for (int i = 0; i < groupChannels.size(); i++) {
             if (groupChannels.get(i).getName().equals(currentChannel.getName())) {
@@ -491,57 +520,67 @@ public class ChannelPanelController {
                 break;
             }
         }
-        if (groupIndex == -1) return;
+        if (groupIndex == -1) {
+            // 当前频道不在这个分组里，兜底：从第一个开始
+            groupIndex = 0;
+        }
+
         // 计算下一个频道的索引（分组内循环）
         int nextGroupIndex = (groupIndex + 1) % groupChannels.size();
         Channel nextChannel = groupChannels.get(nextGroupIndex);
-        int globalIndex = channelSourceList.indexOf(nextChannel);
+
+        // 找到全局索引
+        int globalIndex = findChannelGlobalIndex(nextChannel);
         if (globalIndex != -1) {
             SettingsActivity.logOperation("【切台】playNext 下一台 → " 
                     + currentPlayIndex + " → " + globalIndex 
-                    + "（" + nextChannel.getName() + "）");
+                    + "（" + nextChannel.getName() + "）"
+                    + "，分组：" + currentGroupName);
             playChannel(globalIndex);
         }
+    }
+
+    /**
+     * ✅ 辅助方法：根据频道对象找到全局索引
+     */
+    private int findChannelGlobalIndex(Channel channel) {
+        if (channel == null || channelSourceList == null) return -1;
+        for (int i = 0; i < channelSourceList.size(); i++) {
+            if (channelSourceList.get(i).getName().equals(channel.getName())) {
+                return i;
+            }
+        }
+        return -1;
     }
     // ====================================================================
     // 带反转的切台方法（统一入口）
     // ====================================================================
-    /**
-     * 按上键时调用（自动考虑反转）
-     */
     public void switchUp() {
         SettingsActivity.logOperation("【切台】switchUp 上键 → 反转状态：" 
                 + (isReverse ? "开启" : "关闭") 
                 + " → 实际方向：" + (isReverse ? "下一台" : "上一台"));
         
         if (isReverse) {
-            // 反转开启：上键 = 下一台
             playNext();
         } else {
-            // 反转关闭：上键 = 上一台
             playPrev();
         }
     }
-    /**
-     * 按下键时调用（自动考虑反转）
-     */
+
     public void switchDown() {
         SettingsActivity.logOperation("【切台】switchDown 下键 → 反转状态：" 
                 + (isReverse ? "开启" : "关闭") 
                 + " → 实际方向：" + (isReverse ? "上一台" : "下一台"));
         
         if (isReverse) {
-            // 反转开启：下键 = 上一台
             playPrev();
         } else {
-            // 反转关闭：下键 = 下一台
             playNext();
         }
     }
+
     /**
      * 播放指定索引的频道
-     *
-     * 【2026-06-21 修改：同步分组时处理特殊分组的情况】
      */
     public void playChannel(int index) {
         if (channelSourceList == null || channelSourceList.isEmpty()) return;
@@ -549,16 +588,17 @@ public class ChannelPanelController {
         currentPlayIndex = index;
         Channel ch = channelSourceList.get(index);
         if (ch == null) return;
+
         // 切换频道后同步分组选中状态
+        // 注意：特殊分组（全部/收藏/最近观看）下切台，不自动切换分组
         String channelGroup = ch.getGroup();
         if (channelGroup != null && !channelGroup.isEmpty()) {
-            // 如果当前是特殊分组（全部/收藏/最近观看），不用切换分组
             boolean isSpecialGroup = GroupListManager.GROUP_ALL.equals(currentGroupName)
                     || GroupListManager.GROUP_FAVORITE.equals(currentGroupName)
                     || GroupListManager.GROUP_RECENT.equals(currentGroupName)
                     || currentGroupName.isEmpty();
             if (!isSpecialGroup && !channelGroup.equals(currentGroupName)) {
-                // 不是特殊分组且分组不一致 → 同步切换分组
+                // 普通分组下切台，且分组不一致 → 同步切换分组
                 currentGroupName = channelGroup;
                 currentGroupChannelList.clear();
                 for (Channel c : channelSourceList) {
@@ -570,6 +610,7 @@ public class ChannelPanelController {
                 groupListManager.setSelectedPosition(groupPos);
             }
         }
+
         // 更新主页面频道列表的选中状态
         if (GroupListManager.GROUP_ALL.equals(currentGroupName) 
                 || currentGroupName.isEmpty() 
@@ -577,45 +618,42 @@ public class ChannelPanelController {
             channelListManager.setChannels(channelSourceList, index);
         } else if (GroupListManager.GROUP_FAVORITE.equals(currentGroupName)
                 || GroupListManager.GROUP_RECENT.equals(currentGroupName)) {
-            // ✅ 新增：特殊分组用筛选后的列表
             channelListManager.setFilteredChannels(currentGroupChannelList, ch.getName());
         } else {
             channelListManager.setChannelsByGroup(channelSourceList, currentGroupName, index);
         }
+
         // 同步更新节目单页面的频道列表选中状态
         channelListManagerEpg.setChannels(channelSourceList, index);
+
         // 刷新 EPG
         epgManagerWrapper.refresh(ch, channelSourceList, currentSelectedDateIndex);
+
         // 回调给外部（MainActivity）去实际播放
         if (channelChangeListener != null) {
             channelChangeListener.onChannelChanged(ch, index);
         }
-        // ✅ 新增：添加到最近观看
+
+        // 添加到最近观看
         addToRecent(ch.getName());
     }
     // ====================================================================
-    // ✅ 2026-06-21 新增：添加到最近观看【加了调试日志】
+    // 最近观看
     // ====================================================================
-    /**
-     * 添加到最近观看
-     */
     private void addToRecent(String channelName) {
-        // ✅ 日志 1：确认方法被调用
         SettingsActivity.logOperation("【最近观看】addToRecent 被调用，channelName=" + channelName);
         
         try {
             AppConfig appConfig = AppConfig.getInstance(context);
             appConfig.addRecentChannel(channelName);
             
-            // ✅ 日志 2：添加成功
             List<String> recent = appConfig.getRecentChannels();
             SettingsActivity.logOperation("【最近观看】添加成功，当前最近观看数量=" + recent.size());
             
-            // 更新分组列表的数量
             int favoriteCount = 0;
             int recentCount = 0;
             List<String> favorites = appConfig.getFavoriteChannels();
-            // ✅ 新增：调试日志 - 看看为什么匹配不上
+            
             SettingsActivity.logOperation("【最近-调试】recent.size=" + recent.size() 
                     + ", channelSourceList.size=" + channelSourceList.size());
             if (recent.size() > 0 && channelSourceList.size() > 0) {
@@ -645,27 +683,17 @@ public class ChannelPanelController {
             }
             groupListManager.updateSpecialGroupCount(favoriteCount, recentCount);
             
-            // ✅ 日志 3：数量更新完成
             SettingsActivity.logOperation("【最近观看】分组数量更新完成，收藏=" + favoriteCount 
                     + ", 最近观看=" + recentCount);
             
         } catch (Exception e) {
-            // ✅ 日志 4：异常
             SettingsActivity.logOperation("【最近观看】添加失败，异常=" + e.getMessage());
         }
     }
     // ====================================================================
-    // ✅ 2026-06-21 新增：长按收藏处理【加了调试日志】
+    // 长按收藏
     // ====================================================================
-    /**
-     * 处理频道长按事件（触屏模式收藏）
-     *
-     * @param channelName 被长按的频道名称
-     * @param isRightPanel 是否是右侧面板
-     * @return true 表示消费了事件
-     */
     private boolean handleChannelLongClick(String channelName, boolean isRightPanel) {
-        // ✅ 日志 1：确认方法被调用
         SettingsActivity.logOperation("【收藏】handleChannelLongClick 被调用，channelName=" 
                 + channelName + ", isRightPanel=" + isRightPanel);
         
@@ -677,15 +705,13 @@ public class ChannelPanelController {
             AppConfig appConfig = AppConfig.getInstance(context);
             boolean isFavorite = appConfig.toggleFavorite(channelName);
             
-            // ✅ 日志 2：收藏操作结果
             SettingsActivity.logOperation("【收藏】长按操作结果=" + (isFavorite ? "已收藏" : "已取消"));
             
-            // 更新分组列表的数量
             int favoriteCount = 0;
             int recentCount = 0;
             List<String> favorites = appConfig.getFavoriteChannels();
             List<String> recent = appConfig.getRecentChannels();
-            // ✅ 新增：调试日志 - 看看为什么匹配不上
+            
             SettingsActivity.logOperation("【收藏-调试】favorites.size=" + favorites.size() 
                     + ", channelSourceList.size=" + channelSourceList.size());
             if (favorites.size() > 0 && channelSourceList.size() > 0) {
@@ -715,13 +741,11 @@ public class ChannelPanelController {
             }
             groupListManager.updateSpecialGroupCount(favoriteCount, recentCount);
             
-            // ✅ 日志 3：数量更新完成
             SettingsActivity.logOperation("【收藏】分组数量更新完成，收藏=" + favoriteCount 
                     + ", 最近观看=" + recentCount);
             
             // 如果当前在「收藏」分组，刷新列表
             if (GroupListManager.GROUP_FAVORITE.equals(currentGroupName)) {
-                // 重新筛选收藏列表
                 currentGroupChannelList.clear();
                 for (String name : favorites) {
                     for (Channel c : channelSourceList) {
@@ -738,19 +762,18 @@ public class ChannelPanelController {
                 }
                 SettingsActivity.logOperation("【收藏】在收藏分组，已刷新频道列表");
             }
+            
             SettingsActivity.logOperation("【收藏】长按" + (isFavorite ? "添加" : "取消")
                     + "收藏：" + channelName);
             return true;
         } catch (Exception e) {
-            // ✅ 日志 4：异常
             SettingsActivity.logOperation("【收藏】长按操作失败，异常=" + e.getMessage());
             return false;
         }
     }
+
     /**
      * 切换当前频道的收藏状态（菜单键调用）
-     *
-     * @return 操作后的状态（true=已收藏，false=已取消）
      */
     public boolean toggleCurrentFavorite() {
         if (channelSourceList == null || channelSourceList.isEmpty()) return false;
@@ -760,7 +783,7 @@ public class ChannelPanelController {
         try {
             AppConfig appConfig = AppConfig.getInstance(context);
             boolean isFavorite = appConfig.toggleFavorite(currentChannel.getName());
-            // 更新分组列表的数量
+            
             int favoriteCount = 0;
             int recentCount = 0;
             List<String> favorites = appConfig.getFavoriteChannels();
@@ -782,9 +805,9 @@ public class ChannelPanelController {
                 }
             }
             groupListManager.updateSpecialGroupCount(favoriteCount, recentCount);
+            
             // 如果当前在「收藏」分组，刷新列表
             if (GroupListManager.GROUP_FAVORITE.equals(currentGroupName)) {
-                // 重新筛选收藏列表
                 currentGroupChannelList.clear();
                 for (String name : favorites) {
                     for (Channel c : channelSourceList) {
@@ -796,6 +819,7 @@ public class ChannelPanelController {
                 }
                 channelListManager.setFilteredChannels(currentGroupChannelList, currentChannel.getName());
             }
+            
             SettingsActivity.logOperation("【收藏】" + (isFavorite ? "添加" : "取消") 
                     + "收藏：" + currentChannel.getName());
             return isFavorite;
@@ -804,12 +828,13 @@ public class ChannelPanelController {
             return false;
         }
     }
+
     private void onChannelClicked(int position) {
         if (!currentGroupChannelList.isEmpty() && position < currentGroupChannelList.size()
                 && !rightPanelOpen) {
             // 左侧面板（分组筛选模式）
             Channel selectedChannel = currentGroupChannelList.get(position);
-            int globalIndex = channelSourceList.indexOf(selectedChannel);
+            int globalIndex = findChannelGlobalIndex(selectedChannel);
             if (globalIndex != -1) {
                 SettingsActivity.logOperation("【列表】点击频道：" + selectedChannel.getName());
                 playChannel(globalIndex);
@@ -824,12 +849,15 @@ public class ChannelPanelController {
             }
         }
     }
+
     public int getCurrentPlayIndex() {
         return currentPlayIndex;
     }
+
     public void setCurrentPlayIndex(int index) {
         this.currentPlayIndex = index;
     }
+
     public void setTotalChannelCount(int count) {
         // 预留方法
     }
@@ -844,7 +872,6 @@ public class ChannelPanelController {
             channelListManager.setChannels(channelSourceList, currentPlayIndex);
         } else if (GroupListManager.GROUP_FAVORITE.equals(currentGroupName)
                 || GroupListManager.GROUP_RECENT.equals(currentGroupName)) {
-            // ✅ 新增：特殊分组
             String currentChannelName = "";
             if (currentPlayIndex >= 0 && currentPlayIndex < channelSourceList.size()) {
                 currentChannelName = channelSourceList.get(currentPlayIndex).getName();
@@ -870,25 +897,27 @@ public class ChannelPanelController {
         }
         SettingsActivity.logOperation("【面板】" + (isOpen ? "关闭" : "打开") + "频道面板");
     }
+
     public void showPanel() {
         if (!isPanelOpen()) {
             togglePanel();
         }
     }
+
     public void hidePanel() {
         if (isPanelOpen()) {
             togglePanel();
         }
     }
+
     public boolean isPanelOpen() {
         return panelLayout.getVisibility() == View.VISIBLE;
     }
-    // ====================================================================
-    // 右侧面板是否打开
-    // ====================================================================
+
     public boolean isRightPanelOpen() {
         return rightPanelOpen;
     }
+
     private void onEpgButtonClicked() {
         if (!epgEnable) {
             SettingsActivity.logOperation("【EPG】节目单功能已关闭，无法展开");
@@ -928,6 +957,7 @@ public class ChannelPanelController {
             SettingsActivity.logOperation("【面板】收起节目单面板");
         }
     }
+
     private void onBackGroupClicked() {
         if (rightPanelOpen) {
             llRightPanel.setVisibility(View.GONE);
@@ -944,9 +974,11 @@ public class ChannelPanelController {
             SettingsActivity.logOperation("【面板】返回频道分组");
         }
     }
+
     public boolean isEpgPanelOpen() {
         return epgPanelOpen;
     }
+
     public void setCurrentDateIndex(int index) {
         this.currentSelectedDateIndex = index;
         panelManager.setCurrentDateIndex(index);
@@ -956,9 +988,11 @@ public class ChannelPanelController {
             epgManagerWrapper.refresh(curr, channelSourceList, currentSelectedDateIndex);
         }
     }
+
     public int getCurrentSelectedDateIndex() {
         return currentSelectedDateIndex;
     }
+
     private int getChannelListSelection() {
         if (GroupListManager.GROUP_ALL.equals(currentGroupName) 
                 || currentGroupName.isEmpty() 
@@ -966,7 +1000,6 @@ public class ChannelPanelController {
             return currentPlayIndex;
         } else if (GroupListManager.GROUP_FAVORITE.equals(currentGroupName)
                 || GroupListManager.GROUP_RECENT.equals(currentGroupName)) {
-            // ✅ 新增：特殊分组，找在筛选列表中的索引
             String currentChannelName = "";
             if (currentPlayIndex >= 0 && currentPlayIndex < channelSourceList.size()) {
                 currentChannelName = channelSourceList.get(currentPlayIndex).getName();
@@ -1016,7 +1049,6 @@ public class ChannelPanelController {
             case KeyEvent.KEYCODE_DPAD_CENTER:
             case KeyEvent.KEYCODE_ENTER:
                 return handleOkKey();
-            // ✅ 新增：菜单键（收藏/取消收藏）
             case KeyEvent.KEYCODE_MENU:
                 toggleCurrentFavorite();
                 return true;
@@ -1024,6 +1056,7 @@ public class ChannelPanelController {
                 return false;
         }
     }
+
     private boolean handleLeftKey() {
         if ("left".equals(currentFocusPanel)) {
             if ("epgBtn".equals(leftFocusView)) {
@@ -1047,6 +1080,7 @@ public class ChannelPanelController {
         }
         return false;
     }
+
     private boolean handleRightKey() {
         if ("left".equals(currentFocusPanel)) {
             if ("group".equals(leftFocusView)) {
@@ -1070,6 +1104,7 @@ public class ChannelPanelController {
         }
         return false;
     }
+
     private boolean handleOkKey() {
         if ("left".equals(currentFocusPanel)) {
             if ("group".equals(leftFocusView)) {
@@ -1119,6 +1154,7 @@ public class ChannelPanelController {
     public void setOnChannelChangeListener(OnChannelChangeListener listener) {
         this.channelChangeListener = listener;
     }
+
     public void setOnPanelStateListener(OnPanelStateListener listener) {
         this.panelStateListener = listener;
     }

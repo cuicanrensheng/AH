@@ -37,6 +37,7 @@ import java.util.List;
  * 1. 实现 OnPipCompleteListener 接口，监听画中画进入/退出完成事件
  * 2. 抽取 restoreAllInteraction() 统一恢复交互逻辑
  * 3. 画中画退出时增加「三重保险」恢复机制，确保交互正常
+ * 4. 修复全面屏适配调用时机：setContentView 之后再调用 applyFullScreen()
  */
 public class MainActivity extends AppCompatActivity implements PictureInPictureManager.OnPipCompleteListener {
     public static MainActivity mInstance;
@@ -80,9 +81,17 @@ public class MainActivity extends AppCompatActivity implements PictureInPictureM
         SettingsActivity.logOperation("【系统】APP启动");
         mInstance = this;
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+        
+        // ✅ 先创建 displayManager 对象
         displayManager = new DisplayManager(this);
-        displayManager.applyFullScreen();
+        
+        // ✅ 修复：先设置布局，再调用全面屏适配
+        // 原因：setContentView 之前 DecorView 未初始化，getWindowInsetsController() 会返回 null
         setContentView(R.layout.activity_main);
+        
+        // setContentView 之后再调用全面屏适配，确保 DecorView 已初始化
+        displayManager.applyFullScreen();
+        
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         initInfoDisplayManager();
         appConfig = AppConfig.getInstance(this);

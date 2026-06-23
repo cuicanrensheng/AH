@@ -14,42 +14,12 @@ import com.tv.live.SettingsActivity;
  * 处理播放器上的手势操作，包括：
  * 1. 单击：切换频道面板
  * 2. 长按：打开设置页面
- * 3. 上滑：上一个频道（带反转）
- * 4. 下滑：下一个频道（带反转）
+ * 3. 上滑：上一个频道（带反转 + 防抖）
+ * 4. 下滑：下一个频道（带反转 + 防抖）
  *
  * 【2026-06-20 修复：手势切台也支持反转 + 操作日志】
- * 【问题原因】
- * 之前手势切台直接调用 playPrev()/playNext()，
- * 不考虑反转设置，导致手势切台和按键切台行为不一致。
- *
- * 【解决方案】
- * 1. 加上反转判断：调用 activity.isChannelReverse() 获取反转状态
- * 2. 加上详细的操作日志，记录是从手势入口触发的切台
- *
- * 【效果】
- * 手势切台和按键切台行为一致，都支持反转，
- * 而且在操作日志里可以看到是手势触发的切台。
- * 
  * 【2026-06-22 新增：手势启用/禁用开关 + 画中画适配】
- * 【问题原因】
- * 画中画模式下，PlayerView 尺寸变小，容易误触手势，
- * 而且小窗模式下本来就不需要手势操作。
- * 
- * 【解决方案】
- * 新增 setEnabled() 方法，可以动态启用/禁用手势。
- * 画中画模式下禁用手势，退出画中画时重新启用。
- * 
- * 【2026-06-22 修改：取消手势防抖拦截】
- * 【问题原因】
- * 原有的 300ms 防抖机制会拦截快速连续滑动，
- * 用户觉得操作不跟手，希望每次滑动都立即响应。
- * 
- * 【解决方案】
- * 完全移除防抖逻辑，每次滑动都立即触发切台，
- * 不再有 isGestureLocked 锁定和延迟解锁。
- * 
- * 【效果】
- * 手势操作零延迟，连续滑动会连续切台，响应更跟手。
+ * 【2026-06-22 恢复：手势防抖拦截（用户确认防抖没问题）】
  */
 public class GestureManager {
     private final MainActivity activity;
@@ -57,6 +27,11 @@ public class GestureManager {
     
     // 手势总开关
     private boolean isEnabled = true;
+    
+    // 防抖锁定标记
+    private boolean isGestureLocked = false;
+    // 防抖延迟时间（300ms）
+    private static final long DEBOUNCE_DELAY_MS = 300;
 
     public GestureManager(MainActivity activity) {
         this.activity = activity;
@@ -66,78 +41,77 @@ public class GestureManager {
         return new PlayerGestureHelper(activity, new PlayerGestureHelper.GestureCallback() {
             @Override
             public void onOk() {
-                // 手势禁用时直接返回
-                if (!isEnabled) {
-                    return;
-                }
+                if (!isEnabled) return;
                 SettingsActivity.logOperation("【手势】单击 → 切换面板");
                 activity.togglePanel();
             }
 
             @Override
             public void onLongOk() {
-                // 手势禁用时直接返回
-                if (!isEnabled) {
-                    return;
-                }
+                if (!isEnabled) return;
                 SettingsActivity.logOperation("【手势】长按 → 打开设置");
                 activity.openSettings();
             }
 
             @Override
             public void onMenu() {
-                // 手势禁用时直接返回
-                if (!isEnabled) {
-                    return;
-                }
+                if (!isEnabled) return;
                 SettingsActivity.logOperation("【手势】菜单 → 打开设置");
                 activity.openSettings();
             }
 
-            // ====================================================================
-            // ✅ 上滑手势（已取消防抖，每次都立即响应）
-            // ====================================================================
             @Override
             public void onPrevChannel() {
-                // 手势禁用时直接返回
-                if (!isEnabled) {
+                if (!isEnabled) return;
+                
+                // ✅ 防抖检查
+                if (isGestureLocked) {
+                    SettingsActivity.logOperation("【手势】上滑 → 防抖拦截");
                     return;
                 }
-                // 记录入口日志：是手势上滑触发的
+                isGestureLocked = true;
+                mainHandler.postDelayed(new Runnable() {
+                    @Override
+                    public void run() {
+                        isGestureLocked = false;
+                    }
+                }, DEBOUNCE_DELAY_MS);
+                
                 boolean isReverse = activity.isChannelReverse();
                 SettingsActivity.logOperation("【手势】上滑 → 反转状态：" 
                         + (isReverse ? "开启" : "关闭")
                         + " → 实际方向：" + (isReverse ? "下一台" : "上一台"));
-                // 根据反转状态决定调用哪个方法
                 if (isReverse) {
-                    // 反转开启：上滑 = 下一台
                     activity.playNext();
                 } else {
-                    // 反转关闭：上滑 = 上一台
                     activity.playPrev();
                 }
             }
 
-            // ====================================================================
-            // ✅ 下滑手势（已取消防抖，每次都立即响应）
-            // ====================================================================
             @Override
             public void onNextChannel() {
-                // 手势禁用时直接返回
-                if (!isEnabled) {
+                if (!isEnabled) return;
+                
+                // ✅ 防抖检查
+                if (isGestureLocked) {
+                    SettingsActivity.logOperation("【手势】下滑 → 防抖拦截");
                     return;
                 }
-                // 记录入口日志：是手势下滑触发的
+                isGestureLocked = true;
+                mainHandler.postDelayed(new Runnable() {
+                    @Override
+                    public void run() {
+                        isGestureLocked = false;
+                    }
+                }, DEBOUNCE_DELAY_MS);
+                
                 boolean isReverse = activity.isChannelReverse();
                 SettingsActivity.logOperation("【手势】下滑 → 反转状态：" 
                         + (isReverse ? "开启" : "关闭")
                         + " → 实际方向：" + (isReverse ? "上一台" : "下一台"));
-                // 根据反转状态决定调用哪个方法
                 if (isReverse) {
-                    // 反转开启：下滑 = 上一台
                     activity.playPrev();
                 } else {
-                    // 反转关闭：下滑 = 下一台
                     activity.playNext();
                 }
             }
@@ -145,35 +119,27 @@ public class GestureManager {
     }
 
     /**
-     * 重置手势状态
-     * 【说明】取消防抖后此方法已无实际作用，保留为兼容接口
+     * 重置手势状态（清除防抖锁定）
      */
     public void reset() {
+        isGestureLocked = false;
         mainHandler.removeCallbacksAndMessages(null);
         SettingsActivity.logOperation("【手势】状态已重置");
     }
     
     /**
      * 设置手势启用/禁用状态
-     * 【使用场景】
-     * 1. 进入画中画时禁用手势，防止误触
-     * 2. 退出画中画时启用手势，恢复正常操作
-     * 
-     * @param enabled true-启用，false-禁用
      */
     public void setEnabled(boolean enabled) {
         isEnabled = enabled;
         if (enabled) {
-            // 启用时清除所有待处理消息
+            // 启用时清除防抖锁定
+            isGestureLocked = false;
             mainHandler.removeCallbacksAndMessages(null);
         }
         SettingsActivity.logOperation("【手势】" + (enabled ? "✅ 已启用" : "❌ 已禁用"));
     }
     
-    /**
-     * 获取手势是否启用
-     * @return true-启用，false-禁用
-     */
     public boolean isEnabled() {
         return isEnabled;
     }

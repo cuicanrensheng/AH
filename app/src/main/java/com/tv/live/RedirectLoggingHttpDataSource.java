@@ -4,10 +4,29 @@ import android.net.Uri;
 import android.text.TextUtils;
 import android.util.Log;
 
-import com.google.android.exoplayer2.C;
-import com.google.android.exoplayer2.upstream.BaseDataSource;
-import com.google.android.exoplayer2.upstream.DataSpec;
-import com.google.android.exoplayer2.upstream.HttpDataSource;
+// ====================================================================
+// ✅ 2026-06-23 升级：ExoPlayer 2.x → Media3 1.x 包名迁移
+// ====================================================================
+// 【包名变化对照表】
+// 旧包名 (ExoPlayer 2.x)              → 新包名 (Media3 1.x)
+// com.google.android.exoplayer2.C      → androidx.media3.common.C
+// com.google.android.exoplayer2.upstream.BaseDataSource  → androidx.media3.datasource.BaseDataSource
+// com.google.android.exoplayer2.upstream.DataSpec        → androidx.media3.datasource.DataSpec
+// com.google.android.exoplayer2.upstream.HttpDataSource  → androidx.media3.datasource.HttpDataSource
+//
+// 【API 变化】
+// HttpDataSourceException → HttpDataSource.HttpDataSourceException
+// （异常类从独立类变成了 HttpDataSource 的内部类）
+// ====================================================================
+
+// ✅ C 常量类（POSITION_UNSET、LENGTH_UNSET、RESULT_END_OF_INPUT 等）
+import androidx.media3.common.C;
+// ✅ 基础数据源抽象类
+import androidx.media3.datasource.BaseDataSource;
+// ✅ 数据请求参数
+import androidx.media3.datasource.DataSpec;
+// ✅ HTTP 数据源接口
+import androidx.media3.datasource.HttpDataSource;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -31,31 +50,42 @@ import java.util.zip.GZIPInputStream;
  *
  * 【最大重定向次数】
  * 默认 20 次，防止无限重定向死循环。
+ *
+ * 【2026-06-23 升级】
+ * 从 ExoPlayer 2.x 迁移到 Media3 1.x：
+ * - 包名从 com.google.android.exoplayer2.upstream → androidx.media3.datasource
+ * - HttpDataSourceException 改为 HttpDataSource.HttpDataSourceException（内部类）
  */
 public class RedirectLoggingHttpDataSource extends BaseDataSource implements HttpDataSource {
-
     private static final String TAG = "RedirectHttp";
+
     /** 最大重定向次数，防止无限循环 */
     private static final int MAX_REDIRECTS = 20;
+
     /** 连接超时时间（毫秒） */
     private static final int CONNECT_TIMEOUT = 5000;
+
     /** 读取超时时间（毫秒） */
     private static final int READ_TIMEOUT = 15000;
 
     /** 默认请求头 */
     private final Map<String, String> defaultRequestProperties;
+
     /** 是否允许跨协议重定向 */
     private final boolean allowCrossProtocolRedirects;
 
     /** 当前 HTTP 连接 */
     private HttpURLConnection connection;
+
     /** 输入流 */
     private InputStream inputStream;
+
     /** 是否已经打开 */
     private boolean opened;
 
     /** 当前请求的字节数 */
     private long bytesToRead;
+
     /** 已读取的字节数 */
     private long bytesRead;
 
@@ -80,7 +110,17 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
     }
 
     @Override
-    public long open(DataSpec dataSpec) throws HttpDataSourceException {
+    // ====================================================================
+    // ✅ 2026-06-23 升级：异常类名变化
+    // ====================================================================
+    // 旧版：throws HttpDataSourceException
+    // 新版：throws HttpDataSource.HttpDataSourceException
+    //
+    // 【为什么变了？】
+    // 在 Media3 中，HttpDataSourceException 从独立的顶级类
+    // 改成了 HttpDataSource 接口的内部类，这样更符合面向对象设计。
+    // ====================================================================
+    public long open(DataSpec dataSpec) throws HttpDataSource.HttpDataSourceException {
         try {
             transferInitializing(dataSpec);
 
@@ -96,11 +136,19 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
                 String responseMessage = connection.getResponseMessage();
                 SettingsActivity.log("❌ HTTP 请求失败：" + responseCode + " " + responseMessage);
                 SettingsActivity.log("   URL：" + dataSpec.uri);
-                // ===== 修复：TYPE_RESPONSE_CODE_UNSUPPORTED 换成 TYPE_OPEN =====
-                throw new HttpDataSourceException(
+
+                // ====================================================================
+                // ✅ 2026-06-23 升级：异常类构造方式变化
+                // ====================================================================
+                // 旧版：new HttpDataSourceException(message, dataSpec, type)
+                // 新版：new HttpDataSource.HttpDataSourceException(message, dataSpec, type)
+                //
+                // 因为 HttpDataSourceException 变成了内部类，所以要通过外部类来访问。
+                // ====================================================================
+                throw new HttpDataSource.HttpDataSourceException(
                         "HTTP " + responseCode + " " + responseMessage,
                         dataSpec,
-                        HttpDataSourceException.TYPE_OPEN);
+                        HttpDataSource.HttpDataSourceException.TYPE_OPEN);
             }
 
             // ===== 获取输入流 =====
@@ -142,12 +190,11 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
 
             opened = true;
             transferStarted(dataSpec);
-
             return bytesToRead;
 
         } catch (IOException e) {
             closeConnectionQuietly();
-            throw new HttpDataSourceException(e, dataSpec, HttpDataSourceException.TYPE_OPEN);
+            throw new HttpDataSource.HttpDataSourceException(e, dataSpec, HttpDataSource.HttpDataSourceException.TYPE_OPEN);
         }
     }
 
@@ -236,6 +283,7 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
             // ===== 检查跨协议 =====
             boolean isCrossProtocol = !url.getProtocol().equalsIgnoreCase(
                     Uri.parse(redirectUrl).getScheme());
+
             if (isCrossProtocol && !allowCrossProtocolRedirects) {
                 SettingsActivity.log("❌ 第 " + redirectCount + " 重：跨协议重定向被禁止");
                 SettingsActivity.log("   " + url.getProtocol() + " → " + Uri.parse(redirectUrl).getScheme());
@@ -281,6 +329,7 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
 
         StringBuilder sb = new StringBuilder();
         sb.append(scheme).append("://").append(host);
+
         if (port != -1 && port != 80 && port != 443) {
             sb.append(":").append(port);
         }
@@ -317,6 +366,7 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
         StringBuilder sb = new StringBuilder();
         sb.append("   Headers：");
         boolean hasHeader = false;
+
         for (String header : importantHeaders) {
             String value = conn.getHeaderField(header);
             if (!TextUtils.isEmpty(value)) {
@@ -331,6 +381,7 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
                 hasHeader = true;
             }
         }
+
         if (hasHeader) {
             SettingsActivity.log(sb.toString());
         }
@@ -352,7 +403,8 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
     }
 
     @Override
-    public int read(byte[] buffer, int offset, int readLength) throws HttpDataSourceException {
+    // ✅ 异常类名变化：HttpDataSourceException → HttpDataSource.HttpDataSourceException
+    public int read(byte[] buffer, int offset, int readLength) throws HttpDataSource.HttpDataSourceException {
         if (readLength == 0) {
             return 0;
         }
@@ -364,16 +416,17 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
             int bytesToReadThisTime = (int) Math.min(
                     readLength,
                     bytesToRead == C.LENGTH_UNSET ? Integer.MAX_VALUE : bytesToRead - bytesRead);
+
             int bytesReadThisTime = inputStream.read(buffer, offset, bytesToReadThisTime);
 
             if (bytesReadThisTime == -1) {
                 // 读取结束
                 if (bytesToRead != C.LENGTH_UNSET && bytesRead != bytesToRead) {
                     // 读取的字节数和预期不符
-                    throw new HttpDataSourceException(
+                    throw new HttpDataSource.HttpDataSourceException(
                             "Unexpected end of input",
                             new DataSpec(Uri.parse(connection.getURL().toString())),
-                            HttpDataSourceException.TYPE_READ);
+                            HttpDataSource.HttpDataSourceException.TYPE_READ);
                 }
                 return C.RESULT_END_OF_INPUT;
             }
@@ -383,9 +436,9 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
             return bytesReadThisTime;
 
         } catch (IOException e) {
-            throw new HttpDataSourceException(e,
+            throw new HttpDataSource.HttpDataSourceException(e,
                     new DataSpec(Uri.parse(connection.getURL().toString())),
-                    HttpDataSourceException.TYPE_READ);
+                    HttpDataSource.HttpDataSourceException.TYPE_READ);
         }
     }
 
@@ -426,7 +479,8 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
     }
 
     @Override
-    public void close() throws HttpDataSourceException {
+    // ✅ 异常类名变化：HttpDataSourceException → HttpDataSource.HttpDataSourceException
+    public void close() throws HttpDataSource.HttpDataSourceException {
         if (opened) {
             opened = false;
             transferEnded();
@@ -455,7 +509,6 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
     // ====================================================================
     // Factory 工厂类
     // ====================================================================
-
     /**
      * 工厂类，用于创建 RedirectLoggingHttpDataSource 实例
      *
@@ -464,9 +517,13 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
      *     .setDefaultRequestProperties(headers)
      *     .setAllowCrossProtocolRedirects(true)
      *     .createDataSource()
+     *
+     * 【2026-06-23 升级】
+     * 实现的接口从 HttpDataSource.Factory 变成了
+     * androidx.media3.datasource.HttpDataSource.Factory
+     * （包名变了，接口名没变）
      */
     public static final class Factory implements HttpDataSource.Factory {
-
         private final Map<String, String> defaultRequestProperties;
         private boolean allowCrossProtocolRedirects;
 
@@ -495,6 +552,7 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
         }
 
         @Override
+        // ✅ 返回值类型的包名也变了
         public HttpDataSource createDataSource() {
             return new RedirectLoggingHttpDataSource(
                     defaultRequestProperties,

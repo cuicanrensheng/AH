@@ -1224,8 +1224,39 @@ public class ChannelPanelController {
     public void setOnPanelStateListener(OnPanelStateListener listener) {
         this.panelStateListener = listener;
     }
-    // ====================================================================
+        // ====================================================================
     // 7. 资源释放
     // ====================================================================
     public void release() {
         // 清理长按计时器
+        if (longPressHandler != null) {
+            longPressHandler.removeCallbacksAndMessages(null);
+            longPressHandler = null;
+        }
+        longPressRunnable = null;
+        
+        context = null;
+        panelLayout = null;
+        llLeftPanel = null;
+        llRightPanel = null;
+        lvGroup = null;
+        lvChannelList = null;
+        lvChannelListEpg = null;
+        lvDate = null;
+        lvEpg = null;
+        btnShowEpg = null;
+        btnBackGroup = null;
+        groupListManager = null;
+        channelListManager = null;
+        channelListManagerEpg = null;
+        dateListManager = null;
+        epgManagerWrapper = null;
+        panelManager = null;
+        channelSourceList = null;
+        currentGroupChannelList = null;
+        currentGroupName = null;
+        channelChangeListener = null;
+        panelStateListener = null;
+    }
+}
+ 

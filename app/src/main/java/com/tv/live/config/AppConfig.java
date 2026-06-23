@@ -73,6 +73,12 @@ public class AppConfig {
         return list;
     }
     /**
+     * ✅ 一键清空全部收藏
+     */
+    public void clearAllFavorites() {
+        appSp.edit().remove(KEY_FAVORITE_CHANNELS).apply();
+    }
+    /**
      * 添加收藏频道
      */
     public void addFavorite(String channelName) {
@@ -142,11 +148,16 @@ public class AppConfig {
         return list;
     }
     /**
+     * ✅ 一键清空全部最近观看记录
+     */
+    public void clearAllRecent() {
+        appSp.edit().remove(KEY_RECENT_CHANNELS).apply();
+    }
+    /**
      * 添加到最近观看
      *
      * @param channelName 频道名
      *
-     * 【2026-06-22 修改：超过20个时自动清空全部，继续记录新频道】
      * 【说明】
      * 1. 如果当前记录数 >= 20，先清空全部记录
      * 2. 如果频道已经在列表里，先移除旧的
@@ -155,7 +166,7 @@ public class AppConfig {
     public void addRecentChannel(String channelName) {
         List<String> recent = getRecentChannels();
         
-        // ✅ 新增：超过20个时，先清空全部记录
+        // 超过20个时，先清空全部记录
         if (recent.size() >= MAX_RECENT_COUNT) {
             recent.clear();
         }

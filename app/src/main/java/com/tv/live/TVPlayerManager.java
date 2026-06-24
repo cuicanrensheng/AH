@@ -38,7 +38,7 @@ import java.util.Map;
  * 播放器管理类（单例模式）
  * 基于ExoPlayer封装，提供直播播放、状态监听、画质切换、Header设置等功能
  *
- * 【防卡优化版 + 切台优化版 + 真实数据版】
+ * 【防卡优化版 + 切台优化版 + 真实数据版 + 失效提示版】
  * 1. 增大缓冲（从15秒→50秒），抗网络波动
  * 2. 检测播放卡住，自动重新加载
  * 3. 换回 DefaultHttpDataSource，稳定可靠
@@ -46,6 +46,10 @@ import java.util.Map;
  * 5. 切台保持最后一帧，避免黑屏
  * 6. 优化缓冲参数，更快出画
  * 7. 显示真实画质、音频、码率
+ * 8. ✅ 2026-06-24 新增：播放界面直接显示失效提示
+ *    - 播放失败时，在 PlayerView 上直接显示"播放失败，请切换频道"
+ *    - 播放成功时，自动隐藏错误提示
+ *    - 不用 Toast，界面上直接显示更直观
  *
  * 【2026-06-23 Media3 迁移说明】
  * 从 ExoPlayer 2.x 升级到 Media3 1.10.1：
@@ -66,23 +70,31 @@ public class TVPlayerManager {
 
     // 播放状态监听器
     private OnPlayStateListener listener;
+
     // 当前播放地址
     private String currentUrl = "";
+
     // 是否正在播放
     private boolean isPlaying = false;
+
     // 当前频道号
     private int currentChannelNumber = 0;
+
     // 频道号显示TextView
     private TextView channelNumText;
+
     // 主线程Handler，用于UI操作
     private final Handler mHandler = new Handler(Looper.getMainLooper());
+
     // 频道号显示时长（3秒）
     private static final long CHANNEL_SHOW_DURATION = 3000L;
+
     // 日志时间格式化
     private final SimpleDateFormat logSdf = new SimpleDateFormat("HH:mm:ss", Locale.getDefault());
 
     // 直播信息更新监听器
     private OnLiveInfoUpdateListener infoUpdateListener;
+
     // 播放状态监听器（成员变量，只添加一次）
     private Player.Listener playerListener;
 
@@ -91,18 +103,56 @@ public class TVPlayerManager {
     // ================================================
     // 是否使用软解码（默认硬解码，硬解码有问题再切软解码）
     private boolean useSoftwareDecoder = false;
+
     // 卡住检测：记录上次播放位置的时间
     private long lastPositionUpdateTime = 0;
     private long lastPosition = 0;
+
     // 卡住检测超时时间（5秒没动就算卡住了）
     private static final long STUCK_TIMEOUT = 5000;
+
     // 自动重试次数限制（防止无限重试）
     private int retryCount = 0;
-    private static final int MAX_RETRY_COUNT = 3;
+
+    // ====================================================================
+    // ✅ 2026-06-24 修改：重试次数改成 0，播放失败直接判定为失效
+    // ====================================================================
+    // 【为什么改成 0？】
+    // 用户要求：直播源失效直接显示"播放失败，请切换频道"，
+    // 不需要自动重试。播放失败一次就判定为失效，直接显示提示。
+    //
+    // 【原来的逻辑】
+    // 自动重试 3 次，都失败才判定为失效。
+    // 这样网络波动导致的临时失败不会误判，但用户等待时间长。
+    //
+    // 【现在的逻辑】
+    // 播放失败直接判定为失效，立即在播放界面显示提示。
+    // 响应更快，用户体验更直接。
+    private static final int MAX_RETRY_COUNT = 0;
+
     // 卡住检测的Handler
     private final Handler stuckHandler = new Handler(Looper.getMainLooper());
+
     // 是否正在重试中
     private boolean isRetrying = false;
+
+    // ====================================================================
+    // ✅ 2026-06-24 新增：是否已经触发了频道失效提示
+    // ====================================================================
+    /**
+     * 标记当前频道是否已经触发过失效提示
+     * 防止同一个频道多次失败时重复触发回调
+     * 
+     * 【为什么需要这个标记？】
+     * 虽然 MAX_RETRY_COUNT = 0，第一次失败就会判定为失效，
+     * 但播放过程中可能会多次触发 onPlayerError（比如网络反复波动），
+     * 用这个标记确保只触发一次失效回调。
+     * 
+     * 【什么时候重置？】
+     * 切换频道时（playUrl 方法中）会重置这个标记，
+     * 确保每个频道独立判断是否失效。
+     */
+    private boolean hasReportedInvalid = false;
 
     /**
      * 直播信息实体类
@@ -252,6 +302,7 @@ public class TVPlayerManager {
     private void initPlayer() {
         // 初始化渲染器工厂
         DefaultRenderersFactory renderersFactory = new DefaultRenderersFactory(context);
+
         if (useSoftwareDecoder) {
             // 软解码模式：只使用软件解码器
             renderersFactory.setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF);
@@ -323,9 +374,37 @@ public class TVPlayerManager {
             @Override
             public void onPlayerError(PlaybackException error) {
                 Log.e(TAG, "播放异常: " + error.getMessage());
+
+                // ====================================================================
+                // ✅ 2026-06-24 新增：播放界面直接显示错误提示
+                // ====================================================================
+                // 【为什么不用 Toast？】
+                // 用户要求：播放界面直接显示，不用 Toast 提示。
+                // 直接在 PlayerView 上显示错误文字，更直观，用户一眼就能看到。
+                //
+                // 【显示位置】
+                // 显示在 PlayerView 的中央，和系统默认的错误提示位置一样。
+                //
+                // 【显示文字】
+                // "播放失败，请切换频道"
+                // 既说明了问题（播放失败），又告诉用户怎么做（请切换频道）。
+                //
+                // 【为什么用 try-catch？】
+                // 万一 playerView 为 null，或者设置失败，
+                // 也不能影响主流程，静默处理就行。
+                if (playerView != null) {
+                    try {
+                        playerView.setErrorMessage("播放失败，请切换频道");
+                        playerView.setShowErrorMessage(true);
+                    } catch (Exception e) {
+                        Log.e(TAG, "设置错误提示失败", e);
+                    }
+                }
+
                 if (listener != null) {
                     listener.onPlayError(error.getMessage());
                 }
+
                 // ✅ 播放错误时自动重试
                 autoRetry("播放错误");
             }
@@ -336,20 +415,52 @@ public class TVPlayerManager {
                     updateWakeLock(true);
                     notifyLiveInfoUpdate();
                     showChannelAndAutoHide();
+
+                    // ====================================================================
+                    // ✅ 2026-06-24 新增：播放成功，隐藏错误提示
+                    // ====================================================================
+                    // 播放成功了，把错误提示隐藏掉。
+                    // 这样切到有效频道时，错误提示会自动消失。
+                    //
+                    // 【为什么要在这里隐藏？】
+                    // STATE_READY 表示播放器已经准备好，可以开始播放了。
+                    // 这时候说明频道是有效的，应该把错误提示隐藏掉。
+                    if (playerView != null) {
+                        try {
+                            playerView.setShowErrorMessage(false);
+                        } catch (Exception e) {
+                            Log.e(TAG, "隐藏错误提示失败", e);
+                        }
+                    }
+
                     if (listener != null) listener.onPlayReady();
+
                     // 播放就绪，重置重试计数
                     retryCount = 0;
                     isRetrying = false;
+
+                    // ====================================================================
+                    // ✅ 2026-06-24 新增：播放成功，重置失效提示标记
+                    // ====================================================================
+                    // 播放成功了，说明频道是有效的，
+                    // 下次再失败时可以重新触发失效提示。
+                    hasReportedInvalid = false;
+
                     // 开始卡住检测
                     startStuckDetection();
+
                 } else if (state == Player.STATE_BUFFERING) {
                     if (listener != null) listener.onBuffering();
+
                     // 缓冲中也重置卡住检测
                     lastPositionUpdateTime = System.currentTimeMillis();
+
                 } else if (state == Player.STATE_ENDED) {
                     if (listener != null) listener.onPlayEnd();
+
                     // ✅ 直播流意外结束，自动重试
                     autoRetry("播放结束");
+
                 } else if (state == Player.STATE_IDLE) {
                     if (listener != null) listener.onIdle();
                 } else {
@@ -379,17 +490,18 @@ public class TVPlayerManager {
                 int width = videoSize.width;
                 int height = videoSize.height;
                 Log.d(TAG, "视频分辨率变化：" + width + "×" + height);
+
                 // 分辨率变化时，通知 UI 更新
                 notifyLiveInfoUpdate();
             }
         };
+
         player.addListener(playerListener);
     }
 
     // ================================================
     // ✅ 优化2：卡住检测 + 自动重试
     // ================================================
-
     /**
      * 开始卡住检测
      * 每隔2秒检查一次播放位置，如果长时间没动，说明卡住了
@@ -419,9 +531,11 @@ public class TVPlayerManager {
                 stuckHandler.postDelayed(this, 2000);
                 return;
             }
+
             try {
                 long currentPosition = player.getCurrentPosition();
                 long now = System.currentTimeMillis();
+
                 if (currentPosition != lastPosition) {
                     // 播放位置在动，正常
                     lastPosition = currentPosition;
@@ -438,6 +552,7 @@ public class TVPlayerManager {
             } catch (Exception e) {
                 Log.e(TAG, "卡住检测异常", e);
             }
+
             // 继续下一次检测
             stuckHandler.postDelayed(this, 2000);
         }
@@ -446,16 +561,54 @@ public class TVPlayerManager {
     /**
      * ✅ 自动重试
      * @param reason 重试原因（用于日志）
+     * 
+     * 【2026-06-24 修改：增加频道失效回调】
+     * 【修改说明】
+     * 当重试次数达到上限后，判定为"频道失效"，
+     * 通过 onChannelInvalid() 回调通知外部。
+     * 
+     * 【现在的重试次数是 0】
+     * 所以第一次失败就会达到上限，直接判定为失效，
+     * 立即触发 onChannelInvalid 回调。
+     * 
+     * 【为什么需要 hasReportedInvalid 标记？】
+     * 防止同一个频道多次失败时重复触发回调。
+     * 虽然 MAX_RETRY_COUNT = 0，但播放过程中可能会多次触发错误，
+     * 用这个标记确保只触发一次失效回调。
      */
     private void autoRetry(String reason) {
         if (isRetrying) return; // 已经在重试中，避免重复
+
         if (retryCount >= MAX_RETRY_COUNT) {
-            Log.w(TAG, "重试次数已达上限：" + MAX_RETRY_COUNT);
+            Log.w(TAG, "重试次数已达上限：" + MAX_RETRY_COUNT + "，判定为频道失效");
+
+            // ====================================================================
+            // ✅ 2026-06-24 新增：频道失效回调
+            // ====================================================================
+            // 重试次数达到上限，说明这个直播源真的有问题，
+            // 通知外部（Listener）频道失效了。
+            // 
+            // 【hasReportedInvalid 的作用】
+            // 防止同一个频道多次失败时重复触发回调。
+            // 只有第一次达到上限时才触发一次。
+            // 
+            // 【注意】
+            // 错误提示已经直接显示在 PlayerView 上了，
+            // 这个回调主要是给外部做其他处理用的（比如统计、上报等）。
+            if (!hasReportedInvalid && listener != null) {
+                hasReportedInvalid = true;
+                listener.onChannelInvalid("播放失败，请切换频道");
+                Log.d(TAG, "【失效提示】已触发频道失效回调");
+            }
+
+            isRetrying = false;
             return;
         }
+
         isRetrying = true;
         retryCount++;
         Log.w(TAG, "自动重试（第" + retryCount + "次），原因：" + reason);
+
         // 延迟1秒后重新加载
         mHandler.postDelayed(new Runnable() {
             @Override
@@ -474,8 +627,10 @@ public class TVPlayerManager {
      */
     public void setSoftwareDecoder(boolean useSoftware) {
         if (useSoftwareDecoder == useSoftware) return;
+
         useSoftwareDecoder = useSoftware;
         Log.d(TAG, "切换解码器：" + (useSoftware ? "软解码" : "硬解码"));
+
         // 重新创建播放器
         if (player != null) {
             try {
@@ -489,10 +644,13 @@ public class TVPlayerManager {
                 Log.e(TAG, "释放播放器异常", e);
             }
         }
+
         initPlayer();
+
         if (playerView != null) {
             playerView.setPlayer(player);
         }
+
         // 重新播放当前地址
         if (!TextUtils.isEmpty(currentUrl)) {
             retryCount = 0;
@@ -576,11 +734,29 @@ public class TVPlayerManager {
     /**
      * 播放指定URL（对外接口）
      * 切换频道时调用，重置重试计数
+     * 
+     * 【2026-06-24 修改：切台时重置失效提示标记】
+     * 【修改说明】
+     * 切换到新频道时，重置 hasReportedInvalid 标记，
+     * 确保每个频道独立判断是否失效。
+     * 
+     * 【为什么需要重置？】
+     * 如果上一个频道失效了，已经触发过失效回调了，
+     * 切换到新频道后，新频道也可能失效，需要重新判断。
+     * 所以每次切台都要重置这个标记。
      */
     public void playUrl(String url) {
         // 切换频道，重置重试计数
         retryCount = 0;
         isRetrying = false;
+
+        // ====================================================================
+        // ✅ 2026-06-24 新增：切台时重置失效提示标记
+        // ====================================================================
+        // 新频道，重新开始判断是否失效
+        hasReportedInvalid = false;
+        Log.d(TAG, "【切台】切换到新频道，重置重试计数和失效标记");
+
         playUrlInternal(url);
     }
 
@@ -599,6 +775,7 @@ public class TVPlayerManager {
     private void playUrlInternal(String url) {
         try {
             if (player == null || url == null || url.trim().isEmpty()) return;
+
             currentUrl = url.trim();
             Log.d(TAG, "开始播放：" + currentUrl);
 
@@ -658,6 +835,7 @@ public class TVPlayerManager {
 
             // 开始卡住检测
             startStuckDetection();
+
         } catch (Exception e) {
             Log.e(TAG, "播放异常", e);
             autoRetry("播放异常：" + e.getMessage());
@@ -667,6 +845,7 @@ public class TVPlayerManager {
     public void setScaleMode(ScaleMode mode) {
         try {
             if (playerView == null) return;
+
             // ====================================================================
             // ✅ Media3 迁移：AspectRatioFrameLayout 从 exoplayer2.ui 改为 media3.ui
             // ====================================================================
@@ -686,12 +865,39 @@ public class TVPlayerManager {
         }
     }
 
+    // ====================================================================
+    // ✅ 播放状态监听器
+    // ====================================================================
+    /**
+     * 【2026-06-24 新增：onChannelInvalid 回调】
+     * 
+     * 【回调时机】
+     * 切换频道后，自动重试次数达到上限，判定为"频道失效"时触发。
+     * 
+     * 【现在重试次数是 0】
+     * 所以播放失败一次就会触发这个回调。
+     * 
+     * 【注意】
+     * 错误提示已经直接显示在 PlayerView 上了，
+     * 这个回调主要是给外部做其他处理用的（比如统计、上报等）。
+     * 外部不需要再弹 Toast，因为播放界面已经直接显示了。
+     */
     public interface OnPlayStateListener {
         void onIdle();
         void onBuffering();
         void onPlayReady();
         void onPlayEnd();
         void onPlayError(String msg);
+
+        // ====================================================================
+        // ✅ 2026-06-24 新增：频道失效回调
+        // ====================================================================
+        /**
+         * 频道失效时触发（重试次数达到上限）
+         * 
+         * @param msg 失效原因描述，可直接显示给用户
+         */
+        void onChannelInvalid(String msg);
     }
 
     public void setOnPlayStateListener(OnPlayStateListener l) {
@@ -715,6 +921,7 @@ public class TVPlayerManager {
             stopStuckDetection();
             mHandler.removeCallbacks(hideChannelRunnable);
             updateWakeLock(false);
+
             if (player != null) {
                 if (playerListener != null) {
                     player.removeListener(playerListener);
@@ -722,6 +929,7 @@ public class TVPlayerManager {
                 player.release();
                 player = null;
             }
+
             instance = null;
         } catch (Exception e) {
             Log.e(TAG, "释放异常", e);

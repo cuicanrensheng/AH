@@ -3,13 +3,18 @@ package com.tv.live;
 import com.tv.live.RedirectLoggingHttpDataSource;
 
 import android.content.Context;
+import android.graphics.Color;
+import android.graphics.Typeface;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.TextUtils;
 import android.util.Log;
+import android.view.Gravity;
 import android.view.View;
+import android.view.ViewGroup;
 import android.webkit.CookieManager;
 import android.webkit.CookieSyncManager;
+import android.widget.FrameLayout;
 import android.widget.TextView;
 
 // ====================================================================
@@ -47,9 +52,10 @@ import java.util.Map;
  * 6. 优化缓冲参数，更快出画
  * 7. 显示真实画质、音频、码率
  * 8. ✅ 2026-06-24 新增：播放界面直接显示失效提示
- *    - 播放失败时，在 PlayerView 上直接显示"播放失败，请切换频道"
+ *    - 播放失败时，在 PlayerView 中央显示"播放失败，请切换频道"
  *    - 播放成功时，自动隐藏错误提示
  *    - 不用 Toast，界面上直接显示更直观
+ *    - 动态添加 TextView，不需要修改布局文件
  *
  * 【2026-06-23 Media3 迁移说明】
  * 从 ExoPlayer 2.x 升级到 Media3 1.10.1：
@@ -153,6 +159,28 @@ public class TVPlayerManager {
      * 确保每个频道独立判断是否失效。
      */
     private boolean hasReportedInvalid = false;
+
+    // ====================================================================
+    // ✅ 2026-06-24 新增：错误提示 TextView
+    // ====================================================================
+    /**
+     * 播放界面上显示的错误提示文字
+     * 动态添加到 PlayerView 中，不需要修改布局文件
+     * 
+     * 【为什么不用 PlayerView.setErrorMessage？】
+     * 因为 Media3 的 PlayerView 没有这个方法，编译会报错。
+     * 所以我们自己动态创建一个 TextView，添加到 PlayerView 上。
+     * 
+     * 【显示位置】
+     * 显示在 PlayerView 的正中央，和系统默认的错误提示位置一样。
+     * 
+     * 【样式】
+     * - 白色文字
+     * - 加粗
+     * - 16sp 字号
+     * - 半透明黑色背景（可选，这里先不加背景，只显示文字）
+     */
+    private TextView errorMessageView;
 
     /**
      * 直播信息实体类
@@ -366,6 +394,89 @@ public class TVPlayerManager {
         CookieManager.getInstance().setAcceptCookie(true);
     }
 
+    // ====================================================================
+    // ✅ 2026-06-24 新增：初始化错误提示 TextView
+    // ====================================================================
+    /**
+     * 创建错误提示 TextView，并添加到 PlayerView 中
+     * 
+     * 【为什么要动态创建？】
+     * 1. 不需要修改布局文件，侵入性小
+     * 2. 可以统一管理，不需要每个 Activity 都加一遍
+     * 3. PlayerView 继承自 FrameLayout，可以直接 addView
+     * 
+     * 【显示样式】
+     * - 白色文字
+     * - 加粗
+     * - 16sp 字号
+     * - 居中显示
+     * - 默认隐藏
+     */
+    private void initErrorView() {
+        if (playerView == null) return;
+        if (errorMessageView != null) return; // 已经初始化过了
+
+        try {
+            errorMessageView = new TextView(context);
+            errorMessageView.setText("播放失败，请切换频道");
+            errorMessageView.setTextColor(Color.WHITE);
+            errorMessageView.setTextSize(16); // 16sp
+            errorMessageView.setTypeface(Typeface.DEFAULT_BOLD); // 加粗
+            errorMessageView.setGravity(Gravity.CENTER);
+            errorMessageView.setVisibility(View.GONE); // 默认隐藏
+
+            // 设置布局参数：居中显示，宽度和高度都是包裹内容
+            FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    Gravity.CENTER
+            );
+
+            // 添加到 PlayerView 中
+            playerView.addView(errorMessageView, params);
+
+            Log.d(TAG, "【错误提示】已初始化错误提示 TextView");
+
+        } catch (Exception e) {
+            Log.e(TAG, "初始化错误提示失败", e);
+            errorMessageView = null;
+        }
+    }
+
+    /**
+     * ✅ 显示错误提示
+     * @param message 错误提示文字
+     */
+    private void showErrorMessage(String message) {
+        if (errorMessageView == null) {
+            initErrorView(); // 还没初始化，先初始化
+        }
+
+        if (errorMessageView != null) {
+            try {
+                errorMessageView.setText(message);
+                errorMessageView.setVisibility(View.VISIBLE);
+                Log.d(TAG, "【错误提示】显示：" + message);
+            } catch (Exception e) {
+                Log.e(TAG, "显示错误提示失败", e);
+            }
+        }
+    }
+
+    /**
+     * ✅ 隐藏错误提示
+     */
+    private void hideErrorMessage() {
+        if (errorMessageView != null) {
+            try {
+                errorMessageView.setVisibility(View.GONE);
+                Log.d(TAG, "【错误提示】隐藏");
+            } catch (Exception e) {
+                Log.e(TAG, "隐藏错误提示失败", e);
+            }
+        }
+    }
+
     /**
      * ✅ 初始化播放状态监听器
      */
@@ -376,30 +487,19 @@ public class TVPlayerManager {
                 Log.e(TAG, "播放异常: " + error.getMessage());
 
                 // ====================================================================
-                // ✅ 2026-06-24 新增：播放界面直接显示错误提示
+                // ✅ 2026-06-24 修改：播放界面直接显示错误提示
                 // ====================================================================
-                // 【为什么不用 Toast？】
-                // 用户要求：播放界面直接显示，不用 Toast 提示。
-                // 直接在 PlayerView 上显示错误文字，更直观，用户一眼就能看到。
+                // 【为什么不用 PlayerView.setErrorMessage？】
+                // 因为 Media3 的 PlayerView 没有这个方法，编译会报错。
+                // 所以我们自己动态创建了一个 TextView，添加到 PlayerView 上。
                 //
                 // 【显示位置】
-                // 显示在 PlayerView 的中央，和系统默认的错误提示位置一样。
+                // 显示在 PlayerView 的正中央。
                 //
                 // 【显示文字】
                 // "播放失败，请切换频道"
                 // 既说明了问题（播放失败），又告诉用户怎么做（请切换频道）。
-                //
-                // 【为什么用 try-catch？】
-                // 万一 playerView 为 null，或者设置失败，
-                // 也不能影响主流程，静默处理就行。
-                if (playerView != null) {
-                    try {
-                        playerView.setErrorMessage("播放失败，请切换频道");
-                        playerView.setShowErrorMessage(true);
-                    } catch (Exception e) {
-                        Log.e(TAG, "设置错误提示失败", e);
-                    }
-                }
+                showErrorMessage("播放失败，请切换频道");
 
                 if (listener != null) {
                     listener.onPlayError(error.getMessage());
@@ -425,13 +525,7 @@ public class TVPlayerManager {
                     // 【为什么要在这里隐藏？】
                     // STATE_READY 表示播放器已经准备好，可以开始播放了。
                     // 这时候说明频道是有效的，应该把错误提示隐藏掉。
-                    if (playerView != null) {
-                        try {
-                            playerView.setShowErrorMessage(false);
-                        } catch (Exception e) {
-                            Log.e(TAG, "隐藏错误提示失败", e);
-                        }
-                    }
+                    hideErrorMessage();
 
                     if (listener != null) listener.onPlayReady();
 
@@ -680,10 +774,26 @@ public class TVPlayerManager {
         }
     }
 
+    /**
+     * 绑定播放器视图
+     * 
+     * 【2026-06-24 修改：绑定视图时初始化错误提示】
+     * 【修改说明】
+     * 绑定 PlayerView 时，同时初始化错误提示 TextView，
+     * 并添加到 PlayerView 中。
+     */
     public void attachPlayerView(PlayerView view) {
         playerView = view;
         playerView.setPlayer(player);
         playerView.setUseController(false);
+
+        // ====================================================================
+        // ✅ 2026-06-24 新增：绑定视图时初始化错误提示
+        // ====================================================================
+        // 绑定 PlayerView 后，初始化错误提示 TextView，
+        // 并添加到 PlayerView 中。
+        // 这样播放失败时就能直接在界面上显示提示了。
+        initErrorView();
     }
 
     private void updateWakeLock(boolean enable) {
@@ -928,6 +1038,19 @@ public class TVPlayerManager {
                 }
                 player.release();
                 player = null;
+            }
+
+            // ====================================================================
+            // ✅ 2026-06-24 新增：释放时清理错误提示 View
+            // ====================================================================
+            // 避免内存泄漏
+            if (errorMessageView != null && playerView != null) {
+                try {
+                    playerView.removeView(errorMessageView);
+                } catch (Exception e) {
+                    Log.e(TAG, "移除错误提示失败", e);
+                }
+                errorMessageView = null;
             }
 
             instance = null;

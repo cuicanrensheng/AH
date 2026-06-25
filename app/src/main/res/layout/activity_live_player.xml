@@ -1,48 +1,46 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   直播播放页面布局
-  【2026-06-23 修改：升级到 Media3 1.10.1】
-  PlayerView 的包名从 com.google.android.exoplayer2.ui.PlayerView
-  改成 androidx.media3.ui.PlayerView
+  【2026-06-25 修改：降级回 ExoPlayer 2.19.1】
+  PlayerView 的包名从 androidx.media3.ui.PlayerView
+  改回 com.google.android.exoplayer2.ui.PlayerView
 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#000000">
-
     <!-- ==================================================================== -->
-    <!-- 主播放器视图（Media3 的 PlayerView）                                 -->
+    <!-- 主播放器视图（ExoPlayer 2.19.1 的 PlayerView）                      -->
     <!-- ==================================================================== -->
     <!--
-      【2026-06-23 修改】包名从 com.google.android.exoplayer2.ui.PlayerView
-      改成 androidx.media3.ui.PlayerView
+      【2026-06-25 修改】包名从 androidx.media3.ui.PlayerView
+      改回 com.google.android.exoplayer2.ui.PlayerView
+      【为什么降级？】
+      Media3 升级后编译问题太多（依赖找不到、Manifest 合并冲突等），
+      降级回稳定的 ExoPlayer 2.19.1，先保证能正常编译和运行。
     -->
-    <androidx.media3.ui.PlayerView
+    <com.google.android.exoplayer2.ui.PlayerView
         android:id="@+id/player_view"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:layout_gravity="center" />
-
     <LinearLayout
         android:id="@+id/panel_layout"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:orientation="horizontal"
         android:visibility="gone">
-
         <ListView
             android:id="@+id/lv_group"
             android:layout_width="160dp"
             android:layout_height="match_parent"
             android:background="#CC000000"
             android:textColor="#ffffff" />
-
         <ListView
             android:id="@+id/lv_channel_list"
             android:layout_width="280dp"
             android:layout_height="match_parent"
             android:background="#CC000000" />
-
         <TextView
             android:id="@+id/btn_show_epg"
             android:layout_width="50dp"
@@ -52,14 +50,12 @@
             android:text="节目单"
             android:textColor="#ffffff"
             android:textSize="14sp" />
-
         <ListView
             android:id="@+id/lv_date"
             android:layout_width="120dp"
             android:layout_height="match_parent"
             android:background="#CC000000"
             android:visibility="gone" />
-
         <ListView
             android:id="@+id/lv_epg"
             android:layout_width="360dp"
@@ -68,7 +64,6 @@
             android:textColor="#ffffff"
             android:visibility="gone" />
     </LinearLayout>
-
     <LinearLayout
         android:id="@+id/info_bar"
         android:layout_width="match_parent"
@@ -77,13 +72,11 @@
         android:padding="16dp"
         android:background="#CC000000"
         android:visibility="gone">
-
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:gravity="center_vertical"
             android:orientation="horizontal">
-
             <TextView
                 android:id="@+id/tv_channel_name"
                 android:layout_width="wrap_content"
@@ -91,7 +84,6 @@
                 android:textColor="#FFFFFF"
                 android:textSize="40sp"
                 android:textStyle="bold" />
-
             <TextView
                 android:id="@+id/tv_tag_fhd"
                 android:layout_width="wrap_content"
@@ -101,7 +93,6 @@
                 android:paddingHorizontal="12dp"
                 android:paddingVertical="4dp"
                 android:textSize="20sp" />
-
             <TextView
                 android:id="@+id/tv_tag_audio"
                 android:layout_width="wrap_content"
@@ -111,7 +102,6 @@
                 android:paddingHorizontal="12dp"
                 android:paddingVertical="4dp"
                 android:textSize="20sp" />
-
             <TextView
                 android:id="@+id/tv_bitrate"
                 android:layout_width="wrap_content"
@@ -120,21 +110,18 @@
                 android:textColor="#FFFFFF"
                 android:textSize="26sp" />
         </LinearLayout>
-
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:gravity="center_vertical"
             android:orientation="horizontal"
             android:layout_marginTop="12dp">
-
             <TextView
                 android:id="@+id/tv_current_time_range"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:textColor="#FFFFFF"
                 android:textSize="26sp" />
-
             <ProgressBar
                 android:id="@+id/progress_program"
                 style="?android:attr/progressBarStyleHorizontal"
@@ -143,14 +130,12 @@
                 android:layout_height="6dp"
                 android:layout_marginHorizontal="12dp"
                 android:max="100" />
-
             <TextView
                 android:id="@+id/tv_remaining_time"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:textColor="#FFFFFF"
                 android:textSize="26sp" />
-
             <TextView
                 android:id="@+id/tv_current_program_name"
                 android:layout_width="wrap_content"
@@ -159,21 +144,18 @@
                 android:textColor="#FFFFFF"
                 android:textSize="26sp" />
         </LinearLayout>
-
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:gravity="center_vertical"
             android:orientation="horizontal"
             android:layout_marginTop="8dp">
-
             <TextView
                 android:id="@+id/tv_next_time_range"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:textColor="#AAAAAA"
                 android:textSize="24sp" />
-
             <TextView
                 android:id="@+id/tv_next_program_name"
                 android:layout_width="wrap_content"

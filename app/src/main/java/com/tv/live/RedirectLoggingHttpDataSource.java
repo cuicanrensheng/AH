@@ -17,16 +17,14 @@ import android.util.Log;
 // androidx.media3.datasource.DataSpec → com.google.android.exoplayer2.upstream.DataSpec
 // androidx.media3.datasource.HttpDataSource → com.google.android.exoplayer2.upstream.HttpDataSource
 //
-// ⚠️ 重要变化：HttpDataSourceException
-// 在 Media3 1.x 中：HttpDataSourceException 是 HttpDataSource 的内部类
-//   用法：HttpDataSource.HttpDataSourceException
-// 在 ExoPlayer 2.x 中：HttpDataSourceException 是独立的类
-//   用法：HttpDataSourceException
+// ⚠️ 重要说明：HttpDataSourceException
+// 两个版本中都是 HttpDataSource 的内部类，用法完全一样：
+//   HttpDataSource.HttpDataSourceException
+// 之前误以为降级后会变成独立类，其实不是，两个版本都是内部类
 import com.google.android.exoplayer2.C;
 import com.google.android.exoplayer2.upstream.BaseDataSource;
 import com.google.android.exoplayer2.upstream.DataSpec;
 import com.google.android.exoplayer2.upstream.HttpDataSource;
-import com.google.android.exoplayer2.upstream.HttpDataSourceException;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -125,15 +123,11 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
     // ====================================================================
     @Override
     // ====================================================================
-    // ✅ 2026-06-25 修改：降级回 ExoPlayer 2.19.1
+    // ✅ 2026-06-25 修正：HttpDataSourceException 是内部类
     // ====================================================================
-    // 从 HttpDataSource.HttpDataSourceException
-    // 改回 HttpDataSourceException
-    //
-    // 【为什么变了？】
-    // ExoPlayer 2.x 中 HttpDataSourceException 是独立的顶级类，
-    // 不是 HttpDataSource 接口的内部类。
-    public long open(DataSpec dataSpec) throws HttpDataSourceException {
+    // 之前误以为降级后会变成独立类，其实两个版本都是内部类
+    // 用法：HttpDataSource.HttpDataSourceException
+    public long open(DataSpec dataSpec) throws HttpDataSource.HttpDataSourceException {
         try {
             transferInitializing(dataSpec);
 
@@ -150,10 +144,10 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
                 // ============================================================
                 SettingsActivity.log("[HTTP] ❌ 失败: HTTP " + responseCode + " " + responseMessage);
 
-                throw new HttpDataSourceException(
+                throw new HttpDataSource.HttpDataSourceException(
                         "HTTP " + responseCode + " " + responseMessage,
                         dataSpec,
-                        HttpDataSourceException.TYPE_OPEN);
+                        HttpDataSource.HttpDataSourceException.TYPE_OPEN);
             }
 
             // ===== 获取输入流 =====
@@ -200,7 +194,7 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
 
         } catch (IOException e) {
             closeConnectionQuietly();
-            throw new HttpDataSourceException(e, dataSpec, HttpDataSourceException.TYPE_OPEN);
+            throw new HttpDataSource.HttpDataSourceException(e, dataSpec, HttpDataSource.HttpDataSourceException.TYPE_OPEN);
         }
     }
 
@@ -380,11 +374,9 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
     // ====================================================================
     @Override
     // ====================================================================
-    // ✅ 2026-06-25 修改：降级回 ExoPlayer 2.19.1
+    // ✅ 2026-06-25 修正：HttpDataSourceException 是内部类
     // ====================================================================
-    // 从 HttpDataSource.HttpDataSourceException
-    // 改回 HttpDataSourceException
-    public int read(byte[] buffer, int offset, int readLength) throws HttpDataSourceException {
+    public int read(byte[] buffer, int offset, int readLength) throws HttpDataSource.HttpDataSourceException {
         if (readLength == 0) {
             return 0;
         }
@@ -403,10 +395,10 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
                 // 读取结束
                 if (bytesToRead != C.LENGTH_UNSET && bytesRead != bytesToRead) {
                     // 读取的字节数和预期不符
-                    throw new HttpDataSourceException(
+                    throw new HttpDataSource.HttpDataSourceException(
                             "Unexpected end of input",
                             new DataSpec(Uri.parse(connection.getURL().toString())),
-                            HttpDataSourceException.TYPE_READ);
+                            HttpDataSource.HttpDataSourceException.TYPE_READ);
                 }
                 return C.RESULT_END_OF_INPUT;
             }
@@ -416,9 +408,9 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
             return bytesReadThisTime;
 
         } catch (IOException e) {
-            throw new HttpDataSourceException(e,
+            throw new HttpDataSource.HttpDataSourceException(e,
                     new DataSpec(Uri.parse(connection.getURL().toString())),
-                    HttpDataSourceException.TYPE_READ);
+                    HttpDataSource.HttpDataSourceException.TYPE_READ);
         }
     }
 
@@ -462,11 +454,9 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
 
     @Override
     // ====================================================================
-    // ✅ 2026-06-25 修改：降级回 ExoPlayer 2.19.1
+    // ✅ 2026-06-25 修正：HttpDataSourceException 是内部类
     // ====================================================================
-    // 从 HttpDataSource.HttpDataSourceException
-    // 改回 HttpDataSourceException
-    public void close() throws HttpDataSourceException {
+    public void close() throws HttpDataSource.HttpDataSourceException {
         if (opened) {
             opened = false;
             transferEnded();

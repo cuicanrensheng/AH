@@ -813,5 +813,131 @@ public class TVPlayerManager {
                 currentLiveInfo.quality = "FHD";
             } else if (currentLiveInfo.height >= 720) {
                 currentLiveInfo.quality = "HD";
-            } else {
+            } else { 
+                currentLiveInfo.quality = "SD";
+            }
+
+            if (liveInfoListener != null) {
+                liveInfoListener.onLiveInfoUpdate(currentLiveInfo);
+            }
+        } catch (Exception e) {
+            // 忽略
+        }
+    }
+
+    /**
+     * 显示频道信息并自动隐藏
+     */
+    private void showChannelAndAutoHide() {
+        // 这个方法在 MainActivity 里有更完整的实现
+        // 这里留空，避免重复逻辑
+    }
+
+    // ====================================================================
+    // 接口定义
+    // ====================================================================
+    public interface OnPlayStateListener {
+        void onIdle();
+        void onBuffering();
+        void onPlayReady();
+        void onPlayEnd();
+        void onPlayError(String msg);
+    }
+
+    public interface OnLiveInfoUpdateListener {
+        void onLiveInfoUpdate(LiveInfo info);
+    }
+
+    // ====================================================================
+    // 直播信息类
+    // ====================================================================
+    public static class LiveInfo {
+        public int width;
+        public int height;
+        public String videoCodec;
+        public String audioCodec;
+        public int audioChannels;
+        public String bitrate;
+        public String quality;  // FHD / HD / SD
+    }
+
+    // ====================================================================
+    // 缩放模式枚举
+    // ====================================================================
+    public enum ScaleMode {
+        FIT,    // 等比例缩放，全部可见
+        FILL,   // 拉伸填充
+        ZOOM    // 等比例缩放，填满屏幕，裁剪多余部分
+    }
+
+    // ====================================================================
+    // Setter
+    // ====================================================================
+    public void setOnPlayStateListener(OnPlayStateListener l) {
+        listener = l;
+    }
+
+    public void setOnLiveInfoUpdateListener(OnLiveInfoUpdateListener l) {
+        liveInfoListener = l;
+    }
+
+    public LiveInfo getLiveInfo() {
+        return currentLiveInfo;
+    }
+
+    public boolean isPlaying() {
+        return isPlaying;
+    }
+
+    public String getCurrentUrl() {
+        return currentUrl;
+    }
+
+    public ExoPlayer getPlayer() {
+        return player;
+    }
+
+    public void pause() {
+        try { if (player != null) player.pause(); } catch (Exception e) {
+            Log.e(TAG, "暂停异常", e);
+        }
+    }
+
+    public void resume() {
+        try { if (player != null) player.play(); } catch (Exception e) {
+            Log.e(TAG, "恢复异常", e);
+        }
+    }
+
+    public void release() {
+        try {
+            stopStuckDetection();
+
+            // ✅ 2026-06-24 新增：释放时取消重试任务
+            cancelRetry();
+
+            mHandler.removeCallbacks(hideChannelRunnable);
+            updateWakeLock(false);
+
+            if (player != null) {
+                if (playerListener != null) {
+                    player.removeListener(playerListener);
+                }
+                player.release();
+                player = null;
+            }
+            instance = null;
+        } catch (Exception e) {
+            Log.e(TAG, "释放异常", e);
+        }
+    }
+
+    // 占位：hideChannelRunnable（实际在 MainActivity 里有完整实现）
+    private final Runnable hideChannelRunnable = new Runnable() {
+        @Override
+        public void run() {
+            // 空实现，避免编译错误
+        }
+    };
+}
                

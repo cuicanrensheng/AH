@@ -1166,16 +1166,16 @@ public class MainActivity extends AppCompatActivity {
         }
         syncRemoteMode();
     }
-
-    @Override
-    public void onWindowFocusChanged(booleanhasFocus) {
+        @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
         if (hasFocus) {
             displayManager.reapplyFullScreen();
         }
         appCoreManager.onWindowFocusChanged(hasFocus);
     }
-        @Override
+
+    @Override
     protected void onDestroy() {
         super.onDestroy();
         if (mPanelAutoHideHandler != null) {
@@ -1202,3 +1202,5 @@ public class MainActivity extends AppCompatActivity {
         mInstance = null;
     }
 }
+
+  

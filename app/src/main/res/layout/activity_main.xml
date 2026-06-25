@@ -337,3 +337,57 @@
                 android:textSize="12sp"
                 android:textColor="#000" />
             <TextView
+                android:id="@+id/tv_tag_audio"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginLeft="6dp"
+                android:background="#DDDDDD"
+                android:paddingHorizontal="6dp"
+                android:paddingVertical="2dp"
+                android:textSize="12sp"
+                android:textColor="#000" />
+            <TextView
+                android:id="@+id/tv_bitrate"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginLeft="10dp"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp" />
+        </LinearLayout>
+        <!-- 第二行：时间 + 进度条 + 剩余时间 + 节目名 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:layout_marginTop="4dp">
+            <TextView
+                android:id="@+id/tv_current_time_range"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#FFFFFF"
+                android:textSize="13sp" />
+            <ProgressBar
+                android:id="@+id/progress_program"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="3dp"
+                android:layout_marginHorizontal="8dp" />
+            <TextView
+                android:id="@+id/tv_remaining_time"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#FFFFFF"
+                android:textSize="13sp" />
+            <TextView
+                android:id="@+id/tv_program_name"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginLeft="8dp"
+                android:textColor="#FFFFFF"
+                android:textSize="13sp"
+                android:maxLines="1"
+                android:ellipsize="end" />
+        </LinearLayout>
+    </LinearLayout>
+</FrameLayout>

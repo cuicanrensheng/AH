@@ -63,18 +63,17 @@
   移除了 iv_player_placeholder 防花屏占位图，
   配合 Java 代码修改，占位图功能彻底取消。
   
-  【2026-06-23 修改：升级到 Media3 1.10.1】
-  PlayerView 的包名从 com.google.android.exoplayer2.ui.PlayerView
-  改成 androidx.media3.ui.PlayerView
+  【2026-06-25 修改：降级回 ExoPlayer 2.19.1】
+  PlayerView 的包名从 androidx.media3.ui.PlayerView
+  改回 com.google.android.exoplayer2.ui.PlayerView
 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#000000">
-
     <!-- ==================================================================== -->
-    <!-- 主播放器视图（Media3 的 PlayerView）                                 -->
+    <!-- 主播放器视图（ExoPlayer 2.19.1 的 PlayerView）                      -->
     <!-- ==================================================================== -->
     <!--
       【属性说明】
@@ -83,10 +82,13 @@
       - keep_content_on_player_reset="true"：暂停/切台时保持最后一帧，避免黑屏
       - surface_type="surface_view"：使用 SurfaceView 渲染，性能更好
       
-      【2026-06-23 修改】包名从 com.google.android.exoplayer2.ui.PlayerView
-      改成 androidx.media3.ui.PlayerView
+      【2026-06-25 修改】包名从 androidx.media3.ui.PlayerView
+      改回 com.google.android.exoplayer2.ui.PlayerView
+      【为什么降级？】
+      Media3 升级后编译问题太多（依赖找不到、Manifest 合并冲突等），
+      降级回稳定的 ExoPlayer 2.19.1，先保证能正常编译和运行。
     -->
-    <androidx.media3.ui.PlayerView
+    <com.google.android.exoplayer2.ui.PlayerView
         android:id="@+id/player_view"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
@@ -95,7 +97,6 @@
         app:resize_mode="fit"
         app:keep_content_on_player_reset="true"
         app:surface_type="surface_view" />
-
     <!-- ==================================================================== -->
     <!-- 频道号显示（右上角大数字，切台时显示）                              -->
     <!-- ==================================================================== -->
@@ -111,7 +112,6 @@
         android:textColor="#FFF"
         android:alpha="0.8"
         android:visibility="gone" />
-
     <!-- ==================================================================== -->
     <!-- 频道面板容器（两个完整面板切换显示）                                -->
     <!-- ==================================================================== -->
@@ -120,7 +120,6 @@
         android:layout_width="wrap_content"
         android:layout_height="match_parent"
         android:visibility="gone">
-
         <!-- ================================================================ -->
         <!-- 左侧面板：分组列表 + 频道列表 + 节目单按钮（默认显示）          -->
         <!-- ================================================================ -->
@@ -147,7 +146,6 @@
             android:layout_marginBottom="20dp"
             android:paddingTop="20dp"
             android:paddingBottom="20dp">
-
             <!-- 分组列表 -->
             <!--
               ✅ 【2026-06-20 新增】android:defaultFocusHighlightEnabled="false"
@@ -174,7 +172,6 @@
                 android:defaultFocusHighlightEnabled="false"
                 android:paddingStart="16dp"
                 android:paddingEnd="8dp" />
-
             <!-- 频道列表 -->
             <!--
               ✅ 【2026-06-20 新增】android:defaultFocusHighlightEnabled="false"
@@ -192,7 +189,6 @@
                 android:defaultFocusHighlightEnabled="false"
                 android:paddingStart="8dp"
                 android:paddingEnd="16dp" />
-
             <!-- 节目单按钮（在最右边） -->
             <!--
               ✅ 【2026-06-20 新增】android:defaultFocusHighlightEnabled="false"
@@ -216,7 +212,6 @@
                 android:defaultFocusHighlightEnabled="false"
                 android:paddingEnd="16dp" />
         </LinearLayout>
-
         <!-- ================================================================ -->
         <!-- 右侧面板：返回按钮 + 频道列表 + 日期列表 + EPG列表（默认隐藏）  -->
         <!-- ================================================================ -->
@@ -237,7 +232,6 @@
             android:paddingTop="20dp"
             android:paddingBottom="20dp"
             android:visibility="gone">
-
             <!-- 返回按钮（在最左边，显示"频道组"） -->
             <!--
               ✅ 【2026-06-20 新增】android:defaultFocusHighlightEnabled="false"
@@ -255,7 +249,6 @@
                 android:clickable="true"
                 android:defaultFocusHighlightEnabled="false"
                 android:paddingStart="16dp" />
-
             <!-- 频道列表（节目单页面的频道列表） -->
             <!--
               ✅ 【2026-06-20 新增】android:defaultFocusHighlightEnabled="false"
@@ -273,7 +266,6 @@
                 android:defaultFocusHighlightEnabled="false"
                 android:paddingStart="8dp"
                 android:paddingEnd="8dp" />
-
             <!-- 日期列表 -->
             <!--
               ✅ 【2026-06-20 新增】android:defaultFocusHighlightEnabled="false"
@@ -291,7 +283,6 @@
                 android:defaultFocusHighlightEnabled="false"
                 android:paddingStart="8dp"
                 android:paddingEnd="8dp" />
-
             <!-- EPG节目列表 -->
             <!--
               ✅ 【2026-06-20 新增】android:defaultFocusHighlightEnabled="false"
@@ -311,7 +302,6 @@
                 android:paddingEnd="16dp" />
         </LinearLayout>
     </FrameLayout>
-
     <!-- ==================================================================== -->
     <!-- 底部信息栏（切台时显示，5 秒后自动隐藏）                            -->
     <!-- ==================================================================== -->
@@ -324,7 +314,6 @@
         android:layout_gravity="bottom"
         android:background="#CC000000"
         android:visibility="gone">
-
         <!-- 第一行：频道名 + 画质 + 音频 + 码率 -->
         <LinearLayout
             android:layout_width="match_parent"
@@ -348,58 +337,3 @@
                 android:textSize="12sp"
                 android:textColor="#000" />
             <TextView
-                android:id="@+id/tv_tag_audio"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginLeft="6dp"
-                android:background="#DDDDDD"
-                android:paddingHorizontal="6dp"
-                android:paddingVertical="2dp"
-                android:textSize="12sp"
-                android:textColor="#000" />
-            <TextView
-                android:id="@+id/tv_bitrate"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginLeft="10dp"
-                android:textColor="#FFFFFF"
-                android:textSize="14sp" />
-        </LinearLayout>
-
-        <!-- 第二行：时间 + 进度条 + 剩余时间 + 节目名 -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="center_vertical"
-            android:layout_marginTop="4dp">
-            <TextView
-                android:id="@+id/tv_current_time_range"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:textColor="#FFFFFF"
-                android:textSize="13sp" />
-            <ProgressBar
-                android:id="@+id/progress_program"
-                style="?android:attr/progressBarStyleHorizontal"
-                android:layout_width="0dp"
-                android:layout_weight="1"
-                android:layout_height="3dp"
-                android:layout_marginHorizontal="8dp" />
-            <TextView
-                android:id="@+id/tv_remaining_time"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:textColor="#FFFFFF"
-                android:textSize="13sp" />
-            <TextView
-                android:id="@+id/tv_program_name"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginLeft="8dp"
-                android:textColor="#FFFFFF"
-                android:textSize="13sp"
-                android:maxLines="1"
-                android:ellipsize="end" />
-        </LinearLayout>
-    </LinearLayout>
-</FrameLayout>

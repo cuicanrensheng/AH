@@ -20,15 +20,18 @@ import android.view.WindowManager;
 import android.widget.ListView;
 import android.widget.ProgressBar;
 import android.widget.TextView;
-
 import androidx.appcompat.app.AppCompatActivity;
 
 // ====================================================================
-// ✅ 2026-06-23 修改：升级到 Media3 1.10.1
+// ✅ 2026-06-25 修改：降级回 ExoPlayer 2.19.1
 // ====================================================================
-// PlayerView 的包名从 com.google.android.exoplayer2.ui.PlayerView
-// 改成 androidx.media3.ui.PlayerView
-import androidx.media3.ui.PlayerView;
+// PlayerView 的包名从 androidx.media3.ui.PlayerView
+// 改回 com.google.android.exoplayer2.ui.PlayerView
+//
+// 【为什么降级？】
+// Media3 升级后编译问题太多（依赖找不到、Manifest 合并冲突等），
+// 降级回稳定的 ExoPlayer 2.19.1，先保证能正常编译和运行。
+import com.google.android.exoplayer2.ui.PlayerView;
 
 import com.tv.live.config.AppConfig;
 import com.tv.live.listener.PlayerStateListenerImpl;
@@ -37,7 +40,6 @@ import com.tv.live.widget.ChannelListManager;
 import com.tv.live.widget.DateListManager;
 import com.tv.live.widget.EpgManagerWrapper;
 import com.tv.live.widget.GroupListManager;
-
 import java.util.ArrayList;
 import java.util.List;
 
@@ -45,7 +47,7 @@ import java.util.List;
  * 主播放页面 Activity
  * 
  * 功能清单：
- * 1. 直播播放（基于 Media3 ExoPlayer 封装的 TVPlayerManager）
+ * 1. 直播播放（基于 ExoPlayer 封装的 TVPlayerManager）
  * 2. 频道列表管理（分组、切换、收藏、最近观看）
  * 3. EPG 节目指南
  * 4. 画中画（PIP）后台小窗播放
@@ -119,7 +121,6 @@ public class MainActivity extends AppCompatActivity {
             }
         }
     };
-
     private boolean mIsFirstLaunch = true;
 
     // ====================== 其他 ======================
@@ -146,29 +147,16 @@ public class MainActivity extends AppCompatActivity {
         if (customEpg != null) UrlConfig.EPG_URL = customEpg;
         log("【配置】直播源地址：" + UrlConfig.LIVE_URL);
         log("【配置】EPG地址：" + UrlConfig.EPG_URL);
-
         playerView = findViewById(R.id.player_view);
         playerView.setUseController(false);
 
         // ====================================================================
-        // ✅ 2026-06-23 修改：修复 setControllerVisibilityListener 歧义问题
+        // ✅ 2026-06-25 修改：降级回 ExoPlayer 2.19.1
         // ====================================================================
-        //
-        // 【为什么会有歧义？】
-        // Media3 的 PlayerView 有两个重载的 setControllerVisibilityListener 方法：
-        // 1. setControllerVisibilityListener(ControllerVisibilityListener) - 新API
-        // 2. setControllerVisibilityListener(VisibilityListener) - 旧API，已废弃
-        //
-        // 传 null 的时候，编译器不知道该调用哪个，所以报错：
-        // "reference to setControllerVisibilityListener is ambiguous"
-        //
-        // 【修复方案】
-        // 强制类型转换为 ControllerVisibilityListener（新API），
-        // 这样编译器就知道该调用哪个重载方法了。
-        //
-        // 【为什么传 null？】
-        // 因为我们用的是自定义的频道面板，不需要 PlayerView 自带的控制器，
-        // 所以把控制器可见性监听器设为 null，避免不必要的回调。
+        // 【说明】
+        // ExoPlayer 2.19.1 里 setControllerVisibilityListener 只有一个重载，
+        // 没有歧义问题，所以不需要强制类型转换。
+        // 但为了保险起见，还是保留强制类型转换，不会有任何问题。
         playerView.setControllerVisibilityListener((PlayerView.ControllerVisibilityListener) null);
 
         initChannelPanelController();
@@ -391,7 +379,6 @@ public class MainActivity extends AppCompatActivity {
         TextView tv_remaining_time = findViewById(R.id.tv_remaining_time);
         TextView tv_next_program_name = findViewById(R.id.tv_next_program_name);
         TextView tv_next_time_range = findViewById(R.id.tv_next_time_range);
-
         infoDisplayManager = new InfoDisplayManager(
                 this,
                 tv_channel_num,
@@ -423,21 +410,17 @@ public class MainActivity extends AppCompatActivity {
         ListView lvEpg = findViewById(R.id.lv_epg);
         TextView btn_show_epg = findViewById(R.id.btn_show_epg);
         TextView btn_back_group = findViewById(R.id.btn_back_group);
-
         EpgManager.getInstance(this);
-
         ChannelListManager channelListManager = new ChannelListManager(this, lvChannelList);
         ChannelListManager channelListManagerEpg = new ChannelListManager(this, lvChannelListEpg);
         GroupListManager groupListManager = new GroupListManager(this, lvGroup);
         DateListManager dateListManager = new DateListManager(this, lvDate);
         EpgManagerWrapper epgManagerWrapper = new EpgManagerWrapper(this, lvEpg);
         PanelManager panelManager = new PanelManager(panel_layout, channelListManager, epgManagerWrapper);
-
         dateListManager.initDate();
         dateListManager.setOnDateSelectedListener(pos -> {
             channelPanelController.setCurrentDateIndex(pos);
         });
-
         channelPanelController = new ChannelPanelController(
                 this,
                 panel_layout,
@@ -457,7 +440,6 @@ public class MainActivity extends AppCompatActivity {
                 epgManagerWrapper,
                 panelManager
         );
-
         channelPanelController.setOnChannelChangeListener(new ChannelPanelController.OnChannelChangeListener() {
             @Override
             public void onChannelChanged(Channel channel, int index) {
@@ -537,7 +519,6 @@ public class MainActivity extends AppCompatActivity {
                     }
                 });
             }
-
             @Override
             public void onLiveSourceFailed(String errorMsg) {
                 runOnUiThread(new Runnable() {
@@ -553,7 +534,6 @@ public class MainActivity extends AppCompatActivity {
                     }
                 });
             }
-
             @Override
             public void onEpgLoaded() {
                 runOnUiThread(new Runnable() {
@@ -566,7 +546,6 @@ public class MainActivity extends AppCompatActivity {
                     }
                 });
             }
-
             @Override
             public void onLoadTimeout(boolean hasData) {
                 runOnUiThread(new Runnable() {
@@ -593,7 +572,6 @@ public class MainActivity extends AppCompatActivity {
         number_channel_enable = sp.getBoolean("number_channel_enable", true);
         boolean auto_update_source = sp.getBoolean("auto_update_source", true);
         pipEnable = sp.getBoolean("pip_enable", false);
-
         if (channelNumberManager != null) {
             channelNumberManager.setEnable(number_channel_enable);
         }
@@ -604,7 +582,6 @@ public class MainActivity extends AppCompatActivity {
         if (pipManager != null) {
             pipManager.setPipEnabled(pipEnable);
         }
-
         SettingsActivity.logOperation("【设置】EPG开关：" + epg_enable);
         SettingsActivity.logOperation("【设置】切台反转：" + channel_reverse);
         SettingsActivity.logOperation("【设置】数字选台：" + number_channel_enable);
@@ -1191,14 +1168,13 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @Override
-    public void onWindowFocusChanged(boolean hasFocus) {
+    public void onWindowFocusChanged(booleanhasFocus) {
         super.onWindowFocusChanged(hasFocus);
         if (hasFocus) {
             displayManager.reapplyFullScreen();
         }
         appCoreManager.onWindowFocusChanged(hasFocus);
     }
-
         @Override
     protected void onDestroy() {
         super.onDestroy();

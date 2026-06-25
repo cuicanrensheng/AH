@@ -4,21 +4,54 @@ plugins {
 
 android {
     namespace "com.tv.live"
+    compileSdk 34
 
     // ====================================================================
-    // ✅ 2026-06-23 升级：compileSdk 34 → 36
+    // ✅ 2026-06-20 新增：Java 8 编译选项配置
     // ====================================================================
-    // 【为什么升级？】
-    // Media3 1.10.1 要求 compileSdk 至少 36，否则编译报错。
+    // 【作用】
+    // 让项目支持 Java 8 的语法特性（Lambda 表达式、接口默认方法等）
     //
-    // 【注意】
-    // compileSdk 只是编译时用的 SDK 版本，不影响运行时行为。
-    // 真正影响运行时行为的是 targetSdk。
-    compileSdk 36
-
+    // 【为什么需要？】
+    // 代码里用了 Lambda 表达式（比如 new Thread(() -> { ... })），
+    // 必须配置 sourceCompatibility 和 targetCompatibility 为 VERSION_1_8，
+    // 不然编译不过。
+    //
+    // 【两个参数的区别】
+    // - sourceCompatibility：源代码的 Java 版本（你写的代码用哪个版本的语法）
+    // - targetCompatibility：编译出的字节码的 Java 版本（生成的 class 文件用哪个版本）
+    // 两个都设为 1.8，就能完整支持 Java 8 特性。
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
+
+        // ====================================================================
+        // ✅ 2026-06-20 修改：把 coreLibraryDesugaringEnabled 移到这里
+        // ====================================================================
+        // 【作用】
+        // 启用核心库脱糖（Core Library Desugaring），
+        // 让低版本 Android 系统（比如 Android 5.0/6.0，API 21）
+        // 也能使用 Java 8 的核心库特性（比如 Lambda 表达式、Stream API 等）。
+        //
+        // 【为什么移到这里？】
+        // 不同版本的 Android Gradle Plugin（AGP），这个属性的位置不一样：
+        // - AGP 4.0+：放在 compileOptions 里（兼容性最好）
+        // - AGP 7.0+：可以放在 defaultConfig 里
+        // 放在 compileOptions 里兼容性更好，所有 AGP 4.0+ 版本都支持。
+        //
+        // 【为什么需要？】
+        // 1. 你的 minSdk 是 21（Android 5.0），这个版本不原生支持 Java 8
+        // 2. 代码里用了 Lambda 表达式，编译后会生成 ExternalSyntheticLambda 合成类
+        // 3. 低版本系统如果没有脱糖，运行时就会报 NoClassDefFoundError
+        // 4. 电视的 Android 版本通常比较低，所以必须启用脱糖
+        //
+        // 【原理】
+        // 脱糖就是在编译时把 Java 8 的语法转换成低版本能理解的代码，
+        // 比如把 Lambda 表达式转换成匿名内部类，把 Stream 转换成普通的循环。
+        // 这样低版本系统也能运行 Java 8 写的代码。
+        //
+        // 【注意】
+        // 这个配置需要配合 dependencies 里的 coreLibraryDesugaring 依赖一起使用。
         coreLibraryDesugaringEnabled true
     }
 
@@ -28,39 +61,14 @@ android {
 
     defaultConfig {
         applicationId "com.tv.live"
-
-        // ====================================================================
-        // ✅ 2026-06-23 升级：minSdk 21 → 23
-        // ====================================================================
-        // 【为什么升级？】
-        // Media3 1.10.1 的 HLS 模块要求最低 API 23。
-        //
-        // 【影响】
-        // 不再支持 Android 5.0/5.1 (API 21-22) 的设备。
-        // 但这些设备已经非常少了，尤其是电视设备，
-        // 现在的电视盒子、智能电视基本都是 Android 6.0 (API 23) 以上。
-        //
-        // 【如果一定要支持 API 21 怎么办？】
-        // 可以用 tools:overrideLibrary 强制覆盖，但有运行时崩溃的风险，不推荐。
-        // 或者降低 Media3 版本到 1.2.1（支持 minSdk 21）。
-        minSdk 23
-
-        // ====================================================================
-        // ✅ 2026-06-23 升级：targetSdk 34 → 36
-        // ====================================================================
-        // 【为什么升级？】
-        // 通常 targetSdk 和 compileSdk 保持一致。
-        // targetSdk 决定应用的运行时行为模式。
-        //
-        // 【注意】
-        // 升级 targetSdk 可能会引入一些行为变化，需要测试。
-        // 比如 Android 13/14/15 的一些权限和行为变化。
-        // 但电视应用通常影响不大。
-        targetSdk 36
-
+        minSdk 21
+        targetSdk 34
         versionCode 20
         versionName "2.0"
         multiDexEnabled true
+
+        // ❌ 注意：coreLibraryDesugaringEnabled 不在这里！
+        // 已经移到上面的 compileOptions 里了
 
         buildConfigField "int", "VERSION_CODE", "${versionCode}"
         buildConfigField "String", "VERSION_NAME", "\"${versionName}\""
@@ -106,7 +114,20 @@ android {
 }
 
 dependencies {
-
+    // ====================================================================
+    // ✅ 2026-06-20 新增：核心库脱糖依赖
+    // ====================================================================
+    // 【作用】
+    // 提供脱糖所需的库文件，让低版本 Android 系统也能运行 Java 8 代码。
+    //
+    // 【为什么用 coreLibraryDesugaring 而不是 implementation？】
+    // - coreLibraryDesugaring：只在编译时使用，打包时只把需要的部分打进 APK
+    // - implementation：整个库都会打进 APK，会增加 APK 体积
+    // 用 coreLibraryDesugaring 更高效，APK 体积更小。
+    //
+    // 【版本说明】
+    // 2.0.4 是比较新的稳定版本，支持 Android Gradle Plugin 4.0+。
+    // 如果还是有问题，可以试试 1.2.2 版本（更老但更稳定）。
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'
 
     implementation "androidx.appcompat:appcompat:1.6.1"
@@ -115,39 +136,16 @@ dependencies {
     implementation "androidx.recyclerview:recyclerview:1.3.2"
     implementation 'com.google.zxing:core:3.5.1'
     implementation 'com.google.code.gson:gson:2.10.1'
-
-    // ====================================================================
-    // ✅ 2026-06-23 升级：ExoPlayer 2.19.1 → Media3 1.10.1
-    // ====================================================================
-    // 【依赖对应关系】
-    // 旧版 ExoPlayer 2.x          → 新版 Media3 1.x
-    // exoplayer                    → media3-exoplayer
-    // exoplayer-ui                 → media3-ui
-    // exoplayer-hls                → media3-exoplayer-hls
-    // exoplayer-dash               → media3-exoplayer-dash
-    // ====================================================================
-
-    // ✅ Media3 核心播放器
-    implementation "androidx.media3:media3-exoplayer:1.10.1"
-    // ✅ Media3 UI 组件（PlayerView 等）
-    implementation "androidx.media3:media3-ui:1.10.1"
-    // ✅ Media3 HLS 支持（直播流）
-    implementation "androidx.media3:media3-exoplayer-hls:1.10.1"
-    // ✅ Media3 DASH 支持
-    implementation "androidx.media3:media3-exoplayer-dash:1.10.1"
-    // ✅ Media3 通用工具
-    implementation "androidx.media3:media3-common:1.10.1"
-    // ✅ Media3 数据源
-    implementation "androidx.media3:media3-datasource:1.10.1"
-
+    implementation "com.google.android.exoplayer:exoplayer:2.19.1"
+    implementation "com.google.android.exoplayer:exoplayer-ui:2.19.1"
+    implementation "com.google.android.exoplayer:exoplayer-hls:2.19.1"
+    implementation "com.google.android.exoplayer:exoplayer-dash:2.19.1"
     implementation "com.squareup.okhttp3:okhttp:4.12.0"
-
+    // 仅修改下面两行 retrofit 版本，其余不动
     implementation "com.squareup.retrofit2:retrofit:2.11.0"
     implementation "com.squareup.retrofit2:converter-gson:2.11.0"
-
     implementation "com.github.bumptech.glide:glide:4.16.0"
     annotationProcessor "com.github.bumptech.glide:compiler:4.16.0"
-
     implementation "org.apache.commons:commons-lang3:3.14.0"
     implementation "com.blankj:utilcodex:1.31.1"
     implementation 'org.nanohttpd:nanohttpd:2.3.1'

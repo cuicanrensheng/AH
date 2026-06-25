@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 应用清单文件
+  作用：声明应用的包名、权限、四大组件等
+  修改历史：
+  - 2026-06-21：新增 largeHeap，缓解 EPG 加载 OOM
+  - 2026-06-22：MainActivity 添加画中画支持配置
+                1. 新增 supportsPictureInPicture="true"
+                2. configChanges 新增 screenLayout（共 4 项，缺一不可）
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.tv.live">
+
+    <!-- 网络相关权限 -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- 存储相关权限 -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+
+    <!-- 安装相关权限 -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
+    <!-- 开机自启权限 -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- 前台服务权限 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+
+    <!-- 唤醒锁权限 -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <application
+        android:name=".MyApplication"
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:theme="@style/Theme.TVLive.NoTitle"
+        android:usesCleartextTraffic="true"
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:hardwareAccelerated="true"
+        android:largeHeap="true">
+
+        <!-- ============================================================ -->
+        <!-- 主页面：直播播放页（MainActivity）                            -->
+        <!-- ============================================================ -->
+        <!--
+          画中画配置说明：
+          1. supportsPictureInPicture="true"
+             作用：声明该 Activity 支持画中画模式
+             注意：不加这个属性，调用 enterPictureInPictureMode() 会失败
+
+          2. configChanges="orientation|screenSize|smallestScreenSize|screenLayout"
+             作用：配置变化时不重建 Activity，自己处理
+             为什么必须 4 项？
+             画中画模式变化时，系统会触发 4 种配置变化：
+             a. orientation - 屏幕方向
+             b. screenSize - 屏幕尺寸
+             c. smallestScreenSize - 最小屏幕尺寸
+             d. screenLayout - 屏幕布局（最容易漏掉的！）
+
+             漏掉的后果：Activity 被销毁重建，导致
+             1. 画中画进入/退出时黑屏
+             2. 播放器重新初始化，播放中断
+             3. 状态丢失（当前频道、播放进度等）
+             4. 退出画中画后播放器还是小窗尺寸
+
+             参考：TVBox 项目的画中画配置也是这 4 项
+        -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:screenOrientation="sensorLandscape"
+            android:supportsPictureInPicture="true"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- 设置页面 -->
+        <activity
+            android:name=".SettingsActivity"
+            android:theme="@style/TransparentTheme"
+            android:screenOrientation="sensorLandscape"
+            android:configChanges="orientation|screenSize" />
+
+        <!-- 频道列表页面 -->
+        <activity
+            android:name=".ChannelListActivity"
+            android:screenOrientation="sensorLandscape"
+            android:configChanges="orientation|screenSize" />
+
+        <!-- 崩溃页面 -->
+        <activity
+            android:name=".CrashActivity"
+            android:theme="@android:style/Theme.DeviceDefault.Light.Dialog"
+            android:exported="false"
+            android:excludeFromRecents="true" />
+
+        <!-- 开机自启广播接收器 -->
+        <receiver
+            android:name=".BootReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter android:priority="1000">
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="android.intent.action.ACTION_POWER_CONNECTED" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </receiver>
+
+        <!-- 延迟启动执行器 -->
+        <receiver
+            android:name=".BootStartReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.tv.live.START_APP" />
+            </intent-filter>
+        </receiver>
+
+        <!-- FileProvider：文件共享提供者 -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+    </application>
+</manifest>

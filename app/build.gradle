@@ -4,54 +4,15 @@ plugins {
 
 android {
     namespace "com.tv.live"
+
     compileSdk 34
 
     // ====================================================================
-    // ✅ 2026-06-20 新增：Java 8 编译选项配置
+    // ✅ Java 8 编译选项配置
     // ====================================================================
-    // 【作用】
-    // 让项目支持 Java 8 的语法特性（Lambda 表达式、接口默认方法等）
-    //
-    // 【为什么需要？】
-    // 代码里用了 Lambda 表达式（比如 new Thread(() -> { ... })），
-    // 必须配置 sourceCompatibility 和 targetCompatibility 为 VERSION_1_8，
-    // 不然编译不过。
-    //
-    // 【两个参数的区别】
-    // - sourceCompatibility：源代码的 Java 版本（你写的代码用哪个版本的语法）
-    // - targetCompatibility：编译出的字节码的 Java 版本（生成的 class 文件用哪个版本）
-    // 两个都设为 1.8，就能完整支持 Java 8 特性。
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
-
-        // ====================================================================
-        // ✅ 2026-06-20 修改：把 coreLibraryDesugaringEnabled 移到这里
-        // ====================================================================
-        // 【作用】
-        // 启用核心库脱糖（Core Library Desugaring），
-        // 让低版本 Android 系统（比如 Android 5.0/6.0，API 21）
-        // 也能使用 Java 8 的核心库特性（比如 Lambda 表达式、Stream API 等）。
-        //
-        // 【为什么移到这里？】
-        // 不同版本的 Android Gradle Plugin（AGP），这个属性的位置不一样：
-        // - AGP 4.0+：放在 compileOptions 里（兼容性最好）
-        // - AGP 7.0+：可以放在 defaultConfig 里
-        // 放在 compileOptions 里兼容性更好，所有 AGP 4.0+ 版本都支持。
-        //
-        // 【为什么需要？】
-        // 1. 你的 minSdk 是 21（Android 5.0），这个版本不原生支持 Java 8
-        // 2. 代码里用了 Lambda 表达式，编译后会生成 ExternalSyntheticLambda 合成类
-        // 3. 低版本系统如果没有脱糖，运行时就会报 NoClassDefFoundError
-        // 4. 电视的 Android 版本通常比较低，所以必须启用脱糖
-        //
-        // 【原理】
-        // 脱糖就是在编译时把 Java 8 的语法转换成低版本能理解的代码，
-        // 比如把 Lambda 表达式转换成匿名内部类，把 Stream 转换成普通的循环。
-        // 这样低版本系统也能运行 Java 8 写的代码。
-        //
-        // 【注意】
-        // 这个配置需要配合 dependencies 里的 coreLibraryDesugaring 依赖一起使用。
         coreLibraryDesugaringEnabled true
     }
 
@@ -67,9 +28,6 @@ android {
         versionName "2.0"
         multiDexEnabled true
 
-        // ❌ 注意：coreLibraryDesugaringEnabled 不在这里！
-        // 已经移到上面的 compileOptions 里了
-
         buildConfigField "int", "VERSION_CODE", "${versionCode}"
         buildConfigField "String", "VERSION_NAME", "\"${versionName}\""
 
@@ -84,12 +42,16 @@ android {
             storePassword "admin123"
             keyAlias "myreleasekey"
             keyPassword "admin123"
+            v1SigningEnabled true
+            v2SigningEnabled true
         }
         debug {
             storeFile file("../debug.keystore")
             storePassword "android"
             keyAlias "androiddebugkey"
             keyPassword "android"
+            v1SigningEnabled true
+            v2SigningEnabled true
         }
     }
 
@@ -111,23 +73,24 @@ android {
             pickFirsts += ['META-INF/com.android.tools/proguard/coroutines.pro']
         }
     }
+
+    // ====================================================================
+    // ✅ 配置 libs 目录为 AAR 仓库（FFmpeg 扩展用）
+    // ====================================================================
+    // 【为什么加这个？】
+    // FFmpeg 扩展是自己编译的 AAR 文件，放在 app/libs/ 目录下，
+    // 需要配置 flatDir 仓库，Gradle 才能找到这个 AAR。
+    repositories {
+        flatDir {
+            dirs 'libs'
+        }
+    }
 }
 
 dependencies {
     // ====================================================================
-    // ✅ 2026-06-20 新增：核心库脱糖依赖
+    // ✅ 核心库脱糖
     // ====================================================================
-    // 【作用】
-    // 提供脱糖所需的库文件，让低版本 Android 系统也能运行 Java 8 代码。
-    //
-    // 【为什么用 coreLibraryDesugaring 而不是 implementation？】
-    // - coreLibraryDesugaring：只在编译时使用，打包时只把需要的部分打进 APK
-    // - implementation：整个库都会打进 APK，会增加 APK 体积
-    // 用 coreLibraryDesugaring 更高效，APK 体积更小。
-    //
-    // 【版本说明】
-    // 2.0.4 是比较新的稳定版本，支持 Android Gradle Plugin 4.0+。
-    // 如果还是有问题，可以试试 1.2.2 版本（更老但更稳定）。
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'
 
     implementation "androidx.appcompat:appcompat:1.6.1"
@@ -136,12 +99,45 @@ dependencies {
     implementation "androidx.recyclerview:recyclerview:1.3.2"
     implementation 'com.google.zxing:core:3.5.1'
     implementation 'com.google.code.gson:gson:2.10.1'
+
+    // ====================================================================
+    // ✅ ExoPlayer 2.19.1（稳定版）
+    // ====================================================================
+    // 【为什么用 2.19.1？】
+    // 2.19.1 是 ExoPlayer 2.x 的最后一个稳定版本，
+    // 官方支持 minSdk 21，不需要 tools:overrideLibrary，
+    // 成熟稳定，bug 少，和现有代码完全兼容。
+
+    // ✅ ExoPlayer 核心播放器
     implementation "com.google.android.exoplayer:exoplayer:2.19.1"
+    // ✅ ExoPlayer UI 组件（PlayerView 等）
     implementation "com.google.android.exoplayer:exoplayer-ui:2.19.1"
+    // ✅ ExoPlayer HLS 支持（直播流）
     implementation "com.google.android.exoplayer:exoplayer-hls:2.19.1"
+    // ✅ ExoPlayer DASH 支持
     implementation "com.google.android.exoplayer:exoplayer-dash:2.19.1"
+
+    // ====================================================================
+    // ✅ FFmpeg 软解码器扩展（已基于 2.19.1 编译）
+    // ====================================================================
+    // 【作用】
+    // FFmpeg 软解码器扩展，作为系统硬解码的备用方案。
+    // 当系统 MediaCodec 不支持某些视频格式时，自动回退到 FFmpeg 软解码，
+    // 提高格式兼容性，保证更多直播源能正常播放。
+    //
+    // 【编译信息】
+    // - 源码版本：ExoPlayer 2.19.1
+    // - 模块名：extension-ffmpeg
+    // - 编译环境：NDK 23.1.7779620 + JDK 17
+    // - 支持架构：arm64-v8a, armeabi-v7a
+    // - 编译方式：GitHub Actions 自动编译
+    //
+    // 【工作模式】
+    // - 硬解模式（默认）：系统硬解优先，FFmpeg 作为备用
+    // - 软解模式：优先使用 FFmpeg 软解
+    implementation files('libs/extension-ffmpeg-release.aar')
+
     implementation "com.squareup.okhttp3:okhttp:4.12.0"
-    // 仅修改下面两行 retrofit 版本，其余不动
     implementation "com.squareup.retrofit2:retrofit:2.11.0"
     implementation "com.squareup.retrofit2:converter-gson:2.11.0"
     implementation "com.github.bumptech.glide:glide:4.16.0"

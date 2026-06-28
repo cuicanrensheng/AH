@@ -188,7 +188,7 @@ public class TVPlayerManager {
                         10000,     // minBufferMs - 最小缓冲 10秒
                         50000,     // maxBufferMs - 最大缓冲 50秒（抗网络波动）
                         300,       // bufferForPlaybackMs - 有 300ms 就开始播（快速出画）
-                        500        // bufferForPlaybackAfterRebufferMs - 重缓冲后 500ms 就播
+                        4000        // bufferForPlaybackAfterRebufferMs - 重缓冲后 4000ms 就播
                 )
                 .setPrioritizeTimeOverSizeThresholds(true) // 优先保证时间缓冲
                 .build();

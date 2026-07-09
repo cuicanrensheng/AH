@@ -1,0 +1,219 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="#272B3A"
+    android:padding="16dp">
+
+    <!-- 可以上下滚动的设置区域 -->
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:fillViewport="true"
+        android:scrollbars="vertical">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <!-- 最大重定向次数输入 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="16dp">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="最大重定向次数(1~20)："
+                    android:textColor="#D0D0D0"
+                    android:textSize="14sp" />
+                <EditText
+                    android:id="@+id/et_redirect_max"
+                    android:layout_width="80dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginEnd="8dp"
+                    android:gravity="center"
+                    android:inputType="number"
+                    android:textColor="#FFFFFF" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginBottom="16dp"
+                android:background="#33FFFFFF" />
+
+            <!-- 允许跨域名重定向 -->
+            <RelativeLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_alignParentStart="true"
+                    android:layout_centerVertical="true"
+                    android:text="允许跨域名重定向"
+                    android:textColor="#D0D0D0"
+                    android:textSize="14sp" />
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/sw_cross_domain"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_alignParentEnd="true"
+                    android:layout_centerVertical="true" />
+            </RelativeLayout>
+
+            <!-- 允许HTTP/HTTPS跨协议跳转 -->
+            <RelativeLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_alignParentStart="true"
+                    android:layout_centerVertical="true"
+                    android:text="允许HTTP/HTTPS跨协议跳转"
+                    android:textColor="#D0D0D0"
+                    android:textSize="14sp" />
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/sw_cross_proto"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_alignParentEnd="true"
+                    android:layout_centerVertical="true" />
+            </RelativeLayout>
+
+            <!-- 跳转携带请求头（防盗链必备） -->
+            <RelativeLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_alignParentStart="true"
+                    android:layout_toStartOf="@id/sw_follow_header"
+                    android:layout_marginEnd="8dp"
+                    android:layout_centerVertical="true"
+                    android:text="跳转携带Referer/Cookie（防盗链必备）"
+                    android:textColor="#D0D0D0"
+                    android:textSize="14sp" />
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/sw_follow_header"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_alignParentEnd="true"
+                    android:layout_centerVertical="true" />
+            </RelativeLayout>
+
+            <!-- Cookie播放授权令牌 -->
+            <RelativeLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_alignParentStart="true"
+                    android:layout_toStartOf="@id/sw_send_cookie"
+                    android:layout_marginEnd="8dp"
+                    android:layout_centerVertical="true"
+                    android:text="Cookie播放授权令牌"
+                    android:textColor="#D0D0D0"
+                    android:textSize="14sp" />
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/sw_send_cookie"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_alignParentEnd="true"
+                    android:layout_centerVertical="true" />
+            </RelativeLayout>
+
+            <!-- 忽略HTTPS跳转证书错误 -->
+            <RelativeLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_alignParentStart="true"
+                    android:layout_toStartOf="@id/sw_ignore_ssl"
+                    android:layout_marginEnd="8dp"
+                    android:layout_centerVertical="true"
+                    android:text="忽略HTTPS跳转证书错误"
+                    android:textColor="#D0D0D0"
+                    android:textSize="14sp" />
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/sw_ignore_ssl"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_alignParentEnd="true"
+                    android:layout_centerVertical="true" />
+            </RelativeLayout>
+
+            <!-- UA切换 -->
+            <LinearLayout
+                android:id="@+id/ll_user_agent"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:paddingStart="4dp"
+                android:paddingEnd="4dp"
+                android:paddingTop="12dp"
+                android:paddingBottom="12dp"
+                android:background="#1E2230"
+                android:focusable="true"
+                android:clickable="true">
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content"
+                    android:text="UA切换"
+                    android:textColor="#FFFFFF"
+                    android:textSize="14sp" />
+                <TextView
+                    android:id="@+id/tv_user_agent_status"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="ExoPlayer默认"
+                    android:textColor="#40A9FF"
+                    android:textSize="14sp" />
+            </LinearLayout>
+
+        </LinearLayout>
+    </ScrollView>
+
+    <!-- 🔥 重点：固定在底部的取消/保存按钮 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="end"
+        android:layout_marginTop="16dp">
+
+        <Button
+            android:id="@+id/btn_redirect_cancel"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:text="取消"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="#55576A"
+            android:layout_marginEnd="8dp" />
+
+        <Button
+            android:id="@+id/btn_redirect_save"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:text="保存"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="#40A9FF" />
+    </LinearLayout>
+
+</LinearLayout>

@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ================================================ -->
+    <!-- 主主题：兼容模式（手机+电视都能用） -->
+    <!-- ================================================ -->
+    <style name="Theme.TVLive.NoTitle" parent="Theme.AppCompat.Light.NoActionBar">
+        <item name="windowActionBar">false</item>
+        <item name="windowNoTitle">true</item>
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+        <item name="android:fitsSystemWindows">false</item>
+        <item name="android:windowBackground">@android:color/black</item>
+    </style>
+
+    <!-- ================================================ -->
+    <!-- SettingsActivity 透明主题（浮层效果） -->
+    <!-- ================================================ -->
+    <style name="TransparentTheme" parent="Theme.AppCompat.NoActionBar">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:backgroundDimEnabled">false</item>
+        <item name="android:backgroundDimAmount">0</item>
+        <item name="android:windowAnimationStyle">@style/RightSlideAnimation</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+        <item name="android:fitsSystemWindows">false</item>
+    </style>
+
+    <!-- ================================================ -->
+    <!-- 右侧滑入动画样式 -->
+    <!-- ================================================ -->
+    <style name="RightSlideAnimation">
+        <item name="android:activityOpenEnterAnimation">@anim/slide_in_right</item>
+        <item name="android:activityOpenExitAnimation">@anim/slide_out_left</item>
+        <item name="android:activityCloseEnterAnimation">@anim/slide_in_left</item>
+        <item name="android:activityCloseExitAnimation">@anim/slide_out_right</item>
+    </style>
+
+    <!-- ============================================================== -->
+    <!-- ✅ 新增：PlayerView 渲染类型样式（依赖 1.3.1 的 XML 属性） -->
+    <!-- ============================================================== -->
+    <style name="PlayerView_Surface">
+        <item name="surface_type">surface_view</item>
+    </style>
+    <style name="PlayerView_Texture">
+        <item name="surface_type">texture_view</item>
+    </style>
+</resources>

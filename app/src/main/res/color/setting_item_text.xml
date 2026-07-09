@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 焦点/选中状态：蓝色文字（和分组列表一样） -->
+    <item android:color="#40A9FF" android:state_focused="true" />
+    <item android:color="#40A9FF" android:state_selected="true" />
+    <!-- 默认状态：白色文字 -->
+    <item android:color="#FFFFFF" />
+</selector>

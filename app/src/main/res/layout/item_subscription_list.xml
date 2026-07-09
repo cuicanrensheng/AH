@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:padding="10dp"
+    android:gravity="center_vertical"
+    android:background="#333545"
+    android:layout_marginBottom="4dp"
+    android:focusable="true"
+    android:clickable="true">
+
+    <!-- ✅ 选中时的打勾标记（未选中时隐藏） -->
+    <TextView
+        android:id="@+id/tv_check"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="✓"
+        android:textColor="#40A9FF"
+        android:textSize="16sp"
+        android:visibility="gone" />
+
+    <!-- 🔽 修改了这里：把 maxLines="1" 改为 maxLines="2"，并增加了 paddingTop -->
+    <TextView
+        android:id="@+id/tv_url"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:textColor="#FFFFFF"
+        android:textSize="14sp"
+        android:maxLines="2"
+        android:ellipsize="end"
+        android:paddingTop="4dp"
+        android:layout_marginStart="8dp"
+        android:layout_marginEnd="8dp" />
+
+    <!-- 📋 复制按钮 -->
+    <Button
+        android:id="@+id/btn_copy"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:text="📋"
+        android:textSize="14sp"
+        android:background="#55576A"
+        android:layout_marginEnd="8dp"
+        android:focusable="true"
+        android:clickable="true" />
+
+    <!-- 🗑️ 删除按钮 -->
+    <Button
+        android:id="@+id/btn_delete"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:text="🗑️"
+        android:textSize="14sp"
+        android:background="#55576A"
+        android:focusable="true"
+        android:clickable="true" />
+</LinearLayout>

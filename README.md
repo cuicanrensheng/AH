@@ -22,7 +22,7 @@
 ## 📥 安装与使用
 
 ### 1. 下载安装
-- 前往 [Releases 页面](https://github.com/cuicanrensheng/1/releases)，下载最新版本的 `app-release.apk`
+- 前往 [Releases 页面](https://github.com/cuicanrensheng/AH/releases)，下载最新版本的 `app-release.apk`
 - 安装到你的 Android TV / 电视盒子（需开启「未知来源应用安装」权限）
 
 ### 2. 配置直播源

@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ================================================ -->
+    <!-- Android 12+ 增强版主题（仅手机生效） -->
+    <!-- ================================================ -->
+    <!--
+        【为什么单独放 values-v31？】
+        1. always 模式是 Android 12（API 31）才有的
+        2. 低版本设备（包括大多数电视）自动使用 values/styles.xml 中的兼容版
+        3. 高版本手机使用增强版，实现真正的全屏覆盖
+    -->
+    <style name="Theme.TVLive.NoTitle" parent="Theme.AppCompat.Light.NoActionBar">
+        <item name="windowActionBar">false</item>
+        <item name="windowNoTitle">true</item>
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowContentOverlay">@null</item>
+
+        <!-- 刘海屏适配：always 模式（Android 12+ 专属，横屏也能覆盖摄像头区域） -->
+        <item name="android:windowLayoutInDisplayCutoutMode">always</item>
+
+        <!-- 透明状态栏和导航栏 -->
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+
+        <!-- 内容延伸到系统栏后面 -->
+        <item name="android:fitsSystemWindows">false</item>
+
+    </style>
+
+    <!-- SettingsActivity 透明主题（和默认版保持一致） -->
+    <style name="TransparentTheme" parent="Theme.AppCompat.Light.NoActionBar">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:backgroundDimEnabled">true</item>
+    </style>
+</resources>

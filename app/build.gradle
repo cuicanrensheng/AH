@@ -5,11 +5,17 @@ plugins {
 android {
     namespace "com.tv.live"
 
-    compileSdk 34
+    // ====================================================================
+    // ✅ 2026-06-23 升级：compileSdk 34 → 36
+    // ====================================================================
+    // 【为什么升级？】
+    // Media3 1.10.1 要求 compileSdk 至少 36，否则编译报错。
+    //
+    // 【注意】
+    // compileSdk 只是编译时用的 SDK 版本，不影响运行时行为。
+    // 真正影响运行时行为的是 targetSdk。
+    compileSdk 36
 
-    // ====================================================================
-    // ✅ Java 8 编译选项配置
-    // ====================================================================
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
@@ -22,8 +28,36 @@ android {
 
     defaultConfig {
         applicationId "com.tv.live"
-        minSdk 21
-        targetSdk 34
+
+        // ====================================================================
+        // ✅ 2026-06-23 升级：minSdk 21 → 23
+        // ====================================================================
+        // 【为什么升级？】
+        // Media3 1.10.1 的 HLS 模块要求最低 API 23。
+        //
+        // 【影响】
+        // 不再支持 Android 5.0/5.1 (API 21-22) 的设备。
+        // 但这些设备已经非常少了，尤其是电视设备，
+        // 现在的电视盒子、智能电视基本都是 Android 6.0 (API 23) 以上。
+        //
+        // 【如果一定要支持 API 21 怎么办？】
+        // 可以用 tools:overrideLibrary 强制覆盖，但有运行时崩溃的风险，不推荐。
+        // 或者降低 Media3 版本到 1.2.1（支持 minSdk 21）。
+        minSdk 23
+
+        // ====================================================================
+        // ✅ 2026-06-23 升级：targetSdk 34 → 36
+        // ====================================================================
+        // 【为什么升级？】
+        // 通常 targetSdk 和 compileSdk 保持一致。
+        // targetSdk 决定应用的运行时行为模式。
+        //
+        // 【注意】
+        // 升级 targetSdk 可能会引入一些行为变化，需要测试。
+        // 比如 Android 13/14/15 的一些权限和行为变化。
+        // 但电视应用通常影响不大。
+        targetSdk 36
+
         versionCode 20
         versionName "2.0"
         multiDexEnabled true
@@ -42,16 +76,12 @@ android {
             storePassword "admin123"
             keyAlias "myreleasekey"
             keyPassword "admin123"
-            v1SigningEnabled true
-            v2SigningEnabled true
         }
         debug {
             storeFile file("../debug.keystore")
             storePassword "android"
             keyAlias "androiddebugkey"
             keyPassword "android"
-            v1SigningEnabled true
-            v2SigningEnabled true
         }
     }
 
@@ -73,24 +103,10 @@ android {
             pickFirsts += ['META-INF/com.android.tools/proguard/coroutines.pro']
         }
     }
-
-    // ====================================================================
-    // ✅ 配置 libs 目录为 AAR 仓库（FFmpeg 扩展用）
-    // ====================================================================
-    // 【为什么加这个？】
-    // FFmpeg 扩展是自己编译的 AAR 文件，放在 app/libs/ 目录下，
-    // 需要配置 flatDir 仓库，Gradle 才能找到这个 AAR。
-    repositories {
-        flatDir {
-            dirs 'libs'
-        }
-    }
 }
 
 dependencies {
-    // ====================================================================
-    // ✅ 核心库脱糖
-    // ====================================================================
+
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'
 
     implementation "androidx.appcompat:appcompat:1.6.1"
@@ -101,47 +117,37 @@ dependencies {
     implementation 'com.google.code.gson:gson:2.10.1'
 
     // ====================================================================
-    // ✅ ExoPlayer 2.19.1（稳定版）
+    // ✅ 2026-06-23 升级：ExoPlayer 2.19.1 → Media3 1.10.1
     // ====================================================================
-    // 【为什么用 2.19.1？】
-    // 2.19.1 是 ExoPlayer 2.x 的最后一个稳定版本，
-    // 官方支持 minSdk 21，不需要 tools:overrideLibrary，
-    // 成熟稳定，bug 少，和现有代码完全兼容。
+    // 【依赖对应关系】
+    // 旧版 ExoPlayer 2.x          → 新版 Media3 1.x
+    // exoplayer                    → media3-exoplayer
+    // exoplayer-ui                 → media3-ui
+    // exoplayer-hls                → media3-exoplayer-hls
+    // exoplayer-dash               → media3-exoplayer-dash
+    // ====================================================================
 
-    // ✅ ExoPlayer 核心播放器
-    implementation "com.google.android.exoplayer:exoplayer:2.19.1"
-    // ✅ ExoPlayer UI 组件（PlayerView 等）
-    implementation "com.google.android.exoplayer:exoplayer-ui:2.19.1"
-    // ✅ ExoPlayer HLS 支持（直播流）
-    implementation "com.google.android.exoplayer:exoplayer-hls:2.19.1"
-    // ✅ ExoPlayer DASH 支持
-    implementation "com.google.android.exoplayer:exoplayer-dash:2.19.1"
-
-    // ====================================================================
-    // ✅ FFmpeg 软解码器扩展（已基于 2.19.1 编译）
-    // ====================================================================
-    // 【作用】
-    // FFmpeg 软解码器扩展，作为系统硬解码的备用方案。
-    // 当系统 MediaCodec 不支持某些视频格式时，自动回退到 FFmpeg 软解码，
-    // 提高格式兼容性，保证更多直播源能正常播放。
-    //
-    // 【编译信息】
-    // - 源码版本：ExoPlayer 2.19.1
-    // - 模块名：extension-ffmpeg
-    // - 编译环境：NDK 23.1.7779620 + JDK 17
-    // - 支持架构：arm64-v8a, armeabi-v7a
-    // - 编译方式：GitHub Actions 自动编译
-    //
-    // 【工作模式】
-    // - 硬解模式（默认）：系统硬解优先，FFmpeg 作为备用
-    // - 软解模式：优先使用 FFmpeg 软解
-    implementation files('libs/extension-ffmpeg-release.aar')
+    // ✅ Media3 核心播放器
+    implementation "androidx.media3:media3-exoplayer:1.10.1"
+    // ✅ Media3 UI 组件（PlayerView 等）
+    implementation "androidx.media3:media3-ui:1.10.1"
+    // ✅ Media3 HLS 支持（直播流）
+    implementation "androidx.media3:media3-exoplayer-hls:1.10.1"
+    // ✅ Media3 DASH 支持
+    implementation "androidx.media3:media3-exoplayer-dash:1.10.1"
+    // ✅ Media3 通用工具
+    implementation "androidx.media3:media3-common:1.10.1"
+    // ✅ Media3 数据源
+    implementation "androidx.media3:media3-datasource:1.10.1"
 
     implementation "com.squareup.okhttp3:okhttp:4.12.0"
+
     implementation "com.squareup.retrofit2:retrofit:2.11.0"
     implementation "com.squareup.retrofit2:converter-gson:2.11.0"
+
     implementation "com.github.bumptech.glide:glide:4.16.0"
     annotationProcessor "com.github.bumptech.glide:compiler:4.16.0"
+
     implementation "org.apache.commons:commons-lang3:3.14.0"
     implementation "com.blankj:utilcodex:1.31.1"
     implementation 'org.nanohttpd:nanohttpd:2.3.1'

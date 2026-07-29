@@ -34,11 +34,24 @@ jobs:
           rm -rf ~/.gradle/caches/
           ./gradlew clean
 
-      - name: 解码签名证书并注入密钥
+      - name: 解码签名证书并验证
         run: |
           echo "🔑 正在解码签名证书..."
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > app/release.keystore
-
+          
+          # ✅ 修复：用 printf 代替 echo，避免额外换行导致 keystore 文件损坏
+          printf '%s' "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > app/release.keystore
+          
+          # ✅ 新增：验证 keystore 文件完整性
+          echo "🔍 验证 keystore 文件..."
+          ls -la app/release.keystore
+          
+          keytool -list -keystore app/release.keystore \
+            -storepass "${{ secrets.STORE_PASSWORD }}" \
+            -storetype PKCS12 \
+            -v || { echo "❌ keystore 读取失败，文件可能损坏或密码错误"; exit 1; }
+          
+          echo "✅ keystore 验证通过"
+          
           echo "🔍 正在静默验证依赖版本..."
           DEPS_OUTPUT=$(./gradlew app:dependencies --configuration releaseCompileClasspath --refresh-dependencies --no-daemon 2>&1 || true)
           
@@ -60,21 +73,19 @@ jobs:
       # ==============================================================
       # 🔧【核心修复 1】自动更新 app/build.gradle 并提交版本号
       # 让每次打包的 APK 内部版本号和云端 update.json 对齐！
-      # ✅ 修复：versionName 不再读取旧值叠加，始终生成干净的 "2.0.<versionCode>"
       # ==============================================================
       - name: 自动更新 Gradle 版本号并提交回仓库
         run: |
           NEW_VERSION_CODE=${{ github.run_number }}
           
-          # ✅ 基础版本名固定为 "2.0"，不再从旧文件读取，避免无限叠加
-          BASE_VERSION_NAME="2.0"
-          NEW_VERSION_NAME="${BASE_VERSION_NAME}.${NEW_VERSION_CODE}"
+          # 1. 获取当前 build.gradle 中的 versionName（例如 2.0）
+          OLD_VERSION_NAME=$(grep "versionName" app/build.gradle | head -1 | awk -F'"' '{print $2}')
           
-          # 替换 versionCode 和 versionName（始终使用干净的版本名）
+          # 2. 使用 sed 替换 versionCode 和 versionName (附加构建号)
           sed -i "s/versionCode [0-9]*/versionCode $NEW_VERSION_CODE/" app/build.gradle
-          sed -i "s/versionName \"[^\"]*\"/versionName \"$NEW_VERSION_NAME\"/" app/build.gradle
+          sed -i "s/versionName \"[^\"]*\"/versionName \"$OLD_VERSION_NAME.$NEW_VERSION_CODE\"/" app/build.gradle
           
-          # 将修改提交回 GitHub（注意：使用 [skip ci] 避免触发新构建循环）
+          # 3. 将修改提交回 GitHub（注意：使用 [skip ci] 避免触发新构建循环）
           git config --local user.email "actions@github.com"
           git config --local user.name "GitHub Actions"
           git add app/build.gradle
@@ -90,6 +101,7 @@ jobs:
           ./gradlew assembleRelease \
             --no-daemon \
             --stacktrace \
+            -PstoreFile=release.keystore \
             -PstorePassword=${{ secrets.STORE_PASSWORD }} \
             -PkeyAlias=${{ secrets.KEY_ALIAS }} \
             -PkeyPassword=${{ secrets.KEY_PASSWORD }}
@@ -103,14 +115,12 @@ jobs:
           
           # 🔧【修复电视 404】给 APK 下载地址加上 ghproxy.com 代理前缀，确保国内电视网络能正常下载
           DOWNLOAD_URL="https://ghproxy.com/https://github.com/${{ github.repository }}/releases/download/v$VERSION_CODE/app-release.apk"
-
           # 🔧 动态读取 release_notes.txt
           if [ -f app/release_notes.txt ]; then
             RELEASE_NOTES=$(cat app/release_notes.txt | sed 's/"/\\"/g' | sed ':a;N;$!ba;s/\n/\\n/g')
           else
             RELEASE_NOTES="自动更新版本"
           fi
-
           cat > update.json << EOF
           {
             "versionCode": $VERSION_CODE,
@@ -119,7 +129,6 @@ jobs:
             "downloadUrl": "$DOWNLOAD_URL"
           }
           EOF
-
           # ==============================================================
           # 🛡️【关键一步】将 update.json 推送到 main 分支的根目录
           # ==============================================================

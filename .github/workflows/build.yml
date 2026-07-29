@@ -60,19 +60,21 @@ jobs:
       # ==============================================================
       # 🔧【核心修复 1】自动更新 app/build.gradle 并提交版本号
       # 让每次打包的 APK 内部版本号和云端 update.json 对齐！
+      # ✅ 修复：versionName 不再读取旧值叠加，始终生成干净的 "2.0.<versionCode>"
       # ==============================================================
       - name: 自动更新 Gradle 版本号并提交回仓库
         run: |
           NEW_VERSION_CODE=${{ github.run_number }}
           
-          # 1. 获取当前 build.gradle 中的 versionName（例如 2.0）
-          OLD_VERSION_NAME=$(grep "versionName" app/build.gradle | head -1 | awk -F'"' '{print $2}')
+          # ✅ 基础版本名固定为 "2.0"，不再从旧文件读取，避免无限叠加
+          BASE_VERSION_NAME="2.0"
+          NEW_VERSION_NAME="${BASE_VERSION_NAME}.${NEW_VERSION_CODE}"
           
-          # 2. 使用 sed 替换 versionCode 和 versionName (附加构建号)
+          # 替换 versionCode 和 versionName（始终使用干净的版本名）
           sed -i "s/versionCode [0-9]*/versionCode $NEW_VERSION_CODE/" app/build.gradle
-          sed -i "s/versionName \"[^\"]*\"/versionName \"$OLD_VERSION_NAME.$NEW_VERSION_CODE\"/" app/build.gradle
+          sed -i "s/versionName \"[^\"]*\"/versionName \"$NEW_VERSION_NAME\"/" app/build.gradle
           
-          # 3. 将修改提交回 GitHub（注意：使用 [skip ci] 避免触发新构建循环）
+          # 将修改提交回 GitHub（注意：使用 [skip ci] 避免触发新构建循环）
           git config --local user.email "actions@github.com"
           git config --local user.name "GitHub Actions"
           git add app/build.gradle

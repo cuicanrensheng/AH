@@ -35,27 +35,23 @@ jobs:
           ./gradlew clean
 
       # ==============================================================
-      # 🔑【核心修复】从 GitHub Secrets 解码签名证书，不再依赖本地文件
+      # 🔑 从 GitHub Secrets 解码签名证书
       # ==============================================================
       - name: 从 Secrets 解码签名证书并验证
         run: |
           echo "🔑 正在从 Secrets 解码签名证书..."
           
-          # 1. 直接解码并生成二进制 keystore 文件到 app/ 目录
           printf '%s' "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > app/release.keystore
           
-          # 2. 验证文件是否生成成功
           echo "🔍 验证 keystore 文件..."
           ls -la app/release.keystore
           
-          # 3. ✅【关键修复】移除 -storetype PKCS12，让 keytool 自动识别格式，避免报错
           keytool -list -keystore app/release.keystore \
             -storepass "${{ secrets.STORE_PASSWORD }}" \
             -v || { echo "❌ keystore 读取失败。请检查 Secrets 中 STORE_PASSWORD 是否为 admin123"; exit 1; }
           
           echo "✅ keystore 验证通过"
           
-          # 4. 依赖版本检查和 ExoPlayer 安全验证
           echo "🔍 正在静默验证依赖版本..."
           DEPS_OUTPUT=$(./gradlew app:dependencies --configuration releaseCompileClasspath --refresh-dependencies --no-daemon 2>&1 || true)
           
@@ -90,10 +86,13 @@ jobs:
           git config --local user.name "GitHub Actions"
           git add app/build.gradle
           git commit -m "Auto bump versionCode to $NEW_VERSION_CODE [skip ci]" || echo "No changes to commit"
+          
+          # ✅【核心修复】先拉取远程最新提交并变基，再推送，彻底解决 push 冲突！
+          git pull --rebase origin main || echo "No remote changes to pull"
           git push
 
       # ==============================================================
-      # 📦 执行 Release 打包（密码从 Secrets 读取）
+      # 📦 执行 Release 打包
       # ==============================================================
       - name: 开始执行 Release 打包...
         run: |
@@ -133,6 +132,9 @@ jobs:
           git config --local user.name "GitHub Actions"
           git add update.json
           git commit -m "Auto update update.json for release v$VERSION_CODE [skip ci]" || echo "No changes to update.json"
+          
+          # ✅ 防止这一步也产生冲突，增加同样的保护
+          git pull --rebase origin main || echo "No remote changes to pull"
           git push
 
       # ==============================================================

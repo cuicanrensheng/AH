@@ -35,7 +35,7 @@ jobs:
           ./gradlew clean
 
       # ==============================================================
-      # 🔧【修改点】改为从本地仓库根目录直接读取 release.keystore
+      # 🔑 从本地根目录读取签名证书（修复了 storetype 导致的格式错误）
       # ==============================================================
       - name: 从本地根目录读取签名证书并验证
         run: |
@@ -44,25 +44,27 @@ jobs:
           # 1. 检查根目录下是否存在 release.keystore
           if [ ! -f "release.keystore" ]; then
             echo "❌ 错误：本地根目录下未找到 release.keystore 文件！"
-            echo "请确保已将 release.keystore 文件提交到代码仓库的根目录下。"
             exit 1
           fi
           
-          # 2. 复制到 app/ 目录，确保 Gradle 能找到
+          # 2. 复制到 app/ 目录
           cp release.keystore app/release.keystore
           
           echo "🔍 验证 keystore 文件..."
           ls -la app/release.keystore
           
-          # 3. 验证证书是否有效（密码依然从 Secrets 读取）
+          # ✅【核心修复】去掉 -storetype PKCS12，让 keytool 自动识别 JKS 或 PKCS12 格式
           keytool -list -keystore app/release.keystore \
             -storepass "${{ secrets.STORE_PASSWORD }}" \
-            -storetype PKCS12 \
-            -v || { echo "❌ keystore 读取失败，文件可能损坏或密码错误"; exit 1; }
+            -v || { 
+              echo "❌ keystore 读取失败。可能原因：1. Secrets 密码与真实密码不符；2. 文件格式损坏。"
+              echo "💡 建议：本地运行 'keytool -list -keystore release.keystore' 确认密码是否正确。"
+              exit 1 
+            }
           
           echo "✅ keystore 验证通过"
           
-          # 4. 后续依赖验证保持不变
+          # 依赖版本检查（保持不变）
           echo "🔍 正在静默验证依赖版本..."
           DEPS_OUTPUT=$(./gradlew app:dependencies --configuration releaseCompileClasspath --refresh-dependencies --no-daemon 2>&1 || true)
           
@@ -100,7 +102,7 @@ jobs:
           git push
 
       # ==============================================================
-      # 🔧【修改点】明确指向 app/release.keystore
+      # 📦 执行 Release 打包
       # ==============================================================
       - name: 开始执行 Release 打包...
         run: |
@@ -113,6 +115,9 @@ jobs:
             -PkeyAlias=${{ secrets.KEY_ALIAS }} \
             -PkeyPassword=${{ secrets.KEY_PASSWORD }}
 
+      # ==============================================================
+      # 📝 生成 update.json 并推送
+      # ==============================================================
       - name: 生成并提交 update.json
         run: |
           VERSION_CODE=${{ github.run_number }}
@@ -139,6 +144,9 @@ jobs:
           git commit -m "Auto update update.json for release v$VERSION_CODE [skip ci]" || echo "No changes to update.json"
           git push
 
+      # ==============================================================
+      # 📤 上传产物与创建 Release
+      # ==============================================================
       - name: 上传成品 APK
         uses: actions/upload-artifact@v4
         with:

@@ -35,8 +35,8 @@ android {
         minSdk 21
         targetSdk 36
 
-        versionCode 3103
-        versionName "2.0.2204.2208.3099.3103"
+        versionCode 3104
+        versionName "2.0.2204.2208.3099.3103.3104"
 
         resConfigs "zh"
 

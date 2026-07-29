@@ -34,7 +34,7 @@ import java.net.URL;
  */
 public class UpdateManager {
     // 使用 GitHub Releases API 获取最新版本
-    private static final String UPDATE_JSON_URL = "https://api.github.com/repos/cuicanrensheng/1/releases/latest";
+    private static final String UPDATE_JSON_URL = "https://api.github.com/repos/cuicanrensheng/AH/releases/latest";
     private static final String APK_FILE_NAME = "tv_live_update.apk";
     private static final Handler MAIN_HANDLER = new Handler(Looper.getMainLooper());
     private static boolean isChecking = false;

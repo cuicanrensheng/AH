@@ -1,6 +1,6 @@
 {
-  "versionCode": 3115,
-  "versionName": "2.0.3108.3114.3115",
+  "versionCode": 3130,
+  "versionName": "2.0.3108.3114.3115.3117.3118.3119.3121.3122.3125.3126.3128.3129.3130",
   "message": "版本更新说明。\n【修复】 修复长按 OK 键打开设置时误触“开机自启”开关的问题。\n【修复】 解码器软解无法切换的问题：修正了系统软件解码器的判定逻辑，支持国产电视设备正常启用软解。\n【修复】 多源管理弹窗中，列表第一项被搜索框遮挡、导致无法点击的问题。\n【修复】 其他若干已知 UI 细节与播放稳定性问题\n\n【系统兼容】\n- 全面适配 Android TV 设备，修复多个可能引发闪退的稳定性隐患。",
-  "downloadUrl": "https://ghproxy.com/https://github.com/cuicanrensheng/AH/releases/download/v3115/app-release.apk"
+  "downloadUrl": "https://ghproxy.com/https://github.com/cuicanrensheng/AH/releases/download/v3130/app-release.apk"
 }

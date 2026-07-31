@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">TVLive</string>
+
+    <string name="epg_button">节\n目\n单</string>
+    <string name="channel_group_button">频\n道\n组</string>
+    <string name="next_program">接下来：</string>
+    <string name="log_placeholder">日志将在此显示…</string>
+
+    <string name="boot_autostart">开机自启</string>
+    <string name="not_enabled">未开启</string>
+    <string name="channel_reverse">换台反转</string>
+    <string name="pip">画中画</string>
+    <string name="together_watch">一起看</string>
+    <string name="channel_line_select">频道线路选择</string>
+    <string name="main_source">主源</string>
+    <string name="resolution_select">清晰度选择</string>
+    <string name="auto">自动</string>
+    <string name="decoder_select">解码器选择</string>
+    <string name="render_mode">渲染方式</string>
+    <string name="render_mode_select">渲染方式选择</string>
+    <string name="surface_view">SurfaceView</string>
+    <string name="texture_view">TextureView</string>
+    <string name="screen_ratio">屏幕比例</string>
+    <string name="http_redirect_config">HTTP重定向网络配置</string>
+    <string name="live_source_subscribe">直播源订阅</string>
+    <string name="epg_subscribe">节目单订阅</string>
+    <string name="check_update">检查更新</string>
+    <string name="version_info">版本信息</string>
+    <string name="version_2_0">v2.0</string>
+    <string name="exit_dialog">退出弹窗</string>
+    <string name="close">关闭</string>
+    <string name="web_settings_url">网页设置：http://设备IP:10481</string>
+
+    <string name="confirm_exit">确认退出</string>
+    <string name="settings_option">设置选项</string>
+    <string name="disclaimer">软件仅供测试\n禁止非法使用及商业用途</string>
+
+    <string name="max_redirect_count">最大重定向次数(1~20)：</string>
+    <string name="allow_cross_domain">允许跨域名重定向</string>
+    <string name="allow_cross_protocol">允许HTTP/HTTPS跨协议跳转</string>
+    <string name="follow_headers">跳转携带Referer/Cookie（防盗链必备）</string>
+    <string name="cookie_auth_token">Cookie播放授权令牌</string>
+    <string name="ignore_ssl_errors">忽略HTTPS跳转证书错误</string>
+    <string name="ua_switch">UA切换</string>
+    <string name="exoplayer_default">ExoPlayer默认</string>
+    <string name="cancel">取消</string>
+    <string name="save">保存</string>
+
+    <string name="scan_qr_input">扫码远程输入</string>
+    <string name="sample_ip_address">http://192.168.1.2:9978/</string>
+    <string name="confirm">确定</string>
+
+    <string name="delete">删除</string>
+
+    <string name="number_one">1</string>
+    <string name="number_one_dot">1.</string>
+    <string name="number_two_dot">2.</string>
+    <string name="hint_input_name">请输入名称(选填)</string>
+    <string name="hint_input_url">请输入地址</string>
+    <string name="icon_check">✓</string>
+    <string name="icon_copy">📋</string>
+    <string name="icon_delete">🗑️</string>
+
+    <!-- ============================================================ -->
+    <!-- 🟢【新增】网络调试日志相关字符串 -->
+    <!-- ============================================================ -->
+    <string name="debug_log_title">网络调试日志</string>
+    <string name="debug_log_status_off">已关闭</string>
+    <string name="debug_log_status_on">已开启（正在记录）</string>
+    
+    <string name="debug_log_dialog_title">📡 网络调试日志</string>
+    <string name="debug_log_clear">清空日志</string>
+    <string name="debug_log_start">开始记录</string>
+    <string name="debug_log_stop">停止记录</string>
+    <string name="debug_log_empty">暂无日志。\n\n提示：请先在下方开启“记录网络日志”，然后重新播放一个频道。</string>
+</resources>

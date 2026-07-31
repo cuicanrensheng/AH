@@ -1,0 +1,288 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@drawable/dialog_bg_corner"
+    android:padding="16dp"
+    android:maxWidth="600dp"
+    android:maxHeight="650dp">
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:scrollbars="vertical">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <!-- 最大重定向次数输入 -->
+            <LinearLayout
+                android:id="@+id/ll_max_count"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:padding="16dp"
+                android:focusable="true"
+                android:clickable="true"
+                android:background="@drawable/switch_item_bg"
+                android:foreground="@null"
+                android:nextFocusDown="@+id/ll_cross_domain">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/max_redirect_count"
+                    android:textColor="#FFFFFF"
+                    android:textSize="16sp" />
+                <EditText
+                    android:id="@+id/et_redirect_max"
+                    android:layout_width="80dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginEnd="8dp"
+                    android:gravity="center"
+                    android:inputType="number"
+                    android:textColor="#FFFFFF"
+                    android:textSize="16sp"
+                    android:focusable="true"
+                    android:focusableInTouchMode="true"
+                    android:background="@null"
+                    android:autofillHints=""
+                    android:hint="@string/max_redirect_count" />
+            </LinearLayout>
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="#33FFFFFF" />
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginBottom="16dp"
+                android:background="#33FFFFFF" />
+
+            <!-- 允许跨域名重定向 -->
+            <LinearLayout
+                android:id="@+id/ll_cross_domain"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:padding="16dp"
+                android:focusable="true"
+                android:clickable="true"
+                android:background="@drawable/switch_item_bg"
+                android:foreground="@null">
+                <TextView
+                    android:id="@+id/tv_cross_domain"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content"
+                    android:text="@string/allow_cross_domain"
+                    android:textColor="#FFFFFF"
+                    android:textSize="16sp" />
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/sw_cross_domain"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:focusable="false"
+                    android:focusableInTouchMode="false" />
+            </LinearLayout>
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="#33FFFFFF" />
+
+            <!-- 允许HTTP/HTTPS跨协议跳转 -->
+            <LinearLayout
+                android:id="@+id/ll_cross_proto"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:padding="16dp"
+                android:focusable="true"
+                android:clickable="true"
+                android:background="@drawable/switch_item_bg"
+                android:foreground="@null">
+                <TextView
+                    android:id="@+id/tv_cross_proto"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content"
+                    android:text="@string/allow_cross_protocol"
+                    android:textColor="#FFFFFF"
+                    android:textSize="16sp" />
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/sw_cross_proto"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:focusable="false"
+                    android:focusableInTouchMode="false" />
+            </LinearLayout>
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="#33FFFFFF" />
+
+            <!-- 跳转携带请求头（防盗链必备） -->
+            <LinearLayout
+                android:id="@+id/ll_follow_header"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:padding="16dp"
+                android:focusable="true"
+                android:clickable="true"
+                android:background="@drawable/switch_item_bg"
+                android:foreground="@null">
+                <TextView
+                    android:id="@+id/tv_follow_header"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content"
+                    android:text="@string/follow_headers"
+                    android:textColor="#FFFFFF"
+                    android:textSize="16sp" />
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/sw_follow_header"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:focusable="false"
+                    android:focusableInTouchMode="false" />
+            </LinearLayout>
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="#33FFFFFF" />
+
+            <!-- Cookie播放授权令牌 -->
+            <LinearLayout
+                android:id="@+id/ll_send_cookie"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:padding="16dp"
+                android:focusable="true"
+                android:clickable="true"
+                android:background="@drawable/switch_item_bg"
+                android:foreground="@null">
+                <TextView
+                    android:id="@+id/tv_send_cookie"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content"
+                    android:text="@string/cookie_auth_token"
+                    android:textColor="#FFFFFF"
+                    android:textSize="16sp" />
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/sw_send_cookie"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:focusable="false"
+                    android:focusableInTouchMode="false" />
+            </LinearLayout>
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="#33FFFFFF" />
+
+            <!-- 忽略HTTPS跳转证书错误 -->
+            <LinearLayout
+                android:id="@+id/ll_ignore_ssl"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:padding="16dp"
+                android:focusable="true"
+                android:clickable="true"
+                android:background="@drawable/switch_item_bg"
+                android:foreground="@null">
+                <TextView
+                    android:id="@+id/tv_ignore_ssl"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content"
+                    android:text="@string/ignore_ssl_errors"
+                    android:textColor="#FFFFFF"
+                    android:textSize="16sp" />
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/sw_ignore_ssl"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:focusable="false"
+                    android:focusableInTouchMode="false" />
+            </LinearLayout>
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="#33FFFFFF" />
+
+            <!-- UA切换 -->
+            <LinearLayout
+                android:id="@+id/ll_user_agent"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:padding="16dp"
+                android:focusable="true"
+                android:clickable="true"
+                android:background="@drawable/switch_item_bg"
+                android:foreground="@null"
+                android:nextFocusDown="@+id/btn_redirect_cancel">
+                <TextView
+                    android:id="@+id/tv_user_agent_label"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content"
+                    android:text="@string/ua_switch"
+                    android:textColor="#FFFFFF"
+                    android:textSize="16sp" />
+                <TextView
+                    android:id="@+id/tv_user_agent_status"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/exoplayer_default"
+                    android:textColor="#FFFFFF"
+                    android:textSize="16sp" />
+            </LinearLayout>
+        </LinearLayout>
+    </ScrollView>
+
+    <!-- 按钮区域 - 固定在底部 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="end"
+        android:layout_marginTop="16dp">
+
+        <Button
+            android:id="@+id/btn_redirect_cancel"
+            style="?android:attr/buttonBarButtonStyle"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:text="@string/cancel"
+            android:textColor="@color/btn_text_color"
+            android:background="@drawable/btn_cancel_bg"
+            android:layout_marginEnd="8dp"
+            android:focusable="true"
+            android:focusableInTouchMode="true"
+            android:nextFocusUp="@+id/ll_user_agent"
+            android:nextFocusRight="@+id/btn_redirect_save"/>
+
+        <Button
+            android:id="@+id/btn_redirect_save"
+            style="?android:attr/buttonBarButtonStyle"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:text="@string/save"
+            android:textColor="@color/btn_text_color"
+            android:background="@drawable/btn_cancel_bg"
+            android:focusable="true"
+            android:focusableInTouchMode="true"
+            android:nextFocusLeft="@+id/btn_redirect_cancel"
+            android:nextFocusUp="@+id/ll_user_agent"/>
+    </LinearLayout>
+
+</LinearLayout>

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content">
+
+    <TextView
+        android:id="@+id/tv_tag"
+        android:layout_width="wrap_content"
+        android:layout_height="30dp"
+        android:layout_marginTop="5dp"
+        android:layout_marginRight="10dp"
+        android:gravity="center"
+        android:background="@drawable/hyberry_select_line_item_bg"
+        android:paddingLeft="10dp"
+        android:paddingRight="10dp"
+        android:text="TAG标签标签标签"
+        android:textSize="16sp"
+        android:textColor="@color/hyberry_color_ffa200"  />
+
+</RelativeLayout>

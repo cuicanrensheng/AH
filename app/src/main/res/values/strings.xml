@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">TVLive</string>
+    <string name="hyberry_appkey">102196135d57d1dbfbd78bfb435d3940</string>
+    <string name="hyberry_appkey_hiido">8766e2b0aadcc8ada738b8d1f62c3596</string>
+    <string name="hyberry_appkey_hiido_debug">9b9c4d9bf4ab3d221d1756beb57e27ca</string>
+</resources>

@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="16dp"
+    android:background="#FF222222">
+
+    <Switch
+        android:id="@+id/switch_reverse"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="频道反向切换"
+        android:textColor="#FFFFFF"
+        android:textSize="16sp"
+        android:padding="10dp"/>
+
+    <Switch
+        android:id="@+id/switch_boot"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="开机自启"
+        android:textColor="#FFFFFF"
+        android:textSize="16sp"
+        android:padding="10dp"/>
+
+    <Switch
+        android:id="@+id/switch_update"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="自动更新"
+        android:textColor="#FFFFFF"
+        android:textSize="16sp"
+        android:padding="10dp"/>
+
+    <TextView
+        android:id="@+id/tv_ratio"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="画面比例"
+        android:textColor="#FFFFFF"
+        android:textSize="16sp"
+        android:padding="14dp"
+        android:clickable="true"
+        android:focusable="true"/>
+
+    <TextView
+        android:id="@+id/btn_source"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="自定义直播源"
+        android:textColor="#FFFFFF"
+        android:textSize="16sp"
+        android:padding="14dp"
+        android:clickable="true"
+        android:focusable="true"/>
+
+    <TextView
+        android:id="@+id/btn_epg"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="自定义EPG"
+        android:textColor="#FFFFFF"
+        android:textSize="16sp"
+        android:padding="14dp"
+        android:clickable="true"
+        android:focusable="true"/>
+
+    <TextView
+        android:id="@+id/btn_qr"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="扫码设置"
+        android:textColor="#FFFFFF"
+        android:textSize="16sp"
+        android:padding="14dp"
+        android:clickable="true"
+        android:focusable="true"/>
+
+</LinearLayout>

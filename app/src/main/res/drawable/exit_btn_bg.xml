@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 获得焦点时：浅蓝色背景（和设置页选中项一样） -->
+    <item android:state_focused="true">
+        <shape android:shape="rectangle">
+            <solid android:color="#3340A9FF" />
+            <corners android:radius="8dp" />
+        </shape>
+    </item>
+    <!-- 按下时：浅蓝色背景（手机触摸点击） -->
+    <item android:state_pressed="true">
+        <shape android:shape="rectangle">
+            <solid android:color="#3340A9FF" />
+            <corners android:radius="8dp" />
+        </shape>
+    </item>
+    <!-- 默认无焦点状态：半透明白色（保持原来的样子） -->
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#33FFFFFF" />
+            <corners android:radius="8dp" />
+        </shape>
+    </item>
+</selector>

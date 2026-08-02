@@ -25,7 +25,7 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: 赋予执行权限
+      - name: 赋予 gradlew 初始执行权限
         run: chmod +x gradlew
 
       - name: 清理缓存并强制刷新依赖
@@ -57,18 +57,12 @@ jobs:
             echo "✅ 安全检查通过：未发现旧版 ExoPlayer 依赖"
           fi
 
-      # ==============================================================
-      # 🔧【核心修复 1】自动更新 app/build.gradle 并提交版本号
-      # ✅ CI 修复：stash 所有未暂存/未跟踪文件（如 keystore、gradle 临时文件）后再 rebase/push，
-      #    避免 "cannot rebase: You have unstaged changes" 错误
-      # ==============================================================
       - name: 自动更新 Gradle 版本号并提交回仓库
         run: |
           set -e
-          # 统一git用户配置
+          # 统一git配置（只配置一次）
           git config --local user.email "actions@github.com"
           git config --local user.name "GitHub Actions"
-          # 🔴【关键修复】禁用 pull.rebase，改用 merge 策略；避免出现 rebase 冲突
           git config --local pull.rebase false
           git config --local pull.ff false
 
@@ -83,23 +77,17 @@ jobs:
             echo "No changes to commit"
           else
             git commit -m "Auto bump versionCode to $NEW_VERSION_CODE [skip ci]"
-            # 🔴【关键修复】rebase 前先 stash 所有未暂存改动（包括 app/release.keystore 等未跟踪文件）
-            #   否则 git rebase 会直接报错：cannot rebase: You have unstaged changes.
-            git stash -u || true
+            # 只fetch，不再执行危险merge+stash pop，极易引发文件冲突、覆盖本地临时文件
             git fetch origin main
-            # 🔴【关键修复 2】即使 stash 了也不用 rebase（过于严格），改用 merge 更稳妥
-            git merge --no-edit --no-ff origin/main || true
-            git stash pop || true
-            # 使用 --force-with-lease 保障安全推送
-            git push --force-with-lease origin main || git push origin main
+            # 改用普通push，放弃复杂merge逻辑，避免覆盖本地 gradlew、keystore
+            git push origin main || echo "Push skip: remote has newer commits"
           fi
 
-      # ==============================================================
-      # 🔧【核心修复 2】开始打包
-      # ==============================================================
+      # =====================【重点修复】打包前重新赋予权限，彻底杜绝权限丢失 =====================
       - name: 开始执行 Release 打包...
         run: |
           echo "🎯 开始执行 Release 打包..."
+          chmod +x ./gradlew
           ./gradlew assembleRelease \
             --no-daemon \
             --stacktrace \
@@ -107,8 +95,6 @@ jobs:
             -PkeyAlias=${{ secrets.KEY_ALIAS }} \
             -PkeyPassword=${{ secrets.KEY_PASSWORD }}
 
-      # =====================【新增强制上传Mapping】=====================
-      # always() : 无论打包成功 / R8崩溃失败，都会上传mapping目录
       - name: 上传Mapping文件夹（包含missing_rules.txt）
         uses: actions/upload-artifact@v4
         if: always()
@@ -116,14 +102,12 @@ jobs:
           name: mapping-release
           path: app/build/outputs/mapping/release/
           retention-days: 7
-      # =================================================================
 
       - name: 生成并提交 update.json
         run: |
           set -e
           git config --local user.email "actions@github.com"
           git config --local user.name "GitHub Actions"
-          # 同样禁用 rebase
           git config --local pull.rebase false
           git config --local pull.ff false
 
@@ -149,12 +133,8 @@ jobs:
             echo "No changes to update.json"
           else
             git commit -m "Auto update update.json for release v$VERSION_CODE [skip ci]"
-            # 同样的 stash → fetch → merge 流程
-            git stash -u || true
             git fetch origin main
-            git merge --no-edit --no-ff origin/main || true
-            git stash pop || true
-            git push --force-with-lease origin main || git push origin main
+            git push origin main || echo "Push skip: remote has newer commits"
           fi
 
       - name: 上传成品 APK

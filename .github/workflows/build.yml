@@ -95,7 +95,7 @@ jobs:
           fi
 
       # ==============================================================
-      # 🔧【核心修复 2】开始打包并生成 update.json 提交到 main 分支
+      # 🔧【核心修复 2】开始打包
       # ==============================================================
       - name: 开始执行 Release 打包...
         run: |
@@ -106,6 +106,17 @@ jobs:
             -PstorePassword=${{ secrets.STORE_PASSWORD }} \
             -PkeyAlias=${{ secrets.KEY_ALIAS }} \
             -PkeyPassword=${{ secrets.KEY_PASSWORD }}
+
+      # =====================【新增强制上传Mapping】=====================
+      # always() : 无论打包成功 / R8崩溃失败，都会上传mapping目录
+      - name: 上传Mapping文件夹（包含missing_rules.txt）
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mapping-release
+          path: app/build/outputs/mapping/release/
+          retention-days: 7
+      # =================================================================
 
       - name: 生成并提交 update.json
         run: |

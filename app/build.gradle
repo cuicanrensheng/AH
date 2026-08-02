@@ -8,7 +8,7 @@ android {
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
-        coreLibraryDesugaringEnabled false
+        coreLibraryDesugaringEnabled true
     }
     buildFeatures {
         buildConfig true
@@ -39,8 +39,9 @@ android {
     }
     buildTypes {
         release {
-            minifyEnabled false
-            shrinkResources false
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             signingConfig signingConfigs.release
         }
         debug {
@@ -63,13 +64,15 @@ android {
         }
         jniLibs {
             useLegacyPackaging false
-            pickFirsts += ['lib/arm64-v8a/libhyaudioengine.so', 'lib/armeabi-v7a/libhyaudioengine.so']
-            keepDebugSymbols += ['**/arm64-v8a/*.so']
+            pickFirsts += ['lib/arm64-v8a/libhyaudioengine.so']
+            // 仅加密鉴权SO强制保留调试符号，其余允许AGP自动strip
+            keepDebugSymbols += [
+                    '**/libhycrypto.so',
+                    '**/libhydeviceid.so',
+                    '**/libudbauthunify.so',
+                    '**/libBugly.so'
+            ]
         }
-    }
-    androidResources {
-        noCompress ''
-        generateLocaleConfig false
     }
     lint {
         baseline = file("lint-baseline.xml")
@@ -79,6 +82,7 @@ android {
 }
 
 dependencies {
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'
     implementation 'androidx.appcompat:appcompat:1.7.0'
     implementation 'com.google.zxing:core:3.5.1'
     implementation "androidx.media3:media3-exoplayer:1.7.1"

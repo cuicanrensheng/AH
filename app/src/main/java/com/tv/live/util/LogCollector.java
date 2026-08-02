@@ -12,13 +12,9 @@ public class LogCollector {
     private static volatile LogCollector sInstance;
     private final List<String> logs;
     private final SimpleDateFormat sdf;
-
-    // 🟢【新增】分割线特殊标记符
     public static final String DIVIDER_TOKEN = "###DIVIDER###";
 
     private LogCollector() {
-        // 🔴【崩溃修复】LinkedList 非线程安全，多线程 add/遍历会破坏内部 Node.prev 指针导致 NPE
-        // 改用 ArrayList + 所有写操作加 synchronized 块保护
         logs = new ArrayList<>();
         sdf = new SimpleDateFormat("HH:mm:ss", Locale.getDefault());
     }
@@ -53,7 +49,6 @@ public class LogCollector {
         }
     }
 
-    // 🟢【新增】添加自动延长分割线
     public void addDivider() {
         String time = sdf.format(new Date());
         synchronized (logs) {

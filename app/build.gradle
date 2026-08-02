@@ -20,7 +20,7 @@ android {
         versionCode 3163
         versionName "2.0.3163"
         resConfigs "zh"
-        multiDexEnabled false
+        multiDexEnabled true // 已开启，解决脱糖报错
         buildConfigField "int", "VERSION_CODE", "${versionCode}"
         buildConfigField "String", "VERSION_NAME", "\"${versionName}\""
         ndk {

@@ -17,8 +17,8 @@ android {
         applicationId "com.tv.live"
         minSdk 21
         targetSdk 36
-        versionCode 3166
-        versionName "2.0.3166"
+        versionCode 3167
+        versionName "2.0.3167"
         resConfigs "zh"
         multiDexEnabled true // 已开启，解决脱糖报错
         buildConfigField "int", "VERSION_CODE", "${versionCode}"

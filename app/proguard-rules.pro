@@ -1,25 +1,24 @@
-# ===================== Bugly 崩溃堆栈必需配置（不可删减） =====================
+# ===================== Bugly 崩溃堆栈必需配置 =====================
 -keepparameternames
 -keepattributes EnclosingMethod,InnerClasses,Signature,*Annotation*,AnnotationDefault,MethodParameters
 -keepattributes SourceFile,LineNumberTable
 -renamesourcefileattribute SourceFile
 
-# ===================== ProGuard/R8 基础优化配置 =====================
+# ===================== R8 优化基础配置 =====================
 -optimizationpasses 7
 -allowaccessmodification
 -dontusemixedcaseclassnames
 -dontskipnonpubliclibraryclasses
 -dontpreverify
 -verbose
-# 虎牙SDK大量反射，关闭易引发崩溃的优化项
 -optimizations !code/simplification/arithmetic,!code/simplification/cast,!field/*,!class/merging/*
 
-# ===================== JNI Native 通用保护（不可删除） =====================
+# ===================== JNI Native 保护 =====================
 -keepclasseswithmembernames class * {
     native <methods>;
 }
 
-# ===================== Android 系统通用基础规则 =====================
+# ===================== Android 系统通用规则 =====================
 -keepclassmembers class * extends android.app.Activity {
     public void *(android.view.View);
 }
@@ -28,7 +27,7 @@
     public static ** valueOf(java.lang.String);
 }
 
-# ===================== 自有TV直播业务代码精准保留 =====================
+# ===================== 自有TV业务代码精准保留 =====================
 -keep class com.tv.live.MainActivity { *; }
 -keep class com.tv.live.CrashActivity { *; }
 -keep class com.tv.live.MyApplication { *; }
@@ -58,12 +57,12 @@
 -keep class androidx.media3.common.util.UnstableApi { *; }
 -dontwarn androidx.media3.**
 
-# ===================== ZXing 二维码相关 =====================
+# ===================== ZXing 二维码 =====================
 -keep class com.google.zxing.common.BitMatrix { *; }
 -keep class com.google.zxing.qrcode.QRCodeWriter { *; }
 -keep class com.google.zxing.BarcodeFormat { *; }
 
-# ===================== EventBus 弹幕事件回调核心规则 =====================
+# ===================== EventBus 弹幕事件 =====================
 -keep class de.greenrobot.event.** { *; }
 -keepclassmembers class * {
     @de.greenrobot.event.Subscribe <methods>;
@@ -73,19 +72,19 @@
 -dontwarn de.greenrobot.event.Subscribe
 -dontwarn de.greenrobot.event.ThreadMode
 
-# ===================== 虎牙SDK 精简混淆防护（移除无脑全量keep，仅保留运行必需模块） =====================
-# SDK底层安全、设备标识、JNI桥接类
+# ===================== 虎牙SDK 精简keep（仅保留鉴权、直播、弹幕核心，已剔除推流/采集/滤镜） =====================
+# 安全、设备ID、JNI桥
 -keep class com.huya.security.** { *; }
 -keep class com.huya.hydeviceid.** { *; }
 -keep class **.NativeBridge { *; }
 
-# 直播核心模块（仅保留live播放相关，剔除音频/推流/RTC/采集无用模块）
+# 直播基础核心
 -keep class com.huya.mtp.** { *; }
 -keep interface com.huya.mtp.** { *; }
 -keep class com.huya.berry.module.live.** { *; }
 -keep interface com.huya.berry.module.live.** { *; }
 
-# 账号、信令、统一账号库、SDK代理依赖
+# 账号、信令、统一登录库
 -keep class com.huya.component.login.** { *; }
 -keep class com.huya.hysignal.** { *; }
 -keep class com.huya.hysignalwrapper.** { *; }
@@ -93,18 +92,18 @@
 -keep class com.huyaudbunify.** { *; }
 -keep class com.hysdkproxy.** { *; }
 
-# 多玩底层Ark框架、弹幕渲染核心（弹幕功能必须完整保留）
+# 底层Ark框架、弹幕渲染（必须完整保留）
 -keep class com.duowan.ark.** { *; }
 -keep interface com.duowan.ark.** { *; }
 -keep class com.duowan.kiwi.barrage.** { *; }
 -keep interface com.duowan.kiwi.barrage.** { *; }
 
-# WebRTC音频引擎（播放音频依赖）
+# WebRTC音频引擎（仅播放音频依赖）
 -keep class hy.org.webrtc.voiceengine.WebRtcAudioTrack {*;}
 -keep class hy.org.webrtc.voiceengine.WebRtcAudioRecord {*;}
 -keep class hy.org.webrtc.voiceengine.AudioManagerAndroid {*;}
 
-# 虎牙SDK全分支警告屏蔽
+# 虎牙无用模块警告屏蔽
 -dontwarn com.huya.berry.module.audio.**
 -dontwarn com.huya.berry.module.push.**
 -dontwarn com.huya.berry.module.rtc.**
@@ -117,20 +116,13 @@
 -dontwarn com.huya.berry.**
 -dontwarn com.duowan.**
 
-# ===================== 网络库 OkHttp2 / OkHttp3 / Okio 统一规则 =====================
+# ===================== OkHttp3 网络库 =====================
 -dontwarn okhttp3.**
 -dontwarn okio.**
--dontwarn com.squareup.okhttp.**
--dontwarn com.squareup.**
-# OkHttp3
 -keepattributes Signature
 -keepattributes *Annotation*
 -keep class okhttp3.** { *; }
 -keep interface okhttp3.** { *; }
-# OkHttp2 兼容适配
--keep class com.squareup.okhttp.** { *; }
--keep interface com.squareup.okhttp.** { *; }
--keep class com.zhy.http.okhttp.** { *; }
 
 # ===================== Gson 序列化 =====================
 -keep class com.google.gson.** { *;}
@@ -138,34 +130,21 @@
 -keep class com.google.gson.stream.** {*;}
 -keep class com.google.gson.examples.android.model.** { *; }
 
-# ===================== Glide 图片加载框架 =====================
--keep public class * implements com.bumptech.glide.module.GlideModule
--keep public class * extends com.bumptech.glide.module.AppGlideModule
--keep public enum com.bumptech.glide.load.ImageHeaderParser$** {
-  **[] $VALUES;
-  public *;
-}
--dontwarn com.bumptech.glide.load.resource.bitmap.VideoDecoder
--dontwarn com.bumptech.glide.annotation.compiler.*
--keep public class com.bumptech.glide.annotation.compiler.* { public *; }
-
-# ===================== 第三方通用库 警告屏蔽+最小保留 =====================
-# Retrofit、RxJava
+# ===================== 第三方通用警告屏蔽 =====================
 -dontwarn retrofit2.**
 -dontwarn io.reactivex.**
 -dontwarn org.reactivestreams.**
 
-# 腾讯相关组件
+# 腾讯Mars、Tinker
 -dontwarn com.tencent.**
 -keep class com.tencent.mars.** {*;}
-# Tinker热修复
 -dontwarn com.tencent.tinker.**
 -keep class com.tencent.tinker.** {*;}
 
-# FastJson序列化
+# FastJson
 -keep public class com.alibaba.fastjson.** {*;}
 
-# 注解、测试类依赖屏蔽
+# 注解、测试依赖屏蔽
 -dontwarn javax.annotation.**
 -dontwarn org.codehaus.mojo.**
 -dontwarn org.junit.**
@@ -177,7 +156,7 @@
 -dontwarn com.google.android.gms.**
 -keep public class com.google.android.gms.* { public *; }
 
-# 其他SDK内置第三方警告屏蔽
+# 其他SDK警告
 -dontwarn com.tencent.smtt.**
 -dontwarn com.yy.open.agent.**
 -dontwarn com.huyaudbunify.**
@@ -185,11 +164,11 @@
 -dontwarn com.huya.live.utils.image.**
 -dontwarn com.umeng.social.tool.**
 
-# 底层IO工具兜底
+# IO兜底类
 -keep public class org.codehaus.* { *; }
 -keep public class java.nio.* { *; }
 
-# 废弃/冗余类警告屏蔽（R8编译多余提示）
+# Ark底层工具类警告屏蔽
 -dontwarn com.duowan.ark.util.ThreadUtils
 -dontwarn com.duowan.ark.util.pack.Uint16
 -dontwarn com.duowan.ark.util.pack.Uint32

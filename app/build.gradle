@@ -4,52 +4,29 @@ plugins {
 
 android {
     namespace "com.tv.live"
-
     compileSdk 36
-
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
         coreLibraryDesugaringEnabled false
     }
-
     buildFeatures {
         buildConfig true
     }
-
-    bundle {
-        language {
-            enableSplit = true
-        }
-        abi {
-            enableSplit = true
-        }
-        density {
-            enableSplit = true
-        }
-    }
-
     defaultConfig {
         applicationId "com.tv.live"
-
         minSdk 21
         targetSdk 36
-
         versionCode 2365
         versionName "2.0.2365"
-
         resConfigs "zh"
-
         multiDexEnabled false
-
         buildConfigField "int", "VERSION_CODE", "${versionCode}"
         buildConfigField "String", "VERSION_NAME", "\"${versionName}\""
-
         ndk {
             abiFilters 'arm64-v8a'
         }
     }
-
     signingConfigs {
         release {
             storeFile file("release.keystore")
@@ -60,16 +37,8 @@ android {
             v2SigningEnabled true
         }
     }
-
     buildTypes {
         release {
-            // 🔴【终极基线验证 V3】：Debug 包 minifyEnabled=false 100% 正常，
-            //   所以 Release 包临时也关闭 minify/shrink/obfuscation，100% 对齐 Debug 行为，
-            //   先确保 Release 可用，后续再逐步收紧 minify（体积换稳定）。
-            //   2026-08-02：-dontoptimize、-keep class berry.module.**、
-            //   proguard-android.txt 全部失败过，100% 确认 R8 对 SDK 的
-            //   Observable<Foo> 方法泛型擦除是在 shrinking/obfuscation 任何阶段
-            //   都会发生的。
             minifyEnabled false
             shrinkResources false
             signingConfig signingConfigs.release
@@ -79,7 +48,6 @@ android {
             shrinkResources false
         }
     }
-
     packagingOptions {
         resources {
             pickFirsts += ['META-INF/com.android.tools/proguard/coroutines.pro']
@@ -87,32 +55,22 @@ android {
                          'META-INF/license.txt', 'META-INF/NOTICE', 'META-INF/NOTICE.txt',
                          'META-INF/notice.txt', 'META-INF/ASL2.0', 'META-INF/*.kotlin_module',
                          'META-INF/INDEX.LIST', 'META-INF/io.netty.versions.properties',
-                         // ============= 🆕 豆包方案2.4 + 资源精简 =============
-                         // 虎牙 Berry SDK AAR 注入的冗余协议/说明/第三方声明（纯解析用不到）
                          'assets/huya_berry_protocol_license.txt',
                          'assets/huya_berry_third_party_license.html',
                          'assets/webgame/*.html', 'assets/webgame/*.js', 'assets/webgame/*.css',
-                         // 冗余 drawable 资源（SDK 内置 UI 图标，纯解析不使用播放器/推流界面）
-                         // 用 tools:keep 精确保留核心资源，这里做兜底重复排除
                          'META-INF/services/*',
                          'META-INF/proguard/*.pro']
         }
         jniLibs {
-            // 豆包方案2.4 = extractNativeLibs = false：不做 legacy 压缩 so，
-            // APK 里 so 保持 uncompressed，减少安装后 data/app/ 下的 lib 目录重复拷贝
             useLegacyPackaging false
             pickFirsts += ['lib/arm64-v8a/libhyaudioengine.so', 'lib/armeabi-v7a/libhyaudioengine.so']
-            // 🆕 豆包方案2.4：若合并进了 armeabi-v7a/x86 等其它架构的 so 一律排除，
-            // 只保留 ndk.abiFilters 指定的 arm64-v8a（避免打包冗余 so）
             keepDebugSymbols += ['**/arm64-v8a/*.so']
         }
     }
-
     androidResources {
         noCompress ''
         generateLocaleConfig false
     }
-
     lint {
         baseline = file("lint-baseline.xml")
         abortOnError false
@@ -122,68 +80,17 @@ android {
 
 dependencies {
     implementation 'androidx.appcompat:appcompat:1.7.0'
-
     implementation 'com.google.zxing:core:3.5.1'
-
     implementation "androidx.media3:media3-exoplayer:1.7.1"
     implementation "androidx.media3:media3-ui:1.7.1"
     implementation "androidx.media3:media3-exoplayer-hls:1.7.1"
-
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
-
     implementation 'com.google.code.gson:gson:2.10.1'
-
-    // 虎牙 Berry SDK（本地 AAR）：采用「体积阈值黑名单 + 高风险 Stub 放弃」精简策略
-    //
-    // ⚠️【关于播放器 sdkplayer/sdklive/sdklivelist 模块是否能砍？】
-    //  结论：**不能** Stub 化（会触发 defined multiple times 冲突，原因：
-    //        sdklive-api-release.aar 等 API 层 AAR（<300KB 自动保留）虽然不含
-    //        SdkLiveService 等真实实现，但它和真实类**同名**，导致 Gradle
-    //        checkDebugDuplicateClasses 直接失败，编译卡死。
-    //     → 为了稳定性，3 个 impl（合计 934KB）直接保留，不做 Stub 替换。
-    //        45.6MB vs 44.7MB 差异只有 0.9MB，收益极小风险极大，不值得。
     implementation fileTree(dir: 'libs', include: ['*.aar', '*.jar'], exclude: [
-            // ============================================================
-            // 🔴 2026-08-02 最终稳定版 exclude（只砍 4 个真正零依赖的大体积模块）
-            // ------------------------------------------------------------
-            // 策略：ServerStartManager 初始化时会遍历 Service 注册表逐个 Class.forName：
-            //   - 对"SDK 外部可裁剪的推流/采集巨无霸模块"（audioengine* / imagefilter / rtmpupload）
-            //     SDK 有 try-catch 保护，找不到类只会跳过模块，不会中断 init 主链路
-            //   - 对"SDK 内部会硬加载的小 Service 模块"（endlive / forcelive / export 合计 154KB）
-            //     无 try-catch！Class.forName 失败 → NoClassDefFoundError → init 链中断 → 网络不启动 → 永远无 onResultCallback → 超时 Toast
-            //
-            // 因此：【4 个大毒瘤 = 14.3 MB 必砍 ✅】 |  【3 个小模块 = 154KB 先不动（性价比低风险高）】
-            // ============================================================
-            // 🏋️ 音频编解码巨无霸（2 个共 11.7MB！SDK 纯解析零需要）
-            'audioengineencode-1.1.80.aar',        // 5882KB - 编码引擎（只用于推流/录屏）
-            'audioenginecapture-1.1.80.aar',       // 5834KB - 采集引擎（只用于推流/连麦）
-            // 🎬 美颜/滤镜（1.2MB，推流才用）
-            'imagefilter-1.1.80.aar',              // 1170KB - 图像滤镜（推流美颜）
-            // 📤 RTMP 推流上传（1.5MB，纯解析零需要）
-            'rtmpupload-1.1.80.aar'                // 1453KB - RTMP 推流客户端
-            //
-            // ============= 🟡 剩余 5 个小模块（154KB，先不做物理 exclude，让 R8 通过 dontwarn 剥离）=============
-            // ❌ endlive-api/impl  (合计 69KB) → SDK init 会硬加载 EndLiveService → NoClassDefFoundError（致命）
-            // ❌ forcelive-api/impl(合计 62KB) → SDK init 会硬加载 ForceLiveService → NoClassDefFoundError（致命）
-            // ❌ export-1.1.80.aar (23KB)      → SDK init 链路可能硬触达
-            // （省 154KB 不值得冒崩溃风险，R8 会在 release 阶段把未使用类自动剥离 dex）
-            //
-            // ============= 🟡【Tier2/Tier4/Tier5 临时暂停：Event_Biz/NativeBridge 崩溃修复后再逐个验证加回】=============
-            //  ℹ️  2026-08-02：Tier2/Tier4/Tier5 12 个模块共 ≈1.08MB，导致 debug/release 运行时
-            //     触发 Event_Biz$SendPublicText NoClassDefFound + NativeBridge JNI 崩溃
-            //     → 先全部移出黑名单（保留大模块 9 个 = 14.3MB 已砍）
-            //     → SDK init + 解析稳定后再逐个加回验证（二分法快速定位）
-            // ❌ 'sub-gamesdk-module-release.aar'     (160KB) - 待验证
-            // ❌ 'sub-gamesdk-webview-release.aar'    ( 94KB) - 待验证
-            // ❌ 'download-1.0.41.aar'                ( 80KB) - 待验证
-            // ❌ 'multithreaddownload-1.2.174-*.jar'  ( 53KB) - 待验证
-            // ❌ 'smantifraud-2.8.4.jar'              (215KB) - 待验证
-            // ❌ 'common-feedback-release.aar'        ( 65KB) - 待验证
-            // ❌ 'sub-modifynickname-release.aar'     ( 74KB) - 待验证
-            // ❌ 'modifytitle-api-release.aar'        (  2KB) - 待验证
-            // ❌ 'modifytitle-impl-release.aar'       ( 43KB) - 待验证
-            // ❌ 'base-noblegift-release.aar'         ( 28KB) - 待验证
-            // ❌ 'disklrucache-2.0.2.jar'             ( 21KB) - 待验证
+            'audioengineencode-1.1.80.aar',
+            'audioenginecapture-1.1.80.aar',
+            'imagefilter-1.1.80.aar',
+            'rtmpupload-1.1.80.aar'
     ])
 }
 
@@ -193,23 +100,17 @@ configurations.all {
         force "androidx.media3:media3-exoplayer:1.7.1"
         force "androidx.media3:media3-ui:1.7.1"
         force "androidx.media3:media3-exoplayer-hls:1.7.1"
-        // 虎牙 SDK 内部打包了旧版 AndroidX 组件，强制使用项目版本
         force "androidx.lifecycle:lifecycle-process:2.6.2"
     }
-    // ============= 🆕 豆包方案2.3 精准传递依赖排除 =============
-    //  说明：由于我们使用 implementation fileTree 直接引入 AAR/JAR（不是 maven 坐标），
-    //       以下针对 com.huya.berry / com.duowan 组的 exclude 主要是防止意外通过
-    //       transitive 依赖拉取冗余子模块（如 ffmpeg 编解码、webrtc 连麦、美颜滤镜）。
-    //       实际已经通过上方 fileTree exclude 黑名单做了物理层面移除，这里加双层保障。
-    exclude group: 'com.huya.berry', module: 'sdkplayer'       // 播放器实现（纯解析不用）
-    exclude group: 'com.huya.berry', module: 'sdklive'         // 推流/主播端实现（纯解析不用）
-    exclude group: 'com.huya.berry', module: 'sdkcamera'       // 摄像头推流实现（纯解析不用）
-    exclude group: 'com.huya.berry', module: 'audioengineencode'  // 音频编码（纯解析不用）
-    exclude group: 'com.huya.berry', module: 'audioenginecapture' // 音频采集（纯解析不用）
-    exclude group: 'com.huya.berry', module: 'imagefilter'     // 美颜/滤镜（纯解析不用）
-    exclude group: 'com.huya.berry', module: 'rtmpupload'      // RTMP 推流（纯解析不用）
-    exclude group: 'com.huya.berry', module: 'webrtc-sdk'      // WebRTC 连麦（纯解析不用）
-    exclude group: 'org.webrtc'                                // Google WebRTC（冗余透传）
-    exclude group: 'com.squareup.picasso'                      // SDK 透传 Picasso 冗余图片库
-    exclude group: 'com.github.bumptech.glide'                 // SDK 透传 Glide 冗余图片库
+    exclude group: 'com.huya.berry', module: 'sdkplayer'
+    exclude group: 'com.huya.berry', module: 'sdklive'
+    exclude group: 'com.huya.berry', module: 'sdkcamera'
+    exclude group: 'com.huya.berry', module: 'audioengineencode'
+    exclude group: 'com.huya.berry', module: 'audioenginecapture'
+    exclude group: 'com.huya.berry', module: 'imagefilter'
+    exclude group: 'com.huya.berry', module: 'rtmpupload'
+    exclude group: 'com.huya.berry', module: 'webrtc-sdk'
+    exclude group: 'org.webrtc'
+    exclude group: 'com.squareup.picasso'
+    exclude group: 'com.github.bumptech.glide'
 }

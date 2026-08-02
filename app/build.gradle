@@ -17,12 +17,14 @@ android {
         applicationId "com.tv.live"
         minSdk 21
         targetSdk 36
-        versionCode 3170
-        versionName "2.0.3170"
+        versionCode 3169
+        versionName "2.0.3169"
+        // 仅保留中文资源，删除多国语言资源减小体积
         resConfigs "zh"
-        multiDexEnabled true // 已开启，解决脱糖报错
+        multiDexEnabled true
         buildConfigField "int", "VERSION_CODE", "${versionCode}"
         buildConfigField "String", "VERSION_NAME", "\"${versionName}\""
+        // 仅arm64-v8a，彻底删除32位so，SO体积直接减半
         ndk {
             abiFilters 'arm64-v8a'
         }
@@ -43,6 +45,8 @@ android {
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             signingConfig signingConfigs.release
+            // 开启原生so精简，剥离调试符号（仅保留加密相关so符号用于Bugly）
+            shrinkResources true
         }
         debug {
             minifyEnabled false
@@ -52,20 +56,23 @@ android {
     packagingOptions {
         resources {
             pickFirsts += ['META-INF/com.android.tools/proguard/coroutines.pro']
-            excludes += ['META-INF/DEPENDENCIES', 'META-INF/LICENSE', 'META-INF/LICENSE.txt',
-                         'META-INF/license.txt', 'META-INF/NOTICE', 'META-INF/NOTICE.txt',
-                         'META-INF/notice.txt', 'META-INF/ASL2.0', 'META-INF/*.kotlin_module',
-                         'META-INF/INDEX.LIST', 'META-INF/io.netty.versions.properties',
-                         'assets/huya_berry_protocol_license.txt',
-                         'assets/huya_berry_third_party_license.html',
-                         'assets/webgame/*.html', 'assets/webgame/*.js', 'assets/webgame/*.css',
-                         'META-INF/services/*',
-                         'META-INF/proguard/*.pro']
+            // 批量剔除无用协议、版权、网页资源、冲突元文件
+            excludes += [
+                    'META-INF/DEPENDENCIES', 'META-INF/LICENSE', 'META-INF/LICENSE.txt',
+                    'META-INF/license.txt', 'META-INF/NOTICE', 'META-INF/NOTICE.txt',
+                    'META-INF/notice.txt', 'META-INF/ASL2.0', 'META-INF/*.kotlin_module',
+                    'META-INF/INDEX.LIST', 'META-INF/io.netty.versions.properties',
+                    'assets/huya_berry_protocol_license.txt',
+                    'assets/huya_berry_third_party_license.html',
+                    'assets/webgame/**',
+                    'META-INF/services/*',
+                    'META-INF/proguard/*.pro'
+            ]
         }
         jniLibs {
             useLegacyPackaging false
             pickFirsts += ['lib/arm64-v8a/libhyaudioengine.so']
-            // 仅加密鉴权SO强制保留调试符号，其余允许AGP自动strip
+            // 仅加密鉴权、Bugly SO保留调试符号，其余全部strip瘦身
             keepDebugSymbols += [
                     '**/libhycrypto.so',
                     '**/libhydeviceid.so',
@@ -85,11 +92,13 @@ dependencies {
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'
     implementation 'androidx.appcompat:appcompat:1.7.0'
     implementation 'com.google.zxing:core:3.5.1'
+    // Media3 播放器全套固定版本
     implementation "androidx.media3:media3-exoplayer:1.7.1"
     implementation "androidx.media3:media3-ui:1.7.1"
     implementation "androidx.media3:media3-exoplayer-hls:1.7.1"
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
     implementation 'com.google.code.gson:gson:2.10.1'
+    // libs引入aar/jar，直接排除不需要的虎牙音视频/推流/滤镜aar
     implementation fileTree(dir: 'libs', include: ['*.aar', '*.jar'], exclude: [
             'audioengineencode-1.1.80.aar',
             'audioenginecapture-1.1.80.aar',
@@ -100,12 +109,14 @@ dependencies {
 
 configurations.all {
     resolutionStrategy {
+        // 强制统一Media3版本避免依赖冲突
         force "androidx.media3:media3-common:1.7.1"
         force "androidx.media3:media3-exoplayer:1.7.1"
         force "androidx.media3:media3-ui:1.7.1"
         force "androidx.media3:media3-exoplayer-hls:1.7.1"
         force "androidx.lifecycle:lifecycle-process:2.6.2"
     }
+    // 全局剔除虎牙SDK无用模块：播放器、采集、推流、滤镜、WebRTC
     exclude group: 'com.huya.berry', module: 'sdkplayer'
     exclude group: 'com.huya.berry', module: 'sdklive'
     exclude group: 'com.huya.berry', module: 'sdkcamera'
@@ -115,6 +126,7 @@ configurations.all {
     exclude group: 'com.huya.berry', module: 'rtmpupload'
     exclude group: 'com.huya.berry', module: 'webrtc-sdk'
     exclude group: 'org.webrtc'
+    // 剔除未使用图片框架，避免重复依赖
     exclude group: 'com.squareup.picasso'
     exclude group: 'com.github.bumptech.glide'
 }

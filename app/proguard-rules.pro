@@ -96,6 +96,21 @@
 -dontwarn com.duowan.mobile.netroid.**
 -dontwarn com.duowan.mobile.yt.**
 
+# ===================== R8自动生成 解决minifyReleaseWithR8合并失败【新增部分】 =====================
+-dontwarn com.duowan.ark.util.ThreadUtils
+-dontwarn com.duowan.ark.util.pack.Uint16
+-dontwarn com.duowan.ark.util.pack.Uint32
+-dontwarn com.duowan.ark.util.pack.Uint64
+-dontwarn com.duowan.ark.util.pack.Uint8
+-dontwarn com.duowan.ark.util.pack.Unpack
+-dontwarn com.squareup.okhttp.OkHttpClient
+-dontwarn com.squareup.okhttp.OkUrlFactory
+-dontwarn de.greenrobot.event.EventBus
+
+# 弹幕相关类保留，防止运行时 ClassNotFoundException
+-keep class com.duowan.ark.** { *; }
+-keep class com.duowan.kiwi.barrage.** { *; }
+
 # 通用第三方
 -dontwarn com.tencent.**
 -dontwarn com.alibaba.**

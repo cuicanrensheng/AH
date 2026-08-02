@@ -115,10 +115,7 @@ public class Channel implements Parcelable {
         public String title;
         public boolean isPlaying;
         public EpgItem(String dayName, String time, String title, boolean isPlaying) {
-            this.dayName = dayName;
-            this.time = time;
-            this.title = title;
-            this.isPlaying = isPlaying;
+            this.dayName = dayName; this.time = time; this.title = title; this.isPlaying = isPlaying;
         }
         public String getReplayUrl() { return null; }
     }

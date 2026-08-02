@@ -12,6 +12,7 @@ public class LogCollector {
     private static volatile LogCollector sInstance;
     private final List<String> logs;
     private final SimpleDateFormat sdf;
+
     public static final String DIVIDER_TOKEN = "###DIVIDER###";
 
     private LogCollector() {

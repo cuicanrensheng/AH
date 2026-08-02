@@ -1,0 +1,153 @@
+name: Build TV Live APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - name: 拉取仓库代码
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 设置 JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: 赋予执行权限
+        run: chmod +x gradlew
+
+      - name: 清理缓存并强制刷新依赖
+        run: |
+          echo "🧹 清理 Gradle 缓存..."
+          rm -rf ~/.gradle/caches/
+          ./gradlew clean
+
+      - name: 解码签名证书并注入密钥
+        run: |
+          echo "🔑 正在解码签名证书..."
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > app/release.keystore
+
+          echo "🔍 正在静默验证依赖版本..."
+          DEPS_OUTPUT=$(./gradlew app:dependencies --configuration releaseCompileClasspath --refresh-dependencies --no-daemon 2>&1 || true)
+          
+          if echo "$DEPS_OUTPUT" | grep -q "androidx.media3:media3-common:1.7.1"; then
+            echo "✅ 版本检查通过：Media3 已锁定为 1.7.1"
+          else
+            echo "❌ 版本检查失败：未检测到 Media3 1.7.1"
+            echo "$DEPS_OUTPUT" | head -n 20
+            exit 1
+          fi
+          
+          if echo "$DEPS_OUTPUT" | grep -q "com.google.android.exoplayer"; then
+            echo "❌ 安全警告：检测到旧版 ExoPlayer 依赖混入！"
+            exit 1
+          else
+            echo "✅ 安全检查通过：未发现旧版 ExoPlayer 依赖"
+          fi
+
+      # ==============================================================
+      # 🔧【核心修复 1】自动更新 app/build.gradle 并提交版本号
+      # 让每次打包的 APK 内部版本号和云端 update.json 对齐！
+      # ✅ 修复：versionName 不再读取旧值叠加，始终生成干净的 "2.0.<versionCode>"
+      # ==============================================================
+      - name: 自动更新 Gradle 版本号并提交回仓库
+        run: |
+          NEW_VERSION_CODE=${{ github.run_number }}
+          
+          # ✅ 基础版本名固定为 "2.0"，不再从旧文件读取，避免无限叠加
+          BASE_VERSION_NAME="2.0"
+          NEW_VERSION_NAME="${BASE_VERSION_NAME}.${NEW_VERSION_CODE}"
+          
+          # 替换 versionCode 和 versionName（始终使用干净的版本名）
+          sed -i "s/versionCode [0-9]*/versionCode $NEW_VERSION_CODE/" app/build.gradle
+          sed -i "s/versionName \"[^\"]*\"/versionName \"$NEW_VERSION_NAME\"/" app/build.gradle
+          
+          # 将修改提交回 GitHub（注意：使用 [skip ci] 避免触发新构建循环）
+          git config --local user.email "actions@github.com"
+          git config --local user.name "GitHub Actions"
+          git add app/build.gradle
+          git commit -m "Auto bump versionCode to $NEW_VERSION_CODE [skip ci]" || echo "No changes to commit"
+          git push
+
+      # ==============================================================
+      # 🔧【核心修复 2】开始打包并生成 update.json 提交到 main 分支
+      # ==============================================================
+      - name: 开始执行 Release 打包...
+        run: |
+          echo "🎯 开始执行 Release 打包..."
+          ./gradlew assembleRelease \
+            --no-daemon \
+            --stacktrace \
+            -PstorePassword=${{ secrets.STORE_PASSWORD }} \
+            -PkeyAlias=${{ secrets.KEY_ALIAS }} \
+            -PkeyPassword=${{ secrets.KEY_PASSWORD }}
+
+      - name: 生成并提交 update.json
+        run: |
+          VERSION_CODE=${{ github.run_number }}
+          
+          # 由于刚刚在第一步修改了 app/build.gradle，这里读取到的就是刚刚改好的版本名
+          VERSION_NAME=$(grep "versionName" app/build.gradle | head -1 | awk -F'"' '{print $2}')
+          
+          # 🔧【修复电视 404】给 APK 下载地址加上 ghproxy.com 代理前缀，确保国内电视网络能正常下载
+          DOWNLOAD_URL="https://ghproxy.com/https://github.com/${{ github.repository }}/releases/download/v$VERSION_CODE/app-release.apk"
+
+          # 🔧 动态读取 release_notes.txt
+          if [ -f app/release_notes.txt ]; then
+            RELEASE_NOTES=$(cat app/release_notes.txt | sed 's/"/\\"/g' | sed ':a;N;$!ba;s/\n/\\n/g')
+          else
+            RELEASE_NOTES="自动更新版本"
+          fi
+
+          cat > update.json << EOF
+          {
+            "versionCode": $VERSION_CODE,
+            "versionName": "$VERSION_NAME",
+            "message": "$RELEASE_NOTES",
+            "downloadUrl": "$DOWNLOAD_URL"
+          }
+          EOF
+
+          # ==============================================================
+          # 🛡️【关键一步】将 update.json 推送到 main 分支的根目录
+          # ==============================================================
+          git config --local user.email "actions@github.com"
+          git config --local user.name "GitHub Actions"
+          git add update.json
+          git commit -m "Auto update update.json for release v$VERSION_CODE [skip ci]" || echo "No changes to update.json"
+          git push
+
+      - name: 上传成品 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: TVLive-直播APP
+          path: app/build/outputs/apk/release/*.apk
+
+      - name: 上传更新配置
+        uses: actions/upload-artifact@v4
+        with:
+          name: update-config
+          path: update.json
+
+      - name: 创建发布
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ github.run_number }}
+          name: 自动发布 v${{ github.run_number }}
+          files: |
+            app/build/outputs/apk/release/app-release.apk
+            update.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

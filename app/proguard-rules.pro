@@ -86,7 +86,7 @@
 -dontwarn okhttp3.**
 -dontwarn okio.**
 
-# ===================== 虎牙细分警告屏蔽（移除全局-dontwarn com.huya.**） =====================
+# ===================== 虎牙细分警告屏蔽 =====================
 -dontwarn com.huya.berry.module.audio.**
 -dontwarn com.huya.berry.module.push.**
 -dontwarn com.huya.berry.module.rtc.**
@@ -96,7 +96,7 @@
 -dontwarn com.duowan.mobile.netroid.**
 -dontwarn com.duowan.mobile.yt.**
 
-# ===================== R8自动生成 解决minifyReleaseWithR8合并失败【新增部分】 =====================
+# ===================== R8自动生成警告屏蔽（最新批次） =====================
 -dontwarn com.duowan.ark.util.ThreadUtils
 -dontwarn com.duowan.ark.util.pack.Uint16
 -dontwarn com.duowan.ark.util.pack.Uint32
@@ -106,10 +106,32 @@
 -dontwarn com.squareup.okhttp.OkHttpClient
 -dontwarn com.squareup.okhttp.OkUrlFactory
 -dontwarn de.greenrobot.event.EventBus
+# 本次新增AGP自动规则
+-dontwarn com.duowan.ark.api.ApiHolder
+-dontwarn com.duowan.ark.api.DebugApi
+-dontwarn com.duowan.ark.api.DebugApiDelegate
+-dontwarn com.duowan.ark.api.LogApi
+-dontwarn com.duowan.ark.api.LogApiDelegate
+-dontwarn com.duowan.ark.asignal.notify.PropertySet
+-dontwarn com.duowan.ark.util.BitmapUtils
+-dontwarn com.duowan.ark.util.ConfigWithTimeout
+-dontwarn com.duowan.ark.util.StringUtils
+-dontwarn com.duowan.ark.util.json.JsonUtils
+-dontwarn de.greenrobot.event.EventBusException
+-dontwarn de.greenrobot.event.Subscribe
+-dontwarn de.greenrobot.event.ThreadMode
 
-# 弹幕相关类保留，防止运行时 ClassNotFoundException
+# 强制全量保留弹幕核心包，杜绝后续同类R8报错
 -keep class com.duowan.ark.** { *; }
+-keep interface com.duowan.ark.** { *; }
 -keep class com.duowan.kiwi.barrage.** { *; }
+-keep interface com.duowan.kiwi.barrage.** { *; }
+
+# EventBus运行必需保留规则（弹幕事件回调不失效）
+-keep class de.greenrobot.event.** { *; }
+-keepclassmembers class * {
+    @de.greenrobot.event.Subscribe <methods>;
+}
 
 # 通用第三方
 -dontwarn com.tencent.**

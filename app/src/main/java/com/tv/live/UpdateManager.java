@@ -43,12 +43,12 @@ public class UpdateManager {
     //  - 最终兜底：GitHub Releases API（不会被 CDN 缓存）
     // ============================================================
     private static final String[] UPDATE_JSON_MIRRORS = {
-            "https://raw.githubusercontent.com/cuicanrensheng/1/main/update.json",
-            "https://cdn.jsdelivr.net/gh/cuicanrensheng/1@main/update.json",
-            "https://gh.api.99988866.xyz/https://raw.githubusercontent.com/cuicanrensheng/1/main/update.json",
-            "https://ghproxy.com/https://raw.githubusercontent.com/cuicanrensheng/1/main/update.json"
+            "https://raw.githubusercontent.com/cuicanrensheng/AH/main/update.json",
+            "https://cdn.jsdelivr.net/gh/cuicanrensheng/AH@main/update.json",
+            "https://gh.api.99988866.xyz/https://raw.githubusercontent.com/cuicanrensheng/AH/main/update.json",
+            "https://ghproxy.com/https://raw.githubusercontent.com/cuicanrensheng/AH/main/update.json"
     };
-    private static final String RELEASES_API_URL = "https://api.github.com/repos/cuicanrensheng/1/releases/latest";
+    private static final String RELEASES_API_URL = "https://api.github.com/repos/cuicanrensheng/AH/releases/latest";
     private static final String APK_FILE_NAME = "tv_live_update.apk";
     private static final Handler MAIN_HANDLER = new Handler(Looper.getMainLooper());
     private static boolean isChecking = false;

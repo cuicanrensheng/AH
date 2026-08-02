@@ -20,37 +20,51 @@ import java.util.List;
 public class ChannelListManager {
     private final ListView lvChannelList;
     private int selectedPosition = 0;
+    private int focusedPosition = -1;
     private int currentPlayIndex = 0;
+
     private static final int COLOR_BLUE = 0xFF40A9FF;
     private static final int COLOR_BG_BLUE = 0x3340A9FF;
     private static final int COLOR_WHITE = 0xFFFFFFFF;
     private static final int COLOR_GRAY = 0xFF888888;
 
-    public interface OnChannelClickListener { void onChannelClick(int position); }
+    public interface OnChannelClickListener {
+        void onChannelClick(int position);
+    }
     private OnChannelClickListener onChannelClickListener;
-    public void setOnChannelClickListener(OnChannelClickListener listener) { this.onChannelClickListener = listener; }
+    public void setOnChannelClickListener(OnChannelClickListener listener) {
+        this.onChannelClickListener = listener;
+    }
 
-    public interface OnChannelLongClickListener { boolean onChannelLongClick(String channelName, int position); }
+    public interface OnChannelLongClickListener {
+        boolean onChannelLongClick(String channelName, int position);
+    }
     private OnChannelLongClickListener onChannelLongClickListener;
-    public void setOnChannelLongClickListener(OnChannelLongClickListener listener) { this.onChannelLongClickListener = listener; }
+    public void setOnChannelLongClickListener(OnChannelLongClickListener listener) {
+        this.onChannelLongClickListener = listener;
+    }
 
     public ChannelListManager(Context context, ListView lvChannelList) {
         this.lvChannelList = lvChannelList;
         lvChannelList.setItemsCanFocus(true);
         lvChannelList.setFocusable(true);
         lvChannelList.setFocusableInTouchMode(true);
+
         lvChannelList.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-            @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
                 selectedPosition = position;
                 ((ArrayAdapter<?>) parent.getAdapter()).notifyDataSetChanged();
             }
             @Override public void onNothingSelected(AdapterView<?> parent) {}
         });
+
         lvChannelList.setOnItemClickListener((parent, view, position, id) -> {
             selectedPosition = position;
             ((ArrayAdapter<?>) parent.getAdapter()).notifyDataSetChanged();
             if (onChannelClickListener != null) onChannelClickListener.onChannelClick(position);
         });
+
         lvChannelList.setOnItemLongClickListener((parent, view, position, id) -> {
             if (onChannelLongClickListener != null) {
                 String channelName = null;
@@ -66,16 +80,22 @@ public class ChannelListManager {
 
     public void setChannels(List<Channel> channelSourceList, int currentPlayIndex) {
         if (channelSourceList == null || channelSourceList.isEmpty()) return;
+
         List<String> names = new ArrayList<>();
         for (Channel c : channelSourceList) names.add(c.getName());
+
         selectedPosition = currentPlayIndex;
+        focusedPosition = currentPlayIndex;
         this.currentPlayIndex = currentPlayIndex;
-        ArrayAdapter<String> adapter = new ArrayAdapter<String>(lvChannelList.getContext(), R.layout.item_channel, names) {
+
+        ArrayAdapter<String> adapter = new ArrayAdapter<String>(lvChannelList.getContext(),
+                R.layout.item_channel, names) {
             @Override
             public View getView(int position, View convertView, ViewGroup parent) {
                 ViewHolder holder;
                 if (convertView == null) {
-                    convertView = LayoutInflater.from(getContext()).inflate(R.layout.item_channel, parent, false);
+                    convertView = LayoutInflater.from(getContext())
+                            .inflate(R.layout.item_channel, parent, false);
                     holder = new ViewHolder();
                     holder.tvIndex = convertView.findViewById(R.id.tv_index);
                     holder.tvChannel = convertView.findViewById(R.id.tv_channel);
@@ -83,7 +103,8 @@ public class ChannelListManager {
                 } else {
                     holder = (ViewHolder) convertView.getTag();
                 }
-                holder.tvIndex.setText(position == currentPlayIndex ? "▶" : String.valueOf(position + 1));
+                if (position == currentPlayIndex) holder.tvIndex.setText("▶");
+                else holder.tvIndex.setText(String.valueOf(position + 1));
                 holder.tvChannel.setText(getItem(position));
                 holder.tvChannel.setTextSize(16);
                 boolean isSelected = (position == selectedPosition);
@@ -107,6 +128,7 @@ public class ChannelListManager {
 
     public void setChannelsByGroup(List<Channel> channelSourceList, String group, int currentPlayIndex) {
         if (channelSourceList == null || channelSourceList.isEmpty()) return;
+
         List<String> names = new ArrayList<>();
         int realIndex = 0;
         for (int i = 0; i < channelSourceList.size(); i++) {
@@ -117,13 +139,17 @@ public class ChannelListManager {
             }
         }
         selectedPosition = realIndex;
+        focusedPosition = realIndex;
         this.currentPlayIndex = realIndex;
-        ArrayAdapter<String> adapter = new ArrayAdapter<String>(lvChannelList.getContext(), R.layout.item_channel, names) {
+
+        ArrayAdapter<String> adapter = new ArrayAdapter<String>(lvChannelList.getContext(),
+                R.layout.item_channel, names) {
             @Override
             public View getView(int position, View convertView, ViewGroup parent) {
                 ViewHolder holder;
                 if (convertView == null) {
-                    convertView = LayoutInflater.from(getContext()).inflate(R.layout.item_channel, parent, false);
+                    convertView = LayoutInflater.from(getContext())
+                            .inflate(R.layout.item_channel, parent, false);
                     holder = new ViewHolder();
                     holder.tvIndex = convertView.findViewById(R.id.tv_index);
                     holder.tvChannel = convertView.findViewById(R.id.tv_channel);
@@ -131,7 +157,8 @@ public class ChannelListManager {
                 } else {
                     holder = (ViewHolder) convertView.getTag();
                 }
-                holder.tvIndex.setText(position == currentPlayIndex ? "▶" : String.valueOf(position + 1));
+                if (position == currentPlayIndex) holder.tvIndex.setText("▶");
+                else holder.tvIndex.setText(String.valueOf(position + 1));
                 holder.tvChannel.setText(getItem(position));
                 holder.tvChannel.setTextSize(16);
                 boolean isSelected = (position == selectedPosition);
@@ -160,18 +187,24 @@ public class ChannelListManager {
             for (int i = 0; i < filteredChannels.size(); i++) {
                 Channel c = filteredChannels.get(i);
                 names.add(c.getName());
-                if (currentPlayChannelName != null && currentPlayChannelName.equals(c.getName())) playIndex = i;
+                if (currentPlayChannelName != null && currentPlayChannelName.equals(c.getName())) {
+                    playIndex = i;
+                }
             }
         }
         selectedPosition = playIndex;
+        focusedPosition = playIndex;
         this.currentPlayIndex = playIndex;
         final int finalPlayIndex = playIndex;
-        ArrayAdapter<String> adapter = new ArrayAdapter<String>(lvChannelList.getContext(), R.layout.item_channel, names) {
+
+        ArrayAdapter<String> adapter = new ArrayAdapter<String>(lvChannelList.getContext(),
+                R.layout.item_channel, names) {
             @Override
             public View getView(int position, View convertView, ViewGroup parent) {
                 ViewHolder holder;
                 if (convertView == null) {
-                    convertView = LayoutInflater.from(getContext()).inflate(R.layout.item_channel, parent, false);
+                    convertView = LayoutInflater.from(getContext())
+                            .inflate(R.layout.item_channel, parent, false);
                     holder = new ViewHolder();
                     holder.tvIndex = convertView.findViewById(R.id.tv_index);
                     holder.tvChannel = convertView.findViewById(R.id.tv_channel);
@@ -179,7 +212,8 @@ public class ChannelListManager {
                 } else {
                     holder = (ViewHolder) convertView.getTag();
                 }
-                holder.tvIndex.setText(position == finalPlayIndex && names.size() > 0 ? "▶" : String.valueOf(position + 1));
+                if (position == finalPlayIndex && names.size() > 0) holder.tvIndex.setText("▶");
+                else holder.tvIndex.setText(String.valueOf(position + 1));
                 holder.tvChannel.setText(getItem(position));
                 holder.tvChannel.setTextSize(16);
                 boolean isSelected = (position == selectedPosition);

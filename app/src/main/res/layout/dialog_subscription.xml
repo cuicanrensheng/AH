@@ -1,0 +1,253 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@drawable/dialog_bg_corner"
+    android:padding="0dp"
+    android:maxWidth="700dp">
+
+    <!-- 顶部：标题 + 扫码远程输入 -->
+    <RelativeLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:paddingTop="16dp"
+        android:paddingBottom="16dp">
+
+        <TextView
+            android:id="@+id/tv_dialog_title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/live_source_subscribe"
+            android:textColor="#FFFFFF"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <!-- 扫码容器 -->
+        <LinearLayout
+            android:id="@+id/ll_scan_header"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center_vertical"
+            android:layout_below="@id/tv_dialog_title"
+            android:layout_marginTop="12dp">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/scan_qr_input"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:id="@+id/tv_ip_address"
+                android:text="@string/sample_ip_address"
+                android:textColor="#A0A0A0"
+                android:textSize="12sp" />
+        </LinearLayout>
+    </RelativeLayout>
+
+    <!-- 中间区域 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="horizontal"
+        android:baselineAligned="false"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:paddingTop="8dp"
+        android:paddingBottom="8dp">
+        
+        <ImageView
+            android:id="@+id/iv_qr_code"
+            android:layout_width="140dp"
+            android:layout_height="140dp"
+            android:background="#FFFFFF"
+            android:contentDescription="@null"
+            android:scaleType="fitCenter" />
+            
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:layout_marginStart="16dp"
+            android:baselineAligned="false">
+
+            <!-- 列表视图 -->
+            <ListView
+                android:id="@+id/lv_source_list"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:divider="@null"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:nextFocusDown="@+id/btn_clear" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- 分割线 -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#33FFFFFF" />
+
+    <!-- 底部：输入框 + 按钮 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:baselineAligned="false"
+        android:paddingStart="16dp"
+        android:paddingTop="12dp"
+        android:paddingEnd="8dp"
+        android:paddingBottom="12dp"
+        android:gravity="center_vertical">
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginEnd="16dp"
+            android:baselineAligned="false">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="4"
+                android:orientation="vertical"
+                android:layout_marginEnd="8dp"
+                android:baselineAligned="false">
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:baselineAligned="false">
+                    <TextView
+                        android:text="@string/number_one_dot"
+                        android:textColor="#A0A0A0"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginEnd="4dp"/>
+                    <EditText
+                        android:id="@+id/et_name"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:minHeight="32dp"
+                        android:textSize="14sp"
+                        android:hint="@string/hint_input_name"
+                        android:textColor="#FFFFFF"
+                        android:textColorHint="#888888"
+                        android:background="@null"
+                        android:paddingBottom="4dp"
+                        android:singleLine="true"
+                        android:inputType="text"
+                        android:autofillHints="" />
+                </LinearLayout>
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:background="#33FFFFFF" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="6"
+                android:orientation="vertical"
+                android:baselineAligned="false">
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:baselineAligned="false">
+                    <TextView
+                        android:text="@string/number_two_dot"
+                        android:textColor="#A0A0A0"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginEnd="4dp"/>
+                    <EditText
+                        android:id="@+id/et_url"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:minHeight="32dp"
+                        android:textSize="14sp"
+                        android:hint="@string/hint_input_url"
+                        android:textColor="#FFFFFF"
+                        android:textColorHint="#888888"
+                        android:background="@null"
+                        android:paddingBottom="4dp"
+                        android:singleLine="true"
+                        android:inputType="textUri"
+                        android:autofillHints="" />
+                </LinearLayout>
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:background="#33FFFFFF" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_gravity="end|center_vertical"
+            android:gravity="center_vertical">
+
+            <Button
+                android:id="@+id/btn_clear"
+                style="?android:attr/buttonBarButtonStyle"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:text="@string/icon_delete"
+                android:backgroundTint="#55576A"
+                android:layout_marginEnd="8dp"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:nextFocusUp="@+id/lv_source_list"
+                android:nextFocusRight="@+id/btn_confirm"/>
+
+            <Button
+                android:id="@+id/btn_confirm"
+                style="?android:attr/buttonBarButtonStyle"
+                android:layout_width="wrap_content"
+                android:layout_height="40dp"
+                android:text="@string/confirm"
+                android:textColor="#FFFFFF"
+                android:backgroundTint="#55576A"
+                android:layout_marginEnd="8dp"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:nextFocusLeft="@+id/btn_clear"
+                android:nextFocusRight="@+id/btn_close"/>
+
+            <Button
+                android:id="@+id/btn_close"
+                style="?android:attr/buttonBarButtonStyle"
+                android:layout_width="wrap_content"
+                android:layout_height="40dp"
+                android:text="@string/close"
+                android:textColor="#FFFFFF"
+                android:backgroundTint="#55576A"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:nextFocusLeft="@+id/btn_confirm"/>
+        </LinearLayout>
+    </LinearLayout>
+</LinearLayout>

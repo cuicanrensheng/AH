@@ -17,8 +17,8 @@ android {
         applicationId "com.tv.live"
         minSdk 21
         targetSdk 36
-        versionCode 3169
-        versionName "2.0.3169"
+        versionCode 3171
+        versionName "2.0.3171"
         // 仅保留中文资源，删除多国语言资源减小体积
         resConfigs "zh"
         multiDexEnabled true

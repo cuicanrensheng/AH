@@ -41,16 +41,27 @@ jobs:
 
       - name: 自动更新 Gradle 版本号并提交回仓库
         run: |
+          set -e
+          # 统一git用户配置
+          git config --local user.email "actions@github.com"
+          git config --local user.name "GitHub Actions"
+
           NEW_VERSION_CODE=${{ github.run_number }}
           BASE_VERSION_NAME="2.0"
           NEW_VERSION_NAME="${BASE_VERSION_NAME}.${NEW_VERSION_CODE}"
           sed -i "s/versionCode [0-9]*/versionCode $NEW_VERSION_CODE/" app/build.gradle
           sed -i "s/versionName \"[^\"]*\"/versionName \"$NEW_VERSION_NAME\"/" app/build.gradle
-          git config --local user.email "actions@github.com"
-          git config --local user.name "GitHub Actions"
+
           git add app/build.gradle
-          git commit -m "Auto bump versionCode to $NEW_VERSION_CODE [skip ci]" || echo "No changes to commit"
-          git push
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Auto bump versionCode to $NEW_VERSION_CODE [skip ci]"
+            # 拉取远端并rebase，解决非快进推送错误
+            git fetch origin main
+            git rebase origin/main
+            git push origin main
+          fi
 
       - name: 开始执行 Release 打包...
         run: |
@@ -64,6 +75,10 @@ jobs:
 
       - name: 生成并提交 update.json
         run: |
+          set -e
+          git config --local user.email "actions@github.com"
+          git config --local user.name "GitHub Actions"
+
           VERSION_CODE=${{ github.run_number }}
           VERSION_NAME=$(grep "versionName" app/build.gradle | head -1 | awk -F'"' '{print $2}')
           DOWNLOAD_URL="https://ghproxy.com/https://github.com/${{ github.repository }}/releases/download/v$VERSION_CODE/app-release.apk"
@@ -80,11 +95,16 @@ jobs:
             "downloadUrl": "$DOWNLOAD_URL"
           }
           EOF
-          git config --local user.email "actions@github.com"
-          git config --local user.name "GitHub Actions"
+
           git add update.json
-          git commit -m "Auto update update.json for release v$VERSION_CODE [skip ci]" || echo "No changes to update.json"
-          git push
+          if git diff --cached --quiet; then
+            echo "No changes to update.json"
+          else
+            git commit -m "Auto update update.json for release v$VERSION_CODE [skip ci]"
+            git fetch origin main
+            git rebase origin/main
+            git push origin main
+          fi
 
       - name: 上传成品 APK
         uses: actions/upload-artifact@v4

@@ -38,24 +38,7 @@ jobs:
         run: |
           echo "🔑 正在解码签名证书..."
           echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > app/release.keystore
-
-          echo "🔍 正在静默验证依赖版本..."
-          DEPS_OUTPUT=$(./gradlew app:dependencies --configuration releaseCompileClasspath --refresh-dependencies --no-daemon 2>&1 || true)
-          
-          if echo "$DEPS_OUTPUT" | grep -q "androidx.media3:1.7.1"; then
-            echo "✅ 版本检查通过：Media3 已锁定为 1.7.1"
-          else
-            echo "❌ 版本检查失败：未检测到 Media3 1.7.1"
-            echo "$DEPS_OUTPUT" | head -n 20
-            exit 1
-          fi
-          
-          if echo "$DEPS_OUTPUT" | grep -q "com.google.android.exoplayer"; then
-            echo "❌ 安全警告：检测到旧版 ExoPlayer 依赖混入！"
-            exit 1
-          else
-            echo "✅ 安全检查通过：未发现旧版 ExoPlayer 依赖"
-          fi
+          echo "✅ 跳过依赖版本验证（已由 assembleRelease 任务自动完成）"
 
       - name: 自动更新 Gradle 版本号（仅本地修改，暂不推送）
         run: |

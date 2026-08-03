@@ -189,6 +189,8 @@ jobs:
 
       - name: 创建发布
         uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: v${{ github.run_number }}
           name: 自动发布 v${{ github.run_number }}
@@ -196,5 +198,3 @@ jobs:
             app/build/outputs/apk/release/*arm64-v8a*.apk
             app/build/outputs/apk/release/*armeabi-v7a*.apk
             update.json
-          env:
-            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

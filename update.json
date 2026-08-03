@@ -1,6 +1,6 @@
 {
-  "versionCode": 3181,
-  "versionName": "2.0.3181",
+  "versionCode": 3182,
+  "versionName": "2.0.3182",
   "message": "# 📺 TVLive 直播APP\n\n一款专为 **Android TV / 电视盒子** 打造的轻量级 IPTV 直播应用，简洁、稳定、无广告，支持多种自定义配置。\n\n---\n\n## ✨ 核心功能\n\n| 功能 | 说明 |\n| :--- | :--- |\n| 📺 直播源支持 | 支持标准 M3U/M3U8 格式，可自定义频道分组 |\n| 📱 扫码配置 | 手机扫码一键导入直播源和 EPG，无需手动输入 |\n| 🔄 频道切换 | 支持遥控器上下键、手势滑动切换频道 |\n| ↩️ 反向切换 | 可设置频道切换方向，适配不同用户习惯 |\n| 🖼️ 画面比例 | 支持 原始 / 全屏 / 填充 三种模式 |\n| 🎨 渲染方式 | 支持 SurfaceView / TextureView 自由切换，适配不同设备 |\n| ⏰ 开机自启 | 电视开机自动进入直播，秒开秒播 |\n| 🚀 应用内更新 | 云端构建发布后，APP 内一键检查并升级 |\n| 🔀 重定向配置 | HTTP 重定向可自定义跳转次数、跨域/跨协议及防盗链头 |\n| 📦 多源管理 | 多直播源/节目单管理：增删改查、排序、导入导出与搜索 |\n| 📅 EPG 节目单 | 支持自定义 EPG 地址，查看节目预告 |",
-  "downloadUrl": "https://ghproxy.com/https://github.com/cuicanrensheng/AH/releases/download/v3181/app-release.apk"
+  "downloadUrl": "https://ghproxy.com/https://github.com/cuicanrensheng/AH/releases/download/v3182/app-release.apk"
 }

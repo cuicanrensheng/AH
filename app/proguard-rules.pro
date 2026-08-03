@@ -1,8 +1,15 @@
 -dontoptimize
+-dontobfuscate
+-dontshrink
 -keepparameternames
 -keepattributes EnclosingMethod,InnerClasses,Signature,*Annotation*,AnnotationDefault,MethodParameters
 -keepattributes SourceFile,LineNumberTable
 -renamesourcefileattribute SourceFile
+
+# Huya SDK full protection - SDK uses reflection+Retrofit, must keep all classes
+-keep class com.huya.** { *; }
+-keep interface com.huya.** { *; }
+-keepclasseswithmembers class com.huya.** { *; }
 
 -keep class com.huya.mtp.** { *; }
 -keep interface com.huya.mtp.** { *; }
@@ -15,7 +22,28 @@
 -dontwarn io.reactivex.**
 -dontwarn org.reactivestreams.**
 
--optimizationpasses 7
+# Retrofit + RxJava full protection
+-keepattributes Signature,Exceptions,*Annotation*
+-keep class retrofit2.** { *; }
+-keep interface retrofit2.** { *; }
+-keepclasseswithmembers interface * {
+    @retrofit2.http.* <methods>;
+}
+-keepclasseswithmembers class * {
+    @retrofit2.http.* <methods>;
+}
+-keep class rx.** { *; }
+-keep class rx.schedulers.** { *; }
+-keep class io.reactivex.** { *; }
+-keep class io.reactivex.schedulers.** { *; }
+-keep class org.reactivestreams.** { *; }
+-keep class com.squareup.okhttp3.** { *; }
+-keep interface com.squareup.okhttp3.** { *; }
+-keep class okhttp3.** { *; }
+-keep interface okhttp3.** { *; }
+-keep class okio.** { *; }
+
+-optimizationpasses 0
 -allowaccessmodification
 -dontusemixedcaseclassnames
 -dontskipnonpubliclibraryclasses

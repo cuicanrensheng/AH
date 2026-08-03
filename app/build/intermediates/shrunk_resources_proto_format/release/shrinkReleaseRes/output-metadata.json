@@ -16,8 +16,8 @@
         }
       ],
       "attributes": [],
-      "versionCode": 3208,
-      "versionName": "2.0.3208",
+      "versionCode": 3209,
+      "versionName": "2.0.3209",
       "outputFile": "shrunk-resources-proto-format-armeabi-v7a-release.ap_"
     },
     {
@@ -29,8 +29,8 @@
         }
       ],
       "attributes": [],
-      "versionCode": 3208,
-      "versionName": "2.0.3208",
+      "versionCode": 3209,
+      "versionName": "2.0.3209",
       "outputFile": "shrunk-resources-proto-format-arm64-v8a-release.ap_"
     }
   ],

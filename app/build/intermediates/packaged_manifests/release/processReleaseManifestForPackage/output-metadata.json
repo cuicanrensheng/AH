@@ -16,8 +16,8 @@
         }
       ],
       "attributes": [],
-      "versionCode": 3208,
-      "versionName": "2.0.3208",
+      "versionCode": 3209,
+      "versionName": "2.0.3209",
       "outputFile": "armeabi-v7a/AndroidManifest.xml"
     },
     {
@@ -29,8 +29,8 @@
         }
       ],
       "attributes": [],
-      "versionCode": 3208,
-      "versionName": "2.0.3208",
+      "versionCode": 3209,
+      "versionName": "2.0.3209",
       "outputFile": "arm64-v8a/AndroidManifest.xml"
     }
   ],

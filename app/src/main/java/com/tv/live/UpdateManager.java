@@ -30,23 +30,17 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 
 /**
- * 应用更新管理器
+ * 应用更新管理器【适配双ABI分包+最新ghfast加速代理】
  */
 public class UpdateManager {
     private static final String TAG = "UpdateManager";
 
-    // ============================================================
-    // ✅ 镜像地址池：
-    //  - 每个 URL 都附加 ?t=<时间戳_ms> 强制绕过 CDN 缓存
-    //  - 所有可用镜像全部请求（异步并发），取 versionCode 最大的作为结果
-    //    （解决 jsdelivr 缓存回退到 v2250、raw.githubusercontent 不通 组合导致误判“已是最新”）
-    //  - 最终兜底：GitHub Releases API（不会被 CDN 缓存）
-    // ============================================================
+    // ✅ 替换已被墙ghproxy，使用当前可用ghfast.top/gh-proxy多镜像轮询
     private static final String[] UPDATE_JSON_MIRRORS = {
-            "https://raw.githubusercontent.com/cuicanrensheng/AH/main/update.json",
+            "https://ghfast.top/https://raw.githubusercontent.com/cuicanrensheng/AH/main/update.json",
+            "https://gh-pro.com/https://raw.githubusercontent.com/cuicanrensheng/AH/main/update.json",
             "https://cdn.jsdelivr.net/gh/cuicanrensheng/AH@main/update.json",
-            "https://gh.api.99988866.xyz/https://raw.githubusercontent.com/cuicanrensheng/AH/main/update.json",
-            "https://ghproxy.com/https://raw.githubusercontent.com/cuicanrensheng/AH/main/update.json"
+            "https://raw.githubusercontent.com/cuicanrensheng/AH/main/update.json"
     };
     private static final String RELEASES_API_URL = "https://api.github.com/repos/cuicanrensheng/AH/releases/latest";
     private static final String APK_FILE_NAME = "tv_live_update.apk";
@@ -75,6 +69,17 @@ public class UpdateManager {
         return sp.getString("update_message", "暂无更新内容");
     }
 
+    // 获取设备CPU ABI架构（32/64位电视区分）
+    public static String getDeviceAbi() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            String[] abis = Build.SUPPORTED_ABIS;
+            if (abis != null && abis.length > 0) {
+                return abis[0];
+            }
+        }
+        return Build.CPU_ABI;
+    }
+
     public void checkUpdate() {
         synchronized (UpdateManager.class) {
             if (isChecking) {
@@ -88,25 +93,23 @@ public class UpdateManager {
             Exception lastError = null;
             String updateJsonStr = null;
 
-            // ==========================================================
-            // 步骤1：镜像池轮询获取 update.json
-            // ==========================================================
+            // 步骤1：多镜像轮询拉取update.json
             for (String mirror : UPDATE_JSON_MIRRORS) {
                 try {
-                    Log.d(TAG, "尝试获取 update.json: " + mirror);
+                    Log.d(TAG, "尝试获取update.json: " + mirror);
                     updateJsonStr = httpGetString(mirror, 8000, 10000);
                     if (updateJsonStr != null && updateJsonStr.length() > 0) {
-                        Log.d(TAG, "成功从镜像获取 update.json: " + mirror);
+                        Log.d(TAG, "成功获取update.json: " + mirror);
                         break;
                     }
                 } catch (Exception e) {
-                    Log.w(TAG, "镜像失败: " + mirror + " -> " + e.getMessage());
+                    Log.w(TAG, "镜像访问失败: " + mirror + " -> " + e.getMessage());
                     lastError = e;
                 }
             }
 
             if (updateJsonStr == null || updateJsonStr.isEmpty()) {
-                final String errMsg = (lastError != null) ? lastError.getMessage() : "无法获取更新信息";
+                final String errMsg = (lastError != null) ? lastError.getMessage() : "无法连接更新服务器";
                 MAIN_HANDLER.post(() -> {
                     synchronized (UpdateManager.class) { isChecking = false; }
                     Toast.makeText(context, "检查更新失败：" + errMsg, Toast.LENGTH_SHORT).show();
@@ -119,13 +122,27 @@ public class UpdateManager {
                 final int latestVersionCode = json.optInt("versionCode", 0);
                 String latestVersionName = json.optString("versionName", "未知");
                 String updateMessage = json.optString("message", "暂无更新内容");
-                String downloadUrl = json.optString("downloadUrl", "");
                 boolean forceUpdate = json.optBoolean("forceUpdate", false);
 
-                // ==========================================================
-                // 步骤2：如无下载链接，从 Releases API 兜底
-                // ==========================================================
+                // 步骤2：适配双ABI分包，根据设备架构获取对应下载链接
+                String deviceAbi = getDeviceAbi();
+                String downloadUrl = "";
+                if (json.has("abi_download")) {
+                    JSONObject abiObj = json.getJSONObject("abi_download");
+                    if ("arm64-v8a".equals(deviceAbi)) {
+                        downloadUrl = abiObj.optString("arm64-v8a", "");
+                    } else if ("armeabi-v7a".equals(deviceAbi)) {
+                        downloadUrl = abiObj.optString("armeabi-v7a", "");
+                    }
+                }
+
+                // 兜底：兼容旧版单downloadUrl字段
                 if (downloadUrl.isEmpty()) {
+                    downloadUrl = json.optString("downloadUrl", "");
+                }
+
+                // 无链接则从Releases API兜底抓取APK
+                if (download.isEmpty()) {
                     try {
                         String relStr = httpGetString(RELEASES_API_URL, 8000, 8000);
                         if (relStr != null) {
@@ -134,19 +151,27 @@ public class UpdateManager {
                                 JSONArray assets = relJson.getJSONArray("assets");
                                 for (int i = 0; i < assets.length(); i++) {
                                     JSONObject asset = assets.getJSONObject(i);
-                                    if (asset.getString("name").endsWith(".apk")) {
+                                    String name = asset.getString("name");
+                                    // 根据架构匹配对应APK
+                                    if (name.contains(deviceAbi) && name.endsWith(".apk")) {
                                         downloadUrl = asset.getString("browser_download_url");
                                         break;
+                                    }
+                                }
+                                // 未匹配架构则取第一个APK兜底
+                                if (downloadUrl.isEmpty() && assets.length() > 0) {
+                                    JSONObject asset = assets.getJSONObject(0);
+                                    if (asset.getString("name").endsWith(".apk")) {
+                                        downloadUrl = asset.getString("browser_download_url");
                                     }
                                 }
                             }
                         }
                     } catch (Exception ex) {
-                        Log.w(TAG, "从Releases获取下载链接失败，继续", ex);
+                        Log.w(TAG, "Releases API获取链接失败", ex);
                     }
                 }
 
-                // 保存更新日志
                 saveUpdateMessage(updateMessage);
 
                 if (latestVersionCode == 0) {
@@ -160,7 +185,7 @@ public class UpdateManager {
                 if (downloadUrl.isEmpty()) {
                     MAIN_HANDLER.post(() -> {
                         synchronized (UpdateManager.class) { isChecking = false; }
-                        Toast.makeText(context, "最新版本未提供下载链接", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(context, "未找到对应设备安装包", Toast.LENGTH_SHORT).show();
                     });
                     return;
                 }
@@ -215,9 +240,7 @@ public class UpdateManager {
         }).start();
     }
 
-    // ============================================================
-    // 通用 HTTP GET 工具：返回字符串（连接+读取超时可配置）
-    // ============================================================
+    // 通用HTTP GET工具
     private static String httpGetString(String urlStr, int connectTimeoutMs, int readTimeoutMs) throws Exception {
         URL url = new URL(urlStr);
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
@@ -242,29 +265,25 @@ public class UpdateManager {
         return sb.toString();
     }
 
-    // ============================================================
-    // 下载 URL 镜像展开：根据原始链接生成带代理/去代理的回退列表
-    // ============================================================
+    // 生成多套加速下载镜像（彻底移除ghproxy废弃域名）
     private static String[] expandDownloadMirrors(String originalUrl) {
         if (originalUrl == null || originalUrl.isEmpty()) return new String[0];
 
-        // 提取原始 GitHub release 直链：去掉可能已有的 ghproxy 前缀
+        // 剥离所有旧代理前缀，获取原生github直链
         String pureGithub = originalUrl;
-        if (pureGithub.startsWith("https://ghproxy.com/")) {
-            pureGithub = pureGithub.substring("https://ghproxy.com/".length());
-        } else if (pureGithub.startsWith("https://mirror.ghproxy.com/")) {
-            pureGithub = pureGithub.substring("https://mirror.ghproxy.com/".length());
-        } else if (pureGithub.startsWith("https://gh.api.99988866.xyz/")) {
-            pureGithub = pureGithub.substring("https://gh.api.99988866.xyz/".length());
+        if (pureGithub.startsWith("https://ghfast.top/")) {
+            pureGithub = pureGithub.substring("https://ghfast.top/".length());
+        } else if (pureGithub.startsWith("https://gh-pro.com/")) {
+            pureGithub = pureGithub.substring("https://gh-pro.com/".length());
         }
 
         java.util.ArrayList<String> list = new java.util.ArrayList<>();
-        // 代理优先（国内加速）
-        list.add("https://ghproxy.com/" + pureGithub);
-        list.add("https://gh.api.99988866.xyz/" + pureGithub);
-        // 原始直链兜底（国外）
+        // 优先国内稳定加速
+        list.add("https://ghfast.top/" + pureGithub);
+        list.add("https://gh-pro.com/" + pureGithub);
+        // 原生地址兜底
         list.add(pureGithub);
-        // 如果原始 URL 不同于去代理后的（即用户给的是其他代理），也放在最后
+        // 传入原始链接备用
         if (!originalUrl.equals(pureGithub)) list.add(originalUrl);
 
         return list.toArray(new String[0]);
@@ -278,7 +297,8 @@ public class UpdateManager {
             if (activity.isFinishing() || activity.isDestroyed()) return;
         }
 
-        String message = "📱 发现新版本！\n\n"
+        String abiTip = "当前设备架构：" + getDeviceAbi();
+        String message = abiTip + "\n\n📱 发现新版本！\n\n"
                 + "当前版本：" + currentVersion + "\n"
                 + "最新版本：" + latestVersion + "\n\n"
                 + "━━━━━━ 更新内容 ━━━━━━\n"
@@ -294,9 +314,7 @@ public class UpdateManager {
         builder.show();
     }
 
-    // ============================================================
-    // 下载阶段：镜像列表依次尝试，全部失败才报错
-    // ============================================================
+    // 多镜像轮询下载APK
     private void startDownload(String originalUrl) {
         synchronized (UpdateManager.class) {
             if (isDownloading) {
@@ -316,7 +334,7 @@ public class UpdateManager {
         try {
             downloadManager = (DownloadManager) context.getSystemService(Context.DOWNLOAD_SERVICE);
 
-            // 尝试删除旧的同名下载记录，避免 DownloadManager 文件名冲突
+            // 清理旧下载记录
             try {
                 Cursor c = downloadManager.query(
                         new DownloadManager.Query().setFilterByStatus(
@@ -337,24 +355,22 @@ public class UpdateManager {
                 }
             } catch (Exception ignored) { }
 
-            // 按优先级依次提交下载，任一成功即跳出
             Exception lastError = null;
             for (int i = 0; i < mirrors.length; i++) {
                 String url = mirrors[i];
                 try {
                     DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
                     request.setTitle("电视直播 更新");
-                    request.setDescription("正在下载新版本 (" + (i + 1) + "/" + mirrors.length + ")...");
+                    request.setDescription("正在下载(" + (i + 1) + "/" + mirrors.length + ")");
                     request.setAllowedNetworkTypes(
                             DownloadManager.Request.NETWORK_WIFI | DownloadManager.Request.NETWORK_MOBILE
                     );
                     request.setNotificationVisibility(
                             DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED
                     );
-
-                    // 解决部分电视网络下 ghproxy 间歇性 HTTP 403 / 证书问题
                     request.addRequestHeader("User-Agent", "TVLive-UpdateManager/1.0");
 
+                    // 适配安卓分区存储
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                         request.setDestinationInExternalFilesDir(
                                 context, Environment.DIRECTORY_DOWNLOADS, APK_FILE_NAME
@@ -367,21 +383,18 @@ public class UpdateManager {
                     request.allowScanningByMediaScanner();
 
                     downloadId = downloadManager.enqueue(request);
-                    Log.d(TAG, "已提交下载镜像 (" + (i + 1) + "/" + mirrors.length + "): " + url);
-
+                    Log.d(TAG, "下载任务提交成功：" + url);
                     registerDownloadCompleteReceiver();
-                    Toast.makeText(context,
-                            "开始下载（镜像" + (i + 1) + "/" + mirrors.length + "），通知栏可查看进度",
-                            Toast.LENGTH_SHORT).show();
+                    Toast.makeText(context, "开始下载，通知栏查看进度", Toast.LENGTH_SHORT).show();
                     return;
 
                 } catch (Exception e) {
-                    Log.w(TAG, "镜像提交失败 (" + (i + 1) + "/" + mirrors.length + "): " + url + " -> " + e.getMessage());
+                    Log.w(TAG, "镜像下载失败：" + url, e);
                     lastError = e;
                 }
             }
 
-            throw (lastError != null) ? lastError : new Exception("无法提交下载请求");
+            throw (lastError != null) ? lastError : new Exception("所有镜像下载均失败");
 
         } catch (Exception e) {
             e.printStackTrace();
@@ -390,7 +403,7 @@ public class UpdateManager {
         }
     }
 
-    // 针对 Android 13+ 下载广播的安全注册
+    // 注册下载完成广播
     private void registerDownloadCompleteReceiver() {
         downloadCompleteReceiver = new BroadcastReceiver() {
             @Override
@@ -418,9 +431,7 @@ public class UpdateManager {
         }
     }
 
-    // ============================================================
-    // 安装阶段：复制到公共 Download 目录，再用公共 Uri 安装
-    // ============================================================
+    // 下载完成安装APK
     private void installApk() {
         try {
             DownloadManager.Query query = new DownloadManager.Query();
@@ -435,7 +446,6 @@ public class UpdateManager {
                     );
                     if (uriString != null && !uriString.isEmpty()) {
                         Uri privateUri = Uri.parse(uriString);
-
                         Uri publicUri;
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                             publicUri = copyToPublicDownload(privateUri);
@@ -455,7 +465,7 @@ public class UpdateManager {
                         Toast.makeText(context, "下载文件丢失，请重新下载", Toast.LENGTH_SHORT).show();
                     }
                 } else {
-                    Toast.makeText(context, "下载失败，请稍后重试", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(context, "下载中断，请重试", Toast.LENGTH_SHORT).show();
                 }
                 cursor.close();
             } else {
@@ -469,13 +479,11 @@ public class UpdateManager {
         }
     }
 
-    // 使用 MediaStore 将 APK 从私有目录复制到公共 Download 目录
+    // Q+复制APK到公共下载目录，解决安装无权限
     private Uri copyToPublicDownload(Uri privateUri) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-            Log.w(TAG, "当前 Android 版本低于 10，无法使用 MediaStore 复制到公共目录");
             return null;
         }
-
         try {
             ContentValues values = new ContentValues();
             values.put(MediaStore.Downloads.DISPLAY_NAME, APK_FILE_NAME);
@@ -490,7 +498,6 @@ public class UpdateManager {
                  OutputStream outputStream = context.getContentResolver().openOutputStream(publicUri)) {
 
                 if (inputStream == null || outputStream == null) return null;
-
                 byte[] buffer = new byte[8192];
                 int length;
                 while ((length = inputStream.read(buffer)) != -1) {

@@ -95,8 +95,8 @@ jobs:
           set -e
           VERSION_CODE=${{ github.run_number }}
           VERSION_NAME=$(grep "versionName" app/build.gradle | head -1 | awk -F'"' '{print $2}')
-          BASE_URL="https://ghproxy.com/https://github.com/${{ github.repository }}/releases/download/v$VERSION_CODE"
-          # 双ABI下载链接
+          # 替换可用ghfast加速域名，废弃被墙ghproxy.com
+          BASE_URL="https://ghfast.top/https://github.com/${{ github.repository }}/releases/download/v$VERSION_CODE"
           URL_V7A="$BASE_URL/app-armeabi-v7a-release.apk"
           URL_V8A="$BASE_URL/app-arm64-v8a-release.apk"
 
@@ -110,6 +110,7 @@ jobs:
             "versionCode": $VERSION_CODE,
             "versionName": "$VERSION_NAME",
             "message": "$RELEASE_NOTES",
+            "forceUpdate": false,
             "abi_download": {
               "armeabi-v7a": "$URL_V7A",
               "arm64-v8a": "$URL_V8A"
@@ -118,7 +119,7 @@ jobs:
           EOF
 
       # CI自动打包自定义完整源码包
-      - name: 打包项目源码 release-source-v${{ github.run_number }}.zip
+      - name: 打包项目源码 release-source-v${{ github.run_number }}
         run: |
           VERSION_CODE=${{ github.run_number }}
           zip -r source-v${VERSION_CODE}.zip . \

@@ -1,62 +1,28 @@
--dontobfuscate
--dontshrink
 -keepparameternames
 -keepattributes EnclosingMethod,InnerClasses,Signature,*Annotation*,AnnotationDefault,MethodParameters
 -keepattributes SourceFile,LineNumberTable
 -renamesourcefileattribute SourceFile
 
-# 🔴 虎牙 SDK 核心模块保留 - 仅保留直播核心功能，移除无用模块
-# 基础网络与数据层
--keep class com.huya.mtp.hyns.** { *; }
--keep interface com.huya.mtp.hyns.** { *; }
--keep class com.huya.mtp.utils.** { *; }
--keep interface com.huya.mtp.utils.** { *; }
--keep class com.huya.mtp.downloader.** { *; }
--keep class com.huya.mtp.multithreaddownload.** { *; }
--keep class com.huya.mtp.nsdt.** { *; }
--keep class com.huya.mtp.dimens.** { *; }
--keep class com.huya.mtp.http.** { *; }
--keep class com.huya.mtp.anotation.** { *; }
--keep class com.huya.mtp.ciku.apm.** { *; }
+# 🔴 虎牙 SDK - 全量保留所有模块（调试用，排查SDK失效原因）
+-keep class com.huya.** { *; }
+-keep interface com.huya.** { *; }
+-keep class com.duowan.** { *; }
+-keep interface com.duowan.** { *; }
 
-# 直播核心逻辑
--keep class com.huya.berry.client.** { *; }
--keep interface com.huya.berry.client.** { *; }
--keep class com.huya.berry.sdklive.** { *; }
--keep interface com.huya.berry.sdklive.** { *; }
--keep class com.huya.berry.sdkplayer.** { *; }
--keep interface com.huya.berry.sdkplayer.** { *; }
--keep class com.huya.berry.sdklivelist.** { *; }
--keep interface com.huya.berry.sdklivelist.** { *; }
--keep class com.huya.berry.module.** { *; }
--keep interface com.huya.berry.module.** { *; }
-
-# 网络信号与DNS
--keep class com.huya.hysignal.** { *; }
--keep interface com.huya.hysignal.** { *; }
--keep class com.huya.hyhttpdns.** { *; }
+# 🔴 虎牙 SDK 禁用混淆（防止反射调用失败）
+-keepnames class com.huya.** { *; }
+-keepnames interface com.huya.** { *; }
+-keepnames class com.duowan.** { *; }
 
 # 通用直播工具
 -keep class com.huya.live.common.** { *; }
 -keep class com.huya.live.utils.** { *; }
 
-# 允许 R8 移除以下非核心模块（用于减小体积）：
-# -keep class com.huya.berry.gamesdk.** { *; }
-# -keep class com.huya.berry.webview.** { *; }
-# -keep class com.huya.berry.forcelive.** { *; }
-# -keep class com.huya.berry.endlive.** { *; }
-# -keep class com.huya.berry.sdkcamera.** { *; }
-# -keep class com.huya.berry.login.** { *; }
-# -keep class com.huya.component.login.** { *; }
-# -keep class com.huya.berry.modifynickname.** { *; }
-# -keep class com.huya.berry.modifytitle.** { *; }
-# -keep class com.huya.mtp.hycloudgame.** { *; }
-
 -dontwarn retrofit2.**
 -dontwarn io.reactivex.**
 -dontwarn org.reactivestreams.**
 
-# 🔴 Retrofit + RxJava 全面保护 - 虎牙 SDK 依赖这些做网络请求
+# 🔴 Retrofit + RxJava 全面保护
 -keepattributes Signature,Exceptions,*Annotation*
 -keep class retrofit2.** { *; }
 -keep interface retrofit2.** { *; }

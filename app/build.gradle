@@ -23,13 +23,13 @@ android {
         multiDexEnabled false
         buildConfigField "int", "VERSION_CODE", "${versionCode}"
         buildConfigField "String", "VERSION_NAME", "\"${versionName}\""
-        // 🟢 修复点：删除 abiFilters，交由 splits.abi.include 统一处理，避免配置冲突
+        // ✅ 已删除 abiFilters，交由 splits.abi 统一管理，避免双配置冲突
         ndk {
             debugSymbolLevel 'NONE'
         }
     }
 
-    // ===== 双ABI分包配置（保持原样，已完全接管ABI） =====
+    // ===== 双ABI分包配置 =====
     splits {
         abi {
             enable true
@@ -39,10 +39,10 @@ android {
         }
     }
 
-    // ===== 为每个 ABI 自动分配不同的 versionCode =====
-    applicationVariants.all { variant ->
-        variant.outputs.each { output ->
-            def abi = output.getFilter("ABI")
+    // ===== 为每个 ABI 自动分配不同的 versionCode（AGP 8.x 兼容写法） =====
+    applicationVariants.configureEach { variant ->
+        variant.outputs.configureEach { output ->
+            def abi = output.getFilter(com.android.build.OutputFile.ABI)
             if (abi != null) {
                 output.versionCodeOverride = variant.versionCode * 10 + (abi == "arm64-v8a" ? 1 : 2)
             }
@@ -122,6 +122,9 @@ configurations.all {
         force "androidx.media3:media3-ui:1.7.1"
         force "androidx.media3:media3-exoplayer-hls:1.7.1"
         force "androidx.lifecycle:lifecycle-process:2.6.2"
+        // 避免 Kotlin 版本冲突（可选，但推荐）
+        force "org.jetbrains.kotlin:kotlin-stdlib:1.9.10"
+        force "org.jetbrains.kotlin:kotlin-stdlib-common:1.9.10"
     }
     exclude group: 'com.huya.berry', module: 'sdkplayer'
     exclude group: 'com.huya.berry', module: 'sdklive'

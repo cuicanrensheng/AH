@@ -338,7 +338,7 @@
                 android:paddingEnd="8dp"
                 android:focusable="true"
                 android:nextFocusUp="@+id/item_live_subscribe"
-                android:nextFocusDown="@+id/item_check_update"
+                android:nextFocusDown="@+id/item_tif_sync"
                 android:clickable="true">
                 <TextView
                     android:layout_width="wrap_content"

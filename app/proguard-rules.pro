@@ -1,4 +1,3 @@
--dontoptimize
 -dontobfuscate
 -dontshrink
 -keepparameternames
@@ -6,7 +5,7 @@
 -keepattributes SourceFile,LineNumberTable
 -renamesourcefileattribute SourceFile
 
-# Huya SDK full protection - SDK uses reflection+Retrofit, must keep all classes
+# 🔴 虎牙 SDK 全面保护 - SDK 使用反射+Retrofit，必须保留所有类和接口
 -keep class com.huya.** { *; }
 -keep interface com.huya.** { *; }
 -keepclasseswithmembers class com.huya.** { *; }
@@ -22,7 +21,7 @@
 -dontwarn io.reactivex.**
 -dontwarn org.reactivestreams.**
 
-# Retrofit + RxJava full protection
+# 🔴 Retrofit + RxJava 全面保护 - 虎牙 SDK 依赖这些做网络请求
 -keepattributes Signature,Exceptions,*Annotation*
 -keep class retrofit2.** { *; }
 -keep interface retrofit2.** { *; }
@@ -43,13 +42,12 @@
 -keep interface okhttp3.** { *; }
 -keep class okio.** { *; }
 
--optimizationpasses 0
+-optimizationpasses 2
 -allowaccessmodification
 -dontusemixedcaseclassnames
 -dontskipnonpubliclibraryclasses
 -dontpreverify
 -verbose
--optimizations !code/simplification/arithmetic,!code/simplification/cast,!field/*,!class/merging/*
 
 -keepclasseswithmembernames class * {
     native <methods>;
@@ -148,3 +146,19 @@
 -dontwarn stericson.RootTools.**
 -dontwarn com.stericson.RootShell.**
 -dontwarn stericson.RootShell.**
+
+# R8优化移除日志调用
+-assumenosideeffects class android.util.Log {
+    public static int d(java.lang.String, java.lang.String);
+    public static int i(java.lang.String, java.lang.String);
+    public static int w(java.lang.String, java.lang.String);
+    public static int e(java.lang.String, java.lang.String);
+    public static int v(java.lang.String, java.lang.String);
+}
+-assumenosideeffects class java.lang.System {
+    public static void println(java.lang.String);
+    public static void println(java.lang.Object);
+}
+-assumenosideeffects class java.lang.Throwable {
+    public void printStackTrace();
+}

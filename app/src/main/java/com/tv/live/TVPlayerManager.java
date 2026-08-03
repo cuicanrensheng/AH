@@ -873,6 +873,23 @@ public class TVPlayerManager {
         }
     }
 
+    /**
+     * 确保播放器已绑定到 PlayerView，防止黑屏
+     * 在 setMediaSource/prepare/play 前调用
+     */
+    private void ensurePlayerBoundToView() {
+        try {
+            if (player != null && playerView != null) {
+                if (playerView.getPlayer() != player) {
+                    playerView.setPlayer(player);
+                    Log.d(TAG, "播放器已绑定到视图");
+                }
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "绑定播放器到视图失败", e);
+        }
+    }
+
     public void detachPlayerView() {
         try {
             if (playerView != null) {
@@ -917,11 +934,16 @@ public class TVPlayerManager {
                     @Override
                     public void surfaceCreated(android.view.SurfaceHolder holder) {
                         surfaceReady = true;
-                        if (player != null && !player.isPlaying()) {
-                            player.play();
+                        if (player != null) {
+                            if (playerView.getPlayer() != player) {
+                                playerView.setPlayer(player);
+                            }
+                            if (!player.isPlaying()) {
+                                player.play();
+                            }
                         }
                         pendingBindPlayer = false;
-                        Log.d(TAG, "Surface创建成功，播放器持续播放");
+                        Log.d(TAG, "Surface创建成功，播放器已绑定视图并持续播放");
                     }
 
                     @Override
@@ -980,16 +1002,6 @@ public class TVPlayerManager {
     }
 
     public void playUrl(String url, String channelName, Channel channel) {
-        // 🟢【虎牙EPG历史记录】切换频道前先把上一个正在播放的虎牙频道闭合endTime
-        //   严格遵守用户：只对虎牙频道记录播放历史，原有CCTV/卫视不动
-        if (this.currentChannel != null && this.currentChannel != channel) {
-            boolean prevIsHuya = (this.currentChannel.isTogetherWatch() || this.currentChannel.getHuyaRoomId() > 0);
-            if (prevIsHuya) {
-                try {
-                    EpgManager.getInstance().stopPlayback(this.currentChannel);
-                } catch (Exception ignored) {}
-            }
-        }
         if (!TextUtils.isEmpty(channelName)) this.currentChannelName = channelName;
         this.currentChannel = channel;
         this.backupRetryIndex = -1;
@@ -1303,18 +1315,6 @@ public class TVPlayerManager {
 
                 Log.d(TAG, "【虎牙】SDK 全量解析成功, 默认流=" + defaultUrl.substring(0, Math.min(80, defaultUrl.length())));
 
-                // 🟢【虎牙EPG历史记录】解析成功、即将启动播放的瞬间 → 写入startPlayback
-                // 严格遵守用户：只对虎牙TogetherWatch/huyaRoomId>0的频道做EPG记录，
-                // 其他CCTV/卫视完全走原有XML EPG链路，完全不动
-                if (currentChannel != null &&
-                    (currentChannel.isTogetherWatch() || currentChannel.getHuyaRoomId() > 0)) {
-                    String epgTitle = currentChannel.getName();
-                    // 当前频道名已经是 TogetherWatchRoom.toChannel() 里的 roomName（就是房间标题）
-                    try {
-                        EpgManager.getInstance().startPlayback(currentChannel, epgTitle);
-                    } catch (Exception ignored) {}
-                }
-
                 mPendingPlaybackHeaders = null;
                 mHandler.post(() -> doPlay(defaultUrl, initialSeekPosition));
             }
@@ -1464,6 +1464,7 @@ public class TVPlayerManager {
             mediaSource = new ProgressiveMediaSource.Factory(httpFactory).createMediaSource(mediaItem);
         }
 
+        ensurePlayerBoundToView();
         player.setMediaSource(mediaSource, true);
         player.prepare();
         if (initialSeekPosition > 0) player.seekTo(initialSeekPosition);
@@ -1555,6 +1556,7 @@ public class TVPlayerManager {
             mediaSource = new ProgressiveMediaSource.Factory(httpFactory).createMediaSource(mediaItem);
         }
 
+        ensurePlayerBoundToView();
         player.setMediaSource(mediaSource, true);
         player.prepare();
         if (initialSeekPosition > 0) player.seekTo(initialSeekPosition);
@@ -2075,6 +2077,7 @@ public class TVPlayerManager {
 
     public void resume() {
         try {
+            ensurePlayerBoundToView();
             if (player != null) player.play();
         } catch (Exception ignored) {}
     }

@@ -49,7 +49,7 @@ public class UpdateManager {
             "https://ghproxy.com/https://raw.githubusercontent.com/cuicanrensheng/AH/main/update.json"
     };
     private static final String RELEASES_API_URL = "https://api.github.com/repos/cuicanrensheng/AH/releases/latest";
-    private static final String APK_FILE_NAME = "tv_live_update.apk";
+    private static final String APK_FILE_NAME_PREFIX = "tv_live_update";
     private static final Handler MAIN_HANDLER = new Handler(Looper.getMainLooper());
     private static boolean isChecking = false;
     private static boolean isDownloading = false;
@@ -59,10 +59,36 @@ public class UpdateManager {
     private DownloadManager downloadManager;
     private long downloadId = -1;
     private BroadcastReceiver downloadCompleteReceiver;
+    private String deviceAbi = "";
 
     public UpdateManager(Context context) {
         this.context = context;
         this.sp = context.getSharedPreferences("app_update", Context.MODE_PRIVATE);
+        this.deviceAbi = detectDeviceAbi();
+    }
+
+    private static String detectDeviceAbi() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            String[] abis = Build.SUPPORTED_ABIS;
+            if (abis != null && abis.length > 0) {
+                for (String abi : abis) {
+                    if (abi.equals("arm64-v8a")) return "arm64-v8a";
+                }
+                for (String abi : abis) {
+                    if (abi.equals("armeabi-v7a")) return "armeabi-v7a";
+                }
+                return abis[0];
+            }
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            String abi = Build.SUPPORTED_64_BIT_ABIS[0];
+            if (abi != null) return abi;
+        }
+        return "armeabi-v7a";
+    }
+
+    private String getApkFileName() {
+        return APK_FILE_NAME_PREFIX + "_" + deviceAbi + ".apk";
     }
 
     // 保存更新日志到本地
@@ -119,11 +145,26 @@ public class UpdateManager {
                 final int latestVersionCode = json.optInt("versionCode", 0);
                 String latestVersionName = json.optString("versionName", "未知");
                 String updateMessage = json.optString("message", "暂无更新内容");
-                String downloadUrl = json.optString("downloadUrl", "");
                 boolean forceUpdate = json.optBoolean("forceUpdate", false);
 
                 // ==========================================================
-                // 步骤2：如无下载链接，从 Releases API 兜底
+                // ABI 感知的下载链接选择：
+                //  优先使用新格式 downloadUrls（按 ABI 区分），回退到旧格式 downloadUrl
+                // ==========================================================
+                String downloadUrl = "";
+                if (json.has("downloadUrls")) {
+                    JSONObject downloadUrls = json.getJSONObject("downloadUrls");
+                    if (downloadUrls.has(deviceAbi)) {
+                        downloadUrl = downloadUrls.getString(deviceAbi);
+                        Log.d(TAG, "使用 ABI 专属下载链接: " + deviceAbi);
+                    }
+                }
+                if (downloadUrl.isEmpty()) {
+                    downloadUrl = json.optString("downloadUrl", "");
+                }
+
+                // ==========================================================
+                // 步骤2：如无下载链接，从 Releases API 兜底（匹配当前设备 ABI）
                 // ==========================================================
                 if (downloadUrl.isEmpty()) {
                     try {
@@ -132,11 +173,24 @@ public class UpdateManager {
                             JSONObject relJson = new JSONObject(relStr);
                             if (relJson.has("assets")) {
                                 JSONArray assets = relJson.getJSONArray("assets");
+                                // 优先匹配当前 ABI 的 APK
                                 for (int i = 0; i < assets.length(); i++) {
                                     JSONObject asset = assets.getJSONObject(i);
-                                    if (asset.getString("name").endsWith(".apk")) {
+                                    String name = asset.getString("name");
+                                    if (name.endsWith(".apk") && name.contains(deviceAbi)) {
                                         downloadUrl = asset.getString("browser_download_url");
+                                        Log.d(TAG, "Releases 匹配 ABI APK: " + name);
                                         break;
+                                    }
+                                }
+                                // 兜底：取第一个 APK
+                                if (downloadUrl.isEmpty()) {
+                                    for (int i = 0; i < assets.length(); i++) {
+                                        JSONObject asset = assets.getJSONObject(i);
+                                        if (asset.getString("name").endsWith(".apk")) {
+                                            downloadUrl = asset.getString("browser_download_url");
+                                            break;
+                                        }
                                     }
                                 }
                             }
@@ -357,11 +411,11 @@ public class UpdateManager {
 
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                         request.setDestinationInExternalFilesDir(
-                                context, Environment.DIRECTORY_DOWNLOADS, APK_FILE_NAME
+                                context, Environment.DIRECTORY_DOWNLOADS, getApkFileName()
                         );
                     } else {
                         request.setDestinationInExternalPublicDir(
-                                Environment.DIRECTORY_DOWNLOADS, APK_FILE_NAME
+                                Environment.DIRECTORY_DOWNLOADS, getApkFileName()
                         );
                     }
                     request.allowScanningByMediaScanner();
@@ -478,7 +532,7 @@ public class UpdateManager {
 
         try {
             ContentValues values = new ContentValues();
-            values.put(MediaStore.Downloads.DISPLAY_NAME, APK_FILE_NAME);
+            values.put(MediaStore.Downloads.DISPLAY_NAME, getApkFileName());
             values.put(MediaStore.Downloads.MIME_TYPE, "application/vnd.android.package-archive");
             values.put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS);
 

@@ -1,3 +1,7 @@
+plugins {
+    id 'com.android.application'
+}
+
 android {
     namespace "com.tv.live"
     compileSdk 36

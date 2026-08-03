@@ -57,6 +57,7 @@ import java.net.URL;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -1252,7 +1253,7 @@ public class TVPlayerManager {
                     lineGroups.computeIfAbsent(v.huyaLineIndex, k -> new java.util.ArrayList<>()).add(v);
                 }
                 for (java.util.List<Variant> group : lineGroups.values()) {
-                    group.sort((a, b) -> Integer.compare(b.bandwidth, a.bandwidth));
+                    Collections.sort(group, (a, b) -> Integer.compare(b.bandwidth, a.bandwidth));
                 }
 
                 // 当前线路的 URL 排第一
@@ -1763,7 +1764,7 @@ public class TVPlayerManager {
                 dLog("解析到清晰度: " + (height > 0 ? resolutionStr : "自适应") + " -> " + uri);
             }
         }
-        list.sort((a, b) -> Integer.compare(a.height, b.height));
+        Collections.sort(list, (a, b) -> Integer.compare(a.height, b.height));
         synchronized (variantListLock) { this.variantList = list; }
         if (!list.isEmpty()) {
             dLog("解析到 " + list.size() + " 个清晰度");
@@ -1865,7 +1866,7 @@ public class TVPlayerManager {
                     otherLines.add(v);
                 }
             }
-            currentLine.sort((a, b) -> Integer.compare(b.bandwidth, a.bandwidth));
+            Collections.sort(currentLine, (a, b) -> Integer.compare(b.bandwidth, a.bandwidth));
             variantList.clear();
             variantList.addAll(currentLine);
             variantList.addAll(otherLines);

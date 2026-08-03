@@ -11,6 +11,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Vector;
@@ -968,7 +969,7 @@ public class HuyaSDKParser {
                             + (flvUrl != null ? "/FLV" : "") + ")");
                 }
                 // 同线路按 bitRate 降序 → 第一个 = 默认码率
-                lineStreams.sort((a, b) -> Integer.compare(b.bitRate, a.bitRate));
+                Collections.sort(lineStreams, (a, b) -> Integer.compare(b.bitRate, a.bitRate));
                 for (int k = 0; k < lineStreams.size(); k++) {
                     lineStreams.get(k).isDefaultBitrate = (k == 0);
                 }

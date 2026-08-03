@@ -16,6 +16,7 @@ import org.json.JSONObject;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -409,7 +410,7 @@ public class HuyaTogetherWatchManager {
 
         validRooms.addAll(suspectRooms);
 
-        validRooms.sort((a, b) -> {
+        Collections.sort(validRooms, (a, b) -> {
             if (b.isLive != a.isLive) {
                 return b.isLive ? 1 : -1;
             }

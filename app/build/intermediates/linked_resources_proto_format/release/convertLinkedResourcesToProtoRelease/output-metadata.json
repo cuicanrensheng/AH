@@ -16,8 +16,8 @@
         }
       ],
       "attributes": [],
-      "versionCode": 3207,
-      "versionName": "2.0.3207",
+      "versionCode": 3208,
+      "versionName": "2.0.3208",
       "outputFile": "linked-resources-proto-format-armeabi-v7a-release.ap_"
     },
     {
@@ -29,8 +29,8 @@
         }
       ],
       "attributes": [],
-      "versionCode": 3207,
-      "versionName": "2.0.3207",
+      "versionCode": 3208,
+      "versionName": "2.0.3208",
       "outputFile": "linked-resources-proto-format-arm64-v8a-release.ap_"
     }
   ],

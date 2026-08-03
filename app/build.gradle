@@ -23,29 +23,27 @@ android {
         multiDexEnabled false
         buildConfigField "int", "VERSION_CODE", "${versionCode}"
         buildConfigField "String", "VERSION_NAME", "\"${versionName}\""
+        // 🟢 修复点：删除 abiFilters，交由 splits.abi.include 统一处理，避免配置冲突
         ndk {
-            // 修改点1：同时包含两个 ABI
-            abiFilters 'arm64-v8a', 'armeabi-v7a'
             debugSymbolLevel 'NONE'
         }
     }
 
-    // ===== 修改点2：新增 ABI 拆分配置 =====
+    // ===== 双ABI分包配置（保持原样，已完全接管ABI） =====
     splits {
         abi {
             enable true
             reset()
             include 'arm64-v8a', 'armeabi-v7a'
-            universalApk false  // 设为 true 则额外生成一个包含全部ABI的通用包
+            universalApk false
         }
     }
 
-    // ===== 修改点3：为每个 ABI 自动分配不同的 versionCode（防止商店上传冲突） =====
+    // ===== 为每个 ABI 自动分配不同的 versionCode =====
     applicationVariants.all { variant ->
         variant.outputs.each { output ->
             def abi = output.getFilter("ABI")
             if (abi != null) {
-                // 基础版本号 * 10 + ABI偏移量 (arm64-v8a为1，armeabi-v7a为2)
                 output.versionCodeOverride = variant.versionCode * 10 + (abi == "arm64-v8a" ? 1 : 2)
             }
         }

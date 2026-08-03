@@ -1,18 +1,65 @@
 -keepparameternames
 -keepattributes EnclosingMethod,InnerClasses,Signature,*Annotation*,AnnotationDefault,MethodParameters
 -keepattributes SourceFile,LineNumberTable
+-keepattributes **
 -renamesourcefileattribute SourceFile
 
-# 🔴 虎牙 SDK - 全量保留所有模块（调试用，排查SDK失效原因）
+# 🔴 Gson 保护规则（防止 JSON 解析时字段名被混淆导致崩溃）
+-keep class com.google.gson.** { *; }
+-keepattributes com.google.gson.annotations.*
+-dontwarn com.google.gson.**
+-keep class * extends com.google.gson.TypeAdapter
+-keep class * implements com.google.gson.TypeAdapterFactory
+-keep class * implements com.google.gson.JsonSerializer
+-keep class * implements com.google.gson.JsonDeserializer
+-keepclassmembers,allowobfuscation class * {
+    @com.google.gson.annotations.SerializedName <fields>;
+}
+-keepclasseswithmembers class * {
+    @com.google.gson.annotations.SerializedName <fields>;
+}
+
+# 🔴 反射保护 - 保留所有注解和反射相关
+-keepclassmembers class * {
+    @* <fields>;
+    @* <methods>;
+}
+-keepclasseswithmembers class * {
+    @* <methods>;
+}
+
+# 🔴 虎牙 SDK - 全量保留所有模块 + 所有方法不被移除
 -keep class com.huya.** { *; }
 -keep interface com.huya.** { *; }
 -keep class com.duowan.** { *; }
 -keep interface com.duowan.** { *; }
 
-# 🔴 虎牙 SDK 禁用混淆（防止反射调用失败）
+# 🔴 虎牙 SDK - 保留所有成员（防止方法被 R8 移除）
+-keepclassmembers class com.huya.** { *; }
+-keepclassmembers interface com.huya.** { *; }
+-keepclassmembers class com.duowan.** { *; }
+-keepclassmembers interface com.duowan.** { *; }
+
+# 🔴 虎牙 SDK - 禁用混淆（防止反射调用失败）
 -keepnames class com.huya.** { *; }
 -keepnames interface com.huya.** { *; }
 -keepnames class com.duowan.** { *; }
+
+# 🔴 虎牙 SDK - 保留所有方法名（JNI/Native 调用依赖方法名）
+-keepclassmembers,allowshrinking,allowoptimization class com.huya.** {
+    <methods>;
+    <fields>;
+}
+-keepclassmembers,allowshrinking,allowoptimization class com.duowan.** {
+    <methods>;
+    <fields>;
+}
+
+# 🔴 关键认证模块保护（JNI 调用 log、sendNet 方法）
+-keep class com.huyaudb.** { *; }
+-keepclassmembers class com.huyaudb.** { *; }
+-keep class com.huyaudbunify.** { *; }
+-keepclassmembers class com.huyaudbunify.** { *; }
 
 # 通用直播工具
 -keep class com.huya.live.common.** { *; }

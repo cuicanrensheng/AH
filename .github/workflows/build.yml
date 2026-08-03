@@ -113,20 +113,58 @@ jobs:
 
           VERSION_CODE=${{ github.run_number }}
           VERSION_NAME=$(grep "versionName" app/build.gradle | head -1 | awk -F'"' '{print $2}')
-          DOWNLOAD_URL="https://ghproxy.com/https://github.com/${{ github.repository }}/releases/download/v$VERSION_CODE/app-release.apk"
+          APK_DIR="app/build/outputs/apk/release"
+          GH_BASE="https://ghproxy.com/https://github.com/${{ github.repository }}/releases/download/v$VERSION_CODE"
+
+          # 动态查找两个 ABI 的 APK 文件名
+          ARM64_APK=$(ls ${APK_DIR}/*arm64-v8a*.apk 2>/dev/null | head -1)
+          ARMV7_APK=$(ls ${APK_DIR}/*armeabi-v7a*.apk 2>/dev/null | head -1)
+
           if [ -f app/release_notes.txt ]; then
             RELEASE_NOTES=$(cat app/release_notes.txt | sed 's/"/\\"/g' | sed ':a;N;$!ba;s/\n/\\n/g')
           else
             RELEASE_NOTES="自动更新版本"
           fi
+
+          # 构建 downloadUrls 对象
+          DOWNLOAD_URLS="{"
+          if [ -n "$ARM64_APK" ]; then
+            ARM64_NAME=$(basename "$ARM64_APK")
+            DOWNLOAD_URLS="${DOWNLOAD_URLS}\"arm64-v8a\": \"${GH_BASE}/${ARM64_NAME}\""
+            echo "✅ 找到 arm64 APK: $ARM64_NAME"
+          fi
+          if [ -n "$ARMV7_APK" ]; then
+            if [ -n "$ARM64_APK" ]; then
+              DOWNLOAD_URLS="${DOWNLOAD_URLS},"
+            fi
+            ARMV7_NAME=$(basename "$ARMV7_APK")
+            DOWNLOAD_URLS="${DOWNLOAD_URLS}\"armeabi-v7a\": \"${GH_BASE}/${ARMV7_NAME}\""
+            echo "✅ 找到 armeabi-v7a APK: $ARMV7_NAME"
+          fi
+          DOWNLOAD_URLS="${DOWNLOAD_URLS}}"
+
+          # 兜底：如果没有找到 ABI 分包，使用旧格式
+          if [ "$DOWNLOAD_URLS" = "{}" ]; then
+            SINGLE_APK=$(ls ${APK_DIR}/*.apk 2>/dev/null | grep -v baselineProfiles | head -1)
+            if [ -n "$SINGLE_APK" ]; then
+              SINGLE_NAME=$(basename "$SINGLE_APK")
+              DOWNLOAD_URLS="\"downloadUrl\": \"${GH_BASE}/${SINGLE_NAME}\""
+            fi
+          else
+            DOWNLOAD_URLS="\"downloadUrls\": ${DOWNLOAD_URLS}"
+          fi
+
           cat > update.json << EOF
           {
             "versionCode": $VERSION_CODE,
             "versionName": "$VERSION_NAME",
             "message": "$RELEASE_NOTES",
-            "downloadUrl": "$DOWNLOAD_URL"
+            $DOWNLOAD_URLS
           }
           EOF
+
+          echo "📄 update.json 内容："
+          cat update.json
 
           git add update.json
           if git diff --cached --quiet; then
@@ -155,7 +193,8 @@ jobs:
           tag_name: v${{ github.run_number }}
           name: 自动发布 v${{ github.run_number }}
           files: |
-            app/build/outputs/apk/release/app-release.apk
+            app/build/outputs/apk/release/*arm64-v8a*.apk
+            app/build/outputs/apk/release/*armeabi-v7a*.apk
             update.json
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          env:
+            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

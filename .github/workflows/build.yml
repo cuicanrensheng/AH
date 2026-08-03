@@ -38,11 +38,29 @@ jobs:
         run: |
           echo "🔑 正在解码签名证书..."
           echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > app/release.keystore
-          echo "✅ 跳过依赖版本验证（已由 assembleRelease 任务自动完成）"
 
-      - name: 自动更新 Gradle 版本号（仅本地修改，暂不推送）
+          echo "🔍 正在静默验证依赖版本..."
+          DEPS_OUTPUT=$(./gradlew app:dependencies --configuration releaseCompileClasspath --refresh-dependencies --no-daemon 2>&1 || true)
+          
+          if echo "$DEPS_OUTPUT" | grep -q "androidx.media3:media3-common:1.7.1"; then
+            echo "✅ 版本检查通过：Media3 已锁定为 1.7.1"
+          else
+            echo "❌ 版本检查失败：未检测到 Media3 1.7.1"
+            echo "$DEPS_OUTPUT" | head -n 20
+            exit 1
+          fi
+          
+          if echo "$DEPS_OUTPUT" | grep -q "com.google.android.exoplayer"; then
+            echo "❌ 安全警告：检测到旧版 ExoPlayer 依赖混入！"
+            exit 1
+          else
+            echo "✅ 安全检查通过：未发现旧版 ExoPlayer 依赖"
+          fi
+
+      - name: 自动更新 Gradle 版本号并提交回仓库
         run: |
           set -e
+          # 统一git配置（只配置一次）
           git config --local user.email "actions@github.com"
           git config --local user.name "GitHub Actions"
           git config --local pull.rebase false
@@ -54,9 +72,21 @@ jobs:
           sed -i "s/versionCode [0-9]*/versionCode $NEW_VERSION_CODE/" app/build.gradle
           sed -i "s/versionName \"[^\"]*\"/versionName \"$NEW_VERSION_NAME\"/" app/build.gradle
 
-      - name: 开始执行 Release 双ABI打包
+          git add app/build.gradle
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Auto bump versionCode to $NEW_VERSION_CODE [skip ci]"
+            # 只fetch，不再执行危险merge+stash pop，极易引发文件冲突、覆盖本地临时文件
+            git fetch origin main
+            # 改用普通push，放弃复杂merge逻辑，避免覆盖本地 gradlew、keystore
+            git push origin main || echo "Push skip: remote has newer commits"
+          fi
+
+      # =====================【重点修复】打包前重新赋予权限，彻底杜绝权限丢失 =====================
+      - name: 开始执行 Release 打包...
         run: |
-          echo "🎯 开始执行 Release 分包打包..."
+          echo "🎯 开始执行 Release 打包..."
           chmod +x ./gradlew
           ./gradlew assembleRelease \
             --no-daemon \
@@ -65,7 +95,7 @@ jobs:
             -PkeyAlias=${{ secrets.KEY_ALIAS }} \
             -PkeyPassword=${{ secrets.KEY_PASSWORD }}
 
-      - name: 上传Mapping文件夹（崩溃混淆还原）
+      - name: 上传Mapping文件夹（包含missing_rules.txt）
         uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -73,16 +103,17 @@ jobs:
           path: app/build/outputs/mapping/release/
           retention-days: 7
 
-      - name: 生成双架构下载地址 update.json
+      - name: 生成并提交 update.json
         run: |
           set -e
+          git config --local user.email "actions@github.com"
+          git config --local user.name "GitHub Actions"
+          git config --local pull.rebase false
+          git config --local pull.ff false
+
           VERSION_CODE=${{ github.run_number }}
           VERSION_NAME=$(grep "versionName" app/build.gradle | head -1 | awk -F'"' '{print $2}')
-          # 替换可用ghfast加速域名，废弃被墙ghproxy.com
-          BASE_URL="https://ghfast.top/https://github.com/${{ github.repository }}/releases/download/v$VERSION_CODE"
-          URL_V7A="$BASE_URL/app-armeabi-v7a-release.apk"
-          URL_V8A="$BASE_URL/app-arm64-v8a-release.apk"
-
+          DOWNLOAD_URL="https://ghproxy.com/https://github.com/${{ github.repository }}/releases/download/v$VERSION_CODE/app-release.apk"
           if [ -f app/release_notes.txt ]; then
             RELEASE_NOTES=$(cat app/release_notes.txt | sed 's/"/\\"/g' | sed ':a;N;$!ba;s/\n/\\n/g')
           else
@@ -93,71 +124,38 @@ jobs:
             "versionCode": $VERSION_CODE,
             "versionName": "$VERSION_NAME",
             "message": "$RELEASE_NOTES",
-            "forceUpdate": false,
-            "abi_download": {
-              "armeabi-v7a": "$URL_V7A",
-              "arm64-v8a": "$URL_V8A"
-            }
+            "downloadUrl": "$DOWNLOAD_URL"
           }
           EOF
 
-      # CI自动打包自定义完整源码包
-      - name: 打包项目源码 release-source-v${{ github.run_number }}
-        run: |
-          VERSION_CODE=${{ github.run_number }}
-          zip -r source-v${VERSION_CODE}.zip . \
-            -x ".git/*" \
-            -x "app/build/*" \
-            -x "~/.gradle/*" \
-            -x "app/release.keystore"
+          git add update.json
+          if git diff --cached --quiet; then
+            echo "No changes to update.json"
+          else
+            git commit -m "Auto update update.json for release v$VERSION_CODE [skip ci]"
+            git fetch origin main
+            git push origin main || echo "Push skip: remote has newer commits"
+          fi
 
-      # 调试：打印打包产物确认文件存在
-      - name: 调试输出APK与源码包列表
-        run: |
-          ls -la app/build/outputs/apk/release/
-          ls -la *.zip update.json
-
-      # 一次性上传双APK、update.json、自定义源码包到Release页面
-      - name: 创建发布 Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ github.run_number }}
-          name: 自动发布 v${{ github.run_number }}
-          files: |
-            app/build/outputs/apk/release/app-armeabi-v7a-release.apk
-            app/build/outputs/apk/release/app-arm64-v8a-release.apk
-            update.json
-            source-v${{ github.run_number }}.zip
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # 备份所有APK到Workflow工件
-      - name: 上传全部成品APK
+      - name: 上传成品 APK
         uses: actions/upload-artifact@v4
         with:
-          name: TVLive-双架构安装包
+          name: TVLive-直播APP
           path: app/build/outputs/apk/release/*.apk
 
-      - name: 上传更新配置文件
+      - name: 上传更新配置
         uses: actions/upload-artifact@v4
         with:
           name: update-config
           path: update.json
 
-      # 打包发布完成后，再提交版本号、update.json回仓库，无stash不会删除apk
-      - name: Git提交版本变更回主分支
-        run: |
-          set -e
-          git config --local user.email "actions@github.com"
-          git config --local user.name "GitHub Actions"
-          git config --local pull.rebase false
-          git config --local pull.ff false
-
-          git add app/build.gradle update.json
-          if git diff --cached --quiet; then
-            echo "No changes to commit"
-          else
-            git commit -m "Auto bump version & update.json v${{ github.run_number }} [skip ci]"
-            git fetch origin main
-            git push origin main || echo "远端版本更新，跳过推送"
-          fi
+      - name: 创建发布
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ github.run_number }}
+          name: 自动发布 v${{ github.run_number }}
+          files: |
+            app/build/outputs/apk/release/app-release.apk
+            update.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

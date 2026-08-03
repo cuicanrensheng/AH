@@ -104,12 +104,42 @@ dependencies {
 androidComponents {
     onVariants(selector().all()) { variant ->
         variant.outputs.forEach { output ->
-            def abiName = output.outputFileName.get().find(/arm64-v8a|armeabi-v7a/)
-            if (!abiName) {
-                abiName = variant.name
+            try {
+                def currentName = output.outputFileName.get()
+                def abiName = currentName.find(/arm64-v8a|armeabi-v7a/)
+                if (!abiName) {
+                    abiName = variant.name
+                }
+                def verName = android.defaultConfig.versionName
+                def newName = "tv_live_${variant.buildType}_${abiName}_${verName}.apk"
+                logger.lifecycle "Renaming APK: ${currentName} -> ${newName}"
+                output.outputFileName.set(newName)
+            } catch (Exception e) {
+                logger.warn "Rename failed for ${variant.name}: ${e.message}"
             }
-            def verName = android.defaultConfig.versionName
-            output.outputFileName.set("tv_live_${variant.buildType}_${abiName}_${verName}.apk")
+        }
+    }
+}
+
+project.afterEvaluate {
+    tasks.named('assembleRelease') {
+        doLast {
+            def outputDir = file("$buildDir/outputs/apk/release")
+            if (outputDir.exists()) {
+                def abis = ['arm64-v8a', 'armeabi-v7a']
+                abis.each { abi ->
+                    def pattern = "*-${abi}-release.apk"
+                    fileTree(dir: outputDir, include: pattern).each { apk ->
+                        def verName = android.defaultConfig.versionName
+                        def newName = "tv_live_release_${abi}_${verName}.apk"
+                        def newFile = new File(outputDir, newName)
+                        if (!apk.name.equals(newName) && !newFile.exists()) {
+                            apk.renameTo(newFile)
+                            logger.lifecycle "Post-build renamed: ${apk.name} -> ${newName}"
+                        }
+                    }
+                }
+            }
         }
     }
 }

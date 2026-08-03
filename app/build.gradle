@@ -17,36 +17,36 @@ android {
         applicationId "com.tv.live"
         minSdk 21
         targetSdk 36
-        versionCode 3182
-        versionName "2.0.3182"
+        versionCode 3179
+        versionName "2.0.3179"
         resConfigs "zh"
         multiDexEnabled false
         buildConfigField "int", "VERSION_CODE", "${versionCode}"
         buildConfigField "String", "VERSION_NAME", "\"${versionName}\""
         ndk {
-            abiFilters 'arm64-v8a','armeabi-v7a'
-            debugSymbolLevel 'NONE' // 彻底剥离so调试符号，减小原生库体积
+            // 修改点1：同时包含两个 ABI
+            abiFilters 'arm64-v8a', 'armeabi-v7a'
+            debugSymbolLevel 'NONE'
         }
     }
 
-    // ABI分包核心配置：分开打包，不生成两套so共存的通用大包
+    // ===== 修改点2：新增 ABI 拆分配置 =====
     splits {
         abi {
             enable true
             reset()
-            include 'arm64-v8a','armeabi-v7a'
-            universalApk false // 关闭通用包，每个apk仅携带单架构so
+            include 'arm64-v8a', 'armeabi-v7a'
+            universalApk false  // 设为 true 则额外生成一个包含全部ABI的通用包
         }
     }
 
-    // 自动区分32/64位versionCode，安装更新互不覆盖冲突
-    android.applicationVariants.all { variant ->
+    // ===== 修改点3：为每个 ABI 自动分配不同的 versionCode（防止商店上传冲突） =====
+    applicationVariants.all { variant ->
         variant.outputs.each { output ->
-            def baseVerCode = variant.versionCode
-            if (output.outputFile.contains("armeabi-v7a")) {
-                output.versionCodeOverride = baseVerCode * 10 + 1
-            } else if (output.outputFile.contains("arm64-v8a")) {
-                output.versionCodeOverride = baseVerCode * 10 + 2
+            def abi = output.getFilter("ABI")
+            if (abi != null) {
+                // 基础版本号 * 10 + ABI偏移量 (arm64-v8a为1，armeabi-v7a为2)
+                output.versionCodeOverride = variant.versionCode * 10 + (abi == "arm64-v8a" ? 1 : 2)
             }
         }
     }
@@ -65,9 +65,7 @@ android {
         release {
             minifyEnabled true
             shrinkResources true
-            shrinkResourcesStrict true // 严格资源压缩，删除未引用资源
-            // 使用优化版混淆规则，比普通规则压缩更多无用代码
-            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
             signingConfig signingConfigs.release
         }
         debug {
@@ -123,7 +121,7 @@ configurations.all {
     resolutionStrategy {
         force "androidx.media3:media3-common:1.7.1"
         force "androidx.media3:media3-exoplayer:1.7.1"
-        force "androidx.media3-ui:1.7.1"
+        force "androidx.media3:media3-ui:1.7.1"
         force "androidx.media3:media3-exoplayer-hls:1.7.1"
         force "androidx.lifecycle:lifecycle-process:2.6.2"
     }

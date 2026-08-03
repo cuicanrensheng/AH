@@ -1,0 +1,28 @@
+{
+    "logs": [
+        {
+            "outputFile": "com.tv.live.app-mergeReleaseResources-57:/values-v31/values-v31.xml",
+            "map": [
+                {
+                    "source": "D:\\编程\\2\\1\\app\\src\\main\\res\\values-v31\\styles.xml",
+                    "from": {
+                        "startLines": "15,18,2",
+                        "startColumns": "4,4,4",
+                        "startOffsets": "799,907,57",
+                        "endLines": "17,20,13",
+                        "endColumns": "12,12,12",
+                        "endOffsets": "901,1009,787"
+                    },
+                    "to": {
+                        "startLines": "2,5,8",
+                        "startColumns": "4,4,4",
+                        "startOffsets": "55,160,265",
+                        "endLines": "4,7,19",
+                        "endColumns": "12,12,12",
+                        "endOffsets": "155,260,984"
+                    }
+                }
+            ]
+        }
+    ]
+}

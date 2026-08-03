@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+
+    <FrameLayout
+        android:id="@+id/container"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+        <com.huya.berry.sdkplayer.floats.view.PlayerView
+            android:id="@+id/video_playerview"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent">
+        </com.huya.berry.sdkplayer.floats.view.PlayerView>
+    </FrameLayout>
+    <com.huya.berry.sdkplayer.floats.view.PromptTextView
+        android:id="@+id/floating_prompt1"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_centerInParent="true"
+        android:drawablePadding="8dp"
+        android:drawableTop="@drawable/hyberry_floating_video_fresh"
+        android:gravity="center"
+        android:text="@string/hyberry_floating_click_to_refresh"
+        android:textColor="@color/hyberry_white_transparency_90_percent"
+        android:textSize="13dp"
+        android:visibility="gone"/>
+    <ImageView
+        android:id="@+id/floating_close"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
+        android:layout_alignParentRight="true"
+        android:paddingBottom="7dp"
+        android:paddingLeft="7dp"
+        android:paddingRight="6dp"
+        android:paddingTop="6dp"
+        android:visibility="gone"
+        android:src="@drawable/hyberry_floating_close_normal"/>
+
+</RelativeLayout>
+

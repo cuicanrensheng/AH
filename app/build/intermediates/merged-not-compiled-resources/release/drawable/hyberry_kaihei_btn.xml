@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:state_selected="false"
+        android:drawable="@drawable/hyberry_kaihei_notopen_btn" />
+    <item
+        android:state_selected="true"
+        android:drawable="@drawable/hyberry_kaihei_open_btn" />
+</selector>   

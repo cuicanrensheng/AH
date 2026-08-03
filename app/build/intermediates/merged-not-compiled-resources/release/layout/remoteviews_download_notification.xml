@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/notification_container"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="#fffafafa"
+    android:minHeight="@dimen/mtp_dp60"
+    android:paddingLeft="@dimen/mtp_dp27"
+    android:paddingRight="@dimen/mtp_dp15">
+
+    <ImageView
+        android:id="@+id/iv_icon"
+        android:layout_width="@dimen/mtp_dp40"
+        android:layout_height="@dimen/mtp_dp40"
+        android:layout_centerVertical="true"
+        android:src="@drawable/remoteviews_notification_icon" />
+
+    <ImageView
+        android:id="@+id/ibtn_download"
+        android:layout_width="@dimen/mtp_dp20"
+        android:layout_height="@dimen/mtp_dp20"
+        android:layout_alignParentRight="true"
+        android:layout_centerVertical="true"/>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_centerVertical="true"
+        android:layout_marginLeft="@dimen/mtp_dp10"
+        android:layout_marginRight="@dimen/mtp_dp23"
+        android:layout_toLeftOf="@+id/ibtn_download"
+        android:layout_toRightOf="@+id/iv_icon"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/tv_name"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:singleLine="true"
+            android:textColor="#ff222222"
+            android:textSize="12sp"
+            tools:text="球球大作战" />
+
+        <ProgressBar
+            android:id="@+id/download_progressbar"
+            style="@android:style/Widget.ProgressBar.Horizontal"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/mtp_dp2"
+            android:layout_marginTop="@dimen/mtp_dp4"
+            android:progressDrawable="@drawable/download_progress_horizontal"
+            tools:progress="50" />
+
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/mtp_dp2">
+
+            <TextView
+                android:id="@+id/tv_speed"
+                style="@style/NotificationText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:singleLine="true"
+                android:textColor="#ff666666"
+                android:textSize="10sp"
+                tools:text="807kb/s" />
+
+            <TextView
+                android:id="@+id/tv_detail"
+                style="@style/NotificationText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="right"
+                android:ellipsize="end"
+                android:singleLine="true"
+                android:textColor="#ff666666"
+                android:textSize="10sp"
+                tools:text="5.8M/116M" />
+
+        </FrameLayout>
+    </LinearLayout>
+</RelativeLayout>

@@ -1,0 +1,483 @@
+1<?xml version="1.0" encoding="utf-8"?>
+2<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+3    package="com.tv.live"
+4    android:versionCode="3207"
+5    android:versionName="2.0.3207" >
+6
+7    <uses-sdk
+8        android:minSdkVersion="21"
+9        android:targetSdkVersion="36" />
+10
+11    <uses-permission android:name="android.permission.INTERNET" />
+11-->D:\编程\2\1\app\src\main\AndroidManifest.xml:5:5-67
+11-->D:\编程\2\1\app\src\main\AndroidManifest.xml:5:22-64
+12    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+12-->D:\编程\2\1\app\src\main\AndroidManifest.xml:6:5-76
+12-->D:\编程\2\1\app\src\main\AndroidManifest.xml:6:22-73
+13    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+13-->D:\编程\2\1\app\src\main\AndroidManifest.xml:7:5-79
+13-->D:\编程\2\1\app\src\main\AndroidManifest.xml:7:22-76
+14    <uses-permission
+14-->D:\编程\2\1\app\src\main\AndroidManifest.xml:8:5-107
+15        android:name="android.permission.READ_EXTERNAL_STORAGE"
+15-->D:\编程\2\1\app\src\main\AndroidManifest.xml:8:22-77
+16        android:maxSdkVersion="32" />
+16-->D:\编程\2\1\app\src\main\AndroidManifest.xml:8:78-104
+17    <uses-permission
+17-->D:\编程\2\1\app\src\main\AndroidManifest.xml:9:5-108
+18        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+18-->D:\编程\2\1\app\src\main\AndroidManifest.xml:9:22-78
+19        android:maxSdkVersion="32" />
+19-->D:\编程\2\1\app\src\main\AndroidManifest.xml:9:79-105
+20    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+20-->D:\编程\2\1\app\src\main\AndroidManifest.xml:10:5-83
+20-->D:\编程\2\1\app\src\main\AndroidManifest.xml:10:22-80
+21    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+21-->D:\编程\2\1\app\src\main\AndroidManifest.xml:11:5-81
+21-->D:\编程\2\1\app\src\main\AndroidManifest.xml:11:22-78
+22    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+22-->D:\编程\2\1\app\src\main\AndroidManifest.xml:12:5-77
+22-->D:\编程\2\1\app\src\main\AndroidManifest.xml:12:22-74
+23    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+23-->D:\编程\2\1\app\src\main\AndroidManifest.xml:13:5-89
+23-->D:\编程\2\1\app\src\main\AndroidManifest.xml:13:22-86
+24    <uses-permission android:name="android.permission.WAKE_LOCK" />
+24-->D:\编程\2\1\app\src\main\AndroidManifest.xml:14:5-68
+24-->D:\编程\2\1\app\src\main\AndroidManifest.xml:14:22-65
+25    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+25-->D:\编程\2\1\app\src\main\AndroidManifest.xml:15:5-79
+25-->D:\编程\2\1\app\src\main\AndroidManifest.xml:15:22-76
+26    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+26-->D:\编程\2\1\app\src\main\AndroidManifest.xml:16:5-95
+26-->D:\编程\2\1\app\src\main\AndroidManifest.xml:16:22-92
+27    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+27-->D:\编程\2\1\app\src\main\AndroidManifest.xml:17:5-77
+27-->D:\编程\2\1\app\src\main\AndroidManifest.xml:17:22-74
+28    <uses-permission android:name="android.permission.BIND_TV_INPUT" />
+28-->D:\编程\2\1\app\src\main\AndroidManifest.xml:18:5-72
+28-->D:\编程\2\1\app\src\main\AndroidManifest.xml:18:22-69
+29
+30    <uses-feature
+30-->[client-1.1.80.aar] C:\Users\16937\.gradle\caches\8.10.2\transforms\1a4afe4b2da16b4be32be8773a21e7d5\transformed\jetified-client-1.1.80\AndroidManifest.xml:11:5-13:35
+31        android:glEsVersion="0x00020000"
+31-->[client-1.1.80.aar] C:\Users\16937\.gradle\caches\8.10.2\transforms\1a4afe4b2da16b4be32be8773a21e7d5\transformed\jetified-client-1.1.80\AndroidManifest.xml:12:9-41
+32        android:required="true" />
+32-->[client-1.1.80.aar] C:\Users\16937\.gradle\caches\8.10.2\transforms\1a4afe4b2da16b4be32be8773a21e7d5\transformed\jetified-client-1.1.80\AndroidManifest.xml:13:9-32
+33
+34    <uses-permission android:name="android.permission.MOUNT_UNMOUNT_FILESYSTEMS" />
+34-->[client-1.1.80.aar] C:\Users\16937\.gradle\caches\8.10.2\transforms\1a4afe4b2da16b4be32be8773a21e7d5\transformed\jetified-client-1.1.80\AndroidManifest.xml:16:5-84
+34-->[client-1.1.80.aar] C:\Users\16937\.gradle\caches\8.10.2\transforms\1a4afe4b2da16b4be32be8773a21e7d5\transformed\jetified-client-1.1.80\AndroidManifest.xml:16:22-81
+35    <uses-permission android:name="Manifest.permission.RECORD_AUDIO" />
+35-->[client-1.1.80.aar] C:\Users\16937\.gradle\caches\8.10.2\transforms\1a4afe4b2da16b4be32be8773a21e7d5\transformed\jetified-client-1.1.80\AndroidManifest.xml:17:5-72
+35-->[client-1.1.80.aar] C:\Users\16937\.gradle\caches\8.10.2\transforms\1a4afe4b2da16b4be32be8773a21e7d5\transformed\jetified-client-1.1.80\AndroidManifest.xml:17:22-69
+36    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" /> <!-- 用于读取手机当前的状态 -->
+36-->[client-1.1.80.aar] C:\Users\16937\.gradle\caches\8.10.2\transforms\1a4afe4b2da16b4be32be8773a21e7d5\transformed\jetified-client-1.1.80\AndroidManifest.xml:18:5-80
+36-->[client-1.1.80.aar] C:\Users\16937\.gradle\caches\8.10.2\transforms\1a4afe4b2da16b4be32be8773a21e7d5\transformed\jetified-client-1.1.80\AndroidManifest.xml:18:22-77
+37    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+37-->[common-base-report-sdk-14.aar] C:\Users\16937\.gradle\caches\8.10.2\transforms\8c2a4140d32aef66e08f5a173c81626d\transformed\jetified-common-base-report-sdk-14\AndroidManifest.xml:11:5-75
+37-->[common-base-report-sdk-14.aar] C:\Users\16937\.gradle\caches\8.10.2\transforms\8c2a4140d32aef66e08f5a173c81626d\transformed\jetified-common-base-report-sdk-14\AndroidManifest.xml:11:22-72
+38    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+38-->[huyaudbunify-1.0.80007.1.1.aar] C:\Users\16937\.gradle\caches\8.10.2\transforms\d31e7173ac9a8386fb1279cffba2ef50\transformed\jetified-huyaudbunify-1.0.80007.1.1\AndroidManifest.xml:12:5-76
+38-->[huyaudbunify-1.0.80007.1.1.aar] C:\Users\16937\.gradle\caches\8.10.2\transforms\d31e7173ac9a8386fb1279cffba2ef50\transformed\jetified-huyaudbunify-1.0.80007.1.1\AndroidManifest.xml:12:22-73
+39    <uses-permission android:name="android.permission.BLUETOOTH" />
+39-->[hydeviceid-1.5.24-np.aar] C:\Users\16937\.gradle\caches\8.10.2\transforms\58576f96af51af2456da86e20e2d0785\transformed\jetified-hydeviceid-1.5.24-np\AndroidManifest.xml:16:5-68
+39-->[hydeviceid-1.5.24-np.aar] C:\Users\16937\.gradle\caches\8.10.2\transforms\58576f96af51af2456da86e20e2d0785\transformed\jetified-hydeviceid-1.5.24-np\AndroidManifest.xml:16:22-65
+40
+41    <meta-data
+41-->[hynssignal-1.9.105-exvolley.aar] C:\Users\16937\.gradle\caches\8.10.2\transforms\a0214b39c630c40c0abbf268b2dd6198\transformed\jetified-hynssignal-1.9.105-exvolley\AndroidManifest.xml:11:5-13:44
+42        android:name="ns_version"
+42-->[hynssignal-1.9.105-exvolley.aar] C:\Users\16937\.gradle\caches\8.10.2\transforms\a0214b39c630c40c0abbf268b2dd6198\transformed\jetified-hynssignal-1.9.105-exvolley\AndroidManifest.xml:12:9-34
+43        android:value="1.9.105-exvolley" />
+43-->[hynssignal-1.9.105-exvolley.aar] C:\Users\16937\.gradle\caches\8.10.2\transforms\a0214b39c630c40c0abbf268b2dd6198\transformed\jetified-hynssignal-1.9.105-exvolley\AndroidManifest.xml:13:9-41
+44
+45    <permission
+45-->[androidx.core:core:1.13.0] C:\Users\16937\.gradle\caches\8.10.2\transforms\26ae77588387e60189f5a60d0eeeea11\transformed\core-1.13.0\AndroidManifest.xml:22:5-24:47
+46        android:name="com.tv.live.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+46-->[androidx.core:core:1.13.0] C:\Users\16937\.gradle\caches\8.10.2\transforms\26ae77588387e60189f5a60d0eeeea11\transformed\core-1.13.0\AndroidManifest.xml:23:9-81
+47        android:protectionLevel="signature" />
+47-->[androidx.core:core:1.13.0] C:\Users\16937\.gradle\caches\8.10.2\transforms\26ae77588387e60189f5a60d0eeeea11\transformed\core-1.13.0\AndroidManifest.xml:24:9-44
+48
+49    <uses-permission android:name="com.tv.live.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" />
+49-->[androidx.core:core:1.13.0] C:\Users\16937\.gradle\caches\8.10.2\transforms\26ae77588387e60189f5a60d0eeeea11\transformed\core-1.13.0\AndroidManifest.xml:26:5-97
+49-->[androidx.core:core:1.13.0] C:\Users\16937\.gradle\caches\8.10.2\transforms\26ae77588387e60189f5a60d0eeeea11\transformed\core-1.13.0\AndroidManifest.xml:26:22-94
+50
+51    <application
+51-->D:\编程\2\1\app\src\main\AndroidManifest.xml:20:5-149:19
+52        android:name="com.tv.live.MyApplication"
+52-->D:\编程\2\1\app\src\main\AndroidManifest.xml:21:9-38
+53        android:allowBackup="true"
+53-->D:\编程\2\1\app\src\main\AndroidManifest.xml:22:9-35
+54        android:appComponentFactory="androidx.core.app.CoreComponentFactory"
+54-->[androidx.core:core:1.13.0] C:\Users\16937\.gradle\caches\8.10.2\transforms\26ae77588387e60189f5a60d0eeeea11\transformed\core-1.13.0\AndroidManifest.xml:28:18-86
+55        android:dataExtractionRules="@xml/data_extraction_rules"
+55-->D:\编程\2\1\app\src\main\AndroidManifest.xml:23:9-65
+56        android:extractNativeLibs="true"
+57        android:fullBackupContent="@xml/data_extraction_rules"
+57-->D:\编程\2\1\app\src\main\AndroidManifest.xml:24:9-63
+58        android:hardwareAccelerated="true"
+58-->D:\编程\2\1\app\src\main\AndroidManifest.xml:30:9-43
+59        android:icon="@mipmap/ic_launcher"
+59-->D:\编程\2\1\app\src\main\AndroidManifest.xml:25:9-43
+60        android:label="@string/app_name"
+60-->D:\编程\2\1\app\src\main\AndroidManifest.xml:26:9-41
+61        android:largeHeap="true"
+61-->D:\编程\2\1\app\src\main\AndroidManifest.xml:31:9-33
+62        android:networkSecurityConfig="@xml/network_security_config"
+62-->D:\编程\2\1\app\src\main\AndroidManifest.xml:29:9-69
+63        android:supportsRtl="true"
+63-->[base-login-release.aar] C:\Users\16937\.gradle\caches\8.10.2\transforms\1e3542853f6ff4ad4c192136d0797b9b\transformed\jetified-base-login-release\AndroidManifest.xml:15:9-35
+64        android:theme="@style/Theme.TVLive.NoTitle"
+64-->D:\编程\2\1\app\src\main\AndroidManifest.xml:27:9-52
+65        android:usesCleartextTraffic="true" >
+65-->D:\编程\2\1\app\src\main\AndroidManifest.xml:28:9-44
+66        <meta-data
+66-->D:\编程\2\1\app\src\main\AndroidManifest.xml:33:9-75
+67            android:name="NS_APPID"
+67-->D:\编程\2\1\app\src\main\AndroidManifest.xml:33:20-43
+68            android:value="live_android" />
+68-->D:\编程\2\1\app\src\main\AndroidManifest.xml:33:44-72
+69        <meta-data
+69-->D:\编程\2\1\app\src\main\AndroidManifest.xml:34:9-78
+70            android:name="CLIENT_TYPE"
+70-->D:\编程\2\1\app\src\main\AndroidManifest.xml:34:20-46
+71            android:value="adr_game_sdk" />
+71-->D:\编程\2\1\app\src\main\AndroidManifest.xml:34:47-75
+72        <meta-data
+72-->D:\编程\2\1\app\src\main\AndroidManifest.xml:35:9-84
+73            android:name="HY_APPID"
+73-->D:\编程\2\1\app\src\main\AndroidManifest.xml:35:20-43
+74            android:value="@string/hyberry_appid" />
+74-->D:\编程\2\1\app\src\main\AndroidManifest.xml:35:44-81
+75        <meta-data
+75-->D:\编程\2\1\app\src\main\AndroidManifest.xml:36:9-86
+76            android:name="HY_APPKEY"
+76-->D:\编程\2\1\app\src\main\AndroidManifest.xml:36:20-44
+77            android:value="@string/hyberry_appkey" />
+77-->D:\编程\2\1\app\src\main\AndroidManifest.xml:36:45-83
+78        <meta-data
+78-->D:\编程\2\1\app\src\main\AndroidManifest.xml:37:9-88
+79            android:name="HY_VERSION"
+79-->D:\编程\2\1\app\src\main\AndroidManifest.xml:37:20-45
+80            android:value="@string/hyberry_version" />
+80-->D:\编程\2\1\app\src\main\AndroidManifest.xml:37:46-85
+81        <meta-data
+81-->D:\编程\2\1\app\src\main\AndroidManifest.xml:38:9-88
+82            android:name="HY_CHANNEL"
+82-->D:\编程\2\1\app\src\main\AndroidManifest.xml:38:20-45
+83            android:value="@string/hyberry_channel" />
+83-->D:\编程\2\1\app\src\main\AndroidManifest.xml:38:46-85
+84        <meta-data
+84-->D:\编程\2\1\app\src\main\AndroidManifest.xml:39:9-110
+85            android:name="huya_berry_webview_scheme"
+85-->D:\编程\2\1\app\src\main\AndroidManifest.xml:39:20-60
+86            android:value="@string/hyberry_webview_scheme" />
+86-->D:\编程\2\1\app\src\main\AndroidManifest.xml:39:61-107
+87        <meta-data
+87-->D:\编程\2\1\app\src\main\AndroidManifest.xml:40:9-98
+88            android:name="huya_berry_app_name"
+88-->D:\编程\2\1\app\src\main\AndroidManifest.xml:40:20-54
+89            android:value="@string/hyberry_app_name" />
+89-->D:\编程\2\1\app\src\main\AndroidManifest.xml:40:55-95
+90
+91        <activity
+91-->D:\编程\2\1\app\src\main\AndroidManifest.xml:42:9-45:34
+92            android:name="com.huya.berry.webview.WebViewActivity"
+92-->D:\编程\2\1\app\src\main\AndroidManifest.xml:43:13-66
+93            android:configChanges="orientation|keyboard|keyboardHidden|screenSize"
+93-->[sdkclient-release.aar] C:\Users\16937\.gradle\caches\8.10.2\transforms\ce20656cba99c609a6961d8ad5f8c33c\transformed\jetified-sdkclient-release\AndroidManifest.xml:39:13-83
+94            android:exported="false"
+94-->D:\编程\2\1\app\src\main\AndroidManifest.xml:44:13-37
+95            android:launchMode="singleTask"
+95-->[sdkclient-release.aar] C:\Users\16937\.gradle\caches\8.10.2\transforms\ce20656cba99c609a6961d8ad5f8c33c\transformed\jetified-sdkclient-release\AndroidManifest.xml:40:13-44
+96            android:theme="@android:style/Theme.Translucent.NoTitleBar" >
+96-->[sdkclient-release.aar] C:\Users\16937\.gradle\caches\8.10.2\transforms\ce20656cba99c609a6961d8ad5f8c33c\transformed\jetified-sdkclient-release\AndroidManifest.xml:41:13-72
+97            <intent-filter>
+97-->[sdkclient-release.aar] C:\Users\16937\.gradle\caches\8.10.2\transforms\ce20656cba99c609a6961d8ad5f8c33c\transformed\jetified-sdkclient-release\AndroidManifest.xml:42:13-49:29
+98                <action android:name="android.intent.action.VIEW" />
+98-->[sdkclient-release.aar] C:\Users\16937\.gradle\caches\8.10.2\transforms\ce20656cba99c609a6961d8ad5f8c33c\transformed\jetified-sdkclient-release\AndroidManifest.xml:43:17-69
+98-->[sdkclient-release.aar] C:\Users\16937\.gradle\caches\8.10.2\transforms\ce20656cba99c609a6961d8ad5f8c33c\transformed\jetified-sdkclient-release\AndroidManifest.xml:43:25-66
+99
+100                <category android:name="android.intent.category.DEFAULT" />
+100-->D:\编程\2\1\app\src\main\AndroidManifest.xml:80:17-76
+100-->D:\编程\2\1\app\src\main\AndroidManifest.xml:80:27-73
+101                <category android:name="android.intent.category.BROWSABLE" />
+101-->[sdkclient-release.aar] C:\Users\16937\.gradle\caches\8.10.2\transforms\ce20656cba99c609a6961d8ad5f8c33c\transformed\jetified-sdkclient-release\AndroidManifest.xml:46:17-78
+101-->[sdkclient-release.aar] C:\Users\16937\.gradle\caches\8.10.2\transforms\ce20656cba99c609a6961d8ad5f8c33c\transformed\jetified-sdkclient-release\AndroidManifest.xml:46:27-75
+102
+103                <data android:scheme="@string/hyberry_webview_scheme" />
+103-->[sdkclient-release.aar] C:\Users\16937\.gradle\caches\8.10.2\transforms\ce20656cba99c609a6961d8ad5f8c33c\transformed\jetified-sdkclient-release\AndroidManifest.xml:48:17-73
+103-->[sdkclient-release.aar] C:\Users\16937\.gradle\caches\8.10.2\transforms\ce20656cba99c609a6961d8ad5f8c33c\transformed\jetified-sdkclient-release\AndroidManifest.xml:48:23-70
+104            </intent-filter>
+105        </activity>
+106        <activity
+106-->D:\编程\2\1\app\src\main\AndroidManifest.xml:46:9-49:34
+107            android:name="com.huya.berry.webview.BerryWebActivity"
+107-->D:\编程\2\1\app\src\main\AndroidManifest.xml:47:13-67
+108            android:exported="false" />
+108-->D:\编程\2\1\app\src\main\AndroidManifest.xml:48:13-37
+109        <activity
+109-->D:\编程\2\1\app\src\main\AndroidManifest.xml:51:9-61:20
+110            android:name="com.tv.live.MainActivity"
+110-->D:\编程\2\1\app\src\main\AndroidManifest.xml:52:13-41
+111            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout"
+111-->D:\编程\2\1\app\src\main\AndroidManifest.xml:56:13-91
+112            android:exported="true"
+112-->D:\编程\2\1\app\src\main\AndroidManifest.xml:53:13-36
+113            android:screenOrientation="sensorLandscape"
+113-->D:\编程\2\1\app\src\main\AndroidManifest.xml:54:13-56
+114            android:supportsPictureInPicture="true" >
+114-->D:\编程\2\1\app\src\main\AndroidManifest.xml:55:13-52
+115            <intent-filter>
+115-->D:\编程\2\1\app\src\main\AndroidManifest.xml:57:13-60:29
+116                <action android:name="android.intent.action.MAIN" />
+116-->D:\编程\2\1\app\src\main\AndroidManifest.xml:58:17-69
+116-->D:\编程\2\1\app\src\main\AndroidManifest.xml:58:25-66
+117
+118                <category android:name="android.intent.category.LAUNCHER" />
+118-->D:\编程\2\1\app\src\main\AndroidManifest.xml:59:17-77
+118-->D:\编程\2\1\app\src\main\AndroidManifest.xml:59:27-74
+119            </intent-filter>
+120        </activity>
+121        <activity
+121-->D:\编程\2\1\app\src\main\AndroidManifest.xml:63:9-67:49
+122            android:name="com.tv.live.CrashActivity"
+122-->D:\编程\2\1\app\src\main\AndroidManifest.xml:64:13-42
+123            android:excludeFromRecents="true"
+123-->D:\编程\2\1\app\src\main\AndroidManifest.xml:67:13-46
+124            android:exported="false"
+124-->D:\编程\2\1\app\src\main\AndroidManifest.xml:66:13-37
+125            android:theme="@android:style/Theme.DeviceDefault.Light.Dialog" />
+125-->D:\编程\2\1\app\src\main\AndroidManifest.xml:65:13-76
+126
+127        <receiver
+127-->D:\编程\2\1\app\src\main\AndroidManifest.xml:69:9-86:20
+128            android:name="com.tv.live.BootReceiver"
+128-->D:\编程\2\1\app\src\main\AndroidManifest.xml:70:13-41
+129            android:enabled="true"
+129-->D:\编程\2\1\app\src\main\AndroidManifest.xml:71:13-35
+130            android:exported="true" >
+130-->D:\编程\2\1\app\src\main\AndroidManifest.xml:72:13-36
+131            <intent-filter android:priority="1000" >
+131-->D:\编程\2\1\app\src\main\AndroidManifest.xml:73:13-81:29
+131-->D:\编程\2\1\app\src\main\AndroidManifest.xml:73:28-51
+132                <action android:name="android.intent.action.BOOT_COMPLETED" />
+132-->D:\编程\2\1\app\src\main\AndroidManifest.xml:74:17-79
+132-->D:\编程\2\1\app\src\main\AndroidManifest.xml:74:25-76
+133                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+133-->D:\编程\2\1\app\src\main\AndroidManifest.xml:75:17-86
+133-->D:\编程\2\1\app\src\main\AndroidManifest.xml:75:25-83
+134                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+134-->D:\编程\2\1\app\src\main\AndroidManifest.xml:76:17-84
+134-->D:\编程\2\1\app\src\main\AndroidManifest.xml:76:25-81
+135                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+135-->D:\编程\2\1\app\src\main\AndroidManifest.xml:77:17-82
+135-->D:\编程\2\1\app\src\main\AndroidManifest.xml:77:25-79
+136                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
+136-->D:\编程\2\1\app\src\main\AndroidManifest.xml:78:17-82
+136-->D:\编程\2\1\app\src\main\AndroidManifest.xml:78:25-79
+137                <action android:name="android.intent.action.ACTION_POWER_CONNECTED" />
+137-->D:\编程\2\1\app\src\main\AndroidManifest.xml:79:17-87
+137-->D:\编程\2\1\app\src\main\AndroidManifest.xml:79:25-84
+138
+139                <category android:name="android.intent.category.DEFAULT" />
+139-->D:\编程\2\1\app\src\main\AndroidManifest.xml:80:17-76
+139-->D:\编程\2\1\app\src\main\AndroidManifest.xml:80:27-73
+140            </intent-filter>
+141            <intent-filter>
+141-->D:\编程\2\1\app\src\main\AndroidManifest.xml:82:13-85:29
+142                <action android:name="android.intent.action.SCREEN_ON" />
+142-->D:\编程\2\1\app\src\main\AndroidManifest.xml:83:17-74
+142-->D:\编程\2\1\app\src\main\AndroidManifest.xml:83:25-71
+143                <action android:name="android.intent.action.USER_PRESENT" />
+143-->D:\编程\2\1\app\src\main\AndroidManifest.xml:84:17-77
+143-->D:\编程\2\1\app\src\main\AndroidManifest.xml:84:25-74
+144            </intent-filter>
+145        </receiver>
+146        <receiver
+146-->D:\编程\2\1\app\src\main\AndroidManifest.xml:88:9-95:20
+147            android:name="com.tv.live.BootStartReceiver"
+147-->D:\编程\2\1\app\src\main\AndroidManifest.xml:89:13-46
+148            android:enabled="true"
+148-->D:\编程\2\1\app\src\main\AndroidManifest.xml:90:13-35
+149            android:exported="false" >
+149-->D:\编程\2\1\app\src\main\AndroidManifest.xml:91:13-37
+150            <intent-filter>
+150-->D:\编程\2\1\app\src\main\AndroidManifest.xml:92:13-94:29
+151                <action android:name="com.tv.live.START_APP" />
+151-->D:\编程\2\1\app\src\main\AndroidManifest.xml:93:17-64
+151-->D:\编程\2\1\app\src\main\AndroidManifest.xml:93:25-61
+152            </intent-filter>
+153        </receiver>
+154
+155        <service
+155-->D:\编程\2\1\app\src\main\AndroidManifest.xml:97:9-100:40
+156            android:name="com.tv.live.BootJobService"
+156-->D:\编程\2\1\app\src\main\AndroidManifest.xml:98:13-43
+157            android:exported="false"
+157-->D:\编程\2\1\app\src\main\AndroidManifest.xml:100:13-37
+158            android:permission="android.permission.BIND_JOB_SERVICE" />
+158-->D:\编程\2\1\app\src\main\AndroidManifest.xml:99:13-69
+159        <service
+159-->D:\编程\2\1\app\src\main\AndroidManifest.xml:101:9-104:58
+160            android:name="com.tv.live.BootStartForegroundService"
+160-->D:\编程\2\1\app\src\main\AndroidManifest.xml:102:13-55
+161            android:exported="false"
+161-->D:\编程\2\1\app\src\main\AndroidManifest.xml:103:13-37
+162            android:foregroundServiceType="specialUse" />
+162-->D:\编程\2\1\app\src\main\AndroidManifest.xml:104:13-55
+163
+164        <provider
+165            android:name="androidx.core.content.FileProvider"
+165-->D:\编程\2\1\app\src\main\AndroidManifest.xml:107:13-62
+166            android:authorities="com.tv.live.fileprovider"
+166-->D:\编程\2\1\app\src\main\AndroidManifest.xml:108:13-64
+167            android:exported="false"
+167-->D:\编程\2\1\app\src\main\AndroidManifest.xml:109:13-37
+168            android:grantUriPermissions="true" >
+168-->D:\编程\2\1\app\src\main\AndroidManifest.xml:110:13-47
+169            <meta-data
+169-->D:\编程\2\1\app\src\main\AndroidManifest.xml:111:13-113:54
+170                android:name="android.support.FILE_PROVIDER_PATHS"
+170-->D:\编程\2\1\app\src\main\AndroidManifest.xml:112:17-67
+171                android:resource="@xml/file_paths" />
+171-->D:\编程\2\1\app\src\main\AndroidManifest.xml:113:17-51
+172        </provider>
+173
+174        <activity
+174-->D:\编程\2\1\app\src\main\AndroidManifest.xml:129:9-135:20
+175            android:name="com.tv.live.tv.SetupActivity"
+175-->D:\编程\2\1\app\src\main\AndroidManifest.xml:130:13-45
+176            android:exported="true" >
+176-->D:\编程\2\1\app\src\main\AndroidManifest.xml:131:13-36
+177            <intent-filter>
+177-->D:\编程\2\1\app\src\main\AndroidManifest.xml:132:13-134:29
+178                <action android:name="android.media.tv.action.CHANNEL_SETUP" />
+178-->D:\编程\2\1\app\src\main\AndroidManifest.xml:133:17-80
+178-->D:\编程\2\1\app\src\main\AndroidManifest.xml:133:25-77
+179            </intent-filter>
+180        </activity>
+181
+182        <service
+182-->D:\编程\2\1\app\src\main\AndroidManifest.xml:137:9-147:19
+183            android:name="com.tv.live.tv.LiveTvInputService"
+183-->D:\编程\2\1\app\src\main\AndroidManifest.xml:138:13-50
+184            android:exported="true"
+184-->D:\编程\2\1\app\src\main\AndroidManifest.xml:140:13-36
+185            android:permission="android.permission.BIND_TV_INPUT" >
+185-->D:\编程\2\1\app\src\main\AndroidManifest.xml:139:13-66
+186            <intent-filter>
+186-->D:\编程\2\1\app\src\main\AndroidManifest.xml:141:13-143:29
+187                <action android:name="android.media.tv.TvInputService" />
+187-->D:\编程\2\1\app\src\main\AndroidManifest.xml:142:17-74
+187-->D:\编程\2\1\app\src\main\AndroidManifest.xml:142:25-71
+188            </intent-filter>
+189
+190            <meta-data
+190-->D:\编程\2\1\app\src\main\AndroidManifest.xml:144:13-146:52
+191                android:name="android.media.tv.input"
+191-->D:\编程\2\1\app\src\main\AndroidManifest.xml:145:17-54
+192                android:resource="@xml/tv_input" />
+192-->D:\编程\2\1\app\src\main\AndroidManifest.xml:146:17-49
+193        </service>
+194
+195        <activity
+195-->[base-login-release.aar] C:\Users\16937\.gradle\caches\8.10.2\transforms\1e3542853f6ff4ad4c192136d0797b9b\transformed\jetified-base-login-release\AndroidManifest.xml:17:9-19:75
+196            android:name="com.yy.open.activity.BridgeActivity"
+196-->[base-login-release.aar] C:\Users\16937\.gradle\caches\8.10.2\transforms\1e3542853f6ff4ad4c192136d0797b9b\transformed\jetified-base-login-release\AndroidManifest.xml:18:13-63
+197            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+197-->[base-login-release.aar] C:\Users\16937\.gradle\caches\8.10.2\transforms\1e3542853f6ff4ad4c192136d0797b9b\transformed\jetified-base-login-release\AndroidManifest.xml:19:13-72
+198        <activity android:name="com.yy.open.activity.AssistActivity" />
+198-->[base-login-release.aar] C:\Users\16937\.gradle\caches\8.10.2\transforms\1e3542853f6ff4ad4c192136d0797b9b\transformed\jetified-base-login-release\AndroidManifest.xml:20:9-72
+198-->[base-login-release.aar] C:\Users\16937\.gradle\caches\8.10.2\transforms\1e3542853f6ff4ad4c192136d0797b9b\transformed\jetified-base-login-release\AndroidManifest.xml:20:19-69
+199
+200        <uses-library
+200-->[hynssignal-1.9.105-exvolley.aar] C:\Users\16937\.gradle\caches\8.10.2\transforms\a0214b39c630c40c0abbf268b2dd6198\transformed\jetified-hynssignal-1.9.105-exvolley\AndroidManifest.xml:16:9-18:40
+201            android:name="org.apache.http.legacy"
+201-->[hynssignal-1.9.105-exvolley.aar] C:\Users\16937\.gradle\caches\8.10.2\transforms\a0214b39c630c40c0abbf268b2dd6198\transformed\jetified-hynssignal-1.9.105-exvolley\AndroidManifest.xml:17:13-50
+202            android:required="false" />
+202-->[hynssignal-1.9.105-exvolley.aar] C:\Users\16937\.gradle\caches\8.10.2\transforms\a0214b39c630c40c0abbf268b2dd6198\transformed\jetified-hynssignal-1.9.105-exvolley\AndroidManifest.xml:18:13-37
+203
+204        <meta-data
+204-->[sdkclient-release.aar] C:\Users\16937\.gradle\caches\8.10.2\transforms\ce20656cba99c609a6961d8ad5f8c33c\transformed\jetified-sdkclient-release\AndroidManifest.xml:33:9-35:51
+205            android:name="FB_APPID"
+205-->[sdkclient-release.aar] C:\Users\16937\.gradle\caches\8.10.2\transforms\ce20656cba99c609a6961d8ad5f8c33c\transformed\jetified-sdkclient-release\AndroidManifest.xml:34:13-36
+206            android:value="@string/hy_fb_appid" />
+206-->[sdkclient-release.aar] C:\Users\16937\.gradle\caches\8.10.2\transforms\ce20656cba99c609a6961d8ad5f8c33c\transformed\jetified-sdkclient-release\AndroidManifest.xml:35:13-48
+207
+208        <activity
+208-->[sdkclient-release.aar] C:\Users\16937\.gradle\caches\8.10.2\transforms\ce20656cba99c609a6961d8ad5f8c33c\transformed\jetified-sdkclient-release\AndroidManifest.xml:51:9-54:63
+209            android:name="com.huya.berry.webview.ImagePickerActivity"
+209-->[sdkclient-release.aar] C:\Users\16937\.gradle\caches\8.10.2\transforms\ce20656cba99c609a6961d8ad5f8c33c\transformed\jetified-sdkclient-release\AndroidManifest.xml:52:13-70
+210            android:screenOrientation="behind"
+210-->[sdkclient-release.aar] C:\Users\16937\.gradle\caches\8.10.2\transforms\ce20656cba99c609a6961d8ad5f8c33c\transformed\jetified-sdkclient-release\AndroidManifest.xml:53:13-47
+211            android:theme="@android:style/Theme.NoTitleBar" />
+211-->[sdkclient-release.aar] C:\Users\16937\.gradle\caches\8.10.2\transforms\ce20656cba99c609a6961d8ad5f8c33c\transformed\jetified-sdkclient-release\AndroidManifest.xml:54:13-60
+212
+213        <provider
+213-->[androidx.emoji2:emoji2:1.3.0] C:\Users\16937\.gradle\caches\8.10.2\transforms\844a96d244d8300758e35ae975235670\transformed\jetified-emoji2-1.3.0\AndroidManifest.xml:24:9-32:20
+214            android:name="androidx.startup.InitializationProvider"
+214-->[androidx.emoji2:emoji2:1.3.0] C:\Users\16937\.gradle\caches\8.10.2\transforms\844a96d244d8300758e35ae975235670\transformed\jetified-emoji2-1.3.0\AndroidManifest.xml:25:13-67
+215            android:authorities="com.tv.live.androidx-startup"
+215-->[androidx.emoji2:emoji2:1.3.0] C:\Users\16937\.gradle\caches\8.10.2\transforms\844a96d244d8300758e35ae975235670\transformed\jetified-emoji2-1.3.0\AndroidManifest.xml:26:13-68
+216            android:exported="false" >
+216-->[androidx.emoji2:emoji2:1.3.0] C:\Users\16937\.gradle\caches\8.10.2\transforms\844a96d244d8300758e35ae975235670\transformed\jetified-emoji2-1.3.0\AndroidManifest.xml:27:13-37
+217            <meta-data
+217-->[androidx.emoji2:emoji2:1.3.0] C:\Users\16937\.gradle\caches\8.10.2\transforms\844a96d244d8300758e35ae975235670\transformed\jetified-emoji2-1.3.0\AndroidManifest.xml:29:13-31:52
+218                android:name="androidx.emoji2.text.EmojiCompatInitializer"
+218-->[androidx.emoji2:emoji2:1.3.0] C:\Users\16937\.gradle\caches\8.10.2\transforms\844a96d244d8300758e35ae975235670\transformed\jetified-emoji2-1.3.0\AndroidManifest.xml:30:17-75
+219                android:value="androidx.startup" />
+219-->[androidx.emoji2:emoji2:1.3.0] C:\Users\16937\.gradle\caches\8.10.2\transforms\844a96d244d8300758e35ae975235670\transformed\jetified-emoji2-1.3.0\AndroidManifest.xml:31:17-49
+220            <meta-data
+220-->[androidx.lifecycle:lifecycle-process:2.6.2] C:\Users\16937\.gradle\caches\8.10.2\transforms\516f394186dd564884c168047ab6fe00\transformed\jetified-lifecycle-process-2.6.2\AndroidManifest.xml:29:13-31:52
+221                android:name="androidx.lifecycle.ProcessLifecycleInitializer"
+221-->[androidx.lifecycle:lifecycle-process:2.6.2] C:\Users\16937\.gradle\caches\8.10.2\transforms\516f394186dd564884c168047ab6fe00\transformed\jetified-lifecycle-process-2.6.2\AndroidManifest.xml:30:17-78
+222                android:value="androidx.startup" />
+222-->[androidx.lifecycle:lifecycle-process:2.6.2] C:\Users\16937\.gradle\caches\8.10.2\transforms\516f394186dd564884c168047ab6fe00\transformed\jetified-lifecycle-process-2.6.2\AndroidManifest.xml:31:17-49
+223            <meta-data
+223-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\16937\.gradle\caches\8.10.2\transforms\318e1a08df5da25bc57c355d9f99c4a5\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:29:13-31:52
+224                android:name="androidx.profileinstaller.ProfileInstallerInitializer"
+224-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\16937\.gradle\caches\8.10.2\transforms\318e1a08df5da25bc57c355d9f99c4a5\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:30:17-85
+225                android:value="androidx.startup" />
+225-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\16937\.gradle\caches\8.10.2\transforms\318e1a08df5da25bc57c355d9f99c4a5\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:31:17-49
+226        </provider>
+227
+228        <receiver
+228-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\16937\.gradle\caches\8.10.2\transforms\318e1a08df5da25bc57c355d9f99c4a5\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:34:9-52:20
+229            android:name="androidx.profileinstaller.ProfileInstallReceiver"
+229-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\16937\.gradle\caches\8.10.2\transforms\318e1a08df5da25bc57c355d9f99c4a5\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:35:13-76
+230            android:directBootAware="false"
+230-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\16937\.gradle\caches\8.10.2\transforms\318e1a08df5da25bc57c355d9f99c4a5\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:36:13-44
+231            android:enabled="true"
+231-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\16937\.gradle\caches\8.10.2\transforms\318e1a08df5da25bc57c355d9f99c4a5\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:37:13-35
+232            android:exported="true"
+232-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\16937\.gradle\caches\8.10.2\transforms\318e1a08df5da25bc57c355d9f99c4a5\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:38:13-36
+233            android:permission="android.permission.DUMP" >
+233-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\16937\.gradle\caches\8.10.2\transforms\318e1a08df5da25bc57c355d9f99c4a5\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:39:13-57
+234            <intent-filter>
+234-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\16937\.gradle\caches\8.10.2\transforms\318e1a08df5da25bc57c355d9f99c4a5\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:40:13-42:29
+235                <action android:name="androidx.profileinstaller.action.INSTALL_PROFILE" />
+235-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\16937\.gradle\caches\8.10.2\transforms\318e1a08df5da25bc57c355d9f99c4a5\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:41:17-91
+235-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\16937\.gradle\caches\8.10.2\transforms\318e1a08df5da25bc57c355d9f99c4a5\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:41:25-88
+236            </intent-filter>
+237            <intent-filter>
+237-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\16937\.gradle\caches\8.10.2\transforms\318e1a08df5da25bc57c355d9f99c4a5\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:43:13-45:29
+238                <action android:name="androidx.profileinstaller.action.SKIP_FILE" />
+238-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\16937\.gradle\caches\8.10.2\transforms\318e1a08df5da25bc57c355d9f99c4a5\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:44:17-85
+238-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\16937\.gradle\caches\8.10.2\transforms\318e1a08df5da25bc57c355d9f99c4a5\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:44:25-82
+239            </intent-filter>
+240            <intent-filter>
+240-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\16937\.gradle\caches\8.10.2\transforms\318e1a08df5da25bc57c355d9f99c4a5\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:46:13-48:29
+241                <action android:name="androidx.profileinstaller.action.SAVE_PROFILE" />
+241-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\16937\.gradle\caches\8.10.2\transforms\318e1a08df5da25bc57c355d9f99c4a5\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:47:17-88
+241-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\16937\.gradle\caches\8.10.2\transforms\318e1a08df5da25bc57c355d9f99c4a5\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:47:25-85
+242            </intent-filter>
+243            <intent-filter>
+243-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\16937\.gradle\caches\8.10.2\transforms\318e1a08df5da25bc57c355d9f99c4a5\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:49:13-51:29
+244                <action android:name="androidx.profileinstaller.action.BENCHMARK_OPERATION" />
+244-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\16937\.gradle\caches\8.10.2\transforms\318e1a08df5da25bc57c355d9f99c4a5\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:50:17-95
+244-->[androidx.profileinstaller:profileinstaller:1.3.1] C:\Users\16937\.gradle\caches\8.10.2\transforms\318e1a08df5da25bc57c355d9f99c4a5\transformed\jetified-profileinstaller-1.3.1\AndroidManifest.xml:50:25-92
+245            </intent-filter>
+246        </receiver>
+247    </application>
+248
+249</manifest>

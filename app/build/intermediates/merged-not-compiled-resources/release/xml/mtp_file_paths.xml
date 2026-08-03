@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <external-path path="./" name="sdcard"/>
+    <files-path path="./" name="files"/>
+    <cache-path path="./" name="cache"/>
+    <external-path path="Android/data/" name="mtp_upgrade_files" />
+</paths>

@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+    <TextView
+        android:id="@+id/tip_tv"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textColor="@color/hyberry_color_FF4949"
+        android:textSize="9sp"
+        android:paddingRight="20dp"
+        android:paddingLeft="25dp"
+        android:background="@drawable/hyberry_net_speed_bg"
+        android:layout_marginTop="6dp"/>
+
+    <FrameLayout
+        android:id="@+id/chat_normal"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@drawable/hyberry_shape_chat_container_bg"
+        android:orientation="vertical"
+        android:visibility="visible">
+
+        <androidx.viewpager.widget.ViewPager
+            android:id="@+id/view_pager"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:paddingTop="7dp"
+            android:paddingBottom="11dp"
+            android:paddingLeft="20dp"
+            android:paddingRight="15dp" />
+
+        <ImageView
+            android:id="@+id/contract_btn"
+            android:layout_width="wrap_content"
+            android:layout_height="22dp"
+            android:layout_gravity="right"
+            android:background="@null"
+            android:paddingBottom="5dp"
+            android:paddingRight="10dp"
+            android:paddingLeft="10dp"
+            android:paddingTop="5dp"
+            android:src="@drawable/hyberry_live_chat_contract_btn" />
+    </FrameLayout>
+
+    <LinearLayout
+        android:id="@+id/chat_line"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:paddingLeft="26dp"
+        android:background="@drawable/hyberry_shape_chat_container_bg"
+        android:visibility="gone">
+
+        <com.huya.berry.sdklive.living.messageboard.ui.ChatSigTextView
+            android:id="@+id/sig_text_view"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_vertical"
+            android:layout_weight="1"
+            android:ellipsize="end"
+            android:singleLine="true"
+            android:textSize="11sp" />
+
+
+        <ImageView
+            android:id="@+id/expand_btn"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:layout_gravity="right"
+            android:background="@null"
+            android:paddingBottom="5dp"
+            android:paddingLeft="10dp"
+            android:paddingRight="10dp"
+            android:paddingTop="5dp"
+            android:src="@drawable/hyberry_live_chat_expand_btn" />
+
+
+    </LinearLayout>
+
+
+</LinearLayout>

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="download_cancel">Kinansela ang pag-download</string>
+    <string name="download_compeleted">Kumpleto na</string>
+    <string name="download_failed">Bigo sa pag-download</string>
+    <string name="download_file_not_exist">Walang ganitong file</string>
+    <string name="download_md5_failed">Bigo sa pagberipika</string>
+    <string name="download_pause">Pansamantalang nakatigil</string>
+    <string name="download_waiting">Naghihintay ng download</string>
+</resources>

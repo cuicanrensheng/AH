@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/fl_main"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+    <LinearLayout
+        android:id="@+id/empty_ly"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="113dp"
+            android:drawableTop="@drawable/hyberry_icon_list_empty"
+            android:gravity="center"
+            android:drawablePadding="10dp"
+            android:text="@string/hyberry_live_message_empty"
+            android:textColor="@color/hyberry_gray99"
+            android:textSize="14sp" />
+
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical">
+
+        <com.huya.berry.sdklive.living.messageboard.ui.ChatListBrowser
+            android:id="@+id/channel_chat_browser"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="2"
+            android:cacheColorHint="@color/hyberry_transparent"
+            android:divider="@color/hyberry_transparent"
+            android:dividerHeight="3dp"
+            android:listSelector="@color/hyberry_transparent"
+            android:paddingBottom="3dp"
+            android:scrollbars="vertical"
+            android:stackFromBottom="true" />
+
+        <TextView
+            android:id="@+id/channel_chat_new_msg"
+            android:layout_width="wrap_content"
+            android:layout_height="26dp"
+            android:layout_marginTop="5dp"
+            android:background="@drawable/hyberry_shape_bg_white_60_radius_13"
+            android:drawablePadding="10dp"
+            android:drawableRight="@drawable/hyberry_live_item_new_msg"
+            android:gravity="center_vertical|left"
+            android:minWidth="90dp"
+            android:paddingLeft="15dp"
+            android:paddingRight="15dp"
+            android:text="1条新消息"
+            android:textColor="@color/hyberry_black"
+            android:textSize="12sp"
+            android:visibility="gone" />
+    </LinearLayout>
+
+
+</LinearLayout>

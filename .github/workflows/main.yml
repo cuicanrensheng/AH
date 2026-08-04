@@ -95,12 +95,21 @@ jobs:
             -PkeyAlias=${{ secrets.KEY_ALIAS }} \
             -PkeyPassword=${{ secrets.KEY_PASSWORD }}
 
-      - name: 上传Mapping文件夹（仅保留3天）
-        uses: actions/upload-artifact@v4
+      - name: 压缩Mapping文件并上传（排除超大文件）
         if: always()
+        run: |
+          cd app/build/outputs/mapping/release/
+          # 只压缩小文件（排除超大的mapping.txt和seeds.txt）
+          zip mapping-release.zip configuration.txt resources.txt
+          echo "✅ 压缩完成"
+        continue-on-error: true
+
+      - name: 上传Mapping压缩包
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
           name: mapping-release
-          path: app/build/outputs/mapping/release/
+          path: app/build/outputs/mapping/release/mapping-release.zip
           retention-days: 3
 
       - name: 生成并提交 update.json

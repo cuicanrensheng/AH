@@ -4,6 +4,36 @@
 -keepattributes **
 -renamesourcefileattribute SourceFile
 
+# ====================================================================
+# 🟢 R8 全局优化配置
+# ====================================================================
+-optimizationpasses 2
+-allowaccessmodification
+-dontusemixedcaseclassnames
+-dontskipnonpubliclibraryclasses
+-dontpreverify
+-verbose
+-optimizations !code/simplification/arithmetic,!field/*,!class/merging/*
+
+# ====================================================================
+# 🔴 R8 优化移除所有日志调用（Release构建）
+# ====================================================================
+-assumenosideeffects class android.util.Log {
+    public static boolean isLoggable(java.lang.String, int);
+    public static int v(java.lang.String, java.lang.String);
+    public static int d(java.lang.String, java.lang.String);
+    public static int i(java.lang.String, java.lang.String);
+    public static int w(java.lang.String, java.lang.String);
+    public static int e(java.lang.String, java.lang.String);
+}
+-assumenosideeffects class java.lang.System {
+    public static void println(java.lang.String);
+    public static void println(java.lang.Object);
+}
+-assumenosideeffects class java.lang.Throwable {
+    public void printStackTrace();
+}
+
 # 🔴 Gson 保护规则（防止 JSON 解析时字段名被混淆导致崩溃）
 -keep class com.google.gson.** { *; }
 -keepattributes com.google.gson.annotations.*
@@ -61,6 +91,30 @@
 -keep class com.huyaudbunify.** { *; }
 -keepclassmembers class com.huyaudbunify.** { *; }
 
+# 🔴 虎牙 SDK - 保留所有方法名（JNI/Native 调用依赖方法名）
+-keepclassmembers,allowshrinking,allowoptimization class com.huya.** {
+    <methods>;
+    <fields>;
+}
+-keepclassmembers,allowshrinking,allowoptimization class com.duowan.** {
+    <methods>;
+    <fields>;
+}
+
+# 🔴 Native 方法保护
+-keepclasseswithmembernames class * {
+    native <methods>;
+}
+-keepclasseswithmembers class com.huya.** {
+    native <methods>;
+}
+-keepclasseswithmembers class com.duowan.** {
+    native <methods>;
+}
+-keepclassmembers class * {
+    native <methods>;
+}
+
 # 通用直播工具
 -keep class com.huya.live.common.** { *; }
 -keep class com.huya.live.utils.** { *; }
@@ -90,25 +144,6 @@
 -keep interface okhttp3.** { *; }
 -keep class okio.** { *; }
 
--optimizationpasses 2
--allowaccessmodification
--dontusemixedcaseclassnames
--dontskipnonpubliclibraryclasses
--dontpreverify
--verbose
-
--keepclasseswithmembernames class * {
-    native <methods>;
-}
--keep class com.huya.security.** { *; }
--keep class com.huya.hydeviceid.** { *; }
--keep class **.NativeBridge { *; }
--keepclasseswithmembers class com.huya.** {
-    native <methods>;
-}
--keepclasseswithmembers class com.duowan.** {
-    native <methods>;
-}
 -keepclassmembers class * {
     native <methods>;
 }
@@ -194,19 +229,3 @@
 -dontwarn stericson.RootTools.**
 -dontwarn com.stericson.RootShell.**
 -dontwarn stericson.RootShell.**
-
-# R8优化移除日志调用
--assumenosideeffects class android.util.Log {
-    public static int d(java.lang.String, java.lang.String);
-    public static int i(java.lang.String, java.lang.String);
-    public static int w(java.lang.String, java.lang.String);
-    public static int e(java.lang.String, java.lang.String);
-    public static int v(java.lang.String, java.lang.String);
-}
--assumenosideeffects class java.lang.System {
-    public static void println(java.lang.String);
-    public static void println(java.lang.Object);
-}
--assumenosideeffects class java.lang.Throwable {
-    public void printStackTrace();
-}

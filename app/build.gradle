@@ -49,6 +49,7 @@ android {
         release {
             minifyEnabled true
             shrinkResources true
+            zipAlignEnabled true
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
             signingConfig signingConfigs.release
         }
@@ -163,4 +164,79 @@ configurations.all {
     exclude group: 'org.webrtc'
     exclude group: 'com.squareup.picasso'
     exclude group: 'com.github.bumptech.glide'
+}
+
+// ====================================================================
+// 🔧 NDK SO 符号剥离配置（减小APK体积，需要安装NDK）
+// ====================================================================
+// 注意：此配置需要NDK支持，如未安装NDK会自动跳过
+// 如需使用，请在local.properties中配置ndk.dir指向NDK安装目录
+android.applicationVariants.all { variant ->
+    if (variant.buildType.name == 'release') {
+        variant.outputs.all { output ->
+            output.processResources.doLast {
+                try {
+                    def stripTool = null
+                    def ndkDir = null
+                    
+                    // 尝试获取NDK目录
+                    try {
+                        ndkDir = android.ndkDirectory
+                    } catch (Exception e) {
+                        // NDK未安装
+                    }
+                    
+                    if (ndkDir) {
+                        def stripPath = "${ndkDir}/toolchains/llvm/prebuilt/windows-x86_64/bin/llvm-strip"
+                        def stripFile = file(stripPath)
+                        if (stripFile.exists()) {
+                            stripTool = stripFile.absolutePath
+                        }
+                    }
+                    
+                    if (!stripTool) {
+                        // 尝试从local.properties查找ndk路径
+                        def localProps = file("${rootProject.projectDir}/local.properties")
+                        if (localProps.exists()) {
+                            def ndkPathLine = localProps.text.readLines().find { it.startsWith('ndk.dir=') }
+                            if (ndkPathLine) {
+                                def basePath = ndkPathLine.replace('ndk.dir=', '').trim()
+                                def ndkDirs = file(basePath).listFiles()
+                                if (ndkDirs) {
+                                    def latestNdk = ndkDirs.findAll { it.directory }.sort { a, b -> b.name <=> a.name }[0]
+                                    if (latestNdk) {
+                                        def candidate = "${latestNdk.absolutePath}/toolchains/llvm/prebuilt/windows-x86_64/bin/llvm-strip"
+                                        if (file(candidate).exists()) {
+                                            stripTool = candidate
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    if (stripTool) {
+                        def abiFolders = ['arm64-v8a', 'armeabi-v7a']
+                        abiFolders.each { abi ->
+                            def jniLibsFolder = "${buildDir}/intermediates/jniLibs/release/${abi}"
+                            fileTree(dir: jniLibsFolder, include: ['*.so']).each { soFile ->
+                                try {
+                                    exec {
+                                        commandLine stripTool, '--strip-debug', soFile.absolutePath
+                                    }
+                                    logger.lifecycle "Stripped debug symbols: ${soFile.name}"
+                                } catch (Exception e) {
+                                    logger.warn "Strip failed for ${soFile.name}: ${e.message}"
+                                }
+                            }
+                        }
+                    } else {
+                        logger.lifecycle "NDK strip tool not found, skipping SO symbol stripping"
+                    }
+                } catch (Exception e) {
+                    logger.lifecycle "SO stripping skipped: ${e.message}"
+                }
+            }
+        }
+    }
 }

@@ -1,0 +1,27 @@
+name: 清空所有Release
+on: workflow_dispatch
+permissions:
+  contents: write
+jobs:
+  del:
+    runs-on: ubuntu-l
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            // 获取所有发布
+            const { data: releases } = await github.rest.repos.listReleases({owner,repo,per_page:100});
+            for(const r of releases){
+              try{
+                // 删除Release
+                await github.rest.repos.deleteRelease({owner,repo,release_id:r.id});
+                console.log(`已删除Release #${r.id} tag:${r.tag_name}`);
+                // 同步删除对应Tag
+                await github.rest.git.deleteRef({owner,repo,ref:`tags/${r.tag_name}`});
+                console.log(`已删除标签 ${r.tag_name}`);
+              }catch(e){
+                console.warn(`跳过：${r.tag_name} ${e.message}`);
+              }
+            }

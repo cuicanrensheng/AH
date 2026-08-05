@@ -28,10 +28,19 @@ jobs:
       - name: 赋予 gradlew 初始执行权限
         run: chmod +x gradlew
 
-      - name: 清理缓存并强制刷新依赖
+      - name: 缓存 Gradle 依赖
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+
+      - name: 清理构建产物
         run: |
-          echo "🧹 清理 Gradle 缓存..."
-          rm -rf ~/.gradle/caches/
+          echo "🧹 清理构建产物..."
           ./gradlew clean
 
       - name: 解码签名证书并注入密钥
@@ -83,13 +92,11 @@ jobs:
             git push origin main || echo "Push skip: remote has newer commits"
           fi
 
-      # =====================【重点修复】打包前重新赋予权限，彻底杜绝权限丢失 =====================
       - name: 开始执行 Release 打包...
         run: |
           echo "🎯 开始执行 Release 打包..."
           chmod +x ./gradlew
           ./gradlew assembleRelease \
-            --no-daemon \
             --stacktrace \
             -PstorePassword=${{ secrets.STORE_PASSWORD }} \
             -PkeyAlias=${{ secrets.KEY_ALIAS }} \

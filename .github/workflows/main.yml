@@ -95,13 +95,14 @@ jobs:
             -PkeyAlias=${{ secrets.KEY_ALIAS }} \
             -PkeyPassword=${{ secrets.KEY_PASSWORD }}
 
-      - name: 上传Mapping文件夹（仅保留3天）
+      - name: 上传构建后的APK文件
         uses: actions/upload-artifact@v4
-        if: always()
         with:
-          name: mapping-release
-          path: app/build/outputs/mapping/release/
-          retention-days: 3
+          name: tv-live-apk
+          path: |
+            app/build/outputs/apk/release/*arm64-v8a*.apk
+            app/build/outputs/apk/release/*armeabi-v7a*.apk
+          retention-days: 7
 
       - name: 生成并提交 update.json
         run: |

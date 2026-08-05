@@ -48,6 +48,7 @@ import java.util.List;
 import com.tv.live.tv.TvChannelSyncManager;
 import com.tv.live.util.CacheManager;
 import com.tv.live.util.LogCollector;
+import com.tv.live.widget.SettingsDialogHelper;
 import com.tv.live.PlaylistParser;
 
 public class SettingsDialog extends android.app.Dialog {
@@ -75,6 +76,7 @@ public class SettingsDialog extends android.app.Dialog {
     private SourceDialogManager sourceDialogManager;
     private QRCodeManager qrCodeManager;
     private WebServerManager webServerManager;
+    private SettingsDialogHelper dialogHelper;
     private static final int WEB_SERVER_PORT = 10481;
     private String currentWebUrl;
     private UpdateManager updateManager;
@@ -132,6 +134,7 @@ public class SettingsDialog extends android.app.Dialog {
         
         sp = getContext().getSharedPreferences("app_settings", android.content.Context.MODE_PRIVATE);
         initRedirectDefaultConfig();
+        dialogHelper = new SettingsDialogHelper(getContext());
 
         sp.edit().putBoolean("epg_enable", true).apply();
         sp.edit().putBoolean("number_channel_enable", true).apply();

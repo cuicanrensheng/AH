@@ -37,7 +37,9 @@ import com.tv.live.config.AppConfig;
 import com.tv.live.jsparser.Parser;
 import com.tv.live.listener.PlayerStateListenerImpl;
 import com.tv.live.manager.*;
+import com.tv.live.util.LifecycleHelper;
 import com.tv.live.util.LogCollector;
+import com.tv.live.util.RemoteKeyHandler;
 import com.tv.live.widget.ChannelListManager;
 import com.tv.live.widget.DateListManager;
 import com.tv.live.widget.EpgManagerWrapper;
@@ -68,6 +70,9 @@ public class MainActivity extends AppCompatActivity {
     private View panelLayout;
 
     private PlayerControlManager playerControlManager;
+
+    private RemoteKeyHandler remoteKeyHandler;
+    private LifecycleHelper lifecycleHelper;
 
     private boolean pipEnable = false;
     private boolean channel_reverse;
@@ -249,6 +254,81 @@ public class MainActivity extends AppCompatActivity {
             new IntentFilter("com.tv.live.UNLOCK_SETTINGS"),
             ContextCompat.RECEIVER_NOT_EXPORTED
         );
+
+        initSubModules();
+    }
+
+    private void initSubModules() {
+        lifecycleHelper = new LifecycleHelper(this);
+        lifecycleHelper.setInfoDisplayManager(() -> { if (infoDisplayManager != null) infoDisplayManager.release(); });
+        lifecycleHelper.setDisplayManager(() -> { if (displayManager != null) displayManager.release(); });
+        lifecycleHelper.setChannelPanelController(() -> { if (channelPanelController != null) channelPanelController.release(); });
+        lifecycleHelper.setAppCoreManager(() -> { if (appCoreManager != null) appCoreManager.release(); });
+        lifecycleHelper.setPipManager(() -> { if (pipManager != null) pipManager.release(); });
+        lifecycleHelper.setPlayerControlManager(() -> { if (playerControlManager != null) playerControlManager.release(); });
+        lifecycleHelper.setPlayerManager(() -> {
+            if (mPlayerManager != null) {
+                mPlayerManager.setOnPlayStateListener(null);
+                mPlayerManager.setOnLiveInfoUpdateListener(null);
+                mPlayerManager.setOnSourceFailedListener(null);
+                mPlayerManager.release();
+            }
+        });
+        lifecycleHelper.setUnlockReceiver(unlockReceiver);
+        lifecycleHelper.setTouchListenerSource(playerView);
+
+        remoteKeyHandler = new RemoteKeyHandler(new RemoteKeyHandler.OnKeyAction() {
+            @Override
+            public void onMenuKey() {
+                openSettings();
+            }
+            @Override
+            public void onOkKey() {
+                if (channelPanelController != null) channelPanelController.togglePanel();
+            }
+            @Override
+            public void onChannelUp() {
+                if (channelPanelController != null) channelPanelController.switchUp();
+            }
+            @Override
+            public void onChannelDown() {
+                if (channelPanelController != null) channelPanelController.switchDown();
+            }
+            @Override
+            public void onSeekBackward() {
+                if (playerControlManager != null) playerControlManager.seekBackward();
+            }
+            @Override
+            public void onSeekForward() {
+                if (playerControlManager != null) playerControlManager.seekForward();
+            }
+            @Override
+            public void onPlayPause() {
+                if (mPlayerManager != null) {
+                    if (mPlayerManager.isPlaying()) mPlayerManager.pause();
+                    else mPlayerManager.resume();
+                }
+            }
+            @Override
+            public void onStop() {
+                if (mPlayerManager != null) mPlayerManager.pause();
+            }
+            @Override
+            public void onBackKey() {
+                if (channelPanelController != null && channelPanelController.isPanelOpen()) {
+                    channelPanelController.hidePanel();
+                } else {
+                    onBackPressed();
+                }
+            }
+        });
+
+        remoteKeyHandler.setNumberInputCallback(input -> {
+            if (infoDisplayManager != null) {
+                infoDisplayManager.showChannelNumInput(input);
+            }
+        });
+        remoteKeyHandler.setNumberInputEnabled(number_channel_enable);
     }
 
     @Override
@@ -1302,12 +1382,72 @@ public class MainActivity extends AppCompatActivity {
         }
 
         mMainHandler.removeCallbacksAndMessages(null);
-        if (infoDisplayManager != null) infoDisplayManager.release();
-        if (displayManager != null) displayManager.release();
-        if (channelPanelController != null) channelPanelController.release();
-        if (appCoreManager != null) appCoreManager.release();
-        if (pipManager != null) pipManager.release();
-        
+
+        if (remoteKeyHandler != null) {
+            remoteKeyHandler.release();
+            remoteKeyHandler = null;
+        }
+
+        if (lifecycleHelper != null) {
+            lifecycleHelper.releaseAll();
+            lifecycleHelper = null;
+        }
+
+        // 清理触摸监听器中的手势辅助
+        if (touchListener != null) {
+            touchListener.updateGestureHelper(null);
+            if (playerView != null) {
+                playerView.setOnTouchListener(null);
+            }
+            touchListener = null;
+        }
+
+        // 清理Dialogs
+        if (settingsDialog != null) {
+            try {
+                if (settingsDialog.isShowing()) {
+                    settingsDialog.dismiss();
+                }
+            } catch (Exception ignored) {}
+            settingsDialog = null;
+        }
+        if (exitMenuDialog != null) {
+            try {
+                if (exitMenuDialog.isShowing()) {
+                    exitMenuDialog.dismiss();
+                }
+            } catch (Exception ignored) {}
+            exitMenuDialog = null;
+        }
+
+        // 释放管理器
+        if (infoDisplayManager != null) {
+            infoDisplayManager.release();
+            infoDisplayManager = null;
+        }
+        if (displayManager != null) {
+            displayManager.release();
+            displayManager = null;
+        }
+        if (channelPanelController != null) {
+            channelPanelController.release();
+            channelPanelController = null;
+        }
+        if (appCoreManager != null) {
+            appCoreManager.release();
+            appCoreManager = null;
+        }
+        if (pipManager != null) {
+            pipManager.release();
+            pipManager = null;
+        }
+
+        // 释放播放器
+        if (playerControlManager != null) {
+            playerControlManager.release();
+            playerControlManager = null;
+        }
+
         if (mPlayerManager != null) {
             mPlayerManager.setOnPlayStateListener(null);
             mPlayerManager.setOnLiveInfoUpdateListener(null);
@@ -1315,24 +1455,24 @@ public class MainActivity extends AppCompatActivity {
             mPlayerManager.release();
             mPlayerManager = null;
         }
-        
-        if (playerControlManager != null) {
-            playerControlManager.release();
-        }
 
-        if (exitMenuDialog != null) {
-            if (exitMenuDialog.isShowing()) {
-                exitMenuDialog.dismiss();
-            }
-            exitMenuDialog = null;
-        }
+        // 关闭TVPlayerManager的静态线程池
+        TVPlayerManager.shutdownThreadPool();
 
+        // 注销广播接收器
         if (unlockReceiver != null) {
             try {
                 unregisterReceiver(unlockReceiver);
-            } catch (Exception e) {
-            }
+            } catch (Exception ignored) {}
             unlockReceiver = null;
         }
+
+        // 清理其他引用
+        gestureManager = null;
+        screenRatioManager = null;
+        playerStateListener = null;
+        appConfig = null;
+        channelSourceList.clear();
+        channelSourceList = null;
     }
 }

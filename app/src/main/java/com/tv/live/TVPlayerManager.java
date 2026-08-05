@@ -46,6 +46,10 @@ import androidx.core.content.ContextCompat;
 
 import com.tv.live.util.NetUtil;
 import com.tv.live.util.HuyaSDKParser;
+import com.tv.live.util.Variant;
+import com.tv.live.util.DecoderModeManager;
+import com.tv.live.util.VariantManager;
+import com.tv.live.util.HuyaStreamPlayer;
 import com.tv.live.exception.RedirectFailedException;
 
 import java.io.BufferedReader;
@@ -168,81 +172,10 @@ public class TVPlayerManager {
         return t;
     });
 
-    public static class Variant {
-        public String url;
-        public int bandwidth;
-        public int width;
-        public int height;
-        public String resolutionLabel;
-        // 虎牙专用：码率显示名（如"蓝光4M"、"超清2M"），为空则回退 resolutionLabel
-        public String huyaBitRateDisplayName;
-        // 虎牙专用：线路索引和码率，用于切线路时找对应流
-        public int huyaLineIndex = -1;
-        public int huyaBitRate = -1;
-
-        Variant(String url, int bandwidth, int width, int height) {
-            this.url = url;
-            this.bandwidth = bandwidth;
-            this.width = width;
-            this.height = height;
-            if (height >= 2160) resolutionLabel = "4K (2160p)";
-            else if (height >= 1080) resolutionLabel = "1080p";
-            else if (height >= 720) resolutionLabel = "720p";
-            else if (height > 0) resolutionLabel = height + "p";
-            else resolutionLabel = "自适应";
-        }
-
-        /** 虎牙 SDK 创建清晰度变体 */
-        public static Variant fromHuyaStreamInfo(HuyaSDKParser.HuyaStreamInfo s) {
-            Variant v = new Variant(
-                    s.getPlayUrl(),
-                    s.bitRate * 1000,     // Kbps → bps
-                    0, 0
-            );
-            // URL模式匹配推导分辨率标签（与反编译版一致）
-            String url = s.getPlayUrl();
-            if (!TextUtils.isEmpty(url)) {
-                v.height = inferHeightFromUrl(url, s.bitRate);
-                v.resolutionLabel = inferResolutionLabelFromUrl(url, s.bitRate);
-            } else {
-                v.height = s.bitRate >= 4000 ? 1080 : s.bitRate >= 2000 ? 720 : 360;
-                v.resolutionLabel = v.height + "p";
-            }
-            // 优先用SDK显示名，但用分辨率标签做UI展示
-            if (!TextUtils.isEmpty(s.bitRateDisplayName)) {
-                v.huyaBitRateDisplayName = s.bitRateDisplayName;
-            }
-            v.huyaLineIndex = s.lineIndex;
-            v.huyaBitRate = s.bitRate;
-            return v;
-        }
-
-        /** 从URL模式推导分辨率标签（与反编译版setupHuyaVariants一致） */
-        private static String inferResolutionLabelFromUrl(String url, int bitRate) {
-            if (url.contains("_6000.") || bitRate >= 6000) return "1080p高清";
-            if (url.contains("_4000.") || bitRate >= 4000) return "1080p";
-            if (url.contains("_2000.") || bitRate >= 2000) return "720p";
-            if (url.contains("_1000.") || bitRate >= 1000) return "480p";
-            if (url.contains("_500.") || bitRate >= 400) return "360p";
-            return "360p";
-        }
-
-        /** 从URL模式推导高度 */
-        private static int inferHeightFromUrl(String url, int bitRate) {
-            if (url.contains("_6000.") || bitRate >= 6000) return 1080;
-            if (url.contains("_4000.") || bitRate >= 4000) return 1080;
-            if (url.contains("_2000.") || bitRate >= 2000) return 720;
-            if (url.contains("_1000.") || bitRate >= 1000) return 480;
-            if (url.contains("_500.") || bitRate >= 400) return 360;
-            return 360;
-        }
-
-        /** 获取用于 UI 列表和存储的标签 */
-        public String getDisplayLabel() {
-            return resolutionLabel != null ? resolutionLabel :
-                    (!TextUtils.isEmpty(huyaBitRateDisplayName) ? huyaBitRateDisplayName : "未知");
-        }
-    }
+    // 子模块管理器
+    private DecoderModeManager decoderModeManager;
+    private VariantManager variantManager;
+    private HuyaStreamPlayer huyaStreamPlayer;
 
     public interface OnPlayerViewRecreatedListener {
         void onPlayerViewRecreated(PlayerView newPlayerView);
@@ -299,6 +232,69 @@ public class TVPlayerManager {
                 mHandler.postDelayed(this, 2000);
             }
         };
+
+        // 初始化子模块管理器
+        decoderModeManager = new DecoderModeManager(context, mHandler);
+        variantManager = new VariantManager(new VariantManager.PlaybackCallback() {
+            @Override
+            public void playUrl(String url) {
+                TVPlayerManager.this.playUrlInternal(url);
+            }
+            @Override
+            public Channel getCurrentChannel() {
+                return TVPlayerManager.this.getCurrentChannel();
+            }
+            @Override
+            public void dLog(String msg) {
+                TVPlayerManager.this.dLog(msg);
+            }
+        });
+        huyaStreamPlayer = new HuyaStreamPlayer(new HuyaStreamPlayer.StreamPlaybackCallback() {
+            @Override
+            public void onPlayError(String msg) {
+                if (listener != null) listener.onPlayError(msg);
+            }
+            @Override
+            public void onSourceFailed() {
+                if (sourceFailedListener != null) sourceFailedListener.onSourceFailed();
+            }
+            @Override
+            public void dLog(String msg) {
+                TVPlayerManager.this.dLog(msg);
+            }
+            @Override public void onPlaySuccess() {}
+            @Override public void onSeekTo(long positionMs) { if (player != null) player.seekTo(positionMs); }
+            @Override public void onPlay() { if (player != null) player.play(); }
+            @Override public void onPrepare() { if (player != null) player.prepare(); }
+            @Override public void onStuckDetectionStart() { startStuckDetection(); }
+            @Override public Context getContext() { return context; }
+            @Override public ExoPlayer getPlayer() { return player; }
+            @Override public PlayerView getPlayerView() { return playerView; }
+            @Override public FrameLayout getSdkPlayerContainer() { return mSdkPlayerContainer; }
+            @Override public android.os.Handler getHandler() { return mHandler; }
+            @Override public ExecutorService getPlaylistExecutor() { return sPlaylistExecutor; }
+            @Override public SharedPreferences getSharedPrefs() { return sp; }
+            @Override public String getCurrentChannelName() { return currentChannelName; }
+            @Override public Channel getCurrentChannel() { return TVPlayerManager.this.getCurrentChannel(); }
+            @Override public void setCurrentUrl(String url) { currentUrl = url; }
+            @Override public void setHuyaRoomId(int roomId) { mHuyaRoomId = roomId; }
+            @Override public int getHuyaRoomId() { return mHuyaRoomId; }
+            @Override public void setPendingHeaders(Map<String, String> headers) { mPendingPlaybackHeaders = headers; }
+            @Override public Map<String, String> getPendingHeaders() { return mPendingPlaybackHeaders; }
+            @Override public void setReusableHeaderMap(Map<String, String> map) { /* shared */ }
+            @Override public Map<String, String> getReusableHeaderMap() { return reusableHeaderMap; }
+            @Override public void setCurrentResolutionLabel(String label) { currentResolutionLabel = label; }
+            @Override public void ensurePlayerBoundToView() { TVPlayerManager.this.ensurePlayerBoundToView(); }
+            @Override public void setMediaSourceAndPrepare(MediaSource source, long seekPosition) {
+                if (player != null) {
+                    player.setMediaSource(source, true);
+                    player.prepare();
+                    if (seekPosition > 0) player.seekTo(seekPosition);
+                    player.play();
+                }
+            }
+        }, variantManager);
+
         initPlayer();
     }
     
@@ -2138,11 +2134,36 @@ public class TVPlayerManager {
             updateWakeLock(false);
             unregisterDecoderModeReceiver();
             unregisterRendererModeReceiver();
-            // 释放资源
+
+            // 清理子模块
+            if (decoderModeManager != null) {
+                decoderModeManager.release();
+                decoderModeManager = null;
+            }
+            if (variantManager != null) {
+                variantManager.release();
+                variantManager = null;
+            }
+            if (huyaStreamPlayer != null) {
+                huyaStreamPlayer.release();
+                huyaStreamPlayer = null;
+            }
+
+            // 清理所有监听器
+            onPlayerViewRecreatedListener = null;
+            sourceFailedListener = null;
+            liveInfoUpdateListener = null;
+            listener = null;
+
+            // 清理Activity引用和SDK容器
+            mActivity = null;
             if (mSdkPlayerContainer != null) {
                 mSdkPlayerContainer.removeAllViews();
                 mSdkPlayerContainer.setVisibility(View.GONE);
+                mSdkPlayerContainer = null;
             }
+
+            // 清理播放器
             if (player != null) {
                 if (playerListener != null) {
                     player.removeListener(playerListener);
@@ -2156,9 +2177,48 @@ public class TVPlayerManager {
                 playerView.setVisibility(View.VISIBLE);
                 playerView = null;
             }
+
+            // 清理TrackSelector
+            if (trackSelector != null) {
+                trackSelector.release();
+                trackSelector = null;
+            }
+
+            // 清理健康检查器
+            if (healthChecker != null) {
+                healthChecker.release();
+                healthChecker = null;
+            }
+
+            // 清空集合
+            synchronized (variantListLock) {
+                variantList.clear();
+            }
+            reusableHeaderMap.clear();
+
+            // 清理UI组件
+            channelNumberTextView = null;
+            currentChannel = null;
+            currentChannelName = "";
+            currentUrl = null;
+            mHuyaRoomId = -1;
+
+            // 清理Context引用
+            context = null;
+            sp = null;
+
             instance = null;
         } catch (Exception e) {
             Log.e(TAG, "释放异常", e);
+        }
+    }
+
+    /**
+     * 关闭静态线程池（应用退出时调用）
+     */
+    public static void shutdownThreadPool() {
+        if (sPlaylistExecutor != null && !sPlaylistExecutor.isShutdown()) {
+            sPlaylistExecutor.shutdownNow();
         }
     }
 

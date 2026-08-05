@@ -1,0 +1,25 @@
+# Built by Android Studio
+*.iml
+.gradle
+/local.properties
+/.idea
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# Built outputs
+app/build/
+*/build/
+
+# Gradle wrapper
+gradle/wrapper/gradle-wrapper.jar
+
+# Temporary files
+*.png
+*.zip
+*.apk
+mapping_output/
+mapping_release_v10/

@@ -391,4 +391,24 @@ public class SourceHealthChecker {
         return "已剔除: " + removedUrls.size() + " 个源, " +
                 "失败记录: " + failCountMap.size() + " 条";
     }
+
+    /**
+     * 释放资源
+     */
+    public void release() {
+        try {
+            mainHandler.removeCallbacksAndMessages(null);
+            if (!checkExecutor.isShutdown()) {
+                checkExecutor.shutdownNow();
+            }
+            if (!singleExecutor.isShutdown()) {
+                singleExecutor.shutdownNow();
+            }
+            failCountMap.clear();
+            removedUrls.clear();
+            listener = null;
+        } catch (Exception e) {
+            Log.e(TAG, "release异常: " + e.getMessage());
+        }
+    }
 }

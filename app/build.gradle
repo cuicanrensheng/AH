@@ -25,12 +25,13 @@ android {
         applicationId "com.tv.live"
         minSdk 21
         targetSdk 36
-        versionCode 29
-        versionName "2.0.29"
+        versionCode 15
+        versionName "2.0.15"
         resConfigs "zh"
         multiDexEnabled false
         buildConfigField "int", "VERSION_CODE", "${versionCode}"
         buildConfigField "String", "VERSION_NAME", "\"${versionName}\""
+        ndkVersion '25.2.9519653'
         ndk {
             debugSymbolLevel 'NONE'
         }
@@ -72,7 +73,7 @@ android {
                          'META-INF/proguard/*.pro']
         }
         jniLibs {
-            useLegacyPackaging false
+            useLegacyPackaging true
             pickFirsts += ['lib/arm64-v8a/libhyaudioengine.so', 'lib/armeabi-v7a/libhyaudioengine.so']
         }
     }
@@ -167,9 +168,9 @@ configurations.all {
 }
 
 // ====================================================================
-// 🔧 NDK SO 符号剥离配置（减小APK体积，需要安装NDK）
+// 🔧 NDK SO 符号剥离配置（减小APK体积，需要安装NDK�?
 // ====================================================================
-// 注意：此配置需要NDK支持，如未安装NDK会自动跳过
+// 注意：此配置需要NDK支持，如未安装NDK会自动跳�?
 // 如需使用，请在local.properties中配置ndk.dir指向NDK安装目录
 android.applicationVariants.all { variant ->
     if (variant.buildType.name == 'release') {
@@ -183,7 +184,7 @@ android.applicationVariants.all { variant ->
                     try {
                         ndkDir = android.ndkDirectory
                     } catch (Exception e) {
-                        // NDK未安装
+                        // NDK未安�?
                     }
                     
                     if (ndkDir) {

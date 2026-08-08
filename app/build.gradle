@@ -168,10 +168,10 @@ configurations.all {
 }
 
 // ====================================================================
-// 🔧 NDK SO 符号剥离配置（减小APK体积，需要安装NDK�?
+// 🔧 NDK SO 符号剥离配置（跨平台：支持 Windows/Linux/macOS CI 环境）
 // ====================================================================
-// 注意：此配置需要NDK支持，如未安装NDK会自动跳�?
-// 如需使用，请在local.properties中配置ndk.dir指向NDK安装目录
+// 自动根据当前操作系统选择正确的 llvm-strip 路径并剥离 SO 调试符号
+// 失败时会自动跳过，不会阻塞构建
 android.applicationVariants.all { variant ->
     if (variant.buildType.name == 'release') {
         variant.outputs.all { output ->
@@ -179,43 +179,81 @@ android.applicationVariants.all { variant ->
                 try {
                     def stripTool = null
                     def ndkDir = null
-                    
-                    // 尝试获取NDK目录
+
+                    // 跨平台检测：Windows / Linux / macOS
+                    def osName = System.getProperty("os.name", "").toLowerCase(Locale.ROOT)
+                    def prebuiltDir
+                    def exeSuffix = ""
+                    if (osName.contains("win")) {
+                        prebuiltDir = "windows-x86_64"
+                        exeSuffix = ".exe"
+                    } else if (osName.contains("mac")) {
+                        // macOS: Intel = darwin-x86_64 / Apple Silicon = darwin-aarch64
+                        def osArch = System.getProperty("os.arch", "").toLowerCase(Locale.ROOT)
+                        prebuiltDir = (osArch.contains("aarch64") || osArch.contains("arm64")) ? "darwin-aarch64" : "darwin-x86_64"
+                    } else {
+                        // Linux: 大多数 CI / 服务器 x86_64；ARM 服务器兼容 aarch64
+                        def osArch = System.getProperty("os.arch", "").toLowerCase(Locale.ROOT)
+                        prebuiltDir = (osArch.contains("aarch64") || osArch.contains("arm64")) ? "linux-aarch64" : "linux-x86_64"
+                    }
+
+                    // 尝试获取 NDK 目录
                     try {
                         ndkDir = android.ndkDirectory
                     } catch (Exception e) {
-                        // NDK未安�?
+                        // NDK 未安装，跳过
                     }
-                    
+
                     if (ndkDir) {
-                        def stripPath = "${ndkDir}/toolchains/llvm/prebuilt/windows-x86_64/bin/llvm-strip"
-                        def stripFile = file(stripPath)
-                        if (stripFile.exists()) {
-                            stripTool = stripFile.absolutePath
+                        def candidatePath = "${ndkDir}/toolchains/llvm/prebuilt/${prebuiltDir}/bin/llvm-strip${exeSuffix}"
+                        def candidateFile = file(candidatePath)
+                        if (candidateFile.exists()) {
+                            stripTool = candidateFile.absolutePath
+                            logger.lifecycle "NDK strip tool found (AGP NDK): ${stripTool}"
+                        } else {
+                            // 架构目录不存在时回退到经典目录（兼容旧 NDK）
+                            def fallbackDir = osName.contains("win") ? "windows-x86_64" : (osName.contains("mac") ? "darwin-x86_64" : "linux-x86_64")
+                            def fallbackPath = "${ndkDir}/toolchains/llvm/prebuilt/${fallbackDir}/bin/llvm-strip${osName.contains('win') ? '.exe' : ''}"
+                            def fallbackFile = file(fallbackPath)
+                            if (fallbackFile.exists()) {
+                                stripTool = fallbackFile.absolutePath
+                                logger.lifecycle "NDK strip tool found (fallback ${fallbackDir}): ${stripTool}"
+                            }
                         }
                     }
-                    
+
                     if (!stripTool) {
-                        // 尝试从local.properties查找ndk路径
+                        // 尝试从 local.properties 查找 ndk 路径（本地开发机兼容）
                         def localProps = file("${rootProject.projectDir}/local.properties")
                         if (localProps.exists()) {
                             def ndkPathLine = localProps.text.readLines().find { it.startsWith('ndk.dir=') }
                             if (ndkPathLine) {
                                 def basePath = ndkPathLine.replace('ndk.dir=', '').trim()
-                                def ndkDirs = file(basePath).listFiles()
-                                if (ndkDirs) {
-                                    def latestNdk = ndkDirs.findAll { it.directory }.sort { a, b -> b.name <=> a.name }[0]
-                                    if (latestNdk) {
-                                        def candidate = "${latestNdk.absolutePath}/toolchains/llvm/prebuilt/windows-x86_64/bin/llvm-strip"
-                                        if (file(candidate).exists()) {
-                                            stripTool = candidate
+                                def baseDir = file(basePath)
+                                File candidate = null
+                                if (baseDir.exists() && baseDir.isDirectory()) {
+                                    // ndk.dir 直接指向具体版本 NDK 目录（如 ndk-bundle 或 25.2.9519653）
+                                    def directPath = "${baseDir.absolutePath}/toolchains/llvm/prebuilt/${prebuiltDir}/bin/llvm-strip${exeSuffix}"
+                                    candidate = file(directPath)
+                                    if (!candidate.exists()) {
+                                        // ndk.dir 指向父目录时取最新版本子目录
+                                        def ndkDirs = baseDir.listFiles()
+                                        if (ndkDirs) {
+                                            def latestNdk = ndkDirs.findAll { it.directory }.sort { a, b -> b.name <=> a.name }[0]
+                                            if (latestNdk) {
+                                                candidate = file("${latestNdk.absolutePath}/toolchains/llvm/prebuilt/${prebuiltDir}/bin/llvm-strip${exeSuffix}")
+                                            }
                                         }
                                     }
+                                }
+                                if (candidate && candidate.exists()) {
+                                    stripTool = candidate.absolutePath
+                                    logger.lifecycle "NDK strip tool found (local.properties): ${stripTool}"
                                 }
                             }
                         }
                     }
-                    
+
                     if (stripTool) {
                         def abiFolders = ['arm64-v8a', 'armeabi-v7a']
                         abiFolders.each { abi ->
@@ -225,14 +263,14 @@ android.applicationVariants.all { variant ->
                                     exec {
                                         commandLine stripTool, '--strip-debug', soFile.absolutePath
                                     }
-                                    logger.lifecycle "Stripped debug symbols: ${soFile.name}"
+                                    logger.lifecycle "Stripped debug symbols: ${soFile.name} (${abi})"
                                 } catch (Exception e) {
                                     logger.warn "Strip failed for ${soFile.name}: ${e.message}"
                                 }
                             }
                         }
                     } else {
-                        logger.lifecycle "NDK strip tool not found, skipping SO symbol stripping"
+                        logger.lifecycle "NDK strip tool not found (os=${osName}, prebuilt=${prebuiltDir}) — skipping SO symbol stripping"
                     }
                 } catch (Exception e) {
                     logger.lifecycle "SO stripping skipped: ${e.message}"

@@ -25,8 +25,8 @@ android {
         applicationId "com.tv.live"
         minSdk 21
         targetSdk 36
-        versionCode 41
-        versionName "2.0.41"
+        versionCode 38
+        versionName "2.0.38"
         resConfigs "zh"
         multiDexEnabled false
         buildConfigField "int", "VERSION_CODE", "${versionCode}"
@@ -168,8 +168,10 @@ configurations.all {
 }
 
 // ====================================================================
-// 🔧 NDK SO 符号剥离配置（跨平台：支持 Windows/Linux/macOS CI 环境）
+// 🔧 NDK SO 符号剥离配置（减小APK体积，需要安装NDK ?
 // ====================================================================
+// 注意：此配置需要NDK支持，如未安装NDK会自动跳 ?
+// 如需使用，请在local.properties中配置ndk.dir指向NDK安装目录
 android.applicationVariants.all { variant ->
     if (variant.buildType.name == 'release') {
         variant.outputs.all { output ->
@@ -186,17 +188,21 @@ android.applicationVariants.all { variant ->
                         prebuiltDir = "windows-x86_64"
                         exeSuffix = ".exe"
                     } else if (osName.contains("mac")) {
+                        // macOS: Intel = darwin-x86_64 / Apple Silicon = darwin-aarch64
                         def osArch = System.getProperty("os.arch", "").toLowerCase(Locale.ROOT)
                         prebuiltDir = (osArch.contains("aarch64") || osArch.contains("arm64")) ? "darwin-aarch64" : "darwin-x86_64"
                     } else {
+                        // Linux: 大多数 CI / 服务器 x86_64；ARM 服务器也兼容 aarch64
                         def osArch = System.getProperty("os.arch", "").toLowerCase(Locale.ROOT)
                         prebuiltDir = (osArch.contains("aarch64") || osArch.contains("arm64")) ? "linux-aarch64" : "linux-x86_64"
                     }
 
-                    // ① 通过 android.ndkDirectory 获取（AGP 已解锁 NDK 路径时）
+                    // 尝试获取 NDK 目录
                     try {
                         ndkDir = android.ndkDirectory
-                    } catch (Exception e) { /* NDK 未安装，跳过 */ }
+                    } catch (Exception e) {
+                        // NDK 未安装，跳过
+                    }
 
                     if (ndkDir) {
                         def candidatePath = "${ndkDir}/toolchains/llvm/prebuilt/${prebuiltDir}/bin/llvm-strip${exeSuffix}"
@@ -205,6 +211,7 @@ android.applicationVariants.all { variant ->
                             stripTool = candidateFile.absolutePath
                             logger.lifecycle "NDK strip tool found (AGP NDK): ${stripTool}"
                         } else {
+                            // 如果架构目录不存在，回退到经典 linux-x86_64 / windows-x86_64（兼容旧 NDK）
                             def fallbackDir = osName.contains("win") ? "windows-x86_64" : (osName.contains("mac") ? "darwin-x86_64" : "linux-x86_64")
                             def fallbackPath = "${ndkDir}/toolchains/llvm/prebuilt/${fallbackDir}/bin/llvm-strip${osName.contains('win') ? '.exe' : ''}"
                             def fallbackFile = file(fallbackPath)
@@ -215,10 +222,12 @@ android.applicationVariants.all { variant ->
                         }
                     }
 
-                    // ② CI fallback：ANDROID_HOME/SDK_ROOT 下 ndk/<version> 或 ndk-bundle
                     if (!stripTool) {
+                        // CI 环境 fallback：ANDROID_HOME / ANDROID_SDK_ROOT 下的 ndk/<version>
+                        // （GitHub ubuntu-22.04 runner 默认 SDK_ROOT = /usr/local/lib/android/sdk）
                         def androidHome = System.getenv("ANDROID_HOME") ?: System.getenv("ANDROID_SDK_ROOT")
                         if (!androidHome) {
+                            // 常见 ubuntu runner 路径兜底
                             for (def p : ["/usr/local/lib/android/sdk", "$System.env.HOME/Android/Sdk"]) {
                                 def d = file(p)
                                 if (d.exists() && d.isDirectory()) {
@@ -228,14 +237,18 @@ android.applicationVariants.all { variant ->
                             }
                         }
                         if (androidHome) {
-                            def ndkVersion = '25.2.9519653'
+                            def ndkVersion = null
                             try {
-                                def cfg = android.defaultConfig
-                                if (cfg != null) {
-                                    def v = cfg.ndkVersion
-                                    if (v) ndkVersion = v.toString()
+                                // 尝试从 android.defaultConfig.ndkVersion 读取（反射式访问以兼容无 NDK 的情况）
+                                def metaClass = android.respondsTo(android, 'getDefaultConfig')
+                                if (metaClass) {
+                                    def cfg = android.defaultConfig
+                                    if (cfg) {
+                                        try { ndkVersion = cfg.ndkVersion } catch (Throwable t) { /* ignore */ }
+                                    }
                                 }
                             } catch (Throwable t) { /* ignore */ }
+                            if (!ndkVersion) ndkVersion = '25.2.9519653'
 
                             def sdkNdkPath = "${androidHome}/ndk/${ndkVersion}/toolchains/llvm/prebuilt/${prebuiltDir}/bin/llvm-strip${exeSuffix}"
                             def sdkNdkFile = file(sdkNdkPath)
@@ -243,6 +256,7 @@ android.applicationVariants.all { variant ->
                                 stripTool = sdkNdkFile.absolutePath
                                 logger.lifecycle "NDK strip tool found (SDK ndk/${ndkVersion}): ${stripTool}"
                             } else {
+                                // 兼容旧 ndk-bundle 目录
                                 def bundlePath = "${androidHome}/ndk-bundle/toolchains/llvm/prebuilt/${prebuiltDir}/bin/llvm-strip${exeSuffix}"
                                 def bundleFile = file(bundlePath)
                                 if (bundleFile.exists()) {
@@ -253,8 +267,8 @@ android.applicationVariants.all { variant ->
                         }
                     }
 
-                    // ③ 本地开发机兼容：local.properties 的 ndk.dir
                     if (!stripTool) {
+                        // 尝试从 local.properties 查找 ndk 路径（本地开发机兼容）
                         def localProps = file("${rootProject.projectDir}/local.properties")
                         if (localProps.exists()) {
                             def ndkPathLine = localProps.text.readLines().find { it.startsWith('ndk.dir=') }
@@ -263,9 +277,11 @@ android.applicationVariants.all { variant ->
                                 def baseDir = file(basePath)
                                 File candidate = null
                                 if (baseDir.exists() && baseDir.isDirectory()) {
+                                    // ndk.dir 直接指向具体版本 NDK 目录（如 ndk-bundle 或 25.2.9519653）
                                     def directPath = "${baseDir.absolutePath}/toolchains/llvm/prebuilt/${prebuiltDir}/bin/llvm-strip${exeSuffix}"
                                     candidate = file(directPath)
                                     if (!candidate.exists()) {
+                                        // 兼容 ndk.dir 指向父目录（包含多个版本）：取最新版本
                                         def ndkDirs = baseDir.listFiles()
                                         if (ndkDirs) {
                                             def latestNdk = ndkDirs.findAll { it.directory }.sort { a, b -> b.name <=> a.name }[0]

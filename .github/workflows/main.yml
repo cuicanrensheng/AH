@@ -28,11 +28,13 @@ jobs:
       - name: 安装 NDK r25.2.9519653（SO 调试符号剥离需要）
         env:
           ANDROID_HOME: ${{ env.ANDROID_HOME }}
+          # runner 默认 SDK 路径（ubuntu-latest 默认就是 /usr/local/lib/android/sdk）
           SDK_ROOT: /usr/local/lib/android/sdk
         run: |
           set -e
           echo "🔧 检查当前可用的 SDKMANAGER 路径..."
           SDKMANAGER=""
+          # GitHub ubuntu-22.04 默认的 cmdline-tools 位置
           for CANDIDATE in \
             "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" \
             "$SDK_ROOT/cmdline-tools/tools/bin/sdkmanager" \
@@ -43,6 +45,7 @@ jobs:
             fi
           done
 
+          # 兜底：直接用 ANDROID_HOME（setup-java 一般不设，AGP 会自动识别 ubuntu 默认路径）
           if [ -z "$SDKMANAGER" ] && [ -n "$ANDROID_HOME" ]; then
             for CANDIDATE in \
               "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
@@ -55,7 +58,8 @@ jobs:
           fi
 
           if [ -z "$SDKMANAGER" ]; then
-            echo "❌ 未找到 sdkmanager，尝试 apt 自带 sdkmanager ..."
+            echo "❌ 未找到 sdkmanager，尝试安装 cmdline-tools..."
+            # 如果 cmdline-tools 缺失，使用 apt 的 android-sdk 作为最后的 fallback（一般不需要）
             if command -v sdkmanager >/dev/null 2>&1; then
               SDKMANAGER="sdkmanager"
             else
@@ -69,6 +73,7 @@ jobs:
           echo "📦 正在安装 NDK;25.2.9519653 ..."
           "$SDKMANAGER" --install "ndk;25.2.9519653" --sdk_root="$SDK_ROOT" 2>&1 | tail -n 5
 
+          # 校验一下 llvm-strip 是否就位
           STRIP_BIN="$SDK_ROOT/ndk/25.2.9519653/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip"
           if [ -x "$STRIP_BIN" ]; then
             echo "🎉 NDK llvm-strip 就位：$STRIP_BIN"
@@ -121,6 +126,7 @@ jobs:
       - name: 自动更新 Gradle 版本号并提交回仓库
         run: |
           set -e
+          # 统一git配置（只配置一次）
           git config --local user.email "actions@github.com"
           git config --local user.name "GitHub Actions"
           git config --local pull.rebase false
@@ -137,7 +143,9 @@ jobs:
             echo "No changes to commit"
           else
             git commit -m "Auto bump versionCode to $NEW_VERSION_CODE [skip ci]"
+            # 只fetch，不再执行危险merge+stash pop，极易引发文件冲突、覆盖本地临时文件
             git fetch origin main
+            # 改用普通push，放弃复杂merge逻辑，避免覆盖本地 gradlew、keystore
             git push origin main || echo "Push skip: remote has newer commits"
           fi
 
@@ -173,6 +181,7 @@ jobs:
           APK_DIR="app/build/outputs/apk/release"
           GH_BASE="https://ghproxy.com/https://github.com/${{ github.repository }}/releases/download/v$VERSION_CODE"
 
+          # 动态查找两个 ABI 的 APK 文件名
           ARM64_APK=$(ls ${APK_DIR}/*arm64-v8a*.apk 2>/dev/null | head -1)
           ARMV7_APK=$(ls ${APK_DIR}/*armeabi-v7a*.apk 2>/dev/null | head -1)
 
@@ -182,6 +191,7 @@ jobs:
             RELEASE_NOTES="自动更新版本"
           fi
 
+          # 构建 downloadUrls 对象
           DOWNLOAD_URLS="{"
           if [ -n "$ARM64_APK" ]; then
             ARM64_NAME=$(basename "$ARM64_APK")
@@ -198,6 +208,7 @@ jobs:
           fi
           DOWNLOAD_URLS="${DOWNLOAD_URLS}}"
 
+          # 兜底：如果没有找到 ABI 分包，使用旧格式
           if [ "$DOWNLOAD_URLS" = "{}" ]; then
             SINGLE_APK=$(ls ${APK_DIR}/*.apk 2>/dev/null | grep -v baselineProfiles | head -1)
             if [ -n "$SINGLE_APK" ]; then

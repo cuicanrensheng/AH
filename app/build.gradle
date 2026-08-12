@@ -186,131 +186,137 @@ configurations.all {
 // 3. 原始so文件不会被修改，后续上传Bugly符号表，请使用源码侧原始未strip的so/aar；
 // 4. ndkVersion固定25.2.9519653，local.properties / SDK ndk目录自动探测llvm‑strip工具
 // ====================================================================
-tasks.named('stripReleaseDebugSymbols') { stripTask ->
-    stripTask.doLast {
-        try {
-            def stripTool = null
-            def ndkDir = null
+android.applicationVariants.all { variant ->
+    if (variant.buildType.name == 'release') {
+        // release变体内部，此时stripReleaseDebugSymbols任务已经生成
+        def stripTask = variant.tasks.named("strip${variant.name.capitalize()}DebugSymbols")
+        stripTask.configure { task ->
+            task.doLast {
+                try {
+                    def stripTool = null
+                    def ndkDir = null
 
-            // 跨平台检测：Windows / Linux / macOS
-            def osName = System.getProperty("os.name", "").toLowerCase(Locale.ROOT)
-            def prebuiltDir
-            def exeSuffix = ""
-            if (osName.contains("win")) {
-                prebuiltDir = "windows-x86_64"
-                exeSuffix = ".exe"
-            } else if (osName.contains("mac")) {
-                def osArch = System.getProperty("os.arch", "").toLowerCase(Locale.ROOT)
-                prebuiltDir = (osArch.contains("aarch64") || osArch.contains("arm64")) ? "darwin-aarch64" : "darwin-x86_64"
-            } else {
-                def osArch = System.getProperty("os.arch", "").toLowerCase(Locale.ROOT)
-                prebuiltDir = (osArch.contains("aarch64") || osArch.contains("arm64")) ? "linux-aarch64" : "linux-x86_64"
-            }
-
-            // 尝试获取 NDK 目录
-            try {
-                ndkDir = android.ndkDirectory
-            } catch (Exception e) {
-                // NDK 未安装，跳过
-            }
-
-            if (ndkDir) {
-                def candidatePath = "${ndkDir}/toolchains/llvm/prebuilt/${prebuiltDir}/bin/llvm-strip${exeSuffix}"
-                def candidateFile = file(candidatePath)
-                if (candidateFile.exists()) {
-                    stripTool = candidateFile.absolutePath
-                    logger.lifecycle "NDK strip tool found (AGP NDK): ${stripTool}"
-                } else {
-                    // fallback
-                    def fallbackDir = osName.contains("win") ? "windows-x86_64" : (osName.contains("mac") ? "darwin-x86_64" : "linux-x86_64")
-                    def fallbackPath = "${ndkDir}/toolchains/llvm/prebuilt/${fallbackDir}/bin/llvm-strip${osName.contains('win') ? '.exe' : ''}"
-                    def fallbackFile = file(fallbackPath)
-                    if (fallbackFile.exists()) {
-                        stripTool = fallbackFile.absolutePath
-                        logger.lifecycle "NDK strip tool found (fallback ${fallbackDir}): ${stripTool}"
-                    }
-                }
-            }
-
-            if (!stripTool) {
-                // CI环境兜底 ANDROID_HOME / ANDROID_SDK_ROOT
-                def androidHome = System.getenv("ANDROID_HOME") ?: System.getenv("ANDROID_SDK_ROOT")
-                if (!androidHome) {
-                    for (def p : ["/usr/local/lib/android/sdk", "$System.env.HOME/Android/Sdk"]) {
-                        def d = file(p)
-                        if (d.exists() && d.isDirectory()) {
-                            androidHome = p
-                            break
-                        }
-                    }
-                }
-                if (androidHome) {
-                    def ndkVersion = '25.2.9519653'
-                    def sdkNdkPath = "${androidHome}/ndk/${ndkVersion}/toolchains/llvm/prebuilt/${prebuiltDir}/bin/llvm-strip${exeSuffix}"
-                    def sdkNdkFile = file(sdkNdkPath)
-                    if (sdkNdkFile.exists()) {
-                        stripTool = sdkNdkFile.absolutePath
-                        logger.lifecycle "NDK strip tool found (SDK ndk/${ndkVersion}): ${stripTool}"
+                    // 跨平台检测：Windows / Linux / macOS
+                    def osName = System.getProperty("os.name", "").toLowerCase(Locale.ROOT)
+                    def prebuiltDir
+                    def exeSuffix = ""
+                    if (osName.contains("win")) {
+                        prebuiltDir = "windows-x86_64"
+                        exeSuffix = ".exe"
+                    } else if (osName.contains("mac")) {
+                        def osArch = System.getProperty("os.arch", "").toLowerCase(Locale.ROOT)
+                        prebuiltDir = (osArch.contains("aarch64") || osArch.contains("arm64")) ? "darwin-aarch64" : "darwin-x86_64"
                     } else {
-                        def bundlePath = "${androidHome}/ndk-bundle/toolchains/llvm/prebuilt/${prebuiltDir}/bin/llvm-strip${exeSuffix}"
-                        def bundleFile = file(bundlePath)
-                        if (bundleFile.exists()) {
-                            stripTool = bundleFile.absolutePath
-                            logger.lifecycle "NDK strip tool found (SDK ndk‑bundle): ${stripTool}"
+                        def osArch = System.getProperty("os.arch", "").toLowerCase(Locale.ROOT)
+                        prebuiltDir = (osArch.contains("aarch64") || osArch.contains("arm64")) ? "linux-aarch64" : "linux-x86_64"
+                    }
+
+                    // 尝试获取 NDK 目录
+                    try {
+                        ndkDir = android.ndkDirectory
+                    } catch (Exception e) {
+                        // NDK 未安装，跳过
+                    }
+
+                    if (ndkDir) {
+                        def candidatePath = "${ndkDir}/toolchains/llvm/prebuilt/${prebuiltDir}/bin/llvm-strip${exeSuffix}"
+                        def candidateFile = file(candidatePath)
+                        if (candidateFile.exists()) {
+                            stripTool = candidateFile.absolutePath
+                            logger.lifecycle "NDK strip tool found (AGP NDK): ${stripTool}"
+                        } else {
+                            // fallback
+                            def fallbackDir = osName.contains("win") ? "windows-x86_64" : (osName.contains("mac") ? "darwin-x86_64" : "linux-x86_64")
+                            def fallbackPath = "${ndkDir}/toolchains/llvm/prebuilt/${fallbackDir}/bin/llvm-strip${osName.contains('win') ? '.exe' : ''}"
+                            def fallbackFile = file(fallbackPath)
+                            if (fallbackFile.exists()) {
+                                stripTool = fallbackFile.absolutePath
+                                logger.lifecycle "NDK strip tool found (fallback ${fallbackDir}): ${stripTool}"
+                            }
                         }
                     }
-                }
-            }
 
-            if (!stripTool) {
-                // local.properties ndk.dir
-                def localProps = file("${rootProject.projectDir}/local.properties")
-                if (localProps.exists()) {
-                    def ndkPathLine = localProps.text.readLines().find { it.startsWith('ndk.dir=') }
-                    if (ndkPathLine) {
-                        def basePath = ndkPathLine.replace('ndk.dir=', '').trim()
-                        def baseDir = file(basePath)
-                        File candidate = null
-                        if (baseDir.exists() && baseDir.isDirectory()) {
-                            def directPath = "${baseDir.absolutePath}/toolchains/llvm/prebuilt/${prebuiltDir}/bin/llvm-strip${exeSuffix}"
-                            candidate = file(directPath)
-                            if (!candidate.exists()) {
-                                def ndkDirs = baseDir.listFiles()
-                                if (ndkDirs) {
-                                    def latestNdk = ndkDirs.findAll { it.directory }.sort { a, b -> b.name <=> a.name }[0]
-                                    if (latestNdk) {
-                                        candidate = file("${latestNdk.absolutePath}/toolchains/llvm/prebuilt/${prebuiltDir}/bin/llvm-strip${exeSuffix}")
-                                    }
+                    if (!stripTool) {
+                        // CI环境兜底 ANDROID_HOME / ANDROID_SDK_ROOT
+                        def androidHome = System.getenv("ANDROID_HOME") ?: System.getenv("ANDROID_SDK_ROOT")
+                        if (!androidHome) {
+                            for (def p : ["/usr/local/lib/android/sdk", "$System.env.HOME/Android/Sdk"]) {
+                                def d = file(p)
+                                if (d.exists() && d.isDirectory()) {
+                                    androidHome = p
+                                    break
                                 }
                             }
                         }
-                        if (candidate && candidate.exists()) {
-                            stripTool = candidate.absolutePath
-                            logger.lifecycle "NDK strip tool found (local.properties): ${stripTool}"
+                        if (androidHome) {
+                            def ndkVersion = '25.2.9519653'
+                            def sdkNdkPath = "${androidHome}/ndk/${ndkVersion}/toolchains/llvm/prebuilt/${prebuiltDir}/bin/llvm-strip${exeSuffix}"
+                            def sdkNdkFile = file(sdkNdkPath)
+                            if (sdkNdkFile.exists()) {
+                                stripTool = sdkNdkFile.absolutePath
+                                logger.lifecycle "NDK strip tool found (SDK ndk/${ndkVersion}): ${stripTool}"
+                            } else {
+                                def bundlePath = "${androidHome}/ndk-bundle/toolchains/llvm/prebuilt/${prebuiltDir}/bin/llvm-strip${exeSuffix}"
+                                def bundleFile = file(bundlePath)
+                                if (bundleFile.exists()) {
+                                    stripTool = bundleFile.absolutePath
+                                    logger.lifecycle "NDK strip tool found (SDK ndk‑bundle): ${stripTool}"
+                                }
+                            }
                         }
                     }
-                }
-            }
 
-            if (stripTool) {
-                // 获取stripReleaseDebugSymbols任务输出目录，兼容abi splits
-                def soOutputDir = stripTask.outputDir.asFile.get()
-                logger.lifecycle "Start strip pre‑build so in dir: ${soOutputDir.absolutePath}"
-                fileTree(dir: soOutputDir, include: ['**/*.so']).each { soFile ->
-                    try {
-                        exec {
-                            commandLine stripTool, '--strip-debug', soFile.absolutePath
+                    if (!stripTool) {
+                        // local.properties ndk.dir
+                        def localProps = file("${rootProject.projectDir}/local.properties")
+                        if (localProps.exists()) {
+                            def ndkPathLine = localProps.text.readLines().find { it.startsWith('ndk.dir=') }
+                            if (ndkPathLine) {
+                                def basePath = ndkPathLine.replace('ndk.dir=', '').trim()
+                                def baseDir = file(basePath)
+                                File candidate = null
+                                if (baseDir.exists() && baseDir.isDirectory()) {
+                                    def directPath = "${baseDir.absolutePath}/toolchains/llvm/prebuilt/${prebuiltDir}/bin/llvm-strip${exeSuffix}"
+                                    candidate = file(directPath)
+                                    if (!candidate.exists()) {
+                                        def ndkDirs = baseDir.listFiles()
+                                        if (ndkDirs) {
+                                            def latestNdk = ndkDirs.findAll { it.directory }.sort { a, b -> b.name <=> a.name }[0]
+                                            if (latestNdk) {
+                                                candidate = file("${latestNdk.absolutePath}/toolchains/llvm/prebuilt/${prebuiltDir}/bin/llvm-strip${exeSuffix}")
+                                            }
+                                        }
+                                    }
+                                }
+                                if (candidate && candidate.exists()) {
+                                    stripTool = candidate.absolutePath
+                                    logger.lifecycle "NDK strip tool found (local.properties): ${stripTool}"
+                                }
+                            }
                         }
-                        logger.lifecycle "Stripped debug symbols: ${soFile.name}, abi=${soFile.parentFile.name}"
-                    } catch (Exception e) {
-                        logger.warn "Strip failed for ${soFile.name}: ${e.message}"
                     }
+
+                    if (stripTool) {
+                        // 获取该变体strip任务输出目录，完美兼容 abi splits
+                        def soOutputDir = task.outputDir.asFile.get()
+                        logger.lifecycle "Start strip pre‑build so in dir: ${soOutputDir.absolutePath}"
+                        fileTree(dir: soOutputDir, include: ['**/*.so']).each { soFile ->
+                            try {
+                                exec {
+                                    commandLine stripTool, '--strip-debug', soFile.absolutePath
+                                }
+                                logger.lifecycle "Stripped debug symbols: ${soFile.name}, abi=${soFile.parentFile.name}"
+                            } catch (Exception e) {
+                                logger.warn "Strip failed for ${soFile.name}: ${e.message}"
+                            }
+                        }
+                    } else {
+                        logger.lifecycle "NDK llvm‑strip not found, skip third‑party so debug symbol strip."
+                    }
+                } catch (Exception e) {
+                    logger.error("SO strip task error", e)
                 }
-            } else {
-                logger.lifecycle "NDK llvm‑strip not found, skip third‑party so debug symbol strip."
             }
-        } catch (Exception e) {
-            logger.error("SO strip task error", e)
         }
     }
 }

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 频道面板透明背景：几乎透明，不遮挡视频画面 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#1A141828" />
+    <corners android:radius="20dp" />
+</shape>

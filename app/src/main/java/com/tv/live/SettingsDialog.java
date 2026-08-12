@@ -1014,7 +1014,7 @@ public class SettingsDialog extends android.app.Dialog {
     }
 
     private void showDecoderModeDialog() {
-        final String[] modes = {"自动（推荐）", "硬解", "软解（兼容性好）", "FFmpeg（完整视频软解）"};
+        final String[] modes = {"自动", "硬解", "软解", "FFmpeg"};
         final String[] modeValues = {"auto", "hard", "soft", "ffmpeg"};
         String currentMode = sp.getString("decoder_mode", "auto");
         int checkedItem = 0;

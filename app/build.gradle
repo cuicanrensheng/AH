@@ -8,7 +8,7 @@ android {
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
-        coreLibraryDesugaringEnabled false
+        coreLibraryDesugaringEnabled true
     }
     buildFeatures {
         buildConfig true
@@ -25,10 +25,10 @@ android {
         applicationId "com.tv.live"
         minSdk 21
         targetSdk 36
-        versionCode 52
-        versionName "2.0.52"
+        versionCode 44
+        versionName "2.0.44"
         resConfigs "zh"
-        multiDexEnabled false
+        multiDexEnabled true
         buildConfigField "int", "VERSION_CODE", "${versionCode}"
         buildConfigField "String", "VERSION_NAME", "\"${versionName}\""
         ndkVersion '25.2.9519653'
@@ -74,7 +74,14 @@ android {
         }
         jniLibs {
             useLegacyPackaging false
-            pickFirsts += ['lib/arm64-v8a/libhyaudioengine.so', 'lib/armeabi-v7a/libhyaudioengine.so']
+            pickFirsts += [
+                    'lib/arm64-v8a/libhyaudioengine.so',
+                    'lib/armeabi-v7a/libhyaudioengine.so',
+                    'lib/arm64-v8a/libc++_shared.so',
+                    'lib/armeabi-v7a/libc++_shared.so',
+                    'lib/x86/libc++_shared.so',
+                    'lib/x86_64/libc++_shared.so'
+            ]
         }
     }
     androidResources {
@@ -99,8 +106,11 @@ dependencies {
             'audioengineencode-1.1.80.aar',
             'audioenginecapture-1.1.80.aar',
             'imagefilter-1.1.80.aar',
-            'rtmpupload-1.1.80.aar'
+            'rtmpupload-1.1.80.aar',
+            'media3-ffmpeg-decoder.aar'
     ])
+    implementation 'org.jellyfin.media3:media3-ffmpeg-decoder:1.6.1+2'
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'
 }
 
 androidComponents {
@@ -152,6 +162,7 @@ configurations.all {
         force "androidx.media3:media3-exoplayer:1.7.1"
         force "androidx.media3:media3-ui:1.7.1"
         force "androidx.media3:media3-exoplayer-hls:1.7.1"
+        force "org.jellyfin.media3:media3-ffmpeg-decoder:1.6.1+2"
         force "androidx.lifecycle:lifecycle-process:2.6.2"
     }
     exclude group: 'com.huya.berry', module: 'sdkplayer'

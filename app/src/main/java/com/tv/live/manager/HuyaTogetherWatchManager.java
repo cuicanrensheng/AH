@@ -45,84 +45,48 @@ public class HuyaTogetherWatchManager {
     private static final int VARIETY_CACHE_PAGES = 16;
     private static final int GENERAL_CACHE_PAGES = 5;
 
+    // ======================【精简后关键词分组】======================
     private static final String[][] MOVIE_CATEGORY_KEYWORDS = {
-        {"电影_星爷", "星爷|周星|周星驰|周星星|星驰"},
-        {"电影_英叔", "英叔|林正英|僵尸|道长|九叔"},
-        {"电影_动作巨星", "成龙|李连杰|洪金宝|元彪|甄子丹|吴京|赵文卓|功夫|醉拳|警察故事|黄飞鸿|方世玉|霍元甲"},
-        {"电影_喜剧大咖", "沈腾|黄渤|开心麻花|西虹市|夏洛特|疯狂的|腾哥|渤哥|许冠文|许冠英|许冠杰|许氏"},
-        {"电影_港片经典", "周润发|发哥|刘德华|华仔|梁朝伟|梁家辉|古天乐|张家辉|港片|香港|港产|TVB|赌神|无间道|英雄本色"},
-        {"电影_漫威宇宙", "漫威|钢铁侠|复仇者|复联|蜘蛛侠|美国队长|绿巨人|雷神|黑豹|蚁人|奇异博士|银河护卫队|X战警|金刚狼|死侍|毒液|变形金刚|擎天柱"},
-        {"电影_科幻星际", "宇宙|星际|星球大战|星际穿越|火星|太空|银河|科幻|未来|外星"},
-        {"电影_怪兽灾难", "怪兽|哥斯拉|金刚|恐龙|侏罗纪|异形|环太平洋|巨齿鲨|灾难|末日|地震|海啸|火山|逃生|救援"},
-        {"电影_武侠古装", "武侠|金庸|古龙|张三丰|太极|笑傲|神雕|射雕|天龙八部|倚天|古装|宫廷|历史|镖行|江湖"},
-        {"电影_战争枪战", "战争|二战|战役|坦克|兵临城下|珍珠港|拯救大兵|枪战|特种兵|狙击|士兵|红海|战狼|敢死队|军事"},
-        {"电影_警匪犯罪", "警匪|暗战|飞虎|犯罪|黑帮|黑社会|古惑仔|监狱|悍匪|盗匪|江湖|英雄本色"},
-        {"电影_悬疑恐怖", "悬疑|推理|烧脑|反转|谍战|特工|间谍|卧底|007|碟中谍|谍影重重|恐怖|惊悚|鬼片|丧尸|活死人|行尸走肉|生化危机|死神来了"},
-        {"电影_盗墓探险", "盗墓|鬼吹灯|胡八一|胖子|摸金|卸岭|发丘|盗墓笔记|古墓|探险|寻宝"},
-        {"电影_热血赛车", "赛车|速度|激情|飙车|的士速递|头文字D|热血|励志|体育|拳击|摔跤"},
-        {"电影_玄幻修仙", "玄幻|修仙|修真|仙侠|诛仙|斗破|斗罗"},
-        {"电影_经典推荐", ""},
+        {"电影_星爷英叔", "周星驰|星爷|英叔|林正英|僵尸"},
+        {"电影_动作港片", "成龙|李连杰|甄子丹|洪金宝|周润发|刘德华|港片|无间道|英雄本色"},
+        {"电影_喜剧", "沈腾|黄渤|开心麻花|喜剧"},
+        {"电影_科幻漫威", "漫威|复仇者|星际|宇宙|科幻|变形金刚"},
+        {"电影_悬疑恐怖", "悬疑|推理|恐怖|惊悚|丧尸|鬼片"},
+        {"电影_战争武侠", "战争|武侠|金庸|古龙|古装|二战"},
+        {"电影_冒险盗墓", "盗墓|鬼吹灯|古墓|探险"},
+        {"电影_其他", ""},
     };
 
     private static final String[][] COMMENTARY_CATEGORY_KEYWORDS = {
-        {"搞笑_陈翔六点半", "陈翔六点半|陈翔|六点半"},
-        // 🟢 扩大解说员名单 + 加入"电影解说"通用关键词，让更多电影解说类频道命中
-        {"解说_热门解说", "扁豆|乌贼|大象|亮哥|越哥|小冉|嫦娥|阿翔|虎妞|顾久|涵哥|俗哥|老皮|默爷|冷君|老炮|刘老师|鹿哥|斌哥|续哥|小川|阿钙|阿良|鱼丸|阿斗|电影狂人|疯狂解说|解说|影评|讲电影|聊电影|侃电影|说电影|电影杂谈|影评人"},
-        {"解说_科幻悬疑", "科幻梦工场|科幻|悬疑|推理|烧脑|科幻电影"},
-        {"解说_恐怖惊悚", "恐怖电影解说|恐怖解说|恐怖|惊悚|鬼片|恐怖片|惊悚片"},
-        {"解说_喜剧动画", "喜剧解说|动画解说|搞笑解说|番剧解说"},
-        // 🟢 把"解说_经典影视"作为兜底（之前是空关键词但有 defaultCategory=null，会丢弃所有未匹配房间）
-        // 现在改为无关键词，让未匹配的房间自然归到这里
+        {"解说_影视解说", "扁豆|乌贼|大象|亮哥|越哥|解说|影评|讲电影|聊电影"},
+        {"解说_搞笑短片", "陈翔六点半|陈翔|六点半"},
+        {"解说_其他", ""},
     };
 
     private static final String[][] TV_CATEGORY_KEYWORDS = {
-        {"剧集_新三国", "新三国|三国新|新三国演义"},
-        {"剧集_老三国", "老三国|三国演义|94三国|央视三国"},
-        {"剧集_水浒传", "新水浒|水浒传|水浒"},
-        {"剧集_纪晓岚", "纪晓岚|铁齿铜牙|和珅"},
-        {"剧集_庆余年", "庆余年|范闲"},
-        {"剧集_雍正王朝", "雍正王朝|康熙王朝|乾隆王朝"},
-        {"剧集_士兵突击", "士兵突击|许三多|王宝强"},
-        {"剧集_爱情公寓", "爱情公寓|曾小贤|胡一菲"},
-        {"剧集_武林外传", "武林外传|同福客栈|佟湘玉|白展堂"},
-        {"剧集_家有儿女", "家有儿女|刘星|夏雪|夏雨"},
-        // 🟢 改为更精确的关键词，去除过于宽泛的"剧情"等
-        {"剧集_古装历史", "古装|宫廷|历史|清朝|唐朝|汉朝|西游记|红楼梦|雍正|康熙|乾隆|大明"},
-        {"剧集_军旅战争", "军旅|战争|抗战|谍战|特种兵|亮剑|士兵突击|长征|解放"},
-        {"剧集_搞笑喜剧", "搞笑|喜剧|爆笑|段子手|脱口秀"},
-        {"剧集_悬疑推理", "悬疑|推理|犯罪|破案|刑侦|法医|法证"},
-        // 🟢 把"剧集_剧情"作为兜底（无关键词 = 不参与匹配）
-        // 未匹配任何关键词的房间会归到这里，作为"全部"
-        // 之前用"剧情|伦理|家庭|年代|都市|情感"作为关键词，结果太多房间被错误归到这里
+        {"剧集_经典古装", "三国|水浒传|西游记|红楼梦|庆余年|雍正王朝|古装|宫廷|历史"},
+        {"剧集_军旅抗战", "亮剑|士兵突击|军旅|战争|抗战|谍战"},
+        {"剧集_情景喜剧", "武林外传|爱情公寓|家有儿女|搞笑"},
+        {"剧集_悬疑刑侦", "悬疑|破案|刑侦|法医|犯罪"},
+        {"剧集_其他", ""},
     };
 
     private static final String[][] VARIETY_CATEGORY_KEYWORDS = {
-        // 🟢 重构综艺关键词匹配，让"综艺_热门/搞笑/音乐/选秀/真人秀"各组都能匹配
-        // 之前关键词太窄（"搞笑|喜剧|脱口秀|相声|小品"），但综艺频道的 roomName/nickName
-        // 通常只包含"综艺"二字，导致全部房间归到 defaultCategory="综艺_热门"
-        {"综艺_热门", "热门|综艺|大热门|一起看综艺|热门综艺|人气"},
-        {"综艺_搞笑", "搞笑|喜剧|脱口秀|相声|小品|段子|幽默|爆笑|欢乐|哈哈|逗"},
-        {"综艺_音乐", "音乐|唱歌|歌手|乐队|好声音|我是歌手|演唱会|音乐节|合唱|歌曲|K歌|音乐综艺"},
-        {"综艺_选秀", "选秀|创造|偶像|练习生|101|青春有你|练习|选秀节目|女团|男团|偶像养成"},
-        {"综艺_真人秀", "真人秀|奔跑吧|极限挑战|王牌|向往的生活|中餐厅|亲爱的客栈|我家那|明星大侦探|密室大逃脱|推理"},
-        // 🟢 "综艺_其他"作为兜底（之前是 defaultCategory="综艺_热门"导致未匹配房间全归热门）
-        // 现在作为空关键词的独立分组
+        {"综艺_热门综艺", "综艺|热门|真人秀|奔跑吧|极限挑战"},
+        {"综艺_音乐歌舞", "音乐|唱歌|歌手|演唱会|好声音|K歌"},
+        {"综艺_搞笑娱乐", "搞笑|脱口秀|相声|小品"},
+        {"综艺_其他", ""},
     };
 
     private static final String[][] ANIME_CATEGORY_KEYWORDS = {
-        // 🟢 "动漫_热门"留作 defaultCategory 兜底用（无关键词 = 不参与匹配）
-        // 未匹配任何关键词的房间会归到这里，充当"全部"
-        {"动漫_热血战斗", "热血|火影|海贼|海贼王|龙珠|龍珠|赛亚人|进击的巨人|一拳超人|鬼灭|鬼灭之刃|咒术|咒术回战|五条悟|我的英雄学院|妖尾|妖精的尾巴|巨人|猎人|全职猎人|七大罪|黑色五叶草|电锯人|拳愿|刃牙|王者天下|物理魔法使|平凡职业|黑色四叶草|四驱兄弟|神龙斗士|头文字D|双城之战|英雄联盟|超燃动画|第一神拳|钢之炼金术师|钢炼|防风少年|杀人足球"},
-        {"动漫_国漫", "国漫|国产|斗罗|斗罗大陆|斗破|斗破苍穹|斗宗|武魂|完美世界|石昊|荒天帝|秦时明月|画江湖|狐妖|妖狐|一人之下|镇魂街|全职高手|武庚纪|庚纪|吞噬星空|罗峰|武动乾坤|遮天|仙逆|凡人修仙|灵笼|元尊|星辰变|天行九歌|不良人|魔道祖师|天官赐福|凹凸世界|罗小黑|伍六七|刺客伍六七|雾山五行|时光代理人|少年歌行|盘龙|雪鹰领主|神印王座|龙皓晨|圣魔|剑来|妖神记|聂离|无上神帝|仙王|守夜人|武道主宰|秦尘|民调局|炼气|驭兽"},
-        {"动漫_日常治愈", "日常|治愈|蜡笔小新|哆啦A梦|樱桃小丸子|海绵宝宝|银魂|搞笑动漫|爆笑|轻音|齐木|齐神|慢生活|悠哉|百合|温泉|齐木楠雄|小黄人|龙猫|千与千寻|传递快乐|马男"},
-        {"动漫_少女恋爱", "少女|恋爱|校园|魔卡少女樱|美少女战士|百变小樱|犬夜叉|魔卡|初音|偶像|辉夜|好想告诉你|君届|四叶|clannad|key社|阿珍|阿强"},
-        {"动漫_奇幻冒险", "奇幻|魔法|异世界|转生|史莱姆|无职转生|Re:0|Re0|从零开始|魔女|学园|魔法少女|魔王|勇者|冒险|幻想|芙莉莲|葬送|旅行|流浪|刀剑神域|overlord|不死者之王"},
-        {"动漫_机战科幻", "机战|高达|EVA|新世纪福音战士|机动战士|机甲|宇宙|攻壳|科幻|未来|押井|星之|星际|86|八十六|鲁路修|反叛"},
-        {"动漫_悬疑推理", "悬疑|推理|侦探|柯南|名侦探柯南|金田一|死亡笔记|寒蝉|命运石|石头门|心理测量者|未来日记|代理|细节狂魔"},
-        {"动漫_剧场版", "剧场版|电影版|OVA|完结篇|总集篇|剧场|特别篇|宫崎骏"},
-        {"动漫_怀旧经典", "怀旧|经典|90年代|80年代|老番|童年|圣斗士|灌篮高手|幽游白书|乱马|机器猫|铁臂阿童木|花仙子|网球王子|棋魂|夏目|虫师|狼与香辛料|零之使魔|灼眼的夏娜|龙与虎|滑头鬼|通灵王|游戏王|数码宝贝|神奇宝贝|宠物小精灵|中华小当家|小当家|黑猫警长|葫芦娃|大头儿子|舒克和贝塔|邋遢大王|成龙历险记|成龍历险记|快乐星球|猫和老鼠|汤姆和杰瑞|足球小将"},
-        // 兜底
+        {"动漫_热血日漫", "火影|海贼|龙珠|鬼灭|咒术|进击的巨人|一拳超人|电锯人"},
+        {"动漫_精品国漫", "国漫|斗罗|斗破|秦时明月|画江湖|狐妖|一人之下|吞噬星空"},
+        {"动漫_日常治愈", "日常|蜡笔小新|哆啦A梦|海绵宝宝|治愈"},
+        {"动漫_奇幻异世界", "异世界|转生|史莱姆|Re0|魔法|刀剑神域"},
+        {"动漫_怀旧经典", "怀旧|灌篮高手|圣斗士|数码宝贝|游戏王|童年"},
+        {"动漫_其他", ""},
     };
+    // ==============================================================
 
     /**
      * 🟢 cache API 动漫关键词过滤集合
@@ -210,7 +174,7 @@ public class HuyaTogetherWatchManager {
             String displayName = roomName;
             // 🟢 适配当前项目 huya://room/ 协议方案，TVPlayerManager 通过 isHuyaProtocolUrl 识别
             Channel channel = new Channel(displayName, "huya://room/" + profileRoom,
-                                         category, "huya_" + roomId, true, profileRoom);
+                    category, "huya_" + roomId, true, profileRoom);
             return channel;
         }
     }
@@ -240,8 +204,8 @@ public class HuyaTogetherWatchManager {
                 List<TogetherWatchRoom> rooms = new ArrayList<>();
 
                 List<TogetherWatchRoom> movieRooms = fetchMovieRooms();
-                // 🟢 defaultCategory 从 null 改为 "解说_经典影视"，确保未匹配的解说频道也能显示
-                List<TogetherWatchRoom> commentaryRooms = classifyRoomsByKeywords(movieRooms, COMMENTARY_CATEGORY_KEYWORDS, "解说_经典影视");
+                // 🟢 修改兜底为 解说_其他
+                List<TogetherWatchRoom> commentaryRooms = classifyRoomsByKeywords(movieRooms, COMMENTARY_CATEGORY_KEYWORDS, "解说_其他");
                 List<Integer> commentaryRoomIds = new ArrayList<>();
                 for (TogetherWatchRoom room : commentaryRooms) {
                     commentaryRoomIds.add(room.roomId);
@@ -254,17 +218,19 @@ public class HuyaTogetherWatchManager {
                         nonCommentaryMovieRooms.add(room);
                     }
                 }
-                rooms.addAll(classifyRoomsByKeywords(nonCommentaryMovieRooms, MOVIE_CATEGORY_KEYWORDS, "电影_推荐"));
+                // 🟢 修改兜底为 电影_其他
+                rooms.addAll(classifyRoomsByKeywords(nonCommentaryMovieRooms, MOVIE_CATEGORY_KEYWORDS, "电影_其他"));
 
                 List<TogetherWatchRoom> tvRooms = fetchTvRooms();
-                // 🟢 把 defaultCategory 从 "剧集_剧情" 改为 "剧集_其他"，避免默认组膨胀
+                // 🟢 修改兜底为 剧集_其他
                 rooms.addAll(classifyRoomsByKeywords(tvRooms, TV_CATEGORY_KEYWORDS, "剧集_其他"));
 
                 List<TogetherWatchRoom> animeRooms = fetchAnimeRooms();
-                rooms.addAll(classifyRoomsByKeywords(animeRooms, ANIME_CATEGORY_KEYWORDS, "动漫_热门"));
+                // 🟢 修改兜底为 动漫_其他
+                rooms.addAll(classifyRoomsByKeywords(animeRooms, ANIME_CATEGORY_KEYWORDS, "动漫_其他"));
 
                 List<TogetherWatchRoom> varietyRooms = fetchVarietyRooms();
-                // 🟢 把 defaultCategory 从 "综艺_热门" 改为 "综艺_其他"，让综艺_热门只接受真正匹配的房间
+                // 🟢 修改兜底为 综艺_其他
                 rooms.addAll(classifyRoomsByKeywords(varietyRooms, VARIETY_CATEGORY_KEYWORDS, "综艺_其他"));
 
                 // 🟢 兜底：如果最终动漫/综艺频道数太少，补充静态 fallback
@@ -593,7 +559,7 @@ public class HuyaTogetherWatchManager {
 
         for (int page = 1; page <= maxPages; page++) {
             String url = API_TMP_LIST + "?iGid=" + CATEGORY_ID_TOGETHER_WATCH +
-                         "&iTmpId=" + subCategoryId + "&iPageNo=" + page + "&iPageSize=" + pageSize;
+                    "&iTmpId=" + subCategoryId + "&iPageNo=" + page + "&iPageSize=" + pageSize;
 
             Response response = NetUtil.getInstance().syncGet(url);
             if (!response.isSuccessful() || response.body() == null) {
@@ -680,37 +646,37 @@ public class HuyaTogetherWatchManager {
     private List<TogetherWatchRoom> getFallbackRooms() {
         List<TogetherWatchRoom> rooms = new ArrayList<>();
 
-        rooms.add(new TogetherWatchRoom(1394575534, 11342412, "【周星星】星爷经典不间断", "周星星", "", 5000, "电影_星爷"));
-        rooms.add(new TogetherWatchRoom(1394575543, 11342421, "英叔护体 | 林正英搞笑僵尸系列", "7喜先生", "", 4500, "电影_英叔"));
-        rooms.add(new TogetherWatchRoom(1524439855, 880261, "我摊牌啦 一起看热门大片", "虎牙八点档", "", 6000, "电影_推荐"));
-        rooms.add(new TogetherWatchRoom(616112, 616112, "动作大片", "虎牙一起看", "", 4500, "电影_动作电影"));
-        rooms.add(new TogetherWatchRoom(616113, 616113, "惊悚悬疑", "虎牙一起看", "", 4000, "电影_高分动作"));
-        rooms.add(new TogetherWatchRoom(616114, 616114, "科幻世界", "虎牙一起看", "", 3500, "电影_宇宙"));
-        rooms.add(new TogetherWatchRoom(616115, 616115, "古装巨制", "虎牙一起看", "", 3000, "电影_武侠"));
+        rooms.add(new TogetherWatchRoom(1394575534, 11342412, "【周星星】星爷经典不间断", "周星星", "", 5000, "电影_星爷英叔"));
+        rooms.add(new TogetherWatchRoom(1394575543, 11342421, "英叔护体 | 林正英搞笑僵尸系列", "7喜先生", "", 4500, "电影_星爷英叔"));
+        rooms.add(new TogetherWatchRoom(1524439855, 880261, "我摊牌啦 一起看热门大片", "虎牙八点档", "", 6000, "电影_其他"));
+        rooms.add(new TogetherWatchRoom(616112, 616112, "动作大片", "虎牙一起看", "", 4500, "电影_动作港片"));
+        rooms.add(new TogetherWatchRoom(616113, 616113, "惊悚悬疑", "虎牙一起看", "", 4000, "电影_悬疑恐怖"));
+        rooms.add(new TogetherWatchRoom(616114, 616114, "科幻世界", "虎牙一起看", "", 3500, "电影_科幻漫威"));
+        rooms.add(new TogetherWatchRoom(616115, 616115, "古装巨制", "虎牙一起看", "", 3000, "电影_战争武侠"));
 
-        rooms.add(new TogetherWatchRoom(616121, 616121, "古装剧集", "虎牙一起看", "", 4500, "剧集_古装历史"));
-        rooms.add(new TogetherWatchRoom(616122, 616122, "军旅题材", "虎牙一起看", "", 4000, "剧集_军旅战争"));
-        rooms.add(new TogetherWatchRoom(616123, 616123, "搞笑剧集", "虎牙一起看", "", 3500, "剧集_搞笑喜剧"));
-        rooms.add(new TogetherWatchRoom(616124, 616124, "悬疑推理", "虎牙一起看", "", 3000, "剧集_悬疑推理"));
+        rooms.add(new TogetherWatchRoom(616121, 616121, "古装剧集", "虎牙一起看", "", 4500, "剧集_经典古装"));
+        rooms.add(new TogetherWatchRoom(616122, 616122, "军旅题材", "虎牙一起看", "", 4000, "剧集_军旅抗战"));
+        rooms.add(new TogetherWatchRoom(616123, 616123, "搞笑剧集", "虎牙一起看", "", 3500, "剧集_情景喜剧"));
+        rooms.add(new TogetherWatchRoom(616124, 616124, "悬疑推理", "虎牙一起看", "", 3000, "剧集_悬疑刑侦"));
         rooms.add(new TogetherWatchRoom(616125, 616125, "都市情感", "虎牙一起看", "", 2500, "剧集_其他"));
         rooms.add(new TogetherWatchRoom(616126, 616126, "剧情精选", "虎牙一起看", "", 2000, "剧集_其他"));
 
-        // 🟢 扩充动漫频道兜底（每个分组都有 2-3 个 fallback 频道）
-        rooms.add(new TogetherWatchRoom(96000001, 96000001, "热血动漫专播", "热血动漫专播", "", 1200, "动漫_热血"));
-        rooms.add(new TogetherWatchRoom(96000002, 96000002, "经典国漫 24h", "经典国漫 24h", "", 1000, "动漫_国漫"));
-        rooms.add(new TogetherWatchRoom(96000003, 96000003, "搞笑日常精选", "搞笑日常精选", "", 800, "动漫_日常"));
-        rooms.add(new TogetherWatchRoom(96000004, 96000004, "少女向治愈系", "少女向治愈系", "", 600, "动漫_少女"));
-        rooms.add(new TogetherWatchRoom(96000005, 96000005, "动漫剧场版合集", "动漫剧场版合集", "", 700, "动漫_剧场"));
-        rooms.add(new TogetherWatchRoom(96000006, 96000006, "怀旧经典动画", "怀旧经典动画", "", 500, "动漫_怀旧"));
-        rooms.add(new TogetherWatchRoom(96000007, 96000007, "热门新番速递", "热门新番速递", "", 1500, "动漫_热门"));
-        rooms.add(new TogetherWatchRoom(96000008, 96000008, "柯南/死神/犬夜叉", "柯南/死神/犬夜叉", "", 900, "动漫_少女"));
+        // 🟢 扩充动漫频道兜底（匹配精简后分组）
+        rooms.add(new TogetherWatchRoom(96000001, 96000001, "热血动漫专播", "热血动漫专播", "", 1200, "动漫_热血日漫"));
+        rooms.add(new TogetherWatchRoom(96000002, 96000002, "经典国漫 24h", "经典国漫 24h", "", 1000, "动漫_精品国漫"));
+        rooms.add(new TogetherWatchRoom(96000003, 96000003, "搞笑日常精选", "搞笑日常精选", "", 800, "动漫_日常治愈"));
+        rooms.add(new TogetherWatchRoom(96000004, 96000004, "少女向治愈系", "少女向治愈系", "", 600, "动漫_日常治愈"));
+        rooms.add(new TogetherWatchRoom(96000005, 96000005, "动漫剧场版合集", "动漫剧场版合集", "", 700, "动漫_奇幻异世界"));
+        rooms.add(new TogetherWatchRoom(96000006, 96000006, "怀旧经典动画", "怀旧经典动画", "", 500, "动漫_怀旧经典"));
+        rooms.add(new TogetherWatchRoom(96000007, 96000007, "热门新番速递", "热门新番速递", "", 1500, "动漫_其他"));
+        rooms.add(new TogetherWatchRoom(96000008, 96000008, "柯南/死神/犬夜叉", "柯南/死神/犬夜叉", "", 900, "动漫_热血日漫"));
 
-        rooms.add(new TogetherWatchRoom(660005, 660005, "动漫剧场", "虎牙一起看", "", 4500, "动漫_热门"));
-        rooms.add(new TogetherWatchRoom(660004, 660004, "热门综艺", "虎牙一起看", "", 6000, "综艺_热门"));
-        rooms.add(new TogetherWatchRoom(660006, 660006, "体育赛事", "虎牙一起看", "", 3000, "综艺_热门"));
-        rooms.add(new TogetherWatchRoom(660007, 660007, "纪录片", "虎牙一起看", "", 2500, "电影_推荐"));
-        rooms.add(new TogetherWatchRoom(660008, 660008, "演唱会", "虎牙一起看", "", 5000, "综艺_音乐"));
-        rooms.add(new TogetherWatchRoom(660009, 660009, "游戏回放", "虎牙一起看", "", 3500, "电影_推荐"));
+        rooms.add(new TogetherWatchRoom(660005, 660005, "动漫剧场", "虎牙一起看", "", 4500, "动漫_其他"));
+        rooms.add(new TogetherWatchRoom(660004, 660004, "热门综艺", "虎牙一起看", "", 6000, "综艺_热门综艺"));
+        rooms.add(new TogetherWatchRoom(660006, 660006, "体育赛事", "虎牙一起看", "", 3000, "综艺_其他"));
+        rooms.add(new TogetherWatchRoom(660007, 660007, "纪录片", "虎牙一起看", "", 2500, "电影_其他"));
+        rooms.add(new TogetherWatchRoom(660008, 660008, "演唱会", "虎牙一起看", "", 5000, "综艺_音乐歌舞"));
+        rooms.add(new TogetherWatchRoom(660009, 660009, "游戏回放", "虎牙一起看", "", 3500, "电影_其他"));
         return rooms;
     }
 

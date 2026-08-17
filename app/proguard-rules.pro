@@ -7,31 +7,82 @@
 # ====================================================================
 # 🟢 R8 全局优化配置
 # ====================================================================
--optimizationpasses 2
+-optimizationpasses 5
 -allowaccessmodification
+-overloadaggressively
 -dontusemixedcaseclassnames
 -dontskipnonpubliclibraryclasses
 -dontpreverify
 -verbose
+# 注意：!field/* 和 !class/merging/* 保持禁用，确保虎牙 SDK 反射访问字段/类名不被破坏
 -optimizations !code/simplification/arithmetic,!field/*,!class/merging/*
 
 # ====================================================================
-# 🔴 R8 优化移除所有日志调用（Release构建）
+# 🔴 R8 优化 - 正式版全量移除日志/打印/堆栈
+# ⚠️ 用户明确要求：正式版不要保留 Log.i/w/e、printStackTrace、System.out 等任何调试输出
+#   · android.util.Log: v/d/i/w/e（含带Throwable的三参数重载）+ isLoggable 全部删除
+#   · Throwable.printStackTrace() / Exception.printStackTrace() → 删除
+#   · System.out.println / System.err.println → 删除
+# 收益：
+#   1) APK 包体进一步减小（字符串常量/拼接/Log调用点全删）
+#   2) Release 版运行时不再产生任何 logcat 输出 → 提升安全性 + 减少主线程小开销
+# 代价：
+#   Release 版线上崩溃无堆栈可查、启动时序/业务日志不可见（用户已接受此取舍）
 # ====================================================================
 -assumenosideeffects class android.util.Log {
     public static boolean isLoggable(java.lang.String, int);
     public static int v(java.lang.String, java.lang.String);
+    public static int v(java.lang.String, java.lang.String, java.lang.Throwable);
     public static int d(java.lang.String, java.lang.String);
+    public static int d(java.lang.String, java.lang.String, java.lang.Throwable);
     public static int i(java.lang.String, java.lang.String);
+    public static int i(java.lang.String, java.lang.String, java.lang.Throwable);
     public static int w(java.lang.String, java.lang.String);
+    public static int w(java.lang.String, java.lang.String, java.lang.Throwable);
+    public static int w(java.lang.String, java.lang.Throwable);
     public static int e(java.lang.String, java.lang.String);
+    public static int e(java.lang.String, java.lang.String, java.lang.Throwable);
+    public static int wtf(java.lang.String, java.lang.String);
+    public static int wtf(java.lang.String, java.lang.String, java.lang.Throwable);
+    public static int wtf(java.lang.String, java.lang.Throwable);
+    public static int println(int, java.lang.String, java.lang.String);
+    public static java.lang.String getStackTraceString(java.lang.Throwable);
 }
--assumenosideeffects class java.lang.System {
-    public static void println(java.lang.String);
-    public static void println(java.lang.Object);
-}
+# 删除 Throwable.printStackTrace() / Exception.printStackTrace()（含两种重载：无参/带PrintStream/带PrintWriter）
 -assumenosideeffects class java.lang.Throwable {
     public void printStackTrace();
+    public void printStackTrace(java.io.PrintStream);
+    public void printStackTrace(java.io.PrintWriter);
+    public java.lang.Throwable fillInStackTrace();
+}
+-assumenosideeffects class java.lang.Exception {
+    public void printStackTrace();
+    public void printStackTrace(java.io.PrintStream);
+    public void printStackTrace(java.io.PrintWriter);
+}
+# 删除 System.out / System.err 的 println/print/printf/format 调用
+-assumenosideeffects class java.io.PrintStream {
+    public void println();
+    public void println(java.lang.Object);
+    public void println(java.lang.String);
+    public void println(boolean);
+    public void println(char);
+    public void println(char[]);
+    public void println(double);
+    public void println(float);
+    public void println(int);
+    public void println(long);
+    public void print(java.lang.Object);
+    public void print(java.lang.String);
+    public void print(boolean);
+    public void print(char);
+    public void print(char[]);
+    public void print(double);
+    public void print(float);
+    public void print(int);
+    public void print(long);
+    public java.io.PrintStream printf(java.lang.String, java.lang.Object[]);
+    public java.io.PrintStream format(java.lang.String, java.lang.Object[]);
 }
 
 # 🔴 Gson 保护规则（防止 JSON 解析时字段名被混淆导致崩溃）
@@ -58,24 +109,26 @@
     @* <methods>;
 }
 
-# 🔴 虎牙 SDK - 全量保留所有模块 + 所有方法不被移除
+# ====================================================================
+# 🔴 虎牙 SDK - 全量保留（SDK 大量 Class.forName/JNI/反射动态加载，严禁精细裁剪）
+# ====================================================================
+# 【教训】2026-08-16 精剪规则尝试导致"获取参数失败，请重试"Toast 连续弹出
+# 原因：R8 把 SDK 内部 C++/JNI 通过字符串动态加载的类删除了（395类→保留16类→实际运行缺失379类）
+# 结论：虎牙 SDK 是高度封闭的黑盒，内部动态加载链路无法从字节码静态分析穷尽。
+#       必须全量 keep，不得做精细裁剪。
+# ====================================================================
 -keep class com.huya.** { *; }
 -keep interface com.huya.** { *; }
 -keep class com.duowan.** { *; }
 -keep interface com.duowan.** { *; }
-
-# 🔴 虎牙 SDK - 保留所有成员（防止方法被 R8 移除）
 -keepclassmembers class com.huya.** { *; }
 -keepclassmembers interface com.huya.** { *; }
 -keepclassmembers class com.duowan.** { *; }
 -keepclassmembers interface com.duowan.** { *; }
-
-# 🔴 虎牙 SDK - 禁用混淆（防止反射调用失败）
 -keepnames class com.huya.** { *; }
 -keepnames interface com.huya.** { *; }
 -keepnames class com.duowan.** { *; }
-
-# 🔴 虎牙 SDK - 保留所有方法名（JNI/Native 调用依赖方法名）
+-keepnames interface com.duowan.** { *; }
 -keepclassmembers,allowshrinking,allowoptimization class com.huya.** {
     <methods>;
     <fields>;
@@ -90,16 +143,6 @@
 -keepclassmembers class com.huyaudb.** { *; }
 -keep class com.huyaudbunify.** { *; }
 -keepclassmembers class com.huyaudbunify.** { *; }
-
-# 🔴 虎牙 SDK - 保留所有方法名（JNI/Native 调用依赖方法名）
--keepclassmembers,allowshrinking,allowoptimization class com.huya.** {
-    <methods>;
-    <fields>;
-}
--keepclassmembers,allowshrinking,allowoptimization class com.duowan.** {
-    <methods>;
-    <fields>;
-}
 
 # 🔴 Native 方法保护
 -keepclasseswithmembernames class * {
@@ -119,11 +162,19 @@
 -keep class com.huya.live.common.** { *; }
 -keep class com.huya.live.utils.** { *; }
 
+-keepnames class com.huya.security.** { *; }
+-keepnames class com.huya.hydeviceid.** { *; }
+-keepnames class **.NativeBridge { *; }
+
+# ====================================================================
+# E. Retrofit + RxJava + OkHttp（网络库，已有直调调用）
+# ====================================================================
 -dontwarn retrofit2.**
 -dontwarn io.reactivex.**
 -dontwarn org.reactivestreams.**
+-dontwarn okhttp3.**
+-dontwarn okio.**
 
-# 🔴 Retrofit + RxJava 全面保护
 -keepattributes Signature,Exceptions,*Annotation*
 -keep class retrofit2.** { *; }
 -keep interface retrofit2.** { *; }
@@ -134,22 +185,19 @@
     @retrofit2.http.* <methods>;
 }
 -keep class rx.** { *; }
--keep class rx.schedulers.** { *; }
 -keep class io.reactivex.** { *; }
--keep class io.reactivex.schedulers.** { *; }
 -keep class org.reactivestreams.** { *; }
--keep class com.squareup.okhttp3.** { *; }
--keep interface com.squareup.okhttp3.** { *; }
 -keep class okhttp3.** { *; }
 -keep interface okhttp3.** { *; }
 -keep class okio.** { *; }
 
--keepclassmembers class * {
-    native <methods>;
+# ====================================================================
+# F. 其他保留（枚举、Activity 入口等通用规则）
+# ====================================================================
+-keepclassmembers enum * {
+    public static **[] values();
+    public static ** valueOf(java.lang.String);
 }
--keepnames class com.huya.security.** { *; }
--keepnames class com.huya.hydeviceid.** { *; }
--keepnames class **.NativeBridge { *; }
 
 -keepclassmembers class * extends android.app.Activity {
     public void *(android.view.View);

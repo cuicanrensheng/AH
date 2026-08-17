@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<selector xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- 焦点状态：蓝色字体 -->
-    <item android:color="#40A9FF" android:state_focused="true" />
-    <!-- 按下状态：蓝色字体 -->
-    <item android:color="#40A9FF" android:state_pressed="true" />
-    <!-- 默认状态：白色字体 -->
-    <item android:color="#FFFFFF" />
-</selector>

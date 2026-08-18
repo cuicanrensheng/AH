@@ -1,0 +1,321 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@drawable/dialog_bg_corner"
+    android:padding="0dp"
+    android:maxWidth="700dp">
+
+    <!-- 顶部：标题 -->
+    <RelativeLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:paddingTop="16dp"
+        android:paddingBottom="16dp">
+
+        <TextView
+            android:id="@+id/tv_dialog_title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/http_redirect_config"
+            android:textColor="#FFFFFF"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+    </RelativeLayout>
+
+    <!-- 分割线 -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#33FFFFFF" />
+
+    <!-- 中间内容区：可滚动设置项 -->
+    <ScrollView
+        android:id="@+id/sv_redirect_content"
+        android:layout_width="match_parent"
+        android:layout_height="380dp"
+        android:scrollbars="vertical"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:paddingTop="8dp"
+        android:paddingBottom="8dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <!-- 最大重定向次数输入 -->
+            <LinearLayout
+                android:id="@+id/ll_max_count"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:padding="16dp"
+                android:focusable="true"
+                android:clickable="true"
+                android:background="@drawable/switch_item_bg"
+                android:foreground="@null"
+                android:nextFocusDown="@+id/ll_cross_domain">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/max_redirect_count"
+                    android:textColor="#FFFFFF"
+                    android:textSize="16sp" />
+                <EditText
+                    android:id="@+id/et_redirect_max"
+                    android:layout_width="80dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginEnd="8dp"
+                    android:gravity="center"
+                    android:inputType="number"
+                    android:textColor="#FFFFFF"
+                    android:textSize="16sp"
+                    android:focusable="true"
+                    android:background="@null"
+                    android:autofillHints=""
+                    android:hint="@string/max_redirect_count" />
+            </LinearLayout>
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="#33FFFFFF" />
+
+            <!-- 允许跨域名重定向 -->
+            <LinearLayout
+                android:id="@+id/ll_cross_domain"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:padding="16dp"
+                android:focusable="true"
+                android:clickable="true"
+                android:background="@drawable/switch_item_bg"
+                android:foreground="@null">
+                <TextView
+                    android:id="@+id/tv_cross_domain"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content"
+                    android:text="@string/allow_cross_domain"
+                    android:textColor="#FFFFFF"
+                    android:textSize="16sp" />
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/sw_cross_domain"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:focusable="false"
+                    android:focusableInTouchMode="false" />
+            </LinearLayout>
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="#33FFFFFF" />
+
+            <!-- 允许HTTP/HTTPS跨协议跳转 -->
+            <LinearLayout
+                android:id="@+id/ll_cross_proto"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:padding="16dp"
+                android:focusable="true"
+                android:clickable="true"
+                android:background="@drawable/switch_item_bg"
+                android:foreground="@null">
+                <TextView
+                    android:id="@+id/tv_cross_proto"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content"
+                    android:text="@string/allow_cross_protocol"
+                    android:textColor="#FFFFFF"
+                    android:textSize="16sp" />
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/sw_cross_proto"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:focusable="false"
+                    android:focusableInTouchMode="false" />
+            </LinearLayout>
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="#33FFFFFF" />
+
+            <!-- 跳转携带请求头（防盗链必备） -->
+            <LinearLayout
+                android:id="@+id/ll_follow_header"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:padding="16dp"
+                android:focusable="true"
+                android:clickable="true"
+                android:background="@drawable/switch_item_bg"
+                android:foreground="@null">
+                <TextView
+                    android:id="@+id/tv_follow_header"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content"
+                    android:text="@string/follow_headers"
+                    android:textColor="#FFFFFF"
+                    android:textSize="16sp" />
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/sw_follow_header"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:focusable="false"
+                    android:focusableInTouchMode="false" />
+            </LinearLayout>
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="#33FFFFFF" />
+
+            <!-- Cookie播放授权令牌 -->
+            <LinearLayout
+                android:id="@+id/ll_send_cookie"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:padding="16dp"
+                android:focusable="true"
+                android:clickable="true"
+                android:background="@drawable/switch_item_bg"
+                android:foreground="@null">
+                <TextView
+                    android:id="@+id/tv_send_cookie"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content"
+                    android:text="@string/cookie_auth_token"
+                    android:textColor="#FFFFFF"
+                    android:textSize="16sp" />
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/sw_send_cookie"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:focusable="false"
+                    android:focusableInTouchMode="false" />
+            </LinearLayout>
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="#33FFFFFF" />
+
+            <!-- 忽略HTTPS跳转证书错误 -->
+            <LinearLayout
+                android:id="@+id/ll_ignore_ssl"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:padding="16dp"
+                android:focusable="true"
+                android:clickable="true"
+                android:background="@drawable/switch_item_bg"
+                android:foreground="@null">
+                <TextView
+                    android:id="@+id/tv_ignore_ssl"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content"
+                    android:text="@string/ignore_ssl_errors"
+                    android:textColor="#FFFFFF"
+                    android:textSize="16sp" />
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/sw_ignore_ssl"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:focusable="false"
+                    android:focusableInTouchMode="false" />
+            </LinearLayout>
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="#33FFFFFF" />
+
+            <!-- UA切换 -->
+            <LinearLayout
+                android:id="@+id/ll_user_agent"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:padding="16dp"
+                android:focusable="true"
+                android:clickable="true"
+                android:background="@drawable/switch_item_bg"
+                android:foreground="@null"
+                android:nextFocusDown="@+id/btn_redirect_cancel">
+                <TextView
+                    android:id="@+id/tv_user_agent_label"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content"
+                    android:text="@string/ua_switch"
+                    android:textColor="#FFFFFF"
+                    android:textSize="16sp" />
+                <TextView
+                    android:id="@+id/tv_user_agent_status"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/exoplayer_default"
+                    android:textColor="#FFFFFF"
+                    android:textSize="16sp" />
+            </LinearLayout>
+        </LinearLayout>
+    </ScrollView>
+
+    <!-- 分割线 -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#33FFFFFF" />
+
+    <!-- 底部按钮区 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="end|center_vertical"
+        android:paddingStart="16dp"
+        android:paddingTop="12dp"
+        android:paddingEnd="8dp"
+        android:paddingBottom="12dp">
+
+        <Button
+            android:id="@+id/btn_redirect_cancel"
+            style="?android:attr/buttonBarButtonStyle"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:text="@string/cancel"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="#55576A"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:layout_marginEnd="8dp"
+            android:focusable="true"
+            android:nextFocusUp="@+id/ll_user_agent"
+            android:nextFocusRight="@+id/btn_redirect_save"/>
+
+        <Button
+            android:id="@+id/btn_redirect_save"
+            style="?android:attr/buttonBarButtonStyle"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:text="@string/save"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="#55576A"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:focusable="true"
+            android:nextFocusLeft="@+id/btn_redirect_cancel"
+            android:nextFocusUp="@+id/ll_user_agent"/>
+    </LinearLayout>
+
+</LinearLayout>

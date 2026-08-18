@@ -2,9 +2,41 @@ plugins {
     id 'com.android.application'
 }
 
+// ========= CI自动下载安装NDK逻辑 新增 =========
+def targetNdkVersion = "25.2.9519653"
+def ndkBaseDir = file("${rootProject.buildDir}/ndk")
+def ndkRootDir = file("${ndkBaseDir}/android-ndk-r25c")
+boolean isWindows = System.getProperty("os.name").toLowerCase().contains("win")
+
+// 如果NDK目录不存在，自动下载解压
+if (!ndkRootDir.exists()) {
+    println "NDK不存在，开始自动下载 r25c(${targetNdkVersion})"
+    def zipName = isWindows ? "android-ndk-r25c-windows.zip" : "android-ndk-r25c-linux.zip"
+    def downloadUrl = "https://dl.google.com/android/repository/${zipName}"
+    def zipFile = file("${ndkBaseDir}/${zipName}")
+
+    ndkBaseDir.mkdirs()
+
+    // 下载zip包
+    ant.get(src: downloadUrl, dest: zipFile, verbose: true)
+
+    // 解压
+    ant.unzip(src: zipFile, dest: ndkBaseDir, overwrite: true)
+    println "NDK解压完成: ${ndkRootDir.absolutePath}"
+}
+
+// 设置ndk路径给gradle，本地开发、CI都生效
+android {
+    ndkPath = ndkRootDir.absolutePath
+}
+// ============================================
+
 android {
     namespace "com.tv.live"
     compileSdk 36
+    // NDK版本放在android顶层
+    ndkVersion targetNdkVersion
+
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
@@ -31,8 +63,11 @@ android {
         multiDexEnabled true
         buildConfigField "int", "VERSION_CODE", "${versionCode}"
         buildConfigField "String", "VERSION_NAME", "\"${versionName}\""
-        ndkVersion '25.2.9519653'
-        ndkPath "D:\\ASDF\\BIANYIGONGJU\\android-ndk-r25c"
+
+        // ========== 删除！！！这里不能写 ndkVersion / ndkPath ==========
+        // ndkVersion '25.2.9519653'
+        // ndkPath "D:\\ASDF\\BIANYIGONGJU\\android-ndk-r25c"
+
         ndk {
             // ⚠️ 注意：splits.abi 已按架构分包，AGP 不允许同时设置 ndk.abiFilters
             // abiFilters 在此留空，ABI 过滤完全由 splits.abi 控制
@@ -190,6 +225,7 @@ configurations.all {
 
 // ====================================================================
 // SO 压缩：AGP 内置 stripReleaseDebugSymbols 已自动剥离 debug 符号
-// （ndkPath + debugSymbolLevel NONE），useLegacyPackaging=false 在 APK 内
+// ndkPath由脚本自动设置，debugSymbolLevel NONE，useLegacyPackaging=false 在 APK 内
 // 进一步 ZIP 压缩 SO。无需自定义脚本。
+// CI环境会自动下载NDK，本地开发机也复用同一套逻辑
 // ====================================================================

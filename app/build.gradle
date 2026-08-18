@@ -1,0 +1,195 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace "com.tv.live"
+    compileSdk 36
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+        coreLibraryDesugaringEnabled true
+    }
+    buildFeatures {
+        buildConfig true
+    }
+    splits {
+        abi {
+            enable true
+            reset()
+            include 'arm64-v8a', 'armeabi-v7a'
+            universalApk false
+        }
+    }
+    defaultConfig {
+        applicationId "com.tv.live"
+        minSdk 21
+        targetSdk 36
+        versionCode 60
+        versionName "2.0.60"
+        resConfigs "zh"
+        multiDexEnabled true
+        buildConfigField "int", "VERSION_CODE", "${versionCode}"
+        buildConfigField "String", "VERSION_NAME", "\"${versionName}\""
+        ndkVersion '25.2.9519653'
+        ndkPath "D:\\ASDF\\BIANYIGONGJU\\android-ndk-r25c"
+        ndk {
+            // ⚠️ 注意：splits.abi 已按架构分包，AGP 不允许同时设置 ndk.abiFilters
+            // abiFilters 在此留空，ABI 过滤完全由 splits.abi 控制
+            debugSymbolLevel 'NONE'
+        }
+    }
+    signingConfigs {
+        release {
+            storeFile file("release.keystore")
+            storePassword project.findProperty("storePassword")
+            keyAlias project.findProperty("keyAlias")
+            keyPassword project.findProperty("keyPassword")
+            v1SigningEnabled true
+            v2SigningEnabled true
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled true
+            shrinkResources true
+            zipAlignEnabled true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.release
+        }
+        debug {
+            minifyEnabled false
+            shrinkResources false
+        }
+    }
+    packagingOptions {
+        resources {
+            pickFirsts += ['META-INF/com.android.tools/proguard/coroutines.pro']
+            excludes += ['META-INF/DEPENDENCIES', 'META-INF/LICENSE', 'META-INF/LICENSE.txt',
+                         'META-INF/license.txt', 'META-INF/NOTICE', 'META-INF/NOTICE.txt',
+                         'META-INF/notice.txt', 'META-INF/ASL2.0', 'META-INF/*.kotlin_module',
+                         'META-INF/INDEX.LIST', 'META-INF/io.netty.versions.properties',
+                         'assets/huya_berry_protocol_license.txt',
+                         'assets/huya_berry_third_party_license.html',
+                         'assets/webgame/*.html', 'assets/webgame/*.js', 'assets/webgame/*.css',
+                         'META-INF/services/*',
+                         'META-INF/proguard/*.pro',
+                         'META-INF/*.version',
+                         'META-INF/versions/**',
+                         '**/*.kotlin_builtins',
+                         '**/*.kotlin_metadata',
+                         '**/*.proto',
+                         '**/*.aidl',
+                         'DebugProbesKt.bin']
+        }
+        jniLibs {
+            // false = SO 以未压缩(STORED)方式存储在 APK 内
+            // 安装时系统不解压 SO，直接从 base.apk 内 mmap 加载
+            // → APK 更大(24MB)，但安装后不额外产生 lib/ 解压体积
+            useLegacyPackaging false
+            pickFirsts += [
+                    'lib/arm64-v8a/libhyaudioengine.so',
+                    'lib/armeabi-v7a/libhyaudioengine.so',
+                    'lib/arm64-v8a/libc++_shared.so',
+                    'lib/armeabi-v7a/libc++_shared.so',
+                    'lib/x86/libc++_shared.so',
+                    'lib/x86_64/libc++_shared.so'
+            ]
+        }
+    }
+    androidResources {
+        generateLocaleConfig false
+    }
+    lint {
+        baseline = file("lint-baseline.xml")
+        abortOnError false
+        checkReleaseBuilds false
+    }
+}
+
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation 'com.google.zxing:core:3.5.1'
+    implementation "androidx.media3:media3-exoplayer:1.7.1"
+    implementation "androidx.media3:media3-ui:1.7.1"
+    implementation "androidx.media3:media3-exoplayer-hls:1.7.1"
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+    implementation 'com.google.code.gson:gson:2.10.1'
+    implementation fileTree(dir: 'libs', include: ['*.aar', '*.jar'], exclude: [
+            'audioengineencode-1.1.80.aar',
+            'audioenginecapture-1.1.80.aar',
+            'imagefilter-1.1.80.aar',
+            'rtmpupload-1.1.80.aar'
+    ])
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'
+}
+
+androidComponents {
+    onVariants(selector().all()) { variant ->
+        variant.outputs.forEach { output ->
+            try {
+                def currentName = output.outputFileName.get()
+                def abiName = currentName.find(/arm64-v8a|armeabi-v7a/)
+                if (!abiName) {
+                    abiName = variant.name
+                }
+                def verName = android.defaultConfig.versionName
+                def newName = "tv_live_${variant.buildType}_${abiName}_${verName}.apk"
+                logger.lifecycle "Renaming APK: ${currentName} -> ${newName}"
+                output.outputFileName.set(newName)
+            } catch (Exception e) {
+                logger.warn "Rename failed for ${variant.name}: ${e.message}"
+            }
+        }
+    }
+}
+
+project.afterEvaluate {
+    tasks.named('assembleRelease') {
+        doLast {
+            def outputDir = file("$buildDir/outputs/apk/release")
+            if (outputDir.exists()) {
+                def abis = ['arm64-v8a', 'armeabi-v7a']
+                abis.each { abi ->
+                    def pattern = "*-${abi}-release.apk"
+                    fileTree(dir: outputDir, include: pattern).each { apk ->
+                        def verName = android.defaultConfig.versionName
+                        def newName = "tv_live_release_${abi}_${verName}.apk"
+                        def newFile = new File(outputDir, newName)
+                        if (!apk.name.equals(newName) && !newFile.exists()) {
+                            apk.renameTo(newFile)
+                            logger.lifecycle "Post-build renamed: ${apk.name} -> ${newName}"
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+configurations.all {
+    resolutionStrategy {
+        force "androidx.media3:media3-common:1.7.1"
+        force "androidx.media3:media3-exoplayer:1.7.1"
+        force "androidx.media3:media3-ui:1.7.1"
+        force "androidx.media3:media3-exoplayer-hls:1.7.1"
+        force "androidx.lifecycle:lifecycle-process:2.6.2"
+    }
+    exclude group: 'com.huya.berry', module: 'sdkplayer'
+    exclude group: 'com.huya.berry', module: 'sdklive'
+    exclude group: 'com.huya.berry', module: 'sdkcamera'
+    exclude group: 'com.huya.berry', module: 'audioengineencode'
+    exclude group: 'com.huya.berry', module: 'audioenginecapture'
+    exclude group: 'com.huya.berry', module: 'imagefilter'
+    exclude group: 'com.huya.berry', module: 'rtmpupload'
+    exclude group: 'com.huya.berry', module: 'webrtc-sdk'
+    exclude group: 'org.webrtc'
+    exclude group: 'com.squareup.picasso'
+    exclude group: 'com.github.bumptech.glide'
+}
+
+// ====================================================================
+// SO 压缩：AGP 内置 stripReleaseDebugSymbols 已自动剥离 debug 符号
+// （ndkPath + debugSymbolLevel NONE），useLegacyPackaging=false 在 APK 内
+// 进一步 ZIP 压缩 SO。无需自定义脚本。
+// ====================================================================

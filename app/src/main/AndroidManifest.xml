@@ -127,25 +127,5 @@
             android:name="com.huya.berry.sdklive.liveTool.LiveToolService"
             tools:node="remove" />
 
-        <activity
-            android:name=".tv.SetupActivity"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.media.tv.action.CHANNEL_SETUP" />
-            </intent-filter>
-        </activity>
-
-        <service
-            android:name=".tv.LiveTvInputService"
-            android:permission="android.permission.BIND_TV_INPUT"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.media.tv.TvInputService" />
-            </intent-filter>
-            <meta-data
-                android:name="android.media.tv.input"
-                android:resource="@xml/tv_input" />
-        </service>
-
     </application>
 </manifest>

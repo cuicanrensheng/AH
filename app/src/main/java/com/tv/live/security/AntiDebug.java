@@ -58,7 +58,7 @@ public class AntiDebug {
         boolean xposedFound = checkXposed();
         boolean emulatorFound = checkEmulator(context);
         
-        // 提高调试器检测门槛
+        // 🟢 优化：提高调试器检测门槛
         // 只有当Debug.isDebuggerConnected()明确返回true时才判定为调试器
         // 避免因TracerPid等信息误判
         boolean confirmedDebugger = Debug.isDebuggerConnected();

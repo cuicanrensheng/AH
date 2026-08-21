@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- 默认配置：允许HTTP流量（直播源需要），信任系统证书 -->
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+            <!-- 允许用户添加的自定义CA证书 -->
+            <certificates src="user" />
+        </trust-anchors>
+    </base-config>
+
+    <!-- 对关键域名强制使用HTTPS（即使全局允许HTTP） -->
+    <domain-config cleartextTrafficPermitted="false">
+        <!-- GitHub相关域名 -->
+        <domain includeSubdomains="true">github.com</domain>
+        <domain includeSubdomains="true">githubusercontent.com</domain>
+        <domain includeSubdomains="true">raw.githubusercontent.com</domain>
+        
+        <!-- 虎牙直播API域名 -->
+        <domain includeSubdomains="true">huya.com</domain>
+        <domain includeSubdomains="true">huya.cn</domain>
+        
+        <!-- 云日志/上报服务器（如有） -->
+        <domain includeSubdomains="true">*.tv.live.com</domain>
+    </domain-config>
+
+    <!-- 允许的明文HTTP域名（直播源、IPTV等） -->
+    <domain-config cleartextTrafficPermitted="true">
+        <!-- 虎牙CDN域名（视频流可以用HTTP） -->
+        <domain includeSubdomains="true">huyaimg.msstatic.com</domain>
+        <domain includeSubdomains="true">live-cover.msstatic.com</domain>
+        <domain includeSubdomains="true">tx.flv.huya.com</domain>
+        <domain includeSubdomains="true">tx.hls.huya.com</domain>
+        <domain includeSubdomains="true">tx.p2p.huya.com</domain>
+        <domain includeSubdomains="true">hs.flv.huya.com</domain>
+        <domain includeSubdomains="true">hs.hls.huya.com</domain>
+        <domain includeSubdomains="true">hs.p2p.huya.com</domain>
+        <domain includeSubdomains="true">al.flv.huya.com</domain>
+        <domain includeSubdomains="true">al.hls.huya.com</domain>
+        <domain includeSubdomains="true">al.p2p.huya.com</domain>
+        
+        <!-- 通用直播CDN -->
+        <domain includeSubdomains="true">*.flv.huya.com</domain>
+        <domain includeSubdomains="true">*.hls.huya.com</domain>
+        <domain includeSubdomains="true">*.p2p.huya.com</domain>
+        
+        <!-- 本地开发服务器 -->
+        <domain includeSubdomains="false">localhost</domain>
+        <domain includeSubdomains="false">127.0.0.1</domain>
+    </domain-config>
+</network-security-config>

@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:background="@drawable/dialog_bg_corner"
+    android:baselineAligned="false">
+
+    <!-- 分组栏 -->
+    <ListView
+        android:id="@+id/lv_group"
+        android:layout_width="120dp"
+        android:layout_height="450dp"
+        android:background="@android:color/transparent" />
+
+    <!-- 频道列表 -->
+    <ListView
+        android:id="@+id/lv_channel_list"
+        android:layout_width="150dp"
+        android:layout_height="450dp"
+        android:background="@android:color/transparent" />
+
+    <!-- 日期栏 -->
+    <ListView
+        android:id="@+id/lv_date"
+        android:layout_width="120dp"
+        android:layout_height="450dp"
+        android:background="@android:color/transparent" />
+
+    <!-- 节目单：占满剩余宽度 -->
+    <ListView
+        android:id="@+id/lv_epg"
+        android:layout_width="0dp"
+        android:layout_height="450dp"
+        android:layout_weight="1"
+        android:background="@android:color/transparent" />
+
+</LinearLayout>

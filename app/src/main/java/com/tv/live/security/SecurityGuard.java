@@ -471,3 +471,91 @@ public final class SecurityGuard {
         
         // 检查 Xposed 文件
         File xposedFile = new File("/data/local/tmp/Xposed");
+        if (xposedFile.exists()) return true;
+        
+        return false;
+    }
+
+    /**
+     * 检查 Root
+     */
+    private static boolean checkRoot() {
+        try {
+            // 检查 su 命令
+            String result = executeCommand("which su");
+            if (result != null && result.contains("su")) return true;
+            
+            // 检查 busybox
+            result = executeCommand("which busybox");
+            if (result != null && result.contains("busybox")) return true;
+            
+            // 检查 Magisk
+            File magiskFile = new File("/sbin/magisk");
+            if (magiskFile.exists()) return true;
+            
+            // 检查 SuperSU
+            File suFile = new File("/system/bin/su");
+            if (suFile.exists()) return true;
+            
+            return false;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * 执行 Shell 命令
+     */
+    private static String executeCommand(String command) {
+        try {
+            java.lang.Process process = Runtime.getRuntime().exec(new String[]{"/system/bin/sh", "-c", command});
+            java.io.InputStream inputStream = process.getInputStream();
+            byte[] buffer = new byte[4096];
+            int n = inputStream.read(buffer);
+            inputStream.close();
+            process.waitFor();
+            return n > 0 ? new String(buffer, 0, n) : null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * 获取威胁名称
+     */
+    private static String getThreatName(int threatType) {
+        switch (threatType) {
+            case THREAT_DEBUGGER: return "调试器";
+            case THREAT_FRIDA: return "Frida Hook";
+            case THREAT_XPOSED: return "Xposed 框架";
+            case THREAT_ROOT: return "Root 权限";
+            case THREAT_EMULATOR: return "模拟器";
+            case TAMPER_DETECTED: return "APK 篡改";
+            case SIGNATURE_MISMATCH: return "签名不匹配";
+            case HOOK_DETECTED: return "Hook 攻击";
+            default: return "未知威胁(" + threatType + ")";
+        }
+    }
+
+    /**
+     * 获取最高威胁级别
+     */
+    public static int getHighestThreat() {
+        return sHighestThreat;
+    }
+
+    /**
+     * 是否已自毁
+     */
+    public static boolean isDestroyed() {
+        return sDestroyed;
+    }
+
+    /**
+     * 重置威胁状态（调试用）
+     */
+    public static void reset() {
+        sHighestThreat = 0;
+        sDestroyed = false;
+    }
+}

@@ -130,6 +130,9 @@
                 <select id="toolboxDeviceSel" class="toolbox-select">
                   <option value="">请选择设备</option>
                 </select>
+                <button id="btnRefreshDevices" class="tool-btn" style="padding:6px 12px;font-size:12px" title="刷新设备列表">
+                  <span>🔄</span>
+                </button>
               </div>
 
               <div class="toolbox-grid">
@@ -311,7 +314,7 @@
                   <input type="number" id="huyaRoomId" placeholder="输入房间号" class="huya-input">
                   <select id="huyaParseMethod" class="huya-select">
                     <option value="auto">自动（推荐）</option>
-                    <option value="liveapi">LiveAPI</option>
+                    <option value="mobile">移动端页面</option>
                     <option value="streaminfo">StreamInfo</option>
                   </select>
                   <button class="tool-btn tool-btn-primary" id="btnHuyaParse">
@@ -613,8 +616,66 @@
             </select>
           </div>
           <button id="refreshTimeline" class="btn-secondary">🔄 刷新</button>
+          <button id="exportTimeline" class="btn-secondary">📊 导出数据</button>
         </div>
+
+        <!-- 统计摘要面板 -->
+        <div class="timeline-summary">
+          <div class="summary-card">
+            <div class="summary-icon">📈</div>
+            <div class="summary-content">
+              <div class="summary-value" id="timelTotal">0</div>
+              <div class="summary-label">总日志</div>
+            </div>
+          </div>
+          <div class="summary-card">
+            <div class="summary-icon error">🔴</div>
+            <div class="summary-content">
+              <div class="summary-value" id="timelErrors">0</div>
+              <div class="summary-label">错误/崩溃</div>
+            </div>
+          </div>
+          <div class="summary-card">
+            <div class="summary-icon warn">🟡</div>
+            <div class="summary-content">
+              <div class="summary-value" id="timelWarns">0</div>
+              <div class="summary-label">警告</div>
+            </div>
+          </div>
+          <div class="summary-card">
+            <div class="summary-icon">📊</div>
+            <div class="summary-content">
+              <div class="summary-value" id="timelGroups">0</div>
+              <div class="summary-label">时间分组</div>
+            </div>
+          </div>
+          <div class="summary-card">
+            <div class="summary-icon">⏱️</div>
+            <div class="summary-content">
+              <div class="summary-value" id="timelDuration">0s</div>
+              <div class="summary-label">时间跨度</div>
+            </div>
+          </div>
+          <div class="summary-card">
+            <div class="summary-icon">🚨</div>
+            <div class="summary-content">
+              <div class="summary-value" id="timelPeak">0</div>
+              <div class="summary-label">峰值/间隔</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 多层柱状图 -->
         <div id="timelineChart" class="timeline-chart"></div>
+
+        <!-- 事件详情面板 -->
+        <div id="timelineDetail" class="timeline-detail hidden">
+          <div class="detail-header">
+            <span>📋 分组详情</span>
+            <button class="detail-close" onclick="document.getElementById('timelineDetail').classList.add('hidden')">✕</button>
+          </div>
+          <div id="timelineDetailContent" class="detail-content"></div>
+        </div>
       </div>
 
       <div id="performanceView" class="log-container hidden">
@@ -715,6 +776,65 @@
               <div class="perf-row">
                 <span class="perf-label">最大延迟</span>
                 <span class="perf-value warn" id="perfMaxLatency">0 ms</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 实时性能监测 -->
+          <div class="perf-card highlight">
+            <div class="perf-header">
+              <span class="perf-icon">⚡</span>
+              <span class="perf-title">实时性能</span>
+              <span class="perf-update" id="perfLastUpdate">--</span>
+            </div>
+            <div class="perf-content">
+              <div class="perf-row">
+                <span class="perf-label">CPU 使用率</span>
+                <div class="perf-bar-container">
+                  <div class="perf-bar" id="perfCpuBar" style="width: 0%;"></div>
+                  <span class="perf-value" id="perfCpuUsage">--%</span>
+                </div>
+              </div>
+              <div class="perf-row">
+                <span class="perf-label">内存使用</span>
+                <div class="perf-bar-container">
+                  <div class="perf-bar memory" id="perfMemBar" style="width: 0%;"></div>
+                  <span class="perf-value" id="perfMemUsage">-- MB</span>
+                </div>
+              </div>
+              <div class="perf-row">
+                <span class="perf-label">帧率 (FPS)</span>
+                <span class="perf-value" id="perfFps">--</span>
+              </div>
+              <div class="perf-row">
+                <span class="perf-label">电池温度</span>
+                <span class="perf-value" id="perfBatteryTemp">-- ℃</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 性能告警 -->
+          <div class="perf-card alert-card">
+            <div class="perf-header">
+              <span class="perf-icon">🚨</span>
+              <span class="perf-title">性能告警</span>
+            </div>
+            <div class="perf-content">
+              <div class="perf-row">
+                <span class="perf-label">CPU 过热</span>
+                <span class="perf-value" id="alertCpuOverheat" style="color: #48bb78;">正常</span>
+              </div>
+              <div class="perf-row">
+                <span class="perf-label">内存不足</span>
+                <span class="perf-value" id="alertMemLow" style="color: #48bb78;">正常</span>
+              </div>
+              <div class="perf-row">
+                <span class="perf-label">帧率过低</span>
+                <span class="perf-value" id="alertLowFps" style="color: #48bb78;">正常</span>
+              </div>
+              <div class="perf-row">
+                <span class="perf-label">网络延迟高</span>
+                <span class="perf-value" id="alertHighLatency" style="color: #48bb78;">正常</span>
               </div>
             </div>
           </div>

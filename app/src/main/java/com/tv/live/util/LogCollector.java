@@ -2,6 +2,8 @@ package com.tv.live.util;
 
 import android.text.TextUtils;
 
+import com.tv.live.BuildConfig;
+
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -163,6 +165,16 @@ public class LogCollector {
         }
         notifyListeners(entry);
 
+        // 自动上报 ERROR 和 CRASH 类型日志到 Bugly（用于监控）
+        if (TYPE_ERROR.equals(type) || TYPE_CRASH.equals(type)) {
+            try {
+                ExceptionReporter.reportError(
+                        tag != null ? tag : "TVLive",
+                        msg != null ? msg : "Unknown error",
+                        new RuntimeException(msg != null ? msg : "Unknown error"));
+            } catch (Throwable ignored) {}
+        }
+
         // 同时写入 Android logcat，确保 ADB 也能抓取到
         try {
             String logTag = TextUtils.isEmpty(tag) ? "TVLive" : tag;
@@ -203,11 +215,38 @@ public class LogCollector {
     public void info(String tag, String msg) { addLog(tag, msg, TYPE_INFO); }
     public void warn(String tag, String msg) { addLog(tag, msg, TYPE_WARN); }
     public void error(String tag, String msg) { addLog(tag, msg, TYPE_ERROR); }
+    public void error(String tag, String msg, Throwable throwable) {
+        addLog(tag, msg + (throwable != null ? ": " + throwable.getMessage() : ""), TYPE_ERROR);
+        if (throwable != null) {
+            ExceptionReporter.reportError(tag, msg, throwable);
+        }
+    }
     public void debug(String tag, String msg) { addLog(tag, msg, TYPE_DEBUG); }
     public void crash(String tag, String msg) { addLog(tag, msg, TYPE_CRASH); }
-    public void network(String tag, String msg) { addLog(tag, msg, TYPE_NETWORK); }
-    public void parse(String tag, String msg) { addLog(tag, msg, TYPE_PARSE); }
-    public void playback(String tag, String msg) { addLog(tag, msg, TYPE_PLAYBACK); }
+    public void crash(String tag, String msg, Throwable throwable) {
+        addLog(tag, msg + (throwable != null ? ": " + throwable.getMessage() : ""), TYPE_CRASH);
+        if (throwable != null) {
+            ExceptionReporter.report(tag, throwable);
+        }
+    }
+    public void network(String tag, String msg) {
+        // 网络日志仅调试版记录
+        if (BuildConfig.IS_DEBUG) {
+            addLog(tag, msg, TYPE_NETWORK);
+        }
+    }
+    public void parse(String tag, String msg) {
+        // 解析日志仅调试版记录
+        if (BuildConfig.IS_DEBUG) {
+            addLog(tag, msg, TYPE_PARSE);
+        }
+    }
+    public void playback(String tag, String msg) {
+        // 播放日志仅调试版记录
+        if (BuildConfig.IS_DEBUG) {
+            addLog(tag, msg, TYPE_PLAYBACK);
+        }
+    }
     public void operation(String tag, String msg) { addLog(tag, msg, TYPE_OPERATION); }
 
     // ============== 运营统计事件上报 ==============

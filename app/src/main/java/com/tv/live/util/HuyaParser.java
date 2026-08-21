@@ -92,16 +92,19 @@ public class HuyaParser {
                         Log.d("HuyaParser", "StreamInfoAPI 异常: " + t.getMessage());
                     }
 
-                    // 方案2：LiveAPI (live-api.huya.com) - 备用，可能失效
+                    // 方案2：移动端网页解析（主方案）
                     try {
-                        Log.d("HuyaParser", "尝试从LiveAPI获取播放地址");
-                        String liveApiResult = fetchFromLiveAPI(roomLong);
-                        Log.d("HuyaParser", "从LiveAPI获取到地址：" + (liveApiResult == null ? "null" : liveApiResult.length() + "字符"));
-                        if (!TextUtils.isEmpty(liveApiResult)) {
-                            if (liveApiResult.contains(".m3u8")) {
-                                hls = liveApiResult;
-                            } else if (liveApiResult.contains(".flv")) {
-                                flv = liveApiResult;
+                        Log.d("HuyaParser", "尝试从移动端网页获取播放地址");
+                        String mHtml = fetchHtml("https://m.huya.com/" + roomId);
+                        if (!TextUtils.isEmpty(mHtml)) {
+                            String result = extractUrlFromHtml(mHtml, true);
+                            if (!TextUtils.isEmpty(result)) {
+                                Log.d("HuyaParser", "从移动端网页获取到地址：" + head(result, 60));
+                                if (result.contains(".m3u8")) {
+                                    hls = result;
+                                } else if (result.contains(".flv")) {
+                                    flv = result;
+                                }
                             }
                         }
                         if (!TextUtils.isEmpty(hls) || !TextUtils.isEmpty(flv)) {
@@ -110,7 +113,7 @@ public class HuyaParser {
                             return;
                         }
                     } catch (Throwable t) {
-                        Log.d("HuyaParser", "LiveAPI 异常: " + t.getMessage());
+                        Log.d("HuyaParser", "移动端网页解析异常：" + t.getMessage());
                     }
 
                     // 方案3：PC网页解析
@@ -137,19 +140,15 @@ public class HuyaParser {
                         Log.d("HuyaParser", "PC网页解析异常：" + t.getMessage());
                     }
 
-                    // 方案3：移动端网页
+                    // 方案4: 通过 StreamInfo API 备用
                     try {
-                        Log.d("HuyaParser", "尝试从移动端网页获取播放地址");
-                        String mHtml = fetchHtml("https://m.huya.com/" + roomId);
-                        if (!TextUtils.isEmpty(mHtml)) {
-                            String result = extractUrlFromHtml(mHtml, true);
-                            if (!TextUtils.isEmpty(result)) {
-                                Log.d("HuyaParser", "从移动端网页获取到地址：" + head(result, 60));
-                                if (result.contains(".m3u8")) {
-                                    hls = result;
-                                } else if (result.contains(".flv")) {
-                                    flv = result;
-                                }
+                        Log.d("HuyaParser", "尝试从StreamInfo API获取播放地址");
+                        String streamInfoResult = fetchFromStreamInfoAPI(roomLong);
+                        if (!TextUtils.isEmpty(streamInfoResult)) {
+                            if (streamInfoResult.contains(".m3u8")) {
+                                hls = streamInfoResult;
+                            } else if (streamInfoResult.contains(".flv")) {
+                                flv = streamInfoResult;
                             }
                         }
                         if (!TextUtils.isEmpty(hls) || !TextUtils.isEmpty(flv)) {
@@ -158,10 +157,10 @@ public class HuyaParser {
                             return;
                         }
                     } catch (Throwable t) {
-                        Log.d("HuyaParser", "移动端网页解析异常：" + t.getMessage());
+                        Log.d("HuyaParser", "StreamInfo API异常：" + t.getMessage());
                     }
 
-                    postFailed(listener, "解析失败，无可用播放地址（3种方案均未返回有效URL）");
+                    postFailed(listener, "解析失败，无可用播放地址（4种方案均未返回有效URL）");
                 } catch (Throwable t) {
                     Log.d("HuyaParser", "获取播放地址异常：" + t.getMessage());
                     postFailed(listener, "解析异常：" + (t.getMessage() == null ? t.getClass().getSimpleName() : t.getMessage()));
@@ -170,67 +169,6 @@ public class HuyaParser {
         };
         Thread t = new Thread(worker, "HuyaParser-" + roomId);
         t.start();
-    }
-
-    // ================= 方案 1：LiveAPI =================
-
-    private static String fetchFromLiveAPI(long roomId) throws Exception {
-        String url = "https://live-api.huya.com/index.php?r=live%2FgetStream&appId=5002&liveid=" + roomId
-                + "&_=" + System.currentTimeMillis();
-        Log.d("HuyaParser", "LiveAPI URL: " + url);
-        Request req = new Request.Builder()
-                .url(url)
-                .addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36")
-                .build();
-        Response resp = sClient.newCall(req).execute();
-        if (resp == null || !resp.isSuccessful() || resp.body() == null) {
-            if (resp != null) {
-                Log.d("HuyaParser", "LiveAPI请求失败: " + resp.code());
-            }
-            return null;
-        }
-        String jsonStr = resp.body().string();
-        Log.d("HuyaParser", "LiveAPI响应长度: " + jsonStr.length());
-        if (TextUtils.isEmpty(jsonStr)) {
-            return null;
-        }
-        try {
-            JSONObject json = new JSONObject(jsonStr);
-            int code = json.optInt("code", -1);
-            Log.d("HuyaParser", "LiveAPI返回code: " + code);
-            if (code == 200 || code == 0) {
-                JSONObject data = json.optJSONObject("data");
-                if (data != null) {
-                    String hls = data.optString("hlsUrl");
-                    String flv = data.optString("flvUrl");
-                    if (!TextUtils.isEmpty(hls)) {
-                        return hls;
-                    }
-                    if (!TextUtils.isEmpty(flv)) {
-                        return flv;
-                    }
-                    JSONObject iLine = data.optJSONObject("iLine");
-                    String built = buildFromLineObj(iLine);
-                    if (!TextUtils.isEmpty(built)) {
-                        return built;
-                    }
-                    JSONArray lines = data.optJSONArray("gameLiveInfo");
-                    if (lines != null && lines.length() > 0) {
-                        built = buildFromLineObj(lines.optJSONObject(0));
-                        if (!TextUtils.isEmpty(built)) {
-                            return built;
-                        }
-                    }
-                }
-            }
-        } catch (JSONException e) {
-            Log.d("HuyaParser", "LiveAPI JSON解析异常：" + e.getMessage());
-            String v = extractUrlFromJsonString(jsonStr);
-            if (!TextUtils.isEmpty(v)) {
-                return v;
-            }
-        }
-        return null;
     }
 
     private static String buildFromLineObj(JSONObject line) {

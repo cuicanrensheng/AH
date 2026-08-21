@@ -52,6 +52,7 @@ import com.tv.live.util.VariantManager;
 import com.tv.live.util.HuyaStreamPlayer;
 import com.tv.live.util.AppCacheInspector;
 import com.tv.live.exception.RedirectFailedException;
+import com.tv.live.BuildConfig;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -344,8 +345,10 @@ public class TVPlayerManager {
     }
 
     private void logNetwork(String msg) {
-        Log.i(TAG, "[NET] " + msg);
-        com.tv.live.util.LogCollector.getInstance().network(TAG, msg);
+        if (BuildConfig.IS_DEBUG) {
+            Log.i(TAG, "[NET] " + msg);
+            com.tv.live.util.LogCollector.getInstance().network(TAG, msg);
+        }
     }
     
     private void initPlayer() {

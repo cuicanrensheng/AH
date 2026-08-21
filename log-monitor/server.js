@@ -14,7 +14,14 @@ const WS_PORT = process.env.WS_PORT || 3001;
 const app = express();
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'public'), {
+  setHeaders: (res, filePath) => {
+    // 禁用缓存，确保每次加载最新代码
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+  }
+}));
 
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
@@ -949,7 +956,26 @@ function parseAndPushAdbLog(deviceId, line) {
     // 格式2: MM-DD HH:MM:SS.mmm PID PID LEVEL TAG: message
     // 格式3: MM-DD HH:MM:SS.mmm LEVEL/TAG: message (PID信息合并)
     
-    const timeMatch = logLine.match(/^\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\.\d{3}/);
+    const timeMatch = logLine.match(/^(\d{2})-(\d{2})\s+(\d{2}):(\d{2}):(\d{2})\.(\d{3})/);
+    if (timeMatch) {
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = parseInt(timeMatch[1], 10) - 1;
+      const day = parseInt(timeMatch[2], 10);
+      const hour = parseInt(timeMatch[3], 10);
+      const minute = parseInt(timeMatch[4], 10);
+      const second = parseInt(timeMatch[5], 10);
+      const millis = parseInt(timeMatch[6], 10);
+      const parsedDate = new Date(year, month, day, hour, minute, second, millis);
+      
+      // 处理跨年：如果解析的日期比当前时间晚超过1个月，说明是去年
+      if (parsedDate.getTime() - now.getTime() > 30 * 24 * 3600 * 1000) {
+        parsedDate.setFullYear(year - 1);
+      }
+      
+      logEntry.timestamp = parsedDate.getTime();
+    }
+    
     let rest = timeMatch ? logLine.substring(timeMatch[0].length).trim() : logLine;
     
     let level = '';
@@ -1583,6 +1609,99 @@ app.post('/api/tvlive/simulate-channel', (req, res) => {
   });
 });
 
+// 获取设备实时性能
+app.post('/api/tvlive/device-perf', (req, res) => {
+  const { serial } = req.body;
+  if (!serial) return res.status(400).json({ success: false, error: 'Serial required' });
+
+  const commands = [
+    // CPU 使用率
+    `"${ADB_PATH}" -s "${serial}" shell top -n 1 | findstr /C:"TOTAL"`,
+    // 内存信息
+    `"${ADB_PATH}" -s "${serial}" shell dumpsys meminfo ${TV_LIVE_PACKAGE}`,
+    // 电池温度
+    `"${ADB_PATH}" -s "${serial}" shell dumpsys battery | findstr temperature`,
+    // 帧率
+    `"${ADB_PATH}" -s "${serial}" shell dumpsys SurfaceFlinger --latency 1>/dev/null 2>&1 || echo "FPS测量需要root权限"`
+  ];
+
+  let result = {
+    cpuUsage: 0,
+    memTotal: 0,
+    memUsed: 0,
+    batteryTemp: 0,
+    fps: 0,
+    timestamp: Date.now()
+  };
+
+  // 并行执行命令
+  Promise.all([
+    new Promise(resolve => {
+      exec(commands[0], { timeout: 3000 }, (err, stdout) => {
+        if (stdout) {
+          // 解析 CPU 使用率
+          const match = stdout.match(/TOTAL\s+\d+%/);
+          if (match) {
+            result.cpuUsage = parseInt(match[0].match(/(\d+)/)[1]);
+          }
+        }
+        resolve();
+      });
+    }),
+    new Promise(resolve => {
+      exec(commands[1], { timeout: 3000 }, (err, stdout) => {
+        if (stdout) {
+          // 解析内存信息
+          const totalMatch = stdout.match(/TOTAL\s+(\d+)/);
+          if (totalMatch) {
+            result.memUsed = parseInt(totalMatch[1]) / 1024; // MB
+          }
+        }
+        resolve();
+      });
+    }),
+    new Promise(resolve => {
+      exec(commands[2], { timeout: 3000 }, (err, stdout) => {
+        if (stdout) {
+          // 解析电池温度
+          const match = stdout.match(/temperature:\s*(\d+)/);
+          if (match) {
+            result.batteryTemp = parseInt(match[1]) / 10; // 摄氏度
+          }
+        }
+        resolve();
+      });
+    }),
+    new Promise(resolve => {
+      // 从日志中计算FPS
+      const recentPlaybackLogs = logs.filter(l => {
+        const type = l.logType || l.type;
+        return type === 'playback' || type === '播放';
+      });
+      
+      if (recentPlaybackLogs.length >= 2) {
+        const times = recentPlaybackLogs.map(l => l.timestamp || l.serverTime || 0).sort((a, b) => a - b);
+        const diff = times[times.length - 1] - times[0];
+        if (diff > 0) {
+          result.fps = Math.round((recentPlaybackLogs.length - 1) / (diff / 1000));
+        }
+      }
+      resolve();
+    })
+  ]).then(() => {
+    // 获取总内存信息
+    exec(`"${ADB_PATH}" -s "${serial}" shell cat /proc/meminfo | findstr MemTotal`, (err, stdout) => {
+      if (stdout) {
+        const match = stdout.match(/(\d+)/);
+        if (match) {
+          result.memTotal = parseInt(match[1]) / 1024; // MB
+        }
+      }
+      res.json({ success: true, data: result });
+    });
+  });
+});
+
 // ========== 虎牙 API 监控端点 ==========
 
 // 虎牙 XOR 解码辅助
@@ -1638,12 +1757,12 @@ app.get('/api/huya/credentials', (req, res) => {
 // 虎牙 API 健康检查
 app.get('/api/huya/health', async (req, res) => {
   const endpoints = [
-    { name: 'LiveAPI', url: 'https://live-api.huya.com/index.php?r=live%2FgetStream&appId=5002&liveid=1' },
+    { name: '移动端解析', url: 'https://m.huya.com/1' },
     { name: 'PC网页', url: 'https://www.huya.com/' },
-    { name: '移动端', url: 'https://m.huya.com/' },
     { name: 'StreamInfo', url: 'https://mp.huya.com/cache.php?m=Live&do=profileRoom&roomid=1' },
     { name: 'TmpLiveList', url: 'https://live.cdn.huya.com/liveHttpUI/getTmpLiveList?iGid=2135&iTmpId=2067&iPageNo=1&iPageSize=1' },
-    { name: 'CacheList', url: 'https://www.huya.com/cache.php?m=LiveList&do=getLiveListByPage&gameId=2135&tagAll=0&page=1' }
+    { name: 'CacheList', url: 'https://www.huya.com/cache.php?m=LiveList&do=getLiveListByPage&gameId=2135&tagAll=0&page=1' },
+    { name: 'OpenAPI', url: 'https://open-apiext.huya.com/api/getStreamerInfo?appId=5002&roomId=1&iat=0&exp=0&sToken=invalid' }
   ];
 
   const results = [];
@@ -1698,36 +1817,55 @@ app.post('/api/huya/parse-room', async (req, res) => {
   let result = { hlsUrl: null, flvUrl: null, source: null, rawResponse: null };
 
   try {
-    if (method === 'auto' || method === 'liveapi') {
+    // 方法1: 通过移动端页面解析（推荐）
+    if (method === 'auto' || method === 'mobile') {
       try {
-        const url = `https://live-api.huya.com/index.php?r=live%2FgetStream&appId=5002&liveid=${roomId}&_=${Date.now()}`;
+        const url = `https://m.huya.com/${roomId}`;
         const start = Date.now();
         const response = await fetch(url, {
-          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+          headers: { 'User-Agent': 'Mozilla/5.0 (Linux; Android 10; SM-G960F) AppleWebKit/537.36 Chrome/81.0.4044.138 Mobile Safari/537.36' }
         });
         const text = await response.text();
-        logHuyaApi('LiveAPI', 'GET', response.status, Date.now() - start, text);
+        logHuyaApi('MobilePage', 'GET', response.status, Date.now() - start, null);
 
-        const json = JSON.parse(text);
-        if (json.code === 200 || json.code === 0) {
-          const data = json.data || {};
-          result.hlsUrl = data.hlsUrl || null;
-          result.flvUrl = data.flvUrl || null;
-          result.source = 'LiveAPI';
-          result.rawResponse = data;
+        // 从页面中提取直播流地址
+        const streamMatch = text.match(/"(sFlvUrl|sHlsUrl)":"([^"]+)"/);
+        const streamNameMatch = text.match(/"(sStreamName|sChannel)":"([^"]+)"/);
+        const suffixMatch = text.match(/"(sFlvUrlSuffix|sHlsUrlSuffix)":"([^"]+)"/);
+        const antiCodeMatch = text.match(/"(sFlvAntiCode|sHlsAntiCode)":"([^"]+)"/);
+        const isLiveMatch = text.match(/IS_LIVE\s*=\s*"?(\w+)"?/);
 
-          if (!result.hlsUrl && !result.flvUrl && data.iLine) {
-            result.flvUrl = buildStreamUrl(data.iLine);
+        if (streamMatch && streamNameMatch) {
+          const streamUrl = streamMatch[2];
+          const streamName = streamNameMatch[2];
+          const suffix = suffixMatch ? suffixMatch[2] : 'flv';
+          const antiCode = antiCodeMatch ? antiCodeMatch[2] : '';
+
+          result.flvUrl = `${streamUrl}/${streamName}.${suffix}`;
+          if (antiCode) {
+            result.flvUrl += (antiCode.includes('?') ? '&' : '?') + antiCode;
           }
-          if (!result.hlsUrl && !result.flvUrl && data.gameLiveInfo && data.gameLiveInfo.length > 0) {
-            result.flvUrl = buildStreamUrl(data.gameLiveInfo[0]);
+          result.source = 'MobilePage';
+          result.rawResponse = { isLive: isLiveMatch ? isLiveMatch[1] : 'unknown' };
+        } else {
+          // 尝试从 JS 变量中提取
+          const flvUrlMatch = text.match(/(https?:\/\/[^"'\s]+\.flv[^"'\s]*)/);
+          const hlsUrlMatch = text.match(/(https?:\/\/[^"'\s]+\.m3u8[^"'\s]*)/);
+          
+          if (flvUrlMatch) {
+            result.flvUrl = flvUrlMatch[1];
+            result.source = 'MobilePage-Regex';
+          } else if (hlsUrlMatch) {
+            result.hlsUrl = hlsUrlMatch[1];
+            result.source = 'MobilePage-Regex';
           }
         }
       } catch (e) {
-        if (method === 'liveapi') throw e;
+        if (method === 'mobile') throw e;
       }
     }
 
+    // 方法2: 通过 StreamInfo API
     if (!result.hlsUrl && !result.flvUrl && (method === 'auto' || method === 'streaminfo')) {
       try {
         const url = `https://mp.huya.com/cache.php?m=Live&do=profileRoom&roomid=${roomId}&_=${Date.now()}`;

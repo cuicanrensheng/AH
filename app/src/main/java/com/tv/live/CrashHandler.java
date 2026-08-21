@@ -13,9 +13,6 @@ import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.WindowManager;
 
-import com.tencent.bugly.crashreport.CrashReport;
-import com.tv.live.BuildConfig;
-import com.tv.live.util.BuglyLogSender;
 import com.tv.live.util.LogCollector;
 import com.tv.live.util.LogServer;
 
@@ -29,10 +26,8 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 
 /**
  * 全局崩溃捕获器（已修复主线程阻塞导致的ANR问题）
@@ -186,15 +181,22 @@ public class CrashHandler implements Thread.UncaughtExceptionHandler {
     /**
      * 未捕获异常回调（系统自动调用）
      *
-     * 【执行流程】
-     * 1. 收集崩溃信息和设备信息
-     * 2. 保存到静态变量（供 CrashActivity 显示）
-     * 3. 保存到本地文件（持久化）
-     * 4. 上报到 Bugly（电脑端可查看）
-     * 5. 推送到远程监控（CloudLogSender）
-     * 6. 启动崩溃页面（显示崩溃原因）
-     * 7. 子线程延迟 1 分钟，然后自动重启或退出
-     * 8. 主线程直接返回，避免阻塞
+     * 【执行流程 - 对齐旧版实现】
+     * 1. 收集崩溃信息 → 保存到静态变量/文件
+     * 2. 推送到日志系统 + 远程监控
+     * 3. 启动崩溃页面
+     * 4. 子线程中延迟1分钟后重启或杀进程
+     *
+     * 【Bugly 上报机制】
+     * Bugly SDK 通过 initCrashReport(ctx, appId, true) 注册了 NATIVE 层的
+     * signal handler（SIGABRT/SIGSEGV）和文件持久化机制。即使我们替换了
+     * Bugly 的 Java UncaughtExceptionHandler，Bugly 的原生机制仍能：
+     *   1. 捕获 native 层崩溃信号
+     *   2. 将崩溃信息写入本地文件
+     *   3. 下次启动时自动读取并上传到 Bugly 控制台
+     *
+     * 因此：不需要在 Java 层转发给 Bugly handler，也不需要 postCatchedException。
+     * 转发反而会导致 Bugly handler 抢先杀进程，崩溃页面无法显示。
      */
     @Override
     public void uncaughtException(Thread thread, Throwable ex) {
@@ -216,12 +218,7 @@ public class CrashHandler implements Thread.UncaughtExceptionHandler {
             saveCrashLogToFile(crashLog);
 
             // ================================================================
-            // 第四步：上报到 Bugly（电脑端可查看）
-            // ================================================================
-            reportCrashToBugly(thread, ex);
-
-            // ================================================================
-            // 第五步：同步到播放日志 + 推送到远程监控
+            // 第四步：同步到日志系统 + 推送到远程监控
             // ================================================================
             try {
                 Log.e(TAG, "【崩溃】" + ex.getClass().getName() + ": " + ex.getMessage());
@@ -237,76 +234,37 @@ public class CrashHandler implements Thread.UncaughtExceptionHandler {
             } catch (Exception ignored) {}
 
             // ================================================================
-            // 第六步：启动崩溃页面（显示崩溃原因）
+            // 第五步：启动崩溃页面（显示崩溃原因）
             // ================================================================
             startCrashActivity();
 
             // ================================================================
-            // 第七步：在子线程中处理延迟和重启/退出（避免阻塞主线程）
+            // 第六步：子线程中延迟处理，不阻塞主线程
+            // Bugly 的 native handler 会同时工作，确保崩溃被上报
             // ================================================================
             new Thread(() -> {
                 try {
-                    // 等待 1 分钟，让用户查看崩溃信息
                     Thread.sleep(CRASH_PAGE_DISPLAY_DURATION);
                 } catch (InterruptedException ignored) {
                     Thread.currentThread().interrupt();
                 }
 
-                // 如果开启了自动重启，则重启应用
                 if (autoRestartEnabled) {
                     restartApp();
                 }
 
-                // 杀死当前进程
                 Process.killProcess(Process.myPid());
                 System.exit(1);
-            }).start();
+            }, "crash-handler").start();
 
-            // 主线程直接返回，不再执行任何阻塞操作
         } catch (Exception e) {
             Log.e(TAG, "崩溃处理失败", e);
-            // 如果自定义处理失败，交给系统默认处理
             if (defaultHandler != null) {
                 defaultHandler.uncaughtException(thread, ex);
             }
         }
     }
     
-    /**
-     * 上报崩溃到 Bugly
-     * 同时上报到 BuglyLogSender 和 CloudLogSender
-     */
-    private void reportCrashToBugly(Thread thread, Throwable ex) {
-        try {
-            // 构建额外信息
-            Map<String, String> extraInfo = new HashMap<>();
-            extraInfo.put("crash_thread", thread.getName());
-            extraInfo.put("crash_thread_id", String.valueOf(thread.getId()));
-            extraInfo.put("device_model", Build.MODEL);
-            extraInfo.put("device_brand", Build.BRAND);
-            extraInfo.put("sdk_version", String.valueOf(Build.VERSION.SDK_INT));
-            extraInfo.put("build_type", BuildConfig.IS_DEBUG ? "debug" : "release");
-            
-            // 通过 BuglyLogSender 上报
-            BuglyLogSender sender = BuglyLogSender.getInstance(context);
-            if (sender.isInitialized() && sender.isEnabled()) {
-                sender.reportException("CrashHandler", ex, "线程: " + thread.getName());
-            }
-            
-            // 直接通过 CrashReport 上报（确保即使 BuglyLogSender 未初始化也能上报）
-            CrashReport.putUserData(context, "crash_thread", thread.getName());
-            CrashReport.putUserData(context, "crash_time", 
-                String.valueOf(System.currentTimeMillis()));
-            CrashReport.putUserData(context, "crash_type", ex.getClass().getName());
-            CrashReport.putUserData(context, "device_model", Build.MODEL);
-            
-            Log.i(TAG, "崩溃已上报到 Bugly");
-            
-        } catch (Exception e) {
-            Log.e(TAG, "Bugly 上报失败: " + e.getMessage());
-        }
-    }
-
     // ====================================================================
     // 构建完整的崩溃日志（包含设备信息）
     // ====================================================================

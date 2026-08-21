@@ -3200,3 +3200,201 @@ body.light-theme .tab[data-view="performance"].active { background: #dd6b20; box
     grid-template-columns: 1fr;
   }
 }
+
+/* ========== 时间线摘要样式 ========== */
+.timeline-summary {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.summary-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.summary-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.summary-icon {
+  font-size: 24px;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-primary);
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.summary-icon.error {
+  background: rgba(245, 101, 101, 0.15);
+}
+
+.summary-icon.warn {
+  background: rgba(237, 137, 54, 0.15);
+}
+
+.summary-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.summary-value {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+
+.summary-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+/* ========== 时间线详情面板 ========== */
+.timeline-detail {
+  margin-top: 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border-color);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.detail-close {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 16px;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.detail-close:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.detail-content {
+  padding: 12px 16px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.detail-log-item {
+  padding: 8px 12px;
+  border-radius: 6px;
+  margin-bottom: 6px;
+  font-size: 12px;
+  background: var(--bg-primary);
+  border-left: 3px solid var(--primary);
+}
+
+.detail-log-item.error {
+  border-left-color: #f56565;
+}
+
+.detail-log-item.warn {
+  border-left-color: #ed8936;
+}
+
+/* ========== 性能分析增强样式 ========== */
+.perf-card.highlight {
+  background: linear-gradient(135deg, var(--bg-secondary) 0%, rgba(99, 102, 241, 0.1) 100%);
+  border-color: rgba(99, 102, 241, 0.3);
+}
+
+.perf-card.alert-card {
+  background: var(--bg-secondary);
+  border-color: rgba(237, 137, 54, 0.3);
+}
+
+.perf-update {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-weight: normal;
+  margin-left: auto;
+}
+
+.perf-bar-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.perf-bar {
+  height: 6px;
+  flex: 1;
+  background: linear-gradient(90deg, #48bb78, #4299e1);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+  min-width: 20px;
+}
+
+.perf-bar.memory {
+  background: linear-gradient(90deg, #ed8936, #e53e3e);
+}
+
+.perf-bar.warning {
+  background: linear-gradient(90deg, #ed8936, #f56565);
+}
+
+/* ========== 性能告警样式 ========== */
+.alert-normal {
+  color: #48bb78 !important;
+}
+
+.alert-warning {
+  color: #ed8936 !important;
+  font-weight: 600;
+}
+
+.alert-danger {
+  color: #f56565 !important;
+  font-weight: 600;
+}
+
+/* ========== 响应式布局 ========== */
+@media (max-width: 1200px) {
+  .timeline-summary {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .timeline-summary {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .summary-card {
+    padding: 10px;
+  }
+  
+  .summary-value {
+    font-size: 16px;
+  }
+}

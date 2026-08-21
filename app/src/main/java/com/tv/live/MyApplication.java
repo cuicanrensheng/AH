@@ -20,6 +20,7 @@ import com.tv.live.util.SecureDataStore;
 import com.tv.live.util.DeviceCapabilities;
 import com.tv.live.util.CloudLogSender;
 import com.tv.live.util.BuglyLogSender;
+import com.tv.live.util.ExceptionReporter;
 import com.tv.live.security.SecurityCore;
 import com.tv.live.security.AntiDebug;
 import com.tv.live.security.StringObfuscator;
@@ -242,7 +243,9 @@ public class MyApplication extends Application {
                 BuglyLogSender buglySender = BuglyLogSender.getInstance(this);
                 buglySender.init(buglyAppId);
                 buglySender.setEnabled(true);
-                LogCollector.getInstance().info("MyApplication", "Bugly 初始化成功");
+                ExceptionReporter.init(this);
+                ExceptionReporter.setEnabled(!BuildConfig.IS_DEBUG);
+                LogCollector.getInstance().info("MyApplication", "Bugly + 全局异常上报初始化成功");
             }
         } catch (Throwable e) {
             Log.w("MyApplication", "Bugly init failed: " + e.getMessage());

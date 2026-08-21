@@ -28,6 +28,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.zip.GZIPInputStream;
 
+import com.tv.live.BuildConfig;
+
 @SuppressLint("UnsafeOptInUsageError")
 public class RedirectLoggingHttpDataSource extends BaseDataSource implements HttpDataSource {
     private static final String TAG = "RedirectHttp";
@@ -61,13 +63,15 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
     private void printLog(boolean isError, String msg) {
         String finalMsg = "[" + getTimeStr() + "] " + msg;
         if (isError) {
+            // 错误日志：正式版和调试版都记录
             Log.e(TAG, finalMsg);
-            // 接入 LogCollector - 使用 error 类型
             LogCollector.getInstance().error(TAG, msg);
         } else {
-            Log.d(TAG, finalMsg);
-            // 接入 LogCollector - 使用 network 类型记录网络请求
-            LogCollector.getInstance().network(TAG, msg);
+            // 网络日志：仅调试版记录
+            if (BuildConfig.IS_DEBUG) {
+                Log.d(TAG, finalMsg);
+                LogCollector.getInstance().network(TAG, msg);
+            }
         }
     }
 

@@ -362,6 +362,8 @@ public final class SecurityGuard {
 
     /**
      * 启动安全监控
+     * 只在真正检测到Frida/Xposed等明确攻击工具时才上报
+     * 调试器检测只记录日志，避免误报
      */
     private static void startSecurityMonitor() {
         if (sAppContext == null) return;
@@ -369,29 +371,34 @@ public final class SecurityGuard {
         new Thread(() -> {
             android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
             
+            // 🟢 优化：降低监控频率，从10秒改为30秒
+            // 避免频繁检测影响性能和产生误报
             while (!sDestroyed && !BuildConfig.IS_DEBUG) {
                 try {
-                    Thread.sleep(10000); // 10 秒检查一次
+                    Thread.sleep(30000); // 30 秒检查一次
                     
-                    // 1. 检查调试器
-                    if (android.os.Debug.isDebuggerConnected()) {
-                        onThreatDetected(THREAT_DEBUGGER, "检测到调试器");
-                    }
-                    
-                    // 2. 检查 Frida
+                    // 1. 检查 Frida（明确的逆向工具，发现即上报）
                     if (checkFrida()) {
+                        Log.w(TAG, "检测到 Frida 工具");
                         onThreatDetected(THREAT_FRIDA, "检测到 Frida");
                     }
                     
-                    // 3. 检查 Xposed
+                    // 2. 检查 Xposed（明确的Hook框架，发现即上报）
                     if (checkXposed()) {
+                        Log.w(TAG, "检测到 Xposed 框架");
                         onThreatDetected(THREAT_XPOSED, "检测到 Xposed");
                     }
                     
-                    // 4. 检查 Root
+                    // 3. 检查调试器（仅记录日志，不上报）
+                    // 因为很多情况下是误报（如系统调试开关、USB连接等）
+                    if (android.os.Debug.isDebuggerConnected()) {
+                        Log.w(TAG, "检测到调试器连接（仅记录，不上报）");
+                        // 不调用onThreatDetected，避免误报到Bugly
+                    }
+                    
+                    // 4. 检查 Root（仅记录）
                     if (checkRoot()) {
-                        // 仅记录，不退出
-                        Log.w(TAG, "检测到 Root 环境");
+                        Log.w(TAG, "检测到 Root 环境（仅记录）");
                     }
                     
                 } catch (InterruptedException e) {
@@ -464,91 +471,3 @@ public final class SecurityGuard {
         
         // 检查 Xposed 文件
         File xposedFile = new File("/data/local/tmp/Xposed");
-        if (xposedFile.exists()) return true;
-        
-        return false;
-    }
-
-    /**
-     * 检查 Root
-     */
-    private static boolean checkRoot() {
-        try {
-            // 检查 su 命令
-            String result = executeCommand("which su");
-            if (result != null && result.contains("su")) return true;
-            
-            // 检查 busybox
-            result = executeCommand("which busybox");
-            if (result != null && result.contains("busybox")) return true;
-            
-            // 检查 Magisk
-            File magiskFile = new File("/sbin/magisk");
-            if (magiskFile.exists()) return true;
-            
-            // 检查 SuperSU
-            File suFile = new File("/system/bin/su");
-            if (suFile.exists()) return true;
-            
-            return false;
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
-    /**
-     * 执行 Shell 命令
-     */
-    private static String executeCommand(String command) {
-        try {
-            java.lang.Process process = Runtime.getRuntime().exec(new String[]{"/system/bin/sh", "-c", command});
-            java.io.InputStream inputStream = process.getInputStream();
-            byte[] buffer = new byte[4096];
-            int n = inputStream.read(buffer);
-            inputStream.close();
-            process.waitFor();
-            return n > 0 ? new String(buffer, 0, n) : null;
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    /**
-     * 获取威胁名称
-     */
-    private static String getThreatName(int threatType) {
-        switch (threatType) {
-            case THREAT_DEBUGGER: return "调试器";
-            case THREAT_FRIDA: return "Frida Hook";
-            case THREAT_XPOSED: return "Xposed 框架";
-            case THREAT_ROOT: return "Root 权限";
-            case THREAT_EMULATOR: return "模拟器";
-            case TAMPER_DETECTED: return "APK 篡改";
-            case SIGNATURE_MISMATCH: return "签名不匹配";
-            case HOOK_DETECTED: return "Hook 攻击";
-            default: return "未知威胁(" + threatType + ")";
-        }
-    }
-
-    /**
-     * 获取最高威胁级别
-     */
-    public static int getHighestThreat() {
-        return sHighestThreat;
-    }
-
-    /**
-     * 是否已自毁
-     */
-    public static boolean isDestroyed() {
-        return sDestroyed;
-    }
-
-    /**
-     * 重置威胁状态（调试用）
-     */
-    public static void reset() {
-        sHighestThreat = 0;
-        sDestroyed = false;
-    }
-}

@@ -7,7 +7,6 @@ import android.content.pm.Signature;
 import android.os.Build;
 import android.util.Base64;
 import android.util.Log;
-import android.widget.Toast;
 
 import com.tv.live.BuildConfig;
 import com.tv.live.security.IntegrityCheck;
@@ -43,6 +42,11 @@ public final class SecurityCheck {
     /**
      * 启动时调用一次
      * 正式版启用签名校验，调试版跳过
+     *
+     * 注意：安全检查失败时不再直接杀进程，而是：
+     * 1. 记录详细日志供调试
+     * 2. 上报篡改事件到监控平台
+     * 3. 返回 false 让调用方降级处理
      */
     public static boolean verifyOnStart(Context ctx) {
         if (BuildConfig.IS_DEBUG) {
@@ -53,44 +57,63 @@ public final class SecurityCheck {
         Log.i(TAG, "🔒 正式版：启用签名校验");
         
         // 初始化篡改上报
-        TamperReporter.init(ctx);
+        try {
+            TamperReporter.init(ctx);
+        } catch (Throwable t) {
+            Log.w(TAG, "TamperReporter 初始化失败: " + t.getMessage());
+        }
+        
+        boolean allPassed = true;
         
         // 1. 校验签名
         if (!verifySignature(ctx)) {
-            // 上报签名篡改并触发崩溃
-            TamperReporter.triggerCrash(
-                TamperReporter.TAMPER_SIGNATURE,
-                "签名校验失败，APK被重新签名"
-            );
-            toastAndExit(ctx, "签名校验失败，APK 被修改");
-            return false;
+            Log.e(TAG, "⚠️ 签名校验未通过，将上报但不阻断启动");
+            try {
+                TamperReporter.reportTamper(
+                    TamperReporter.TAMPER_SIGNATURE,
+                    "签名校验失败"
+                );
+            } catch (Throwable t) {
+                Log.w(TAG, "篡改上报失败: " + t.getMessage());
+            }
+            allPassed = false;
         }
         
         // 2. 校验包名
         String pkgName = ctx.getPackageName();
         if (!EXPECTED_PKG.equals(pkgName)) {
             Log.e(TAG, "❌ 包名不匹配! expected=" + EXPECTED_PKG + " current=" + pkgName);
-            // 上报包名篡改并触发崩溃
-            TamperReporter.triggerCrash(
-                TamperReporter.TAMPER_PACKAGE_NAME,
-                "包名校验失败，expected=" + EXPECTED_PKG + " current=" + pkgName
-            );
-            toastAndExit(ctx, "包名校验失败，APK 被修改");
-            return false;
+            try {
+                TamperReporter.reportTamper(
+                    TamperReporter.TAMPER_PACKAGE_NAME,
+                    "包名校验失败, expected=" + EXPECTED_PKG + " current=" + pkgName
+                );
+            } catch (Throwable t) {
+                Log.w(TAG, "篡改上报失败: " + t.getMessage());
+            }
+            allPassed = false;
+        } else {
+            Log.i(TAG, "✅ 包名校验通过");
         }
-        Log.i(TAG, "✅ 包名校验通过");
         
         // 3. 校验 DEX 完整性（可选，占位符未设置时只打印 hash）
         if (!verifyDexIntegrity(ctx)) {
-            TamperReporter.triggerCrash(
-                TamperReporter.TAMPER_DEX_INTEGRITY,
-                "DEX完整性校验失败"
-            );
-            toastAndExit(ctx, "DEX完整性校验失败，APK 被修改");
-            return false;
+            Log.e(TAG, "⚠️ DEX 完整性校验未通过");
+            try {
+                TamperReporter.reportTamper(
+                    TamperReporter.TAMPER_DEX_INTEGRITY,
+                    "DEX完整性校验失败"
+                );
+            } catch (Throwable t) {
+                Log.w(TAG, "篡改上报失败: " + t.getMessage());
+            }
+            allPassed = false;
         }
         
-        return true;
+        if (!allPassed) {
+            Log.w(TAG, "⚠️ 部分安全检查未通过，但应用将继续运行（降级模式）");
+        }
+        return allPassed;
     }
 
     private static boolean verifySignature(Context appCtx) {
@@ -125,7 +148,6 @@ public final class SecurityCheck {
             // 严格校验签名
             if (!EXPECTED_SIG_BASE64.equals(currentB64)) {
                 Log.e(TAG, "❌ 签名校验失败! expected=" + EXPECTED_SIG_BASE64 + " current=" + currentB64);
-                toastAndExit(appCtx, "签名校验失败，APK 被修改");
                 return false;
             }
             Log.i(TAG, "✅ 签名校验通过");
@@ -158,17 +180,5 @@ public final class SecurityCheck {
             Log.e(TAG, "verify dex error", e);
             return true;
         }
-    }
-
-    private static void toastAndExit(Context ctx, String msg) {
-        Log.e(TAG, msg);
-        try {
-            Toast.makeText(ctx, msg, Toast.LENGTH_LONG).show();
-        } catch (Exception ignored) {}
-        new android.os.Handler(android.os.Looper.getMainLooper())
-                .postDelayed(() -> {
-                    android.os.Process.killProcess(android.os.Process.myPid());
-                    System.exit(0);
-                }, 1500);
     }
 }

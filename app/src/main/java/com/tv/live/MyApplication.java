@@ -116,17 +116,29 @@ public class MyApplication extends Application {
             Log.w("MyApplication", "SecurityCore init failed: " + e.getMessage());
         }
 
+        // ✅ URL 解密必须在安全检查之前完成，确保网络功能始终可用
+        try {
+            UrlConfig.fillPublicFields();
+            LogCollector.getInstance().info("MyApplication", "URL 配置解密完成");
+        } catch (Throwable e) {
+            Log.w("MyApplication", "URL 配置解密失败: " + e.getMessage());
+        }
+
+        // 🔒 安全检查：仅记录告警，不阻断初始化（避免签名/DEX校验导致应用无法使用）
+        boolean securityPassed = true;
         try {
             if (!SecurityCheck.verifyOnStart(this)) {
-                LogCollector.getInstance().error("MyApplication", "安全检查未通过");
-                return;
+                LogCollector.getInstance().warn("MyApplication", "⚠️ 安全检查未通过（已降级运行模式）");
+                securityPassed = false;
+                // 注意：不再 return，继续初始化其他组件
+            } else {
+                LogCollector.getInstance().info("MyApplication", "安全检查通过");
             }
-            LogCollector.getInstance().info("MyApplication", "安全检查通过");
         } catch (Throwable e) {
             Log.e("MyApplication", "SecurityCheck failed: " + e.getMessage());
         }
 
-        // 🔒 DEX 保护（正式版启用）
+        // 🔒 DEX 保护（正式版启用，即使安全检查未通过也尝试初始化）
         try {
             DexProtector.init(this);
             LogCollector.getInstance().info("MyApplication", "DEX 保护初始化完成");
@@ -155,13 +167,6 @@ public class MyApplication extends Application {
             LogCollector.getInstance().info("MyApplication", "安全守卫初始化完成");
         } catch (Throwable e) {
             Log.w("MyApplication", "安全守卫初始化失败: " + e.getMessage());
-        }
-
-        try {
-            UrlConfig.fillPublicFields();
-            LogCollector.getInstance().info("MyApplication", "URL 配置解密完成");
-        } catch (Throwable e) {
-            Log.w("MyApplication", "URL 配置解密失败: " + e.getMessage());
         }
 
         // 🔐 初始化加密存储和虎牙 SDK 凭证

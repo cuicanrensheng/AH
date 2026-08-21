@@ -1,19 +1,12 @@
 package com.tv.live;
 
+import android.util.Log;
+
 import com.tv.live.security.SecurityCore;
 
-/**
- * 字符串加密版 UrlConfig（AES-256-CBC 升级版）：
- *
- * - 字段 B_XX 存储 AES-256-CBC 密文（Base64 编码，IV 在前 16 字节）
- * - 通过 getLiveUrl()/getLiveUrl2()/getEpgUrl()/getEpgUrl2() 在运行时由
- *   SecurityCore（Native 层 libtvlive_security.so）解密
- * - 反编译只能看到一串 base64 字符 + 1 个 token 字符串，看不到真实 URL
- * - Key 分片（KEY_PART_A/B）只在 SO 中，反编译 dex 拿不到
- *
- * 离线生成密文：见 cpp/gen_cipher.py
- */
 public final class UrlConfig {
+
+    private static final String TAG = "UrlConfig";
 
     // AES-256-CBC 密文（Base64）
     private static final String B_LIVE_1 =
@@ -62,9 +55,15 @@ public final class UrlConfig {
 
     /** 启动后由 SecurityCore.init 完成后调用一次，把解出的明文回填到静态字段 */
     public static void fillPublicFields() {
-        String l1 = getLiveUrl();  if (l1 != null) LIVE_URL   = l1;
-        String l2 = getLiveUrl2(); if (l2 != null) LIVE_URL_2 = l2;
+        String l1 = getLiveUrl();  if (l1 != null) { LIVE_URL   = l1; Log.i(TAG, "LIVE_URL 解密成功: " + l1.substring(0, Math.min(60, l1.length())) + "..."); }
+        else { Log.e(TAG, "LIVE_URL 解密失败，将使用空字符串"); }
+
+        String l2 = getLiveUrl2(); if (l2 != null) { LIVE_URL_2 = l2; Log.i(TAG, "LIVE_URL_2 解密成功: " + l2.substring(0, Math.min(60, l2.length())) + "..."); }
+        else { Log.w(TAG, "LIVE_URL_2 解密失败"); }
+
         String e1 = getEpgUrl();   if (e1 != null) EPG_URL    = e1;
         String e2 = getEpgUrl2();  if (e2 != null) EPG_URL_2  = e2;
+
+        Log.i(TAG, "URL 配置解密完成，SecurityCore.isLoaded=" + SecurityCore.isLoaded());
     }
 }

@@ -163,18 +163,25 @@ public class LiveSourceLoader {
             // —— 1) 网络多源 fallback：LIVE_URL → LIVE_URL_2 ——
             String lastErrorMsg = null;
             List<String> sources = Arrays.asList(UrlConfig.LIVE_URL, UrlConfig.LIVE_URL_2);
+            Log.e(TAG, "LOAD: source count=" + sources.size() + " LIVE_URL='" + UrlConfig.LIVE_URL + "' LIVE_URL_2='" + UrlConfig.LIVE_URL_2 + "'");
             for (int i = 0; i < sources.size(); i++) {
                 String url = sources.get(i);
-                if (url == null || url.trim().isEmpty()) continue;
+                if (url == null || url.trim().isEmpty()) {
+                    Log.e(TAG, "LOAD: source #" + (i+1) + " is null/empty, skipping");
+                    continue;
+                }
                 String acceleratedUrl = getAcceleratedUrl(url);
                 Log.d(TAG, "【网络】直播源 #" + (i + 1) + " 开始加载：" + acceleratedUrl);
+                Log.e(TAG, "LOAD: source #" + (i+1) + " downloading: " + acceleratedUrl);
                 try {
                     String rawContent = downloadRawContent(acceleratedUrl);
                     if (rawContent == null || rawContent.isEmpty()) {
+                        Log.e(TAG, "LOAD: source #" + (i+1) + " download returned empty/null");
                         throw new IOException("下载为空");
                     }
                     List<Channel> channels = PlaylistParser.parseContent(rawContent);
                     if (channels == null || channels.isEmpty()) {
+                        Log.e(TAG, "LOAD: source #" + (i+1) + " parsed 0 channels");
                         throw new IOException("解析后频道数=0");
                     }
                     // 🟢 成功 → 同时保存 24h 缓存 + 永久兜底
@@ -187,6 +194,7 @@ public class LiveSourceLoader {
                     }
                     final List<Channel> finalChannels = channels;
                     Log.d(TAG, "【网络】直播源 #" + (i + 1) + " 加载成功，共 " + finalChannels.size() + " 个频道");
+                    Log.e(TAG, "LOAD: source #" + (i+1) + " SUCCESS, channels=" + finalChannels.size());
                     mainHandler.post(() -> callback.onSuccess(finalChannels));
                     return;
                 } catch (Exception e) {
@@ -476,21 +484,43 @@ public class LiveSourceLoader {
      * 下载原始M3U文本内容
      * 🟢 优化：使用自动跟随重定向的client，避免手动重定向循环每次新建TCP连接
      */
+    private static final int DOWNLOAD_MAX_RETRIES = 3;
+    private static final long DOWNLOAD_RETRY_DELAY_MS = 500;
+
     private String downloadRawContent(String urlStr) {
-        try {
-            Response response = NetUtil.getInstance().syncGet(urlStr);
-            try (Response resp = response) {
-                int responseCode = resp.code();
-                if (responseCode != 200 || resp.body() == null) {
-                    Log.e(TAG, "下载失败 code=" + responseCode + " url=" + urlStr);
-                    return null;
+        int lastCode = -1;
+        String lastError = "";
+        for (int attempt = 1; attempt <= DOWNLOAD_MAX_RETRIES; attempt++) {
+            try {
+                Response response = NetUtil.getInstance().syncGet(urlStr);
+                try (Response resp = response) {
+                    int responseCode = resp.code();
+                    if (responseCode != 200 || resp.body() == null) {
+                        lastCode = responseCode;
+                        lastError = "HTTP " + responseCode;
+                        Log.w(TAG, "下载失败 attempt=" + attempt + "/" + DOWNLOAD_MAX_RETRIES
+                                + " code=" + responseCode + " url=" + urlStr);
+                        if (responseCode >= 400 && responseCode < 500) {
+                            break;
+                        }
+                        continue;
+                    }
+                    String content = resp.body().string();
+                    Log.d(TAG, "下载成功 attempt=" + attempt + " size=" + content.length()
+                            + " url=" + urlStr.substring(0, Math.min(80, urlStr.length())));
+                    return content;
                 }
-                return resp.body().string();
+            } catch (Exception e) {
+                lastError = e.getClass().getSimpleName() + ": " + e.getMessage();
+                Log.w(TAG, "下载异常 attempt=" + attempt + "/" + DOWNLOAD_MAX_RETRIES
+                        + " url=" + urlStr + " err=" + lastError);
             }
-        } catch (Exception e) {
-            e.printStackTrace();
-            return null;
+            if (attempt < DOWNLOAD_MAX_RETRIES) {
+                try { Thread.sleep(DOWNLOAD_RETRY_DELAY_MS); } catch (InterruptedException ignored) {}
+            }
         }
+        Log.e(TAG, "下载最终失败 code=" + lastCode + " url=" + urlStr + " err=" + lastError);
+        return null;
     }
 
     // ====================================================================

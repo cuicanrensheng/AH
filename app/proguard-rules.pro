@@ -167,11 +167,16 @@
 -keep class com.tv.live.SecurityCheck { *; }
 
 # NDK 安全层 JNI 桥接（不能被混淆，否则 native 方法找不到）
--keep class com.tv.live.security.SecurityCore {
-    public static <methods>;
-    private static native <methods>;
-}
+# 关键：必须保留所有 Java fallback 代码（KEY_PART_A/B、buildAesKeyJava、javaAesDecrypt），
+# 否则 R8 会移除 Native 加载失败时的 Java 解密路径，导致模拟器/非 arm64 架构解密失败
+-keep class com.tv.live.security.SecurityCore { *; }
 -keep class com.tv.live.security.IntegrityCheck { *; }
+-keep class com.tv.live.security.StringProtector { *; }
+-keep class com.tv.live.security.DexProtector { *; }
+-keep class com.tv.live.security.SecurityGuard { *; }
+-keep class com.tv.live.security.AntiDebug { *; }
+-keep class com.tv.live.security.TamperReporter { *; }
+-keep class com.tv.live.security.StringObfuscator { *; }
 
 # ============== Bugly SDK（日志上报/崩溃监控） ==============
 # Bugly SDK 使用反射和 native 方法，必须完整保留
@@ -194,11 +199,19 @@
 }
 
 # ============== 移除日志（防调试） ==============
-# 移除开发调试日志
+# 移除开发调试日志（v 和 d），但保留 i/w/e 用于关键错误追踪
 -assumenosideeffects class android.util.Log {
     public static *** v(...);
     public static *** d(...);
 }
+
+# 保留关键业务类的完整实现（防止 R8 移除 Java fallback 或网络重试逻辑）
+-keep class com.tv.live.loader.LiveSourceLoader { *; }
+-keep class com.tv.live.loader.** { *; }
+-keep class com.tv.live.PlaylistParser { *; }
+-keep class com.tv.live.Channel { *; }
+-keep class com.tv.live.util.NetUtil { *; }
+-keep class com.tv.live.util.CacheManager { *; }
 
 # ============== 增强反编译难度 ==============
 # 移除 SourceFile 属性

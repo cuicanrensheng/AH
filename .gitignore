@@ -1,4 +1,4 @@
-﻿# Built by Android Studio
+# Built by Android Studio
 *.iml
 .gradle
 /local.properties
@@ -64,3 +64,10 @@ app/libs/*-extract/
 # Logs
 *.log
 build_*.log
+
+# Sensitive files (never commit)
+gradle.properties
+app/release.keystore
+keystore.properties
+*.keystore
+*.jks

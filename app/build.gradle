@@ -46,7 +46,6 @@ android {
         // Bugly AppID - 在 Bugly 平台注册后获取
         buildConfigField "String", "BUGLY_APP_ID", "\"4a23007223\""
         ndkVersion '25.2.9519653'
-        ndkPath "D:\\ASDF\\BIANYIGONGJU\\android-ndk-r25c"
         ndk {
             // ⚠️ 注意：splits.abi 已按架构分包，AGP 不允许同时设置 ndk.abiFilters
             // abiFilters 在此留空，ABI 过滤完全由 splits.abi 控制

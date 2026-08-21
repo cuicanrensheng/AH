@@ -1,0 +1,29 @@
+# TV Live 云端日志服务器 - Cloudflare Workers 配置
+# 
+# 部署步骤：
+# 1. 安装 wrangler: npm install -g wrangler
+# 2. 登录 Cloudflare: wrangler login
+# 3. 创建 KV 存储: wrangler kv create --binding=LOG_STORE
+# 4. 部署: wrangler deploy
+# 5. 测试: curl https://你的workers域名/api/status
+
+name = "tv-live-cloud-log-server"
+main = "index.js"
+compatibility_date = "2024-01-01"
+
+# KV 存储绑定
+# 注意：首次使用需要先创建 KV 存储并替换下面的 kv_id
+# 创建命令: wrangler kv create --binding=LOG_STORE
+kv_bindings = [
+  { binding = "LOG_STORE", id = "REPLACE_WITH_YOUR_KV_ID" }
+]
+
+# 环境变量
+[vars]
+API_KEY = ""  # 可选，设置后需要在请求头中携带 x-api-key
+MAX_LOGS_PER_DEVICE = "10000"
+
+# 路由配置（可选，如果绑定自定义域名）
+# routes = [
+#   { pattern = "log.yourdomain.com/*", zone_name = "yourdomain.com" }
+# ]

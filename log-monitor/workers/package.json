@@ -1,0 +1,14 @@
+{
+  "name": "tv-live-cloud-log-server-workers",
+  "version": "1.0.0",
+  "description": "TV Live 云端日志服务器 - Cloudflare Workers 版本",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "create-kv": "wrangler kv create --binding=LOG_STORE"
+  },
+  "devDependencies": {
+    "wrangler": "^3.0.0"
+  }
+}

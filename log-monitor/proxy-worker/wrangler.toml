@@ -1,0 +1,31 @@
+# TV Live 日志服务器 - Cloudflare 反向代理配置
+# 
+# 功能：将 Vercel 服务通过 Cloudflare 节点加速，解决大陆访问问题
+# 
+# 部署步骤：
+# 1. 安装 wrangler: npm install -g wrangler
+# 2. 登录 Cloudflare: wrangler login
+# 3. 部署: wrangler deploy
+# 4. 测试: curl https://你的代理域名/api/status
+
+name = "tv-live-proxy"
+main = "index.js"
+compatibility_date = "2024-01-01"
+
+# 源站地址（Vercel）
+[vars]
+VERCEL_BASE_URL = "https://tv-live-cloud-log-server.vercel.app"
+
+# 如果绑定自定义域名，取消下面注释
+# routes = [
+#   { pattern = "log.yourdomain.com/*", zone_name = "yourdomain.com" }
+# ]
+
+# 环境变量示例（可选）
+# [env.production]
+# name = "tv-live-proxy-prod"
+# vars = { ENV = "production" }
+# 
+# [env.staging]
+# name = "tv-live-proxy-staging"
+# vars = { ENV = "staging" }

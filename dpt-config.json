@@ -1,0 +1,9 @@
+{
+  "shellPkgName" : "<random>",
+  "signature" : {
+    "keystore" : "d:/ASDF/TV Live/AH-main/app/release.keystore",
+    "alias" : "myreleasekey",
+    "storepass" : "admin123",
+    "keypass" : "admin123"
+  }
+}

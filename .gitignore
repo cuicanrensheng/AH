@@ -1,16 +1,29 @@
-# Built by Android Studio
+﻿# Built by Android Studio
 *.iml
 .gradle
 /local.properties
 /.idea
+.vscode/
+
+# Native build
+app/.cxx/
+app/.externalNativeBuild/
+
+# Decompiled output
+decompiled_hardened/
+decompiled/
+
+# OS
 .DS_Store
+Thumbs.db
+
+# Built outputs
 /build
 /captures
 .externalNativeBuild
 .cxx
 local.properties
-
-# Built outputs
+keystore.properties
 app/build/
 */build/
 
@@ -23,3 +36,27 @@ gradle/wrapper/gradle-wrapper.jar
 *.apk
 mapping_output/
 mapping_release_v10/
+*.tmp
+*.bak
+*.swp
+*~
+
+# Log monitor
+log-monitor/node_modules/
+log-monitor/dist*/
+log-monitor/platform-tools/
+log-monitor/vercel/
+
+# Monitor
+monitor/node_modules/
+
+# Security tools
+security-tools/
+
+# Packaging outputs
+dist*/
+
+# Decompiled classes
+*.class
+app/libs/*-classes/
+app/libs/*-extract/

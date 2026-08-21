@@ -60,3 +60,7 @@ dist*/
 *.class
 app/libs/*-classes/
 app/libs/*-extract/
+
+# Logs
+*.log
+build_*.log

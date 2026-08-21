@@ -9,8 +9,10 @@ import android.util.Base64;
 import android.util.Log;
 import android.widget.Toast;
 
+import com.tv.live.BuildConfig;
 import com.tv.live.security.IntegrityCheck;
 import com.tv.live.security.SecurityCore;
+import com.tv.live.security.TamperReporter;
 
 import java.security.MessageDigest;
 
@@ -39,10 +41,55 @@ public final class SecurityCheck {
     private SecurityCheck() {}
 
     /**
-     * 启动时调用一次 - 完全禁用所有检查（防止签名校验失败）
+     * 启动时调用一次
+     * 正式版启用签名校验，调试版跳过
      */
     public static boolean verifyOnStart(Context ctx) {
-        android.util.Log.i(TAG, "🔓 SecurityCheck: 已禁用所有安全检查");
+        if (BuildConfig.IS_DEBUG) {
+            Log.i(TAG, "🔓 调试版：跳过签名校验");
+            return true;
+        }
+        
+        Log.i(TAG, "🔒 正式版：启用签名校验");
+        
+        // 初始化篡改上报
+        TamperReporter.init(ctx);
+        
+        // 1. 校验签名
+        if (!verifySignature(ctx)) {
+            // 上报签名篡改并触发崩溃
+            TamperReporter.triggerCrash(
+                TamperReporter.TAMPER_SIGNATURE,
+                "签名校验失败，APK被重新签名"
+            );
+            toastAndExit(ctx, "签名校验失败，APK 被修改");
+            return false;
+        }
+        
+        // 2. 校验包名
+        String pkgName = ctx.getPackageName();
+        if (!EXPECTED_PKG.equals(pkgName)) {
+            Log.e(TAG, "❌ 包名不匹配! expected=" + EXPECTED_PKG + " current=" + pkgName);
+            // 上报包名篡改并触发崩溃
+            TamperReporter.triggerCrash(
+                TamperReporter.TAMPER_PACKAGE_NAME,
+                "包名校验失败，expected=" + EXPECTED_PKG + " current=" + pkgName
+            );
+            toastAndExit(ctx, "包名校验失败，APK 被修改");
+            return false;
+        }
+        Log.i(TAG, "✅ 包名校验通过");
+        
+        // 3. 校验 DEX 完整性（可选，占位符未设置时只打印 hash）
+        if (!verifyDexIntegrity(ctx)) {
+            TamperReporter.triggerCrash(
+                TamperReporter.TAMPER_DEX_INTEGRITY,
+                "DEX完整性校验失败"
+            );
+            toastAndExit(ctx, "DEX完整性校验失败，APK 被修改");
+            return false;
+        }
+        
         return true;
     }
 
@@ -58,7 +105,7 @@ public final class SecurityCheck {
                         : (pi.signingInfo != null ? pi.signingInfo.getSigningCertificateHistory() : null);
                 if (sigs == null || sigs.length == 0) {
                     Log.w(TAG, "未找到签名");
-                    return true;
+                    return false;
                 }
                 certBytes = sigs[0].toByteArray();
             } else {
@@ -66,7 +113,7 @@ public final class SecurityCheck {
                 Signature[] sigs = pi.signatures;
                 if (sigs == null || sigs.length == 0) {
                     Log.w(TAG, "未找到签名");
-                    return true;
+                    return false;
                 }
                 certBytes = sigs[0].toByteArray();
             }
@@ -75,15 +122,9 @@ public final class SecurityCheck {
             String currentB64 = Base64.encodeToString(shaBytes, Base64.NO_WRAP);
             Log.i(TAG, "当前签名 SHA256=" + currentB64);
 
-            // 如果占位符未替换，直接通过
-            if ("REPLACE_WITH_REAL_SHA256_BASE64".equals(EXPECTED_SIG_BASE64)) {
-                Log.w(TAG, "签名占位符未替换，跳过严格校验");
-                return true;
-            }
-
-            // release 版本严格校验
+            // 严格校验签名
             if (!EXPECTED_SIG_BASE64.equals(currentB64)) {
-                Log.e(TAG, "签名校验失败");
+                Log.e(TAG, "❌ 签名校验失败! expected=" + EXPECTED_SIG_BASE64 + " current=" + currentB64);
                 toastAndExit(appCtx, "签名校验失败，APK 被修改");
                 return false;
             }
@@ -91,7 +132,7 @@ public final class SecurityCheck {
             return true;
         } catch (Exception e) {
             Log.e(TAG, "verify error", e);
-            return true;
+            return false;
         }
     }
 

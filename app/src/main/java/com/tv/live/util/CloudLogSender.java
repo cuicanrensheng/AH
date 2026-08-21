@@ -9,7 +9,9 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 
@@ -501,5 +503,80 @@ public class CloudLogSender {
         String status = isEnabled ? (isConnected ? "connected" : "connecting") : "disabled";
         return String.format("Cloud: %s, Pending: %d, Server: %s",
                 status, pendingLogs.size(), getServerUrl());
+    }
+    
+    /**
+     * 发送自定义事件（如篡改检测事件）
+     * @param eventName 事件名称
+     * @param eventData 事件数据
+     */
+    public void sendEvent(String eventName, Map<String, String> eventData) {
+        if (!isEnabled) return;
+        
+        try {
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("event", eventName);
+            payload.put("data", eventData);
+            payload.put("device_id", deviceId);
+            payload.put("timestamp", System.currentTimeMillis());
+            payload.put("app_version", appVersion);
+            
+            String serverUrl = getServerUrl();
+            if (serverUrl == null || serverUrl.isEmpty()) {
+                Log.w(TAG, "无法发送事件：服务器URL未配置");
+                return;
+            }
+            
+            String url = serverUrl + "/api/events";
+            String json = gson.toJson(payload);
+            
+            RequestBody body = RequestBody.create(json, okhttp3.MediaType.parse("application/json"));
+            
+            Request.Builder requestBuilder = new Request.Builder()
+                    .url(url)
+                    .post(body);
+            
+            String apiKey = getApiKey();
+            if (apiKey != null && !apiKey.isEmpty()) {
+                requestBuilder.addHeader("x-api-key", apiKey);
+            }
+            
+            httpClient.newCall(requestBuilder.build()).enqueue(new okhttp3.Callback() {
+                @Override
+                public void onFailure(okhttp3.Call call, java.io.IOException e) {
+                    Log.e(TAG, "发送事件失败: " + e.getMessage());
+                }
+
+                @Override
+                public void onResponse(okhttp3.Call call, Response response) throws java.io.IOException {
+                    try {
+                        if (response.isSuccessful()) {
+                            Log.i(TAG, "事件已发送: " + eventName);
+                        } else {
+                            Log.w(TAG, "发送事件失败: HTTP " + response.code());
+                        }
+                    } finally {
+                        response.close();
+                    }
+                }
+            });
+            
+            // 同时通过WebSocket发送（如果已连接）
+            if (isConnected && cloudWebSocket != null) {
+                try {
+                    Map<String, Object> wsPayload = new HashMap<>();
+                    wsPayload.put("type", "event");
+                    wsPayload.put("event", eventName);
+                    wsPayload.put("data", eventData);
+                    wsPayload.put("timestamp", System.currentTimeMillis());
+                    cloudWebSocket.send(gson.toJson(wsPayload));
+                } catch (Exception e) {
+                    Log.e(TAG, "WebSocket发送事件失败: " + e.getMessage());
+                }
+            }
+            
+        } catch (Exception e) {
+            Log.e(TAG, "发送事件异常: " + e.getMessage());
+        }
     }
 }

@@ -13,20 +13,26 @@ import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.WindowManager;
 
+import com.tencent.bugly.crashreport.CrashReport;
+import com.tv.live.BuildConfig;
+import com.tv.live.util.BuglyLogSender;
+import com.tv.live.util.LogCollector;
+import com.tv.live.util.LogServer;
+
 import java.io.File;
 import java.io.FileWriter;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.text.SimpleDateFormat;
-import com.tv.live.util.LogCollector;
-import com.tv.live.util.LogServer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 /**
  * 全局崩溃捕获器（已修复主线程阻塞导致的ANR问题）
@@ -184,9 +190,11 @@ public class CrashHandler implements Thread.UncaughtExceptionHandler {
      * 1. 收集崩溃信息和设备信息
      * 2. 保存到静态变量（供 CrashActivity 显示）
      * 3. 保存到本地文件（持久化）
-     * 4. 启动崩溃页面（显示崩溃原因）
-     * 5. 子线程延迟 1 分钟，然后自动重启或退出
-     * 6. 主线程直接返回，避免阻塞
+     * 4. 上报到 Bugly（电脑端可查看）
+     * 5. 推送到远程监控（CloudLogSender）
+     * 6. 启动崩溃页面（显示崩溃原因）
+     * 7. 子线程延迟 1 分钟，然后自动重启或退出
+     * 8. 主线程直接返回，避免阻塞
      */
     @Override
     public void uncaughtException(Thread thread, Throwable ex) {
@@ -208,7 +216,12 @@ public class CrashHandler implements Thread.UncaughtExceptionHandler {
             saveCrashLogToFile(crashLog);
 
             // ================================================================
-            // 第四步：同步到播放日志（设置页面能看到）+ 推送到远程监控
+            // 第四步：上报到 Bugly（电脑端可查看）
+            // ================================================================
+            reportCrashToBugly(thread, ex);
+
+            // ================================================================
+            // 第五步：同步到播放日志 + 推送到远程监控
             // ================================================================
             try {
                 Log.e(TAG, "【崩溃】" + ex.getClass().getName() + ": " + ex.getMessage());
@@ -224,12 +237,12 @@ public class CrashHandler implements Thread.UncaughtExceptionHandler {
             } catch (Exception ignored) {}
 
             // ================================================================
-            // 第五步：启动崩溃页面（显示崩溃原因）
+            // 第六步：启动崩溃页面（显示崩溃原因）
             // ================================================================
             startCrashActivity();
 
             // ================================================================
-            // 第六步：在子线程中处理延迟和重启/退出（避免阻塞主线程）
+            // 第七步：在子线程中处理延迟和重启/退出（避免阻塞主线程）
             // ================================================================
             new Thread(() -> {
                 try {
@@ -256,6 +269,41 @@ public class CrashHandler implements Thread.UncaughtExceptionHandler {
             if (defaultHandler != null) {
                 defaultHandler.uncaughtException(thread, ex);
             }
+        }
+    }
+    
+    /**
+     * 上报崩溃到 Bugly
+     * 同时上报到 BuglyLogSender 和 CloudLogSender
+     */
+    private void reportCrashToBugly(Thread thread, Throwable ex) {
+        try {
+            // 构建额外信息
+            Map<String, String> extraInfo = new HashMap<>();
+            extraInfo.put("crash_thread", thread.getName());
+            extraInfo.put("crash_thread_id", String.valueOf(thread.getId()));
+            extraInfo.put("device_model", Build.MODEL);
+            extraInfo.put("device_brand", Build.BRAND);
+            extraInfo.put("sdk_version", String.valueOf(Build.VERSION.SDK_INT));
+            extraInfo.put("build_type", BuildConfig.IS_DEBUG ? "debug" : "release");
+            
+            // 通过 BuglyLogSender 上报
+            BuglyLogSender sender = BuglyLogSender.getInstance(context);
+            if (sender.isInitialized() && sender.isEnabled()) {
+                sender.reportException("CrashHandler", ex, "线程: " + thread.getName());
+            }
+            
+            // 直接通过 CrashReport 上报（确保即使 BuglyLogSender 未初始化也能上报）
+            CrashReport.putUserData(context, "crash_thread", thread.getName());
+            CrashReport.putUserData(context, "crash_time", 
+                String.valueOf(System.currentTimeMillis()));
+            CrashReport.putUserData(context, "crash_type", ex.getClass().getName());
+            CrashReport.putUserData(context, "device_model", Build.MODEL);
+            
+            Log.i(TAG, "崩溃已上报到 Bugly");
+            
+        } catch (Exception e) {
+            Log.e(TAG, "Bugly 上报失败: " + e.getMessage());
         }
     }
 

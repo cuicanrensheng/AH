@@ -2,10 +2,13 @@ package com.tv.live.security;
 
 import android.content.Context;
 import android.content.pm.ApplicationInfo;
+import android.os.Build;
 import android.os.Debug;
 import android.os.Environment;
 import android.provider.Settings;
 import android.util.Log;
+
+import com.tv.live.BuildConfig;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -27,17 +30,64 @@ public class AntiDebug {
      * @return 是否检测到调试
      */
     public static boolean init(Context context) {
+        return init(context, true);
+    }
+
+    /**
+     * 初始化反调试检测
+     * @param context 上下文
+     * @param enable 是否启用反调试检测（debug版本传false跳过检测）
+     * @return 是否检测到调试
+     */
+    public static boolean init(Context context, boolean enable) {
+        if (!enable) {
+            Log.i(TAG, "反调试检测已禁用（调试模式）");
+            initialized = true;
+            debugDetected = false;
+            return false;
+        }
         if (initialized) return debugDetected;
         initialized = true;
         
-        debugDetected = checkDebugger(context) || 
-                       checkFrida() || 
-                       checkXposed() || 
-                       checkEmulator(context) ||
-                       checkTestSettings(context);
+        // 初始化TamperReporter
+        TamperReporter.init(context);
+        
+        // 逐项检测并记录具体的威胁类型
+        boolean debuggerFound = checkDebugger(context);
+        boolean fridaFound = checkFrida();
+        boolean xposedFound = checkXposed();
+        boolean emulatorFound = checkEmulator(context);
+        boolean testSettingsFound = checkTestSettings(context);
+        
+        debugDetected = debuggerFound || fridaFound || xposedFound || 
+                        emulatorFound || testSettingsFound;
         
         if (debugDetected) {
             Log.e(TAG, "⚠️ 检测到调试环境！");
+            
+            // 上报各类威胁到TamperReporter
+            if (!BuildConfig.IS_DEBUG) {
+                if (debuggerFound) {
+                    TamperReporter.reportTamper(
+                        TamperReporter.TAMPER_DEBUGGER,
+                        "AntiDebug检测到调试器连接");
+                }
+                if (fridaFound) {
+                    TamperReporter.reportTamper(
+                        TamperReporter.TAMPER_FRIDA,
+                        "AntiDebug检测到Frida工具");
+                }
+                if (xposedFound) {
+                    TamperReporter.reportTamper(
+                        TamperReporter.TAMPER_XPOSED,
+                        "AntiDebug检测到Xposed框架");
+                }
+                if (emulatorFound) {
+                    TamperReporter.reportTamper(
+                        TamperReporter.TAMPER_EMULATOR,
+                        "AntiDebug检测到模拟器环境");
+                }
+            }
         }
         return debugDetected;
     }

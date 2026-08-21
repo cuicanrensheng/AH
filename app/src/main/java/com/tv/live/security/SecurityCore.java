@@ -80,10 +80,22 @@ public final class SecurityCore {
         }
     }
 
-    /** 综合安全检查，返回 5-bit mask（bit0=debug bit1=frida_port bit2=frida_maps bit3=root bit4=emu） */
+    /**
+     * 综合安全检查，返回 8-bit mask
+     * bit0=debug bit1=frida_port bit2=frida_maps bit3=root 
+     * bit4=emulator bit5=ptrace_attach bit6=hooks bit7=signal
+     */
     public static int check() {
         if (!sLoaded) return 0;
         try { return nativeCheck(); } catch (Throwable t) { return 0; }
+    }
+
+    /**
+     * 获取详细的安全状态字符串
+     */
+    public static String getSecurityStatus() {
+        if (!sLoaded) return "SecurityCore not loaded";
+        try { return nativeGetSecurityStatus(); } catch (Throwable t) { return "error: " + t.getMessage(); }
     }
 
     /**
@@ -125,4 +137,5 @@ public final class SecurityCore {
     private static native void nativeStartMonitor();
     private static native int  nativeCheck();
     private static native byte[] nativeDecrypt(byte[] cipher);
+    private static native String nativeGetSecurityStatus();
 }

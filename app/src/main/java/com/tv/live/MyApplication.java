@@ -5,6 +5,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 
+import com.tv.live.BuildConfig;
 import com.tv.live.util.AppCacheInspector;
 import com.tv.live.util.LogCollector;
 import com.tv.live.util.LogServer;
@@ -22,7 +23,9 @@ import com.tv.live.util.BuglyLogSender;
 import com.tv.live.security.SecurityCore;
 import com.tv.live.security.AntiDebug;
 import com.tv.live.security.StringObfuscator;
-
+import com.tv.live.security.DexProtector;
+import com.tv.live.security.StringProtector;
+import com.tv.live.security.SecurityGuard;
 public class MyApplication extends Application {
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -76,17 +79,20 @@ public class MyApplication extends Application {
 
     /**
      * 初始化安全组件（后台线程）
+     * 正式版自动开启反调试，调试版自动关闭反调试
      */
     private void initSecurity() {
-        // 🔍 反调试检测
+        // 🔍 反调试检测 - 正式版启用，调试版跳过
         try {
-            boolean debugDetected = AntiDebug.init(this);
+            // enable: 正式版(true)开启检测，调试版(false)跳过检测
+            boolean debugDetected = AntiDebug.init(this, !BuildConfig.IS_DEBUG);
             if (debugDetected) {
                 LogCollector.getInstance().error("MyApplication", "⚠️ 检测到调试环境，应用可能被逆向分析");
-                // 可以选择终止应用或限制功能
+                // 正式版检测到调试时可选：终止应用或限制功能
                 // System.exit(0);
             } else {
-                LogCollector.getInstance().info("MyApplication", "反调试检测通过");
+                String mode = BuildConfig.IS_DEBUG ? "调试版：跳过反调试检测" : "反调试检测通过";
+                LogCollector.getInstance().info("MyApplication", mode);
             }
         } catch (Throwable e) {
             Log.w("MyApplication", "反调试检测失败: " + e.getMessage());
@@ -117,6 +123,37 @@ public class MyApplication extends Application {
             LogCollector.getInstance().info("MyApplication", "安全检查通过");
         } catch (Throwable e) {
             Log.e("MyApplication", "SecurityCheck failed: " + e.getMessage());
+        }
+
+        // 🔒 DEX 保护（正式版启用）
+        try {
+            DexProtector.init(this);
+            LogCollector.getInstance().info("MyApplication", "DEX 保护初始化完成");
+        } catch (Throwable e) {
+            Log.w("MyApplication", "DEX 保护初始化失败: " + e.getMessage());
+        }
+
+        // 🔐 字符串动态解密保护（正式版启用）
+        try {
+            StringProtector.init(!BuildConfig.IS_DEBUG);
+            // 注册敏感字符串（使用加密存储）
+            StringProtector.register("huya_app_id", 
+                BuildConfig.IS_DEBUG ? "123456" : StringProtector.quickEncrypt("123456"));
+            StringProtector.register("huya_app_key",
+                BuildConfig.IS_DEBUG ? "d8f193dd" : StringProtector.quickEncrypt("d8f193dd"));
+            StringProtector.register("huya_game_id",
+                BuildConfig.IS_DEBUG ? "2336" : StringProtector.quickEncrypt("2336"));
+            LogCollector.getInstance().info("MyApplication", "字符串保护初始化完成");
+        } catch (Throwable e) {
+            Log.w("MyApplication", "字符串保护初始化失败: " + e.getMessage());
+        }
+
+        // 🛡️ 安全守卫（应用自保护）
+        try {
+            SecurityGuard.init(this);
+            LogCollector.getInstance().info("MyApplication", "安全守卫初始化完成");
+        } catch (Throwable e) {
+            Log.w("MyApplication", "安全守卫初始化失败: " + e.getMessage());
         }
 
         try {

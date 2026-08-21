@@ -88,9 +88,11 @@ public class MyApplication extends Application {
             // enable: 正式版(true)开启检测，调试版(false)跳过检测
             boolean debugDetected = AntiDebug.init(this, !BuildConfig.IS_DEBUG);
             if (debugDetected) {
-                LogCollector.getInstance().error("MyApplication", "⚠️ 检测到调试环境，应用可能被逆向分析");
-                // 正式版检测到调试时可选：终止应用或限制功能
-                // System.exit(0);
+                // 🟢 使用WARN级别而非ERROR，避免误报到Bugly
+                // 真正的篡改检测（Frida/Xposed）已在AntiDebug内部上报
+                // 此处仅记录警告，不触发Bugly上报
+                LogCollector.getInstance().warn("MyApplication", 
+                    "⚠️ 检测到可疑环境（已记录，详见反调试日志）");
             } else {
                 String mode = BuildConfig.IS_DEBUG ? "调试版：跳过反调试检测" : "反调试检测通过";
                 LogCollector.getInstance().info("MyApplication", mode);

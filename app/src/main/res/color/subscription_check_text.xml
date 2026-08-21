@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 勾选图标文字颜色：统一蓝#40A9FF，选中态才显示（由代码控制visibility）-->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:color="#FF40A9FF"/>
+</selector>

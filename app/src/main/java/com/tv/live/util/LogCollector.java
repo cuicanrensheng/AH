@@ -32,6 +32,21 @@ public class LogCollector {
     public static final String TYPE_PARSE = "parse";
     public static final String TYPE_PLAYBACK = "playback";
     public static final String TYPE_OPERATION = "operation";
+    
+    // 不应上报到Bugly的日志关键词（防止正常日志误报）
+    private static final String[] NON_REPORTABLE_KEYWORDS = {
+        "success", "GetLivingInfo", "GetLivingInfoRsp",
+        "SDK-Auk", "BerryEvent", "CustomUI",
+        "onResultCallback", "playUrl", "stream",
+        // 反调试相关 - 这些是安全检测的正常行为，不应作为崩溃上报
+        "检测到调试", "检测到可疑环境", "检测到模拟器", 
+        "检测到usb调试", "检测到模拟位置", "检测到root",
+        "应用可能被逆向", "反调试检测", "安全检测发现风险",
+        "安全检查未通过", "降级运行", "篡改",
+        // 网络相关 - 网络波动是外部问题
+        "连接超时", "超时", "timeout",
+        "404 not found", "http 404", "失败: http"
+    };
 
     public interface LogListener {
         void onLogAdded(LogEntry entry);
@@ -166,13 +181,20 @@ public class LogCollector {
         notifyListeners(entry);
 
         // 自动上报 ERROR 和 CRASH 类型日志到 Bugly（用于监控）
+        // 过滤掉不应该上报的日志（如SDK成功日志、网络状态等）
         if (TYPE_ERROR.equals(type) || TYPE_CRASH.equals(type)) {
-            try {
-                ExceptionReporter.reportError(
-                        tag != null ? tag : "TVLive",
-                        msg != null ? msg : "Unknown error",
-                        new RuntimeException(msg != null ? msg : "Unknown error"));
-            } catch (Throwable ignored) {}
+            if (shouldReportToBugly(msg)) {
+                try {
+                    ExceptionReporter.reportError(
+                            tag != null ? tag : "TVLive",
+                            msg != null ? msg : "Unknown error",
+                            new RuntimeException(msg != null ? msg : "Unknown error"));
+                } catch (Throwable ignored) {}
+            } else {
+                // 过滤掉的日志仍记录到 logcat，但不上报Bugly
+                android.util.Log.w("LogCollector", "日志已过滤不上报Bugly: " + 
+                    (msg != null ? msg.substring(0, Math.min(100, msg.length())) : ""));
+            }
         }
 
         // 同时写入 Android logcat，确保 ADB 也能抓取到
@@ -360,5 +382,32 @@ public class LogCollector {
                 listener.onLogCleared();
             } catch (Exception ignored) {}
         }
+    }
+    
+    /**
+     * 判断日志是否应该上报到Bugly
+     * 过滤掉SDK内部状态日志、成功日志等
+     */
+    private static boolean shouldReportToBugly(String msg) {
+        if (msg == null || msg.isEmpty()) return false;
+        
+        String lowerMsg = msg.toLowerCase();
+        
+        // 检查是否包含不应上报的关键词
+        for (String keyword : NON_REPORTABLE_KEYWORDS) {
+            if (lowerMsg.contains(keyword.toLowerCase())) {
+                // 包含"success"但也包含"error"/"fail"的仍然需要上报
+                if (keyword.equals("success")) {
+                    if (lowerMsg.contains("error") || lowerMsg.contains("fail") || 
+                        lowerMsg.contains("exception") || lowerMsg.contains("crash")) {
+                        return true;
+                    }
+                }
+                // 其他关键词直接过滤
+                return false;
+            }
+        }
+        
+        return true;
     }
 }

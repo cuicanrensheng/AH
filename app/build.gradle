@@ -1,0 +1,372 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace "com.tv.live"
+    compileSdk 36
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+        coreLibraryDesugaringEnabled true
+    }
+    buildFeatures {
+        buildConfig true
+    }
+    externalNativeBuild {
+        cmake {
+            path "src/main/cpp/CMakeLists.txt"
+            version "3.22.1"
+        }
+    }
+    splits {
+        abi {
+            enable true
+            reset()
+            include 'arm64-v8a', 'armeabi-v7a'
+            universalApk false
+        }
+    }
+    defaultConfig {
+        applicationId "com.tv.live"
+        minSdk 21
+        targetSdk 36
+        versionCode 60
+        versionName "2.0.60"
+        resConfigs "zh"
+        multiDexEnabled true
+        // 关键：开启 vector 支持库。否则 AppCompat 在启动加载 <vector> 资源（adaptive icon/
+        // windowBackground/windowSplashscreen）时会抛 IllegalStateException（卡启动界面），
+        // 且 R8 缩减 + aapt2 资源混淆后易触发。开启后由 androidx.vectordrawable 兜底解压 PNG。
+        vectorDrawables {
+            useSupportLibrary true
+        }
+        buildConfigField "int", "VERSION_CODE", "${versionCode}"
+        buildConfigField "String", "VERSION_NAME", "\"${versionName}\""
+        // Bugly AppID - 在 Bugly 平台注册后获取
+        buildConfigField "String", "BUGLY_APP_ID", "\"4a23007223\""
+        ndkVersion '25.2.9519653'
+        ndkPath "D:\\ASDF\\BIANYIGONGJU\\android-ndk-r25c"
+        ndk {
+            // ⚠️ 注意：splits.abi 已按架构分包，AGP 不允许同时设置 ndk.abiFilters
+            // abiFilters 在此留空，ABI 过滤完全由 splits.abi 控制
+            debugSymbolLevel 'NONE'
+        }
+    }
+    signingConfigs {
+        release {
+            storeFile file("release.keystore")
+            storePassword project.findProperty("storePassword")
+            keyAlias project.findProperty("keyAlias")
+            keyPassword project.findProperty("keyPassword")
+            v1SigningEnabled true
+            v2SigningEnabled true
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled true
+            shrinkResources false
+            zipAlignEnabled true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.release
+            // 正式版移除 SourceFile 和 LineNumberTable，增加反编译难度
+            buildConfigField "boolean", "IS_DEBUG", "false"
+            // 正式版隐藏 Bugly AppID（使用加密存储更好，这里先保留）
+            buildConfigField "String", "BUGLY_APP_ID", "\"4a23007223\""
+        }
+        debug {
+            minifyEnabled false
+            shrinkResources false
+            // 调试版 Bugly 也启用，便于测试
+            buildConfigField "String", "BUGLY_APP_ID", "\"4a23007223\""
+            buildConfigField "boolean", "IS_DEBUG", "true"
+        }
+    }
+    packagingOptions {
+        resources {
+            pickFirsts += ['META-INF/com.android.tools/proguard/coroutines.pro']
+            excludes += ['META-INF/DEPENDENCIES', 'META-INF/LICENSE', 'META-INF/LICENSE.txt',
+                         'META-INF/license.txt', 'META-INF/NOTICE', 'META-INF/NOTICE.txt',
+                         'META-INF/notice.txt', 'META-INF/ASL2.0', 'META-INF/*.kotlin_module',
+                         'META-INF/INDEX.LIST', 'META-INF/io.netty.versions.properties',
+                         'assets/huya_berry_protocol_license.txt',
+                         'assets/huya_berry_third_party_license.html',
+                         'assets/webgame/*.html', 'assets/webgame/*.js', 'assets/webgame/*.css',
+                         'META-INF/services/*',
+                         'META-INF/proguard/*.pro',
+                         'META-INF/*.version',
+                         'META-INF/versions/**',
+                         '**/*.kotlin_builtins',
+                         '**/*.kotlin_metadata',
+                         '**/*.proto',
+                         '**/*.aidl',
+                         'DebugProbesKt.bin']
+        }
+        jniLibs {
+            // false = SO 以未压缩(STORED)方式存储在 APK 内
+            // 安装时系统不解压 SO，直接从 base.apk 内 mmap 加载
+            // → APK 更大(24MB)，但安装后不额外产生 lib/ 解压体积
+            useLegacyPackaging false
+            pickFirsts += [
+                    'lib/arm64-v8a/libhyaudioengine.so',
+                    'lib/armeabi-v7a/libhyaudioengine.so',
+                    'lib/arm64-v8a/libc++_shared.so',
+                    'lib/armeabi-v7a/libc++_shared.so',
+                    'lib/x86/libc++_shared.so',
+                    'lib/x86_64/libc++_shared.so'
+            ]
+        }
+    }
+    androidResources {
+        generateLocaleConfig false
+    }
+    lint {
+        baseline = file("lint-baseline.xml")
+        abortOnError false
+        checkReleaseBuilds false
+    }
+}
+
+// ============== 🛡️ 360 加固（GUI 模式）==============
+// 已停用 CLI 工具（需付费授权）。
+// 如需用 360 加固助手 GUI 加固：跑 prepare360JiaGu → GUI 选待加固 APK → 输出到 jiagu/output → 跑 sign360JiaGuOutput
+// 但当前已不接入，仅保留任务脚手架。
+
+task prepare360JiaGu {
+    group = 'security'
+    description = '准备待加固 APK 到 app/build/jiagu/input/（仅手工上传下载模式用）'
+    doLast {
+        def jiaguIn = file("${buildDir}/jiagu/input")
+        jiaguIn.mkdirs()
+        def apkDir = file("${buildDir}/outputs/apk/release")
+        def zipalign = "${android.sdkDirectory}/build-tools/${android.buildToolsVersion}/zipalign.exe"
+        apkDir.eachFileMatch(~/.*\.apk/) { apk ->
+            if (apk.name.contains('-unsigned')) return
+            // zipalign 4 字节对齐（360 加固要求）
+            def aligned = file("${jiaguIn}/${apk.name.replace('.apk', '-unsigned.apk')}")
+            logger.lifecycle "[360JiaGu] zipalign: ${apk.name} → ${aligned.name}"
+            def proc = [zipalign, '-p', '-f', '4',
+                        apk.absolutePath, aligned.absolutePath].execute()
+            proc.waitFor()
+            if (proc.exitValue() == 0 && aligned.exists()) {
+                logger.lifecycle "[360JiaGu] 待加固包已就绪: ${aligned.absolutePath}"
+                logger.lifecycle "[360JiaGu] 下一步：上传到 https://jiagu.360.cn → 基础加固 → 下载"
+            } else {
+                logger.error "[360JiaGu] zipalign 失败"
+            }
+        }
+    }
+}
+
+task sign360JiaGuOutput {
+    group = 'security'
+    description = '对 app/build/jiagu/output/ 下的加固后 APK 自动重签 V1+V2+V3'
+    doLast {
+        def jiaguOut = file("${buildDir}/jiagu/output")
+        if (!jiaguOut.exists()) {
+            jiaguOut.mkdirs()
+        }
+        def apkList = jiaguOut.listFiles({ d, n -> n.endsWith('.apk') } as java.io.FilenameFilter)
+        if (apkList == null || apkList.length == 0) {
+            logger.error "[360JiaGu] 未找到加固后 APK，请先放到 ${jiaguOut.absolutePath}"
+            return
+        }
+        def outDir = file("${buildDir}/outputs/apk/release/360")
+        outDir.mkdirs()
+        def buildTools = android.buildToolsVersion
+        def apksigner = "${android.sdkDirectory}/build-tools/${buildTools}/apksigner.bat"
+        def zipalign = "${android.sdkDirectory}/build-tools/${buildTools}/zipalign.exe"
+        def ks = android.signingConfigs.release.storeFile
+        def ksPwd = android.signingConfigs.release.storePassword
+        def keyAlias = android.signingConfigs.release.keyAlias
+        def keyPwd = android.signingConfigs.release.keyPassword
+
+        apkList.each { src ->
+            def aligned = file("${outDir}/${src.name.replace('.apk', '-aligned.apk')}")
+            def signed  = file("${outDir}/${src.name.replace('.apk', '-signed.apk')}")
+            def za = [zipalign, '-p', '-f', '4', src.absolutePath, aligned.absolutePath].execute()
+            za.waitFor()
+            if (za.exitValue() != 0) { logger.error "[360JiaGu] zipalign 失败: ${src.name}"; return }
+            def sg = [apksigner, 'sign',
+                      '--ks', ks.absolutePath,
+                      '--ks-pass', "pass:${ksPwd}",
+                      '--ks-key-alias', keyAlias,
+                      '--key-pass', "pass:${keyPwd}",
+                      '--v1-signing-enabled', 'true',
+                      '--v2-signing-enabled', 'true',
+                      '--v3-signing-enabled', 'true',
+                      aligned.absolutePath].execute()
+            sg.waitFor()
+            aligned.renameTo(signed)
+            if (sg.exitValue() == 0) {
+                logger.lifecycle "[360JiaGu] ✅ 重签完成: ${signed.absolutePath} (${signed.length()/1024} KB)"
+            } else {
+                logger.error "[360JiaGu] apksigner 失败: ${src.name}"
+            }
+        }
+    }
+}
+
+// ============== ⛔ 资源名混淆（aapt2 optimize）已停用 ==============
+// 【为什么停用】
+//   aapt2 optimize --collapse-resource-names 会重排/压缩资源 ID，
+//   而 虎牙 SDK（HuyaBerryImpl.initBaseApi）与 AppCompat/vector drawable
+//   都是通过**编译期硬编码的资源 ID / getIdentifier()** 访问资源。
+//   资源 ID 一变，SDK 内部临时引用全部失效：
+//     - 虎牙：NotFoundException: String resource ID #0x0（SDK 失效）
+//     - AppCompat/vector：IllegalStateException VectorDrawableCompat（启动崩溃+图标丢）
+//   Debug 版（不跑资源混淆）里两者都正常，证实资源混淆是元凶。
+// 【结论】反编译保护改用：R8 代码混淆（-keep 类+签名）+ NDK 反调试 + 字符串加密，
+//   不再做资源名混淆（会破坏第三方 SDK）。如需资源保护，只能接加固壳。
+// ==============
+/*
+project.afterEvaluate {
+    tasks.matching { it.name == 'assembleRelease' }.configureEach { task ->
+        task.doLast {
+            def buildTools = android.buildToolsVersion
+            def aapt2 = "${android.sdkDirectory}/build-tools/${buildTools}/aapt2"
+            def apksigner = "${android.sdkDirectory}/build-tools/${buildTools}/apksigner.bat"
+            def zipalign = "${android.sdkDirectory}/build-tools/${buildTools}/zipalign.exe"
+            def ks = android.signingConfigs.release.storeFile
+            def ksPwd = android.signingConfigs.release.storePassword
+            def keyAlias = android.signingConfigs.release.keyAlias
+            def keyPwd = android.signingConfigs.release.keyPassword
+
+            def apkDir = file("${buildDir}/outputs/apk/release")
+            apkDir.eachFileMatch(~/.*\.apk/) { apk ->
+                if (apk.name.contains('-unsigned')) return
+                def collapsed = file("${apk.parent}/${apk.name.replace('.apk', '-collapsed.apk')}")
+                def aligned   = file("${apk.parent}/${apk.name.replace('.apk', '-aligned.apk')}")
+                logger.lifecycle "[ResGuard] aapt2 optimize: ${apk.name}"
+                def opt = [aapt2, 'optimize',
+                           '--collapse-resource-names',
+                           '-o', collapsed.absolutePath,
+                           apk.absolutePath].execute()
+                opt.waitFor()
+                if (opt.exitValue() != 0 || !collapsed.exists()) {
+                    logger.warn "[ResGuard] aapt2 optimize FAILED, keep original"
+                    return
+                }
+                def za = [zipalign, '-p', '-f', '4',
+                          collapsed.absolutePath,
+                          aligned.absolutePath].execute()
+                za.waitFor()
+                collapsed.delete()
+                def sg = [apksigner, 'sign',
+                          '--ks', ks.absolutePath,
+                          '--ks-pass', "pass:${ksPwd}",
+                          '--ks-key-alias', keyAlias,
+                          '--key-pass', "pass:${keyPwd}",
+                          '--v1-signing-enabled', 'true',
+                          '--v2-signing-enabled', 'true',
+                          aligned.absolutePath].execute()
+                sg.waitFor()
+                if (sg.exitValue() == 0) {
+                    apk.delete()
+                    aligned.renameTo(apk)
+                    logger.lifecycle "[ResGuard] OK → ${apk.name} (${apk.length() / 1024} KB, re-signed)"
+                } else {
+                    logger.warn "[ResGuard] sign FAILED, keep original"
+                    aligned.delete()
+                }
+            }
+        }
+    }
+}
+*/
+
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation 'com.google.zxing:core:3.5.1'
+    implementation "androidx.media3:media3-exoplayer:1.7.1"
+    implementation "androidx.media3:media3-ui:1.7.1"
+    implementation "androidx.media3:media3-exoplayer-hls:1.7.1"
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+    implementation 'com.google.code.gson:gson:2.10.1'
+    // 腾讯 Bugly SDK - 崩溃上报 + 运营统计（Maven 最新版）
+    implementation 'com.tencent.bugly:crashreport:latest.release'
+    implementation fileTree(dir: 'libs', include: ['*.aar', '*.jar'], exclude: [
+            'audioengineencode-1.1.80.aar',
+            'audioenginecapture-1.1.80.aar',
+            'imagefilter-1.1.80.aar',
+            'rtmpupload-1.1.80.aar',
+            'crashreport-3.0.0.aar',
+            'nativecrashreport-3.7.1.aar',
+            'crashreport-4.1.9.3.aar',
+            'crashreport-4.1.9.31.aar'
+    ])
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'
+}
+
+androidComponents {
+    onVariants(selector().all()) { variant ->
+        variant.outputs.forEach { output ->
+            try {
+                def currentName = output.outputFileName.get()
+                def abiName = currentName.find(/arm64-v8a|armeabi-v7a/)
+                if (!abiName) {
+                    abiName = variant.name
+                }
+                def verName = android.defaultConfig.versionName
+                def newName = "tv_live_${variant.buildType}_${abiName}_${verName}.apk"
+                logger.lifecycle "Renaming APK: ${currentName} -> ${newName}"
+                output.outputFileName.set(newName)
+            } catch (Exception e) {
+                logger.warn "Rename failed for ${variant.name}: ${e.message}"
+            }
+        }
+    }
+}
+
+project.afterEvaluate {
+    tasks.named('assembleRelease') {
+        doLast {
+            def outputDir = file("$buildDir/outputs/apk/release")
+            if (outputDir.exists()) {
+                def abis = ['arm64-v8a', 'armeabi-v7a']
+                abis.each { abi ->
+                    def pattern = "*-${abi}-release.apk"
+                    fileTree(dir: outputDir, include: pattern).each { apk ->
+                        def verName = android.defaultConfig.versionName
+                        def newName = "tv_live_release_${abi}_${verName}.apk"
+                        def newFile = new File(outputDir, newName)
+                        if (!apk.name.equals(newName) && !newFile.exists()) {
+                            apk.renameTo(newFile)
+                            logger.lifecycle "Post-build renamed: ${apk.name} -> ${newName}"
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+configurations.all {
+    resolutionStrategy {
+        force "androidx.media3:media3-common:1.7.1"
+        force "androidx.media3:media3-exoplayer:1.7.1"
+        force "androidx.media3:media3-ui:1.7.1"
+        force "androidx.media3:media3-exoplayer-hls:1.7.1"
+        force "androidx.lifecycle:lifecycle-process:2.6.2"
+        // 强制使用最新版 Bugly SDK，解决版本冲突
+        force "com.tencent.bugly:crashreport:latest.release"
+    }
+    exclude group: 'com.huya.berry', module: 'sdkplayer'
+    exclude group: 'com.huya.berry', module: 'sdklive'
+    exclude group: 'com.huya.berry', module: 'sdkcamera'
+    exclude group: 'com.huya.berry', module: 'audioengineencode'
+    exclude group: 'com.huya.berry', module: 'audioenginecapture'
+    exclude group: 'com.huya.berry', module: 'imagefilter'
+    exclude group: 'com.huya.berry', module: 'rtmpupload'
+    exclude group: 'com.huya.berry', module: 'webrtc-sdk'
+    exclude group: 'org.webrtc'
+    exclude group: 'com.squareup.picasso'
+    exclude group: 'com.github.bumptech.glide'
+}
+
+// ====================================================================
+// SO 压缩：AGP 内置 stripReleaseDebugSymbols 已自动剥离 debug 符号
+// （ndkPath + debugSymbolLevel NONE），useLegacyPackaging=false 在 APK 内
+// 进一步 ZIP 压缩 SO。无需自定义脚本。
+// ====================================================================

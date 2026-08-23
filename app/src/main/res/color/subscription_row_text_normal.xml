@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 行"名称"文字 → 常规体（细体）显示：
+     有焦点/选中/激活 → 全透明（让位给上层加粗体 tv_url_bold）
+     无焦点 → 白（正常显示常规体） -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_focused="true"    android:color="#00FFFFFF"/>
+    <item android:state_selected="true"   android:color="#00FFFFFF"/>
+    <item android:state_activated="true"  android:color="#00FFFFFF"/>
+    <item android:color="#FFFFFFFF"/>
+</selector>

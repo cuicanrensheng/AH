@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 列表行背景：🔧 默认态改为全透明（去除每行的灰色矩形块，和对话框深蓝底色融合）
+     只有焦点/选中/激活（state_focused/selected/activated）才显示浅蓝底高亮
+     按下（state_pressed）显示稍深蓝按压态 -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_focused="true" android:state_pressed="false">
+        <shape android:shape="rectangle">
+            <solid android:color="#3340A9FF"/>
+            <corners android:radius="6dp"/>
+        </shape>
+    </item>
+    <item android:state_selected="true" android:state_pressed="false">
+        <shape android:shape="rectangle">
+            <solid android:color="#3340A9FF"/>
+            <corners android:radius="6dp"/>
+        </shape>
+    </item>
+    <item android:state_activated="true" android:state_pressed="false">
+        <shape android:shape="rectangle">
+            <solid android:color="#3340A9FF"/>
+            <corners android:radius="6dp"/>
+        </shape>
+    </item>
+    <item android:state_pressed="true">
+        <shape android:shape="rectangle">
+            <solid android:color="#8040A9FF"/>
+            <corners android:radius="6dp"/>
+        </shape>
+    </item>
+    <!-- 🔧 默认态：全透明，不再用 #333545 深灰 → 去除每行的灰色条块 -->
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#00000000"/>
+            <corners android:radius="6dp"/>
+        </shape>
+    </item>
+</selector>

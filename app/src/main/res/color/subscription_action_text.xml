@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 复制/删除按钮文字颜色：聚焦=蓝#40A9FF；默认白#FFFFFF -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_focused="true"    android:color="#FF40A9FF"/>
+    <item android:state_selected="true"   android:color="#FF40A9FF"/>
+    <item android:state_activated="true"  android:color="#FF40A9FF"/>
+    <item android:color="#FFFFFFFF"/>
+</selector>

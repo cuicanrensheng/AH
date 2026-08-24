@@ -31,8 +31,8 @@ android {
         applicationId "com.tv.live"
         minSdk 21
         targetSdk 36
-        versionCode 146
-        versionName "2.0.146"
+        versionCode 148
+        versionName "2.0.148"
         resConfigs "zh"
         multiDexEnabled true
         // 关键：开启 vector 支持库。否则 AppCompat 在启动加载 <vector> 资源（adaptive icon/

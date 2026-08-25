@@ -66,15 +66,82 @@
 # 关键：必须覆盖所有"虎牙"相关的前缀包（含兄弟包），否则 R8 会混淆 native 方法名，
 #       SO 内部通过 JNI_OnLoad + RegisterNatives 找不到 Java 端方法 → 运行时崩溃：
 #         NoSuchMethodError: no non-static method "Lcom/huyaudb/HuyaAuthCore;.sendNet(JI[B)V"
--keep class com.huya.** { *; }
+# ===== 虎牙 SDK 收缩策略（v3.3 全量强 keep 版）=====
+# 实测历史：
+#   - debug 版（R8 不生效）解析正常：房间 2 线路 × 4 码率（蓝光6M/蓝光4M/超清/流畅）
+#   - v3.1/v3.2（com.huya.** allowshrinking）release：码率列表只剩 1 项（仅蓝光4M）
+#     —— 根因：SMObject/PlayerHelper 的码率构建代码（GetLivingInfoRsp →
+#       SMObject.SingleStreamInfo.bitRateInfoList 填充）被 R8 收缩删除，
+#       只留默认档兜底。App 侧 liveInfo.getBitRateList() 遍历该列表 → 只剩 1 档。
+# 因此 com.huya.** 必须整体不收缩（保留完整码率构建逻辑）。
+# 例外：SdkPlayerService / CommonService / CrashService 必须保持"构造器被删"
+#       （SDK 用 getService(XXX) != null 抛 ClassCastException 做组件校验，
+#       构造器保留 → createService 注册成功 → init 抛异常）。ProGuard 类名
+#       过滤用 ! 排除这 3 个类，使它们只命中下方各自的 allowshrinking 规则。
+# 注意：ProGuard 同一类匹配多条 keep 规则时，任一规则不允许收缩则该类不收缩；
+#       被 ! 排除的类不匹配本规则，仅匹配各自的 allowshrinking 规则 → 可收缩。
+-keep class !com.huya.berry.sdkplayer.SdkPlayerService,!com.huya.berry.gamesdk.module.CommonService,!com.huya.berry.gamesdk.crash.CrashService,com.huya.** { *; }
+-keep,allowshrinking class com.huya.berry.sdkplayer.SdkPlayerService { *; }
+-keep,allowshrinking class com.huya.berry.gamesdk.module.CommonService { *; }
+-keep,allowshrinking class com.huya.berry.gamesdk.crash.CrashService { *; }
 -keep class com.duowan.** { *; }
 -keep class com.duowan.live.** { *; }
 -keep class com.duowan.kiwi.** { *; }
 # 虎牙兄弟包（com.huya.* 不会匹配 com.huyaudb.*，必须单独列出）
+# UDB 登录/鉴权模块：libudbauthunify.so 经 JNI 动态加载，强 keep
+# 注意 proguard 通配符：com.huyaudbunify 与 com.huyaudb 是两个独立前缀，必须分别列出
+-keep class com.huyaudbunify.** { *; }
 -keep class com.huyaudb.** { *; }
+-keep class com.hycom.** { *; }
+# 设备指纹 libhydeviceid.so 的 JNI 回调类（com.duowan.kiwi 已在上面 keep）
+-keep class com.huya.nimo.** { *; }
 -keep class com.huyaosdk.** { *; }
 -keep class com.huyahi.** { *; }
 -keep class com.huyall.** { *; }
+
+# ===== SDK 反射实例化类构造器强 keep（v3.1 关键修复）=====
+# 背景：上面的 -keep,allowshrinking 允许 R8 移除"仅被反射 newInstance() 使用"
+#       的无参构造器。而 SDK 内部 Ark.startModule()（ArkModule 子类）和
+#       ServiceHelper.createService()（服务实现类）全部用反射实例化：
+#       - FeedBackModule 构造器被删 → InstantiationException → crashIfDebug
+#         → onCrashIfDebug 无条件 throw RuntimeException → HuyaBerry.init 失败
+#         → SDK 回调永不触发（12:01 release 实测 "❌ HuyaBerry init 失败"）
+#       - 登录/解析必需的服务类构造器被删 → createService 静默失败 → 服务未
+#         注册 → 解析/登录链路缺服务
+# 修复：对这些类显式强 keep <init>（-keep 默认禁止收缩构造器）。
+# ⚠️ 刻意不 keep（SDK 用 getService(XXX) != null 抛 ClassCastException 做组件
+#    校验，必须保持"注册失败"）：SdkPlayerService / CommonService / CrashService
+#    ——它们只被 cls.newInstance() 反射使用，allowshrinking 下 R8 会确定性删除
+#   其构造器，createService 静默失败 → 服务未注册 → 校验通过（不抛）。
+-keep class com.duowan.live.one.module.uploadLog.FeedBackModule { <init>(); }
+-keep class com.huya.berry.module.HysignalPushModule { <init>(); }
+-keep class com.huya.berry.LoginSdkService { <init>(); }
+-keep class com.huya.component.login.module.LoginModule { <init>(); }
+-keep class com.huya.component.user.module.UserService { <init>(); }
+-keep class com.huya.berry.sdkcamera.SdkCameraService { <init>(); }
+-keep class com.huya.berry.sdklivelist.SdkLiveListService { <init>(); }
+-keep class com.huya.berry.modifytitle.ModifyTitleService { <init>(); }
+-keep class com.huya.berry.endlive.EndLiveService { <init>(); }
+-keep class com.huya.berry.module.live.SdkLiveService { <init>(); }
+-keep class com.huya.berry.sdklive.LiveService { <init>(); }
+-keep class com.huya.berry.forcelive.ForceLiveService { <init>(); }
+
+# ===== JCE/Wup 协议结构体强 keep（v3.2 关键修复）=====
+# 背景：Wup 协议响应解析 getObjectFromUniPacket →
+#       Reflect.on(cls).createAuto(false) 反射实例化响应类。R8 收缩把
+#       JCE 结构体（extends JceStruct）删成 abstract 空类（构造器/字段/
+#       readFrom/writeTo 全删）→ createAuto 抛 InstantiationException →
+#       ParseException("Cannot initialize proxy") → getLivingInfo 失败
+#       → App 显示"获取参数失败，请重试"→ 解析失败（12:17 release 实测）。
+# 修复：com.duowan.** 已在上方改为强 keep（不收缩），覆盖协议 DTO 核心包
+#       com.duowan.HUYA.* 及 jce/taf/networkmars 序列化框架；此处对
+#       com.huya 侧含 JceStruct 的协议包同样强 keep，防止内部 Wup/WebSocket
+#       信令解析反射实例化失败。
+-keep class com.huya.hysignal.jce.** { *; }
+-keep class com.huya.hyhttpdns.jce.** { *; }
+-keep class com.huya.statistics.jce.** { *; }
+-keep class com.huya.mtp.hyns.miniprogram.jce.** { *; }
+-keep class com.huya.mtp.hyns.api.** { *; }
 
 # ============== WebView + JS 接口 ==============
 -keepclassmembers class * extends android.webkit.WebViewClient {
@@ -149,10 +216,12 @@
 -keep class com.huya.mtp.** { *; }
 
 # RxJava1/2/3 通用
+# 注：仅对 RxJava 开启 allowshrinking（第三方库，SDK 静态引用，可安全收缩未用 operator）
+# 虎牙 SDK 自身包保持强 keep（实测 allowshrinking 会删掉 SDK 反射依赖导致解析超时）
 -dontwarn rx.**
 -dontwarn io.reactivex.**
--keep class rx.** { *; }
--keep class io.reactivex.** { *; }
+-keep,allowshrinking class rx.** { *; }
+-keep,allowshrinking class io.reactivex.** { *; }
 -keep class com.google.gson.** { *; }
 -keep class com.google.gson.reflect.TypeToken { *; }
 -keep class * extends com.google.gson.reflect.TypeToken
@@ -181,11 +250,22 @@
 # ============== Bugly SDK（日志上报/崩溃监控） ==============
 # Bugly SDK 使用反射和 native 方法，必须完整保留
 -keep class com.tencent.bugly.** { *; }
+# 重点：CrashReport 常用 API 单独保留（防止未来 bugly 版本拆包导致通配符漏匹配）
+-keep class com.tencent.bugly.crashreport.CrashReport { *; }
+-keep class com.tencent.bugly.Bugly { *; }
 -dontwarn com.tencent.bugly.**
 # Bugly native so 库保留
 -keepclasseswithmembernames class * {
     native <methods>;
 }
+
+# —— TVLive 接入 Bugly / 虎牙SDK 异常上报的关键业务类（防止 R8 优化导致静态入口被移除/改名）——
+# BuglyLogSender：所有 reportXxxSafely / reportHuyaXxx 对外入口（含被其它类直接 Java 调用 & 内部反射 postTrackEvent）
+-keep class com.tv.live.util.BuglyLogSender { *; }
+# ExceptionReporter：全局 catch(Throwable) 时统一调用的静态入口（report / reportHuyaBusinessFailure）
+-keep class com.tv.live.util.ExceptionReporter { *; }
+# HuyaSDKLogger：虎牙 SDK 事件/回调/错误 的第一现场分发器（含被虎牙SDK的 BerryEvent/CustomUICallback 反射调用路径）
+-keep class com.tv.live.util.HuyaSDKLogger { *; }
 
 # ============== 项目业务类 ==============
 # MainActivity 入口（防止被混淆找不到）
@@ -206,6 +286,9 @@
 }
 
 # 保留关键业务类的完整实现（防止 R8 移除 Java fallback 或网络重试逻辑）
+# HuyaParser：旧版 APK 即含此解析兜底类，虽无静态引用，但为与旧版文件结构完全一致
+# 并规避虎牙 SDK 生态可能的运行时类探测，显式 keep 防止 R8 移除
+-keep class com.tv.live.util.HuyaParser { *; }
 -keep class com.tv.live.loader.LiveSourceLoader { *; }
 -keep class com.tv.live.loader.** { *; }
 -keep class com.tv.live.PlaylistParser { *; }

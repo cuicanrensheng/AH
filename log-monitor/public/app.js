@@ -10,18 +10,22 @@ let adbAvailable = false;
 let discoveredDevices = [];
 const startTime = Date.now();
 
-const MAX_VISIBLE_LOGS = 2000;
+const MAX_VISIBLE_LOGS = 500;
 const MAX_LOGS = 100000;
+const RENDER_CHUNK_SIZE = 100;
 let pendingLogs = [];
 let renderScheduled = false;
 let lastRenderTime = 0;
 const MIN_RENDER_INTERVAL = 16;
+let _lastPerfRender = 0;
+const MIN_PERF_RENDER_INTERVAL = 2000;
 
 const logContainer = document.getElementById('logList');
 const networkContainer = document.getElementById('networkList');
 const playbackContainer = document.getElementById('playbackList');
 const debugContainer = document.getElementById('debugList');
 const crashContainer = document.getElementById('crashList');
+const huyaContainer = document.getElementById('huyaList');
 const serverStatus = document.getElementById('serverStatus');
 const serverStatusText = document.getElementById('serverStatusText');
 const deviceCount = document.getElementById('deviceCount');
@@ -37,6 +41,128 @@ const typeLabels = {
   crash: '崩溃', network: '网络', parse: '解析',
   playback: '播放', operation: '操作'
 };
+
+// ========== 表单输入反向插入修复 ==========
+// 症状：清空内容后输入 42437 结果变成 73424（倒着输入）
+// 根因：
+//   1) inputmode="numeric" + 中文输入法/某些 Chromium/IME 会把新字符插到 value 开头
+//   2) 第三方监听器把字符 prepend（ch + value）
+// 防护：对 ADB 连接 / WiFi 配对 / 虎牙房间号 这些输入框
+//   a) 强制 dir=ltr / 光标聚焦时放末尾
+//   b) 记住上次 value，当检测到「只新增 1 个字符且该字符在 index=0」时，把那个字符搬到光标位置
+//   c) 如果检测到「新增的多字符整体反转」（例如 42→24），也纠正
+(function () {
+  const protectedIds = [
+    'deviceIp', 'devicePort',        // 手动连接
+    'pairIp', 'pairPort', 'pairingCode', // WiFi 配对
+    'huyaRoomId'                     // 虎牙房间号
+  ];
+  const lastValue = new Map();
+
+  function forceLtr(el) {
+    if (!el) return;
+    el.setAttribute('dir', 'ltr');
+    el.style.direction = 'ltr';
+    el.style.textAlign = 'start';
+    el.style.unicodeBidi = 'plaintext';
+  }
+
+  function moveCaretToEnd(el) {
+    try {
+      if (typeof el.selectionStart === 'number') {
+        const end = (el.value || '').length;
+        el.setSelectionRange(end, end);
+      }
+    } catch (_) { /* 某些 type 不支持，忽略 */ }
+  }
+
+  // 修复「输入被插到开头」的核心逻辑
+  function fixReversedInsertion(el, prev, next) {
+    if (prev == null) return next;
+    if (prev === next) return next;
+
+    // case 1: 单字符插入到开头，length 刚好 +1，next[0] 是新字符，next.slice(1) === prev
+    if (next.length === prev.length + 1 && next.slice(1) === prev) {
+      const ch = next.charAt(0);
+      // 把这个字符放到之前光标应该在的位置（也就是 prev 的末尾 - 因为用户刚清空/输入时焦点在末尾）
+      // 如果 prev 末尾本来就不是末尾，也放到 prev 末尾（清空后用户就是往末尾写）
+      const corrected = prev + ch;
+      return corrected;
+    }
+
+    // case 2: 一次粘贴/输入多字符后整体反转，例如 prev="" next="73424" 而用户想输的是 42437
+    //         启发式：如果 next 非空且 prev 为空，那么用户刚清空，我们没法直接判断 —— 不自动 reverse，
+    //         但如果用户接下来的按键继续表现为 case1，会被逐字符纠正。
+    //         这里额外处理：如果是「prev 非空，next.length = prev.length + n，next 末尾 n 个字符按顺序拼起来等于 prev」
+    //         说明连续 n 个字符都被反着插到了开头。把开头这 n 个字符拆出来 reverse 后拼到 prev 末尾
+    const Lp = prev.length;
+    const Ln = next.length;
+    if (Ln > Lp && prev === next.slice(Ln - Lp)) {
+      const prepended = next.slice(0, Ln - Lp);
+      const corrected = prev + prepended.split('').reverse().join('');
+      return corrected;
+    }
+
+    return next;
+  }
+
+  protectedIds.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    forceLtr(el);
+    lastValue.set(id, el.value || '');
+
+    el.addEventListener('focus', () => {
+      forceLtr(el);
+      // 聚焦后把光标放到末尾（除非用户自己点到了中间位置；focus 阶段无法判断，就统一放末尾）
+      if (document.activeElement === el) {
+        // 延迟一帧，避免 IME 重置位置
+        setTimeout(() => moveCaretToEnd(el), 0);
+      }
+    });
+
+    el.addEventListener('click', () => {
+      forceLtr(el);
+    });
+
+    // beforeinput 时先记录 prev，避免被第三方监听器在 beforeinput 阶段就改写
+    el.addEventListener('beforeinput', () => {
+      lastValue.set(id, el.value || '');
+    });
+
+    el.addEventListener('input', () => {
+      forceLtr(el);
+      const prev = lastValue.get(id) ?? '';
+      const cur = el.value || '';
+      const corrected = fixReversedInsertion(el, prev, cur);
+      if (corrected !== cur) {
+        // 保持光标在末尾
+        el.value = corrected;
+        setTimeout(() => moveCaretToEnd(el), 0);
+        lastValue.set(id, corrected);
+      } else {
+        lastValue.set(id, cur);
+      }
+    });
+
+    // keydown 兜底：如果检测到扩展/监听器 preventDefault 了 keydown 但自己 prepend 字符
+    // 这里在 keydown 之后 0ms 再扫一遍 value
+    el.addEventListener('keydown', () => {
+      const prev = el.value || '';
+      lastValue.set(id, prev);
+      setTimeout(() => {
+        forceLtr(el);
+        const cur = el.value || '';
+        const corrected = fixReversedInsertion(el, prev, cur);
+        if (corrected !== cur) {
+          el.value = corrected;
+          moveCaretToEnd(el);
+          lastValue.set(id, corrected);
+        }
+      }, 0);
+    });
+  });
+})();
 
 function initWebSocket() {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -152,7 +278,7 @@ function flushPendingLogs() {
   const batch = pendingLogs.splice(0, pendingLogs.length);
   lastRenderTime = now;
 
-  if (currentView === 'logs' || currentView === 'network' || currentView === 'playback' || currentView === 'debug' || currentView === 'crashes') {
+  if (currentView === 'logs' || currentView === 'network' || currentView === 'playback' || currentView === 'debug' || currentView === 'crashes' || currentView === 'huya') {
     const newLogs = [];
     for (const log of batch) {
       addLogImmediate(log);
@@ -164,10 +290,21 @@ function flushPendingLogs() {
     } else {
       appendLogElements(newLogs);
     }
-    updateStats();
+    if (currentView === 'stats') {
+      updateStats();
+    }
   } else {
     for (const log of batch) addLogImmediate(log);
     logCount.textContent = logs.length;
+
+    // 性能视图下，有新日志时按节流频率刷新 renderPerformance（播放/网络计数会实时变化）
+    if (currentView === 'performance') {
+      const now2 = Date.now();
+      if (now2 - _lastPerfRender >= MIN_PERF_RENDER_INTERVAL) {
+        _lastPerfRender = now2;
+        try { renderPerformance(); } catch (_) {}
+      }
+    }
   }
 
   renderScheduled = false;
@@ -177,13 +314,19 @@ function flushPendingLogs() {
 }
 
 function appendLogElements(newLogs) {
-  const filtered = getFilteredLogs();
-  const visibleFiltered = filtered.slice(-MAX_VISIBLE_LOGS);
-  const reversed = [...visibleFiltered].reverse();
   const container = getCurrentContainer();
   if (!container) return;
 
-  if (container.childElementCount > MAX_VISIBLE_LOGS) {
+  // 如果启用了任何过滤（仅看应用日志/类型/设备/搜索），走完整 renderLogs 保证过滤一致
+  const typeValue = typeFilter.value;
+  const deviceValue = deviceFilter.value;
+  const searchValue = searchFilter.value;
+  if (filterSystemLogs || typeValue || deviceValue || searchValue) {
+    renderLogs();
+    return;
+  }
+
+  if (container.childElementCount >= MAX_VISIBLE_LOGS) {
     renderLogs();
     return;
   }
@@ -226,56 +369,68 @@ function getCurrentContainer() {
     case 'playback': return playbackContainer;
     case 'debug': return debugContainer;
     case 'crashes': return crashContainer;
+    case 'huya': return huyaContainer;
     default: return null;
   }
 }
 
 function renderLogs() {
-  const filtered = getFilteredLogs();
-  const visibleLogs = filtered.slice(-MAX_VISIBLE_LOGS);
-  const reversed = [...visibleLogs].reverse();
-  
-  if (currentView === 'logs') {
-    logContainer.innerHTML = '';
-    const fragment = document.createDocumentFragment();
-    reversed.forEach(log => fragment.appendChild(createLogElement(log)));
-    logContainer.appendChild(fragment);
-    if (autoScroll && logContainer.firstChild) logContainer.scrollTop = 0;
-  } else if (currentView === 'network') {
-    networkContainer.innerHTML = '';
-    const fragment = document.createDocumentFragment();
-    reversed.filter(l => (l.logType || l.type) === 'network').forEach(log => {
-      fragment.appendChild(createLogElement(log));
-    });
-    networkContainer.appendChild(fragment);
-    if (autoScroll && networkContainer.firstChild) networkContainer.scrollTop = 0;
-  } else if (currentView === 'playback') {
-    playbackContainer.innerHTML = '';
-    const fragment = document.createDocumentFragment();
-    reversed.filter(l => (l.logType || l.type) === 'playback').forEach(log => {
-      fragment.appendChild(createLogElement(log));
-    });
-    playbackContainer.appendChild(fragment);
-    if (autoScroll && playbackContainer.firstChild) playbackContainer.scrollTop = 0;
-  } else if (currentView === 'debug') {
-    debugContainer.innerHTML = '';
-    const fragment = document.createDocumentFragment();
-    reversed.filter(l => (l.logType || l.type) === 'debug').forEach(log => {
-      fragment.appendChild(createLogElement(log));
-    });
-    debugContainer.appendChild(fragment);
-    if (autoScroll && debugContainer.firstChild) debugContainer.scrollTop = 0;
-  } else if (currentView === 'crashes') {
-    crashContainer.innerHTML = '';
-    const fragment = document.createDocumentFragment();
-    reversed.filter(l => l.logType === 'crash' || l.type === 'crash').forEach(log => {
-      const el = createLogElement(log);
-      el.style.borderLeftColor = 'var(--crash)';
-      fragment.appendChild(el);
-    });
-    crashContainer.appendChild(fragment);
-    if (autoScroll && crashContainer.firstChild) crashContainer.scrollTop = 0;
+  const container = getCurrentContainer();
+  if (!container) return;
+
+  const targetTypeMap = {
+    'logs': null,
+    'network': 'network',
+    'playback': 'playback',
+    'debug': 'debug',
+    'crashes': ['crash', 'error']
+  };
+  const targetType = targetTypeMap[currentView] || null;
+  const typeValue = typeFilter.value;
+  const combinedType = typeValue || targetType;
+  const isArrayType = Array.isArray(combinedType);
+  const searchValue = searchFilter.value;
+  const hasSearch = !!searchValue;
+  const searchLower = hasSearch ? searchValue.toLowerCase() : '';
+  const deviceValue = deviceFilter.value;
+  const hasDevice = !!deviceValue;
+
+  const ringBuf = new Array(MAX_VISIBLE_LOGS);
+  let bufLen = 0;
+  let bufStart = 0;
+
+  for (let i = 0; i < logs.length; i++) {
+    const l = logs[i];
+    if (filterSystemLogs && l.isSystemLog) continue;
+    if (currentView === 'huya' && !l.isHuyaSdk) continue;
+    const logType = l.logType || l.type || 'info';
+    if (combinedType) {
+      if (isArrayType) {
+        if (!combinedType.includes(logType)) continue;
+      } else {
+        if (logType !== combinedType) continue;
+      }
+    }
+    if (hasDevice && l.deviceId !== deviceValue) continue;
+    if (hasSearch) {
+      const tag = (l.tag || '').toLowerCase();
+      const message = (l.message || '').toLowerCase();
+      if (!tag.includes(searchLower) && !message.includes(searchLower)) continue;
+    }
+    ringBuf[bufStart] = l;
+    bufStart = (bufStart + 1) % MAX_VISIBLE_LOGS;
+    if (bufLen < MAX_VISIBLE_LOGS) bufLen++;
   }
+
+  container.innerHTML = '';
+  const fragment = document.createDocumentFragment();
+  for (let i = 0; i < bufLen; i++) {
+    const idx = (bufStart - 1 - i + MAX_VISIBLE_LOGS) % MAX_VISIBLE_LOGS;
+    fragment.appendChild(createLogElement(ringBuf[idx]));
+  }
+  container.appendChild(fragment);
+  if (autoScroll && container.firstChild) container.scrollTop = 0;
+
   logCount.textContent = logs.length;
 }
 
@@ -326,24 +481,32 @@ function createLogElement(log) {
 }
 
 function getFilteredLogs() {
-  let filtered = logs;
-  // 过滤系统日志
-  if (filterSystemLogs) {
-    filtered = filtered.filter(l => !l.isSystemLog);
-  }
   const typeValue = typeFilter.value;
-  if (typeValue) filtered = filtered.filter(l => (l.logType || l.type) === typeValue);
   const deviceValue = deviceFilter.value;
-  if (deviceValue) filtered = filtered.filter(l => l.deviceId === deviceValue);
   const searchValue = searchFilter.value.toLowerCase();
-  if (searchValue) {
-    filtered = filtered.filter(l => {
+  const hasSearch = !!searchValue;
+  const hasType = !!typeValue;
+  const hasDevice = !!deviceValue;
+  const hasSystemFilter = filterSystemLogs;
+
+  if (!hasSearch && !hasType && !hasDevice && !hasSystemFilter) {
+    return logs;
+  }
+
+  const result = [];
+  for (let i = 0; i < logs.length; i++) {
+    const l = logs[i];
+    if (hasSystemFilter && l.isSystemLog) continue;
+    if (hasType && (l.logType || l.type) !== typeValue) continue;
+    if (hasDevice && l.deviceId !== deviceValue) continue;
+    if (hasSearch) {
       const tag = (l.tag || '').toLowerCase();
       const message = (l.message || '').toLowerCase();
-      return tag.includes(searchValue) || message.includes(searchValue);
-    });
+      if (!tag.includes(searchValue) && !message.includes(searchValue)) continue;
+    }
+    result.push(l);
   }
-  return filtered;
+  return result;
 }
 
 function updateDeviceList(deviceListData) {
@@ -716,7 +879,9 @@ async function scanAdbDevices() {
   btn.querySelector('span:last-child').textContent = '扫描中...';
   
   try {
-    const response = await fetch('/api/adb/devices');
+    // 带 autoStart=true：服务端会把所有 state=device 且还没启动 logcat 的设备自动拉起抓日志
+    // 这样解决了「工具箱下拉框里能看到设备，但点击扫描ADB设备后没日志输出」的问题
+    const response = await fetch('/api/adb/devices?autoStart=true');
     const result = await response.json();
     const listEl = document.getElementById('adbDeviceList');
     const container = document.getElementById('adbDevices');
@@ -734,7 +899,8 @@ async function scanAdbDevices() {
         if (device.state !== 'device') item.classList.add('offline');
         
         const stateLabel = device.state === 'device' ? 'ADB已连接' : 
-                          device.state === 'offline' ? '离线' : '未授权';
+                          device.state === 'offline' ? '离线' :
+                          device.state === 'authorizing' ? '正在授权…' : '未授权';
         
         const canConnect = device.state === 'device';
         item.innerHTML = `
@@ -756,13 +922,14 @@ async function scanAdbDevices() {
         container.appendChild(item);
       });
       
-      // 如果只有一台设备且可用，自动连接
+      // 如果只有一台设备且可用，仍调用 connectAdbDevice（内部会做去重；即使 logcat 已经被服务端 autoStart 拉起来了，
+      // 也只是做一次端口转发/启动TVLive的重复尝试，无副作用）
       const availableDevices = result.devices.filter(d => d.state === 'device');
       if (availableDevices.length === 1) {
-        showToast(`发现设备，正在自动连接...`, 'info');
+        showToast(`发现设备，正在自动连接并启动日志...`, 'info');
         await connectAdbDevice(availableDevices[0].serial);
       } else {
-        showToast(`发现 ${result.devices.length} 台 ADB 设备，点击设备连接`, 'success');
+        showToast(`发现 ${result.devices.length} 台 ADB 设备，点击设备连接（已为可连接设备自动启动日志抓取）`, 'success');
       }
     } else {
       countEl.textContent = 0;
@@ -961,29 +1128,30 @@ document.getElementById('quickClearBtn').addEventListener('click', async () => {
   showToast('日志已清空', 'success');
 });
 
-document.getElementById('exportLogsBtn').addEventListener('click', () => {
-  const params = new URLSearchParams();
-  const deviceId = deviceFilter.value;
-  const type = typeFilter.value;
-  if (deviceId) params.append('deviceId', deviceId);
-  if (type) params.append('type', type);
-  window.location.href = `/api/logs/export?${params.toString()}`;
-});
-
 document.getElementById('autoScroll').addEventListener('change', (e) => { autoScroll = e.target.checked; });
 document.getElementById('pauseLogs').addEventListener('change', (e) => { pauseUpdates = e.target.checked; });
 document.getElementById('autoClearOnDisconnect').addEventListener('change', (e) => { autoClearOnDisconnect = e.target.checked; });
+document.getElementById('filterSystemLogs').addEventListener('change', (e) => {
+  filterSystemLogs = e.target.checked;
+  localStorage.setItem('filterSystemLogs', filterSystemLogs);
+  renderLogs();
+});
 
+let tabSwitchTimer = null;
 document.querySelectorAll('.tab').forEach(tab => {
   tab.addEventListener('click', () => {
+    const newView = tab.dataset.view;
+    if (newView === currentView) return;
+    
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     tab.classList.add('active');
-    currentView = tab.dataset.view;
+    currentView = newView;
     document.getElementById('logsView').classList.toggle('hidden', currentView !== 'logs');
     document.getElementById('networkView').classList.toggle('hidden', currentView !== 'network');
     document.getElementById('playbackView').classList.toggle('hidden', currentView !== 'playback');
     document.getElementById('debugView').classList.toggle('hidden', currentView !== 'debug');
     document.getElementById('crashesView').classList.toggle('hidden', currentView !== 'crashes');
+    document.getElementById('huyaView').classList.toggle('hidden', currentView !== 'huya');
     document.getElementById('statsView').classList.toggle('hidden', currentView !== 'stats');
     document.getElementById('timelineView').classList.toggle('hidden', currentView !== 'timeline');
     document.getElementById('performanceView').classList.toggle('hidden', currentView !== 'performance');
@@ -993,34 +1161,32 @@ document.querySelectorAll('.tab').forEach(tab => {
       currentView === 'playback' ? '仅显示播放日志' :
       currentView === 'debug' ? '仅显示调试日志' :
       currentView === 'crashes' ? '仅显示崩溃日志' :
+      currentView === 'huya' ? '🐯 虎牙SDK 日志' :
       currentView === 'timeline' ? '时间线视图' :
       currentView === 'performance' ? '性能分析视图' :
       '显示统计信息';
     
-    // 根据视图类型触发对应的渲染（延迟一帧确保DOM已更新）
-    if (currentView === 'timeline') {
-      requestAnimationFrame(() => renderTimeline());
-    } else if (currentView === 'performance') {
-      requestAnimationFrame(() => {
+    if (tabSwitchTimer) cancelAnimationFrame(tabSwitchTimer);
+    
+    tabSwitchTimer = requestAnimationFrame(() => {
+      if (currentView === 'timeline') {
+        renderTimeline();
+      } else if (currentView === 'performance') {
         renderPerformance();
-        // 再次延迟绘制Canvas确保容器已完全渲染
         setTimeout(() => {
           const canvas = document.getElementById('perfCanvas');
           if (canvas && logs.length >= 2) {
             drawPerformanceChart();
           }
         }, 100);
-      });
-    } else {
-      // 其他标签页停止性能更新
-      if (perfUpdateInterval) {
-        clearInterval(perfUpdateInterval);
-        perfUpdateInterval = null;
+      } else {
+        if (perfUpdateInterval) {
+          clearInterval(perfUpdateInterval);
+          perfUpdateInterval = null;
+        }
+        renderLogs();
       }
-    }
-    
-    renderLogs();
-    updateStats();
+    });
   });
 });
 
@@ -1091,6 +1257,13 @@ if (savedAutoClear !== null) {
   document.getElementById('autoClearOnDisconnect').checked = autoClearOnDisconnect;
 }
 
+// 恢复仅看应用日志设置
+const savedFilterSystemLogs = localStorage.getItem('filterSystemLogs');
+if (savedFilterSystemLogs !== null) {
+  filterSystemLogs = savedFilterSystemLogs === 'true';
+  document.getElementById('filterSystemLogs').checked = filterSystemLogs;
+}
+
 // 保存自动清空设置
 document.getElementById('autoClearOnDisconnect').addEventListener('change', (e) => {
   autoClearOnDisconnect = e.target.checked;
@@ -1148,30 +1321,122 @@ function getToolboxSerial() {
   return sel ? sel.value : '';
 }
 
-function updateToolboxDevices() {
-  const sel = document.getElementById('toolboxDeviceSel');
-  if (!sel) return;
-  const prevValue = sel.value;
-  fetch('/api/adb/devices').then(r => r.json()).then(result => {
-    if (!result.success) return;
-    const devices = result.devices.filter(d => d.state === 'device');
-    sel.innerHTML = '<option value="">请选择设备</option>';
-    devices.forEach(d => {
-      const opt = document.createElement('option');
-      opt.value = d.serial;
-      const label = d.isEmulator ? ' (模拟器)' : '';
-      const model = d.model && d.model !== 'Unknown' ? ` [${d.model}]` : '';
-      opt.textContent = `${d.serial}${label}${model}`;
-      sel.appendChild(opt);
+// 选择性能监控用的设备 serial：优先性能卡自己的 select，否则用工具箱的
+function getPerformanceSerial() {
+  const perfSel = document.getElementById('deviceSelect');
+  const toolSel = document.getElementById('toolboxDeviceSel');
+  const perfVal = perfSel && perfSel.value ? perfSel.value : '';
+  const toolVal = toolSel && toolSel.value ? toolSel.value : '';
+  return perfVal || toolVal || '';
+}
+
+// 渲染 options 到某个 select 元素（统一格式：serial + 模拟器标签 + 型号）
+function _renderDeviceOptions(sel, devices, { prevValue, placeholder, autoSelectSingle, emitChange }) {
+  if (!sel) return null;
+  sel.innerHTML = `<option value="">${placeholder || '请选择设备'}</option>`;
+  devices.forEach(d => {
+    const opt = document.createElement('option');
+    opt.value = d.serial;
+    const label = d.isEmulator ? ' (模拟器)' : '';
+    const model = d.model && d.model !== 'Unknown' ? ` [${d.model}]` : '';
+    opt.textContent = `${d.serial}${label}${model}`;
+    sel.appendChild(opt);
+  });
+  let picked = '';
+  if (prevValue && devices.find(d => d.serial === prevValue)) {
+    picked = prevValue;
+  } else if (autoSelectSingle && devices.length === 1) {
+    picked = devices[0].serial;
+  } else if (devices.length > 0 && !prevValue) {
+    // 默认挑第一个 device 状态的，避免性能卡永远显示"未连接"
+    picked = devices[0].serial;
+  }
+  if (picked) {
+    sel.value = picked;
+    if (emitChange) sel.dispatchEvent(new Event('change'));
+  }
+  return picked;
+}
+
+// 把工具箱 select 与性能卡 select 互相同步（改变其中一个，另一个跟随；避免两处手动维护）
+let _syncingSelects = false;
+function _bindDeviceSelectsSync() {
+  const perfSel = document.getElementById('deviceSelect');
+  const toolSel = document.getElementById('toolboxDeviceSel');
+  [perfSel, toolSel].forEach(sel => {
+    if (!sel) return;
+    if (sel.dataset._perfBound === '1') return;
+    sel.dataset._perfBound = '1';
+    sel.addEventListener('change', () => {
+      if (_syncingSelects) return;
+      _syncingSelects = true;
+      try {
+        const other = sel === perfSel ? toolSel : perfSel;
+        const v = sel.value;
+        if (other && v && other.value !== v) {
+          // 若对方 options 里包含这个值才同步，否则不改（可能工具箱拉到新设备但性能卡尚未刷新）
+          const found = Array.from(other.options).some(o => o.value === v);
+          if (found) {
+            other.value = v;
+            other.dispatchEvent(new Event('change'));
+          }
+        }
+        // 用户切换了监控设备 → 立即拉一次性能数据，不再等 5s 轮询
+        fetchDevicePerformance().catch(() => {});
+      } finally {
+        _syncingSelects = false;
+      }
     });
-    // 自动选择：保持之前选择或选择第一个设备
-    if (prevValue && devices.find(d => d.serial === prevValue)) {
-      sel.value = prevValue;
-    } else if (devices.length === 1) {
-      sel.value = devices[0].serial;
-      sel.dispatchEvent(new Event('change'));
+  });
+}
+
+// 统一刷新两个设备下拉（工具箱 + 实时性能卡），并自动选一个可用设备
+async function updateAllDeviceSelects(opts = {}) {
+  const toolSel = document.getElementById('toolboxDeviceSel');
+  const perfSel = document.getElementById('deviceSelect');
+  _bindDeviceSelectsSync();
+  const prevTool = toolSel ? toolSel.value : '';
+  const prevPerf = perfSel ? perfSel.value : '';
+  const fallbackPick = prevPerf || prevTool;
+  let devices = [];
+  try {
+    const r = await fetch('/api/adb/devices');
+    const result = await r.json();
+    if (!result.success) return [];
+    devices = (result.devices || []).filter(d => d.state === 'device');
+  } catch (_) { return []; }
+
+  _syncingSelects = true;
+  try {
+    const pickedForTool = _renderDeviceOptions(toolSel, devices, {
+      prevValue: prevTool,
+      placeholder: '请选择设备',
+      autoSelectSingle: true,
+      emitChange: false
+    });
+    const pickedForPerf = _renderDeviceOptions(perfSel, devices, {
+      prevValue: fallbackPick || pickedForTool,
+      placeholder: '请选择要读取数据的设备',
+      autoSelectSingle: true,
+      emitChange: false
+    });
+    // 兜底：性能卡空但工具箱选上了 → 跟着工具箱
+    if (perfSel && !perfSel.value && pickedForTool) {
+      perfSel.value = pickedForTool;
     }
-  }).catch(() => {});
+    // 兜底：工具箱空但性能卡选上了 → 跟着性能卡
+    if (toolSel && !toolSel.value && pickedForPerf) {
+      toolSel.value = pickedForPerf;
+    }
+  } finally {
+    _syncingSelects = false;
+  }
+  return devices;
+}
+
+// 向后兼容：原 setInterval(updateToolboxDevices, 3000) 与 btn listener 都调用这个名字
+function updateToolboxDevices() {
+  return updateAllDeviceSelects();
 }
 
 function showToolboxResult(html, type = 'info') {
@@ -1302,18 +1567,34 @@ document.getElementById('btnInstallApk').addEventListener('click', () => {
     if (!file) return;
     const serial = getToolboxSerial();
     if (!serial) { showToast('请先选择设备', 'error'); return; }
-    
-    showToast('正在读取 APK 文件...', 'info');
+
+    // 前端以 application/octet-stream 直传二进制文件，避免 base64 膨胀 33% 并踩 JSON size 上限
+    const url = new URL('/api/adb/install', window.location.origin);
+    url.searchParams.set('serial', serial);
+    url.searchParams.set('fileName', file.name);
+    showToast(`正在上传并安装 APK (${(file.size / 1024 / 1024).toFixed(2)}MB)...`, 'info');
     try {
-      const apkData = await fileToBase64(file);
-      showToast('正在安装 APK 到设备...', 'info');
-      const res = await fetch('/api/adb/install', {
+      const res = await fetch(url.toString(), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ serial, apkPath: file.name, apkData })
+        headers: {
+          'Content-Type': 'application/octet-stream',
+          'X-File-Name': encodeURIComponent(file.name)
+        },
+        body: file
       });
-      const data = await res.json();
-      showToolboxResult(data.success ? `<pre>${data.output || '安装成功'}</pre>` : `<span class="result-error">${data.error}</span>`, data.success ? 'success' : 'error');
+      let data;
+      try {
+        data = await res.json();
+      } catch (parseE) {
+        const txt = await res.text();
+        throw new Error(`服务器返回非 JSON (HTTP ${res.status}): ${txt.slice(0, 120)}`);
+      }
+      showToolboxResult(
+        data.success
+          ? `<pre>${data.output || '安装成功'}</pre>`
+          : `<span class="result-error">${data.error || '安装失败'}</span>`,
+        data.success ? 'success' : 'error'
+      );
     } catch (e) {
       showToolboxResult(`<span class="result-error">${e.message}</span>`, 'error');
     }
@@ -1373,18 +1654,35 @@ document.getElementById('btnPushFile').addEventListener('click', () => {
     showToolboxPrompt('📤 推送到设备', [
       { name: 'remotePath', label: '设备端路径', value: '/sdcard/' + file.name, placeholder: '/sdcard/...' }
     ], async (v) => {
-      showToast('正在推送...', 'info');
       const serial = getToolboxSerial();
       if (!serial) return;
-      const localPath = file.name;
+      const remotePath = (v.remotePath || '').trim() || ('/sdcard/' + file.name);
+      showToast(`正在推送 (${(file.size / 1024 / 1024).toFixed(2)}MB) → ${remotePath}`, 'info');
       try {
-        const res = await fetch('/api/adb/push', {
+        const url = new URL('/api/adb/push', window.location.origin);
+        url.searchParams.set('serial', serial);
+        url.searchParams.set('fileName', file.name);
+        url.searchParams.set('remotePath', remotePath);
+        const res = await fetch(url.toString(), {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ serial, localPath, remotePath: v.remotePath })
+          headers: {
+            'Content-Type': 'application/octet-stream',
+            'X-File-Name': encodeURIComponent(file.name),
+            'X-Remote-Path': encodeURIComponent(remotePath)
+          },
+          body: file
         });
-        const data = await res.json();
-        showToolboxResult(data.success ? `<pre>${data.output}</pre>` : `<span class="result-error">${data.error}</span>`, data.success ? 'success' : 'error');
+        let data;
+        try {
+          data = await res.json();
+        } catch (parseE) {
+          const txt = await res.text();
+          throw new Error(`服务器返回非 JSON (HTTP ${res.status}): ${txt.slice(0, 120)}`);
+        }
+        showToolboxResult(
+          data.success ? `<pre>${data.output || '推送成功'}</pre>` : `<span class="result-error">${data.error || '推送失败'}</span>`,
+          data.success ? 'success' : 'error'
+        );
       } catch (e) {
         showToolboxResult(`<span class="result-error">${e.message}</span>`, 'error');
       }
@@ -1743,16 +2041,37 @@ document.getElementById('btnTvliveSimChannel').addEventListener('click', () => {
 
 // ========== 虎牙 API 监控 ==========
 
+// 运行期凭证快照：UI 展示 + 请求 header 元数据用
+// 每次调用 /api/huya/credentials 成功后会刷新此对象
+window.currentHuyaCredentials = null;
+
+function huyaHeaders(extra = {}) {
+  const h = Object.assign({ 'Content-Type': 'application/json' }, extra || {});
+  const snap = window.currentHuyaCredentials && window.currentHuyaCredentials.raw
+    ? window.currentHuyaCredentials.raw
+    : null;
+  if (snap) {
+    try {
+      h['X-Huya-Credentials'] = btoa(unescape(encodeURIComponent(
+        `g=${snap.gameId};a=${snap.appId};s=${window.currentHuyaCredentials.source || 'unknown'}`
+      )));
+    } catch (_) { /* 某些浏览器环境下 btoa 可能抛，忽略 */ }
+  }
+  return h;
+}
+
 function huyaPost(endpoint, body) {
   return fetch(endpoint, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: huyaHeaders(),
     body: JSON.stringify(body || {})
   }).then(r => r.json());
 }
 
 function huyaGet(endpoint) {
-  return fetch(endpoint).then(r => r.json());
+  return fetch(endpoint, {
+    headers: huyaHeaders({ 'Content-Type': null }) // GET 不需要 Content-Type
+  }).then(r => r.json());
 }
 
 function showHuyaResult(html, type = 'info') {
@@ -1768,21 +2087,144 @@ function showHuyaResult(html, type = 'info') {
   result.classList.remove('hidden');
 }
 
-// 加载凭证信息
-document.getElementById('btnHuyaCredToggle').addEventListener('click', () => {
+function huyaSourceColorTag(source) {
+  if (!source) return { label: '未知', cls: '' };
+  if (source.startsWith('runtime_override') || source === 'manual_override') {
+    return { label: '手动覆盖(内存)', cls: 'huya-source-tag-manual' };
+  }
+  if (source === 'adb_logcat_game_id_plus_static_appkeys') {
+    return { label: 'ADB日志+源码合成', cls: 'huya-source-tag-adb' };
+  }
+  if (source === 'static_xor_decode') {
+    return { label: '源码XOR静态解码', cls: 'huya-source-tag-static' };
+  }
+  return { label: source, cls: '' };
+}
+
+function renderHuyaCredentials(resp) {
+  if (!resp || !resp.success) return;
+  window.currentHuyaCredentials = resp; // 缓存快照
+  const raw = resp.raw || resp.credentials || {};
+
+  const gidEl = document.getElementById('huyaGameId');
+  const aidEl = document.getElementById('huyaAppId');
+  const akeyEl = document.getElementById('huyaAppKey');
+  if (gidEl) gidEl.textContent = raw.gameId ?? '-';
+  if (aidEl) aidEl.textContent = raw.appId ?? '-';
+  if (akeyEl) akeyEl.textContent = raw.appKey ?? '-';
+
+  const tagEl = document.getElementById('huyaSourceTag');
+  if (tagEl) {
+    const { label, cls } = huyaSourceColorTag(resp.source);
+    tagEl.textContent = label;
+    tagEl.className = 'huya-source-tag ' + (cls || '');
+    tagEl.title = `来源：${resp.source || '-'}\n更新时间：${resp.updatedAt ? new Date(resp.updatedAt).toLocaleString() : '首次加载默认值'}`;
+  }
+
+  const chainRow = document.getElementById('huyaCredMeta');
+  const chainEl = document.getElementById('huyaSourceChain');
+  if (chainRow && chainEl) {
+    const chain = Array.isArray(resp.sourceChain) ? resp.sourceChain : [];
+    if (chain.length > 0) {
+      chainEl.innerHTML = chain.map((c, i) =>
+        `<span class="chain-step"><span class="chain-idx">${i + 1}</span>${escapeHtml(c)}</span>`
+      ).join('');
+      chainRow.style.display = '';
+    } else {
+      chainRow.style.display = 'none';
+    }
+  }
+
+  const devRow = document.getElementById('huyaCredDeviceRow');
+  const devEl = document.getElementById('huyaDeviceSummary');
+  if (devRow && devEl) {
+    const hasLog = !!(resp.device && resp.device.logcat);
+    const hasPrefs = !!(resp.device && resp.device.encryptedPrefs && resp.device.encryptedPrefs.exists);
+    if (resp.deviceSerial || hasLog || hasPrefs) {
+      const parts = [];
+      if (resp.deviceSerial) parts.push(`<b>ADB:</b> ${escapeHtml(String(resp.deviceSerial).slice(0, 32))}${String(resp.deviceSerial).length > 32 ? '…' : ''}`);
+      if (hasLog) {
+        const lc = resp.device.logcat;
+        const tag = lc.usedDefaultFallbackOnDevice ? '默认值兜底' : (lc.deviceInitialized ? '设备已init凭证' : '未检测');
+        parts.push(`<b>Logcat:</b> ${tag}` + (lc.gameId ? ` (gameId=${lc.gameId})` : ''));
+      }
+      if (hasPrefs) parts.push(`<b>EncryptedStorage:</b> XML已存在(AES密文，Keystore密钥不可导出)`);
+      devEl.innerHTML = parts.join(' ｜ ');
+      devRow.style.display = '';
+    } else {
+      devRow.style.display = 'none';
+    }
+  }
+}
+
+async function loadHuyaCredentials(autoScan = true) {
+  try {
+    const url = '/api/huya/credentials?autoScan=' + (autoScan ? '1' : '0');
+    const data = await huyaGet(url);
+    if (data && data.success) {
+      renderHuyaCredentials(data);
+      return data;
+    } else if (data) {
+      showToast('获取虎牙凭证失败: ' + (data.error || 'unknown'), 'error');
+    }
+  } catch (e) {
+    showToast('获取虎牙凭证异常: ' + e.message, 'error');
+  }
+  return null;
+}
+
+async function saveHuyaCredentialsManual() {
+  const gameId = document.getElementById('manualHuyaGameId').value.trim();
+  const appId = document.getElementById('manualHuyaAppId').value.trim();
+  const appKey = document.getElementById('manualHuyaAppKey').value.trim();
+  if (!gameId || !appId || !appKey) {
+    showToast('请填写完整的 Game ID / App ID / App Key', 'error');
+    return;
+  }
+  try {
+    const resp = await huyaPost('/api/huya/credentials', {
+      gameId: Number(gameId), appId, appKey,
+      source: 'manual_override_from_ui'
+    });
+    if (resp && resp.success) {
+      showToast('凭证已写入运行期缓存（重启失效）', 'success');
+      document.getElementById('manualHuyaGameId').value = '';
+      document.getElementById('manualHuyaAppId').value = '';
+      document.getElementById('manualHuyaAppKey').value = '';
+      // 刷新一次 UI
+      await loadHuyaCredentials(false);
+    } else {
+      showToast('保存失败: ' + (resp && resp.error ? resp.error : 'unknown'), 'error');
+    }
+  } catch (e) {
+    showToast('保存异常: ' + e.message, 'error');
+  }
+}
+
+// 加载凭证信息（点击👁️显示/隐藏 + 每次展开刷新一次）
+document.getElementById('btnHuyaCredToggle').addEventListener('click', async () => {
   const body = document.getElementById('huyaCredBody');
   if (body.classList.contains('hidden')) {
-    huyaGet('/api/huya/credentials').then(data => {
-      if (data.success) {
-        document.getElementById('huyaGameId').textContent = data.raw.gameId;
-        document.getElementById('huyaAppId').textContent = data.raw.appId;
-        document.getElementById('huyaAppKey').textContent = data.raw.appKey;
-        body.classList.remove('hidden');
-      }
-    });
+    // 展开前先刷新
+    await loadHuyaCredentials(true);
+    body.classList.remove('hidden');
   } else {
     body.classList.add('hidden');
   }
+});
+
+// 重新获取按钮
+const btnRefresh = document.getElementById('btnHuyaCredRefresh');
+if (btnRefresh) btnRefresh.addEventListener('click', () => loadHuyaCredentials(true));
+
+// 手动保存按钮
+const btnSave = document.getElementById('btnHuyaCredSave');
+if (btnSave) btnSave.addEventListener('click', saveHuyaCredentialsManual);
+
+// 页面加载完成后，后台静默拉一次默认凭证（用于请求 header 元数据）
+window.addEventListener('load', function () {
+  // 延迟 1 秒，避免与 ADB 初始化/WS 握手抢主线程
+  setTimeout(() => loadHuyaCredentials(true).catch(() => { /* silent */ }), 1000);
 });
 
 // API 健康检查
@@ -2746,43 +3188,68 @@ function triggerDownload(content, filename, mimeType) {
   const a = document.createElement('a');
   a.href = url;
   a.download = filename;
+  a.rel = 'noopener';
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
 
 // 执行导出
 function executeExport() {
-  const format = document.querySelector('input[name="exportFormat"]:checked').value;
-  const { filtered, count } = calculateExportCount();
-  const logsToExport = filtered.slice(0, count);
-  
-  const options = {
-    includeMetadata: document.getElementById('exportIncludeMetadata').checked,
-    includeTimestamp: document.getElementById('exportIncludeTimestamp').checked,
-    sorted: document.getElementById('exportSorted').checked
-  };
-  
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  
-  switch (format) {
-    case 'json':
-      const jsonContent = exportAsJSON(logsToExport, options);
-      triggerDownload(jsonContent, `tv-live-logs-${timestamp}.json`, 'application/json');
-      break;
-    case 'csv':
-      const csvContent = exportAsCSV(logsToExport, options);
-      triggerDownload(csvContent, `tv-live-logs-${timestamp}.csv`, 'text/csv;charset=utf-8');
-      break;
-    case 'txt':
-      const txtContent = exportAsTXT(logsToExport, options);
-      triggerDownload(txtContent, `tv-live-logs-${timestamp}.txt`, 'text/plain;charset=utf-8');
-      break;
+  try {
+    const format = document.querySelector('input[name="exportFormat"]:checked').value;
+    const { filtered, count } = calculateExportCount();
+    const logsToExport = filtered.slice(0, count);
+    
+    if (logsToExport.length === 0) {
+      showToast('没有可导出的日志，请调整筛选条件', 'warn');
+      return;
+    }
+    
+    const options = {
+      includeMetadata: document.getElementById('exportIncludeMetadata').checked,
+      includeTimestamp: document.getElementById('exportIncludeTimestamp').checked,
+      sorted: document.getElementById('exportSorted').checked
+    };
+    
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    let content = '';
+    let mimeType = 'text/plain';
+    let filename = `tv-live-logs-${timestamp}.txt`;
+    
+    switch (format) {
+      case 'json':
+        content = exportAsJSON(logsToExport, options);
+        mimeType = 'application/json';
+        filename = `tv-live-logs-${timestamp}.json`;
+        break;
+      case 'csv':
+        content = exportAsCSV(logsToExport, options);
+        mimeType = 'text/csv;charset=utf-8';
+        filename = `tv-live-logs-${timestamp}.csv`;
+        break;
+      case 'txt':
+        content = exportAsTXT(logsToExport, options);
+        mimeType = 'text/plain;charset=utf-8';
+        filename = `tv-live-logs-${timestamp}.txt`;
+        break;
+    }
+    
+    if (!content || content.length === 0) {
+      console.error('Export content is empty!', { format, count, logsToExportLength: logsToExport.length });
+      showToast('导出内容为空，请检查日志数据', 'error');
+      return;
+    }
+    
+    console.log(`Exporting ${count} logs as ${format}, content size: ${content.length} bytes`);
+    triggerDownload(content, filename, mimeType);
+    showToast(`已导出 ${count} 条日志为 ${format.toUpperCase()} 格式`, 'success');
+    closeExportModalFn();
+  } catch (err) {
+    console.error('Export failed:', err);
+    showToast('导出失败: ' + err.message, 'error');
   }
-  
-  showToast(`已导出 ${count} 条日志为 ${format.toUpperCase()} 格式`, 'success');
-  closeExportModalFn();
 }
 
 // 打开导出对话框
@@ -2864,101 +3331,543 @@ let perfUpdateInterval = null;
 function renderTimeline() {
   const range = parseInt(document.getElementById('timelineRange').value);
   const interval = parseInt(document.getElementById('timelineInterval').value);
-  const chart = document.getElementById('timelineChart');
+  const chartType = document.getElementById('timelineChartType').value;
+  const canvas = document.getElementById('timelineCanvas');
+  const canvasParent = document.getElementById('timelineChart');
   
-  let filtered = logs;
-  if (range > 0) {
-    const cutoffTime = Date.now() - (range * 1000);
-    filtered = filtered.filter(l => {
-      const ts = l.timestamp || l.serverTime || 0;
-      return ts >= cutoffTime;
-    });
-  }
-  
-  // 按间隔分组
+  const MAX_GROUPS = 200;
   const groups = new Map();
-  filtered.forEach(log => {
+  let totalLogs = 0, errorCount = 0, warnCount = 0;
+  let firstTime = Infinity, lastTime = -Infinity;
+  const cutoffTime = range > 0 ? Date.now() - (range * 1000) : 0;
+
+  for (let i = 0; i < logs.length; i++) {
+    const log = logs[i];
     const ts = log.timestamp || log.serverTime || 0;
+    if (range > 0 && ts < cutoffTime) continue;
+    
+    totalLogs++;
+    if (ts < firstTime) firstTime = ts;
+    if (ts > lastTime) lastTime = ts;
+    
     const groupTime = Math.floor(ts / (interval * 1000)) * (interval * 1000);
-    if (!groups.has(groupTime)) {
-      groups.set(groupTime, { total: 0, error: 0, warn: 0, info: 0, network: 0, playback: 0, debug: 0, crash: 0, logs: [] });
+    let group = groups.get(groupTime);
+    if (!group) {
+      group = { total: 0, error: 0, warn: 0, info: 0, network: 0, playback: 0, debug: 0, crash: 0 };
+      groups.set(groupTime, group);
     }
-    const group = groups.get(groupTime);
     const type = log.logType || log.type || 'info';
     group.total++;
-    group.logs.push(log);
-    if (type === 'error') group.error++;
-    else if (type === 'crash') group.crash++;
-    else if (type === 'warn') group.warn++;
+    if (type === 'error') { group.error++; errorCount++; }
+    else if (type === 'crash') { group.crash++; errorCount++; }
+    else if (type === 'warn') { group.warn++; warnCount++; }
     else if (type === 'network') group.network++;
     else if (type === 'playback') group.playback++;
     else if (type === 'debug') group.debug++;
     else group.info++;
-  });
-  
-  // 排序分组
-  const sortedGroups = [...groups.entries()].sort((a, b) => a[0] - b[0]);
-  
-  // 更新统计摘要
-  updateTimelineSummary(sortedGroups, filtered);
-  
-  if (sortedGroups.length === 0) {
-    chart.innerHTML = '<p class="empty-state">暂无日志数据</p>';
+  }
+
+  const timelTotal = document.getElementById('timelTotal');
+  if (timelTotal) timelTotal.textContent = totalLogs.toLocaleString();
+  const timelErrors = document.getElementById('timelErrors');
+  if (timelErrors) { timelErrors.textContent = errorCount; timelErrors.style.color = errorCount > 0 ? '#f56565' : ''; }
+  const timelWarns = document.getElementById('timelWarns');
+  if (timelWarns) { timelWarns.textContent = warnCount; timelWarns.style.color = warnCount > 0 ? '#ed8936' : ''; }
+  const timelGroups = document.getElementById('timelGroups');
+  if (timelGroups) timelGroups.textContent = groups.size;
+  const timelDuration = document.getElementById('timelDuration');
+  if (timelDuration) {
+    const duration = totalLogs > 0 ? (lastTime - firstTime) / 1000 : 0;
+    timelDuration.textContent = duration < 60 ? Math.round(duration) + 's' : duration < 3600 ? (duration / 60).toFixed(1) + 'm' : (duration / 3600).toFixed(1) + 'h';
+  }
+  const timelPeak = document.getElementById('timelPeak');
+  let maxCount = 0;
+  for (const [, v] of groups) { if (v.total > maxCount) maxCount = v.total; }
+  if (timelPeak) timelPeak.textContent = maxCount;
+
+  if (totalLogs === 0) {
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      canvas.width = canvasParent.clientWidth;
+      canvas.height = 320;
+      ctx.fillStyle = '#718096';
+      ctx.font = '14px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('暂无日志数据', canvas.width / 2, canvas.height / 2);
+    }
     return;
   }
-  
-  const maxCount = Math.max(...sortedGroups.map(([, v]) => v.total));
-  
-  // 渲染多层柱状图（支持单组时完整展示）
-  let html = '<div class="timeline-bars" style="position: relative; display: flex; align-items: flex-end; gap: 3px; height: 220px; padding: 0 10px; min-height: 200px;">';
-  
-  sortedGroups.forEach(([time, data], index) => {
-    const totalHeightPercent = data.total > 0 ? 100 : 2;
-    const errorPct = data.total > 0 ? (data.error / data.total) * totalHeightPercent : 0;
-    const crashPct = data.total > 0 ? (data.crash / data.total) * totalHeightPercent : 0;
-    const warnPct = data.total > 0 ? (data.warn / data.total) * totalHeightPercent : 0;
-    const networkPct = data.total > 0 ? (data.network / data.total) * totalHeightPercent : 0;
-    const playbackPct = data.total > 0 ? (data.playback / data.total) * totalHeightPercent : 0;
-    const debugPct = data.total > 0 ? (data.debug / data.total) * totalHeightPercent : 0;
-    const infoPct = Math.max(totalHeightPercent - errorPct - crashPct - warnPct - networkPct - playbackPct - debugPct, 0);
-    
-    const barData = JSON.stringify(data.logs.slice(0, 20)).replace(/"/g, '&quot;');
-    const timeStr = formatTime(time);
-    
-    html += `
-      <div class="timeline-bar-group" style="flex: ${Math.max(1, Math.min(5, sortedGroups.length < 2 ? 20 : 1))}; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; position: relative; cursor: pointer; min-width: 30px;"
-           onclick="showTimelineDetail(${time}, '${barData}')">
-        <div class="bar-count-label" style="position: absolute; top: -20px; left: 50%; transform: translateX(-50%); font-size: 11px; font-weight: 600; color: var(--accent); background: rgba(66,153,225,0.15); padding: 1px 6px; border-radius: 8px; white-space: nowrap;">${data.total}</div>
-        ${errorPct > 0 ? `<div style="height: ${errorPct}%; background: linear-gradient(to top, #c53030, #f56565); border-radius: 2px 2px 0 0; transition: all 0.2s;" title="错误: ${data.error}"></div>` : ''}
-        ${crashPct > 0 ? `<div style="height: ${crashPct}%; background: linear-gradient(to top, #742a2a, #e53e3e); transition: all 0.2s;" title="崩溃: ${data.crash}"></div>` : ''}
-        ${warnPct > 0 ? `<div style="height: ${warnPct}%; background: linear-gradient(to top, #c05621, #ed8936); transition: all 0.2s;" title="警告: ${data.warn}"></div>` : ''}
-        ${networkPct > 0 ? `<div style="height: ${networkPct}%; background: linear-gradient(to top, #2b6cb0, #63b3ed); transition: all 0.2s;" title="网络: ${data.network}"></div>` : ''}
-        ${playbackPct > 0 ? `<div style="height: ${playbackPct}%; background: linear-gradient(to top, #276749, #48bb78); transition: all 0.2s;" title="播放: ${data.playback}"></div>` : ''}
-        ${debugPct > 0 ? `<div style="height: ${debugPct}%; background: linear-gradient(to top, #6b46c1, #b794f4); transition: all 0.2s;" title="调试: ${data.debug}"></div>` : ''}
-        ${infoPct > 0 ? `<div style="height: ${infoPct}%; background: linear-gradient(to top, #2c5282, #4299e1); border-radius: 2px 2px 0 0; transition: all 0.2s;" title="信息: ${Math.round(data.total - data.error - data.crash - data.warn - data.network - data.playback - data.debug)}"></div>` : ''}
-        ${data.total === 0 ? '<div style="height: 2px; background: var(--border-color);"></div>' : ''}
-        <div class="bar-time-label" style="position: absolute; bottom: -18px; left: 50%; transform: translateX(-50%); font-size: 10px; color: var(--text-muted); white-space: nowrap;">${timeStr}</div>
-      </div>
-    `;
-  });
-  
-  html += '</div>';
-  
-  // 添加图例
-  html += '<div style="display: flex; gap: 12px; margin-top: 25px; justify-content: center; flex-wrap: wrap;">';
-  html += '<div style="display: flex; align-items: center; gap: 4px;"><span style="width: 12px; height: 12px; background: linear-gradient(to top, #2c5282, #4299e1); border-radius: 2px;"></span><span style="font-size: 12px; color: var(--text-secondary);">信息</span></div>';
-  html += '<div style="display: flex; align-items: center; gap: 4px;"><span style="width: 12px; height: 12px; background: linear-gradient(to top, #2b6cb0, #63b3ed); border-radius: 2px;"></span><span style="font-size: 12px; color: var(--text-secondary);">网络</span></div>';
-  html += '<div style="display: flex; align-items: center; gap: 4px;"><span style="width: 12px; height: 12px; background: linear-gradient(to top, #276749, #48bb78); border-radius: 2px;"></span><span style="font-size: 12px; color: var(--text-secondary);">播放</span></div>';
-  html += '<div style="display: flex; align-items: center; gap: 4px;"><span style="width: 12px; height: 12px; background: linear-gradient(to top, #c05621, #ed8936); border-radius: 2px;"></span><span style="font-size: 12px; color: var(--text-secondary);">警告</span></div>';
-  html += '<div style="display: flex; align-items: center; gap: 4px;"><span style="width: 12px; height: 12px; background: linear-gradient(to top, #c53030, #f56565); border-radius: 2px;"></span><span style="font-size: 12px; color: var(--text-secondary);">错误</span></div>';
-  html += '<div style="display: flex; align-items: center; gap: 4px;"><span style="width: 12px; height: 12px; background: linear-gradient(to top, #742a2a, #e53e3e); border-radius: 2px;"></span><span style="font-size: 12px; color: var(--text-secondary);">崩溃</span></div>';
-  html += '<span style="font-size: 11px; color: var(--text-muted);">💡 点击柱条查看详情</span>';
-  html += '</div>';
-  
-  chart.innerHTML = html;
+
+  const allSortedGroups = [...groups.entries()].sort((a, b) => a[0] - b[0]);
+  const sortedGroups = allSortedGroups.length > MAX_GROUPS
+    ? allSortedGroups.slice(-MAX_GROUPS)
+    : allSortedGroups;
+
+  if (chartType === 'bars') {
+    renderBarsChart(canvas, canvasParent, sortedGroups, firstTime, lastTime);
+  } else if (chartType === 'area') {
+    renderAreaChart(canvas, canvasParent, sortedGroups, firstTime, lastTime);
+  } else if (chartType === 'heatmap') {
+    renderHeatmapChart(canvas, canvasParent, sortedGroups, firstTime, lastTime);
+  } else if (chartType === 'errorline') {
+    renderErrorLineChart(canvas, canvasParent, sortedGroups, firstTime, lastTime);
+  } else if (chartType === 'donut') {
+    renderDonutChart(canvas, canvasParent, sortedGroups);
+  }
 }
 
-// 更新时间线统计摘要
+function setupTimelineChartEvents() {
+  const sel = document.getElementById('timelineChartType');
+  if (sel) {
+    sel.addEventListener('change', () => {
+      renderTimeline();
+    });
+  }
+}
+
+// ========== Canvas 统计图渲染 ==========
+
+const CHART_COLORS = {
+  info: '#4299e1',
+  network: '#63b3ed',
+  playback: '#48bb78',
+  warn: '#ed8936',
+  error: '#f56565',
+  crash: '#e53e3e',
+  debug: '#a0aec0'
+};
+
+function setupCanvas(canvas, parent) {
+  const dpr = window.devicePixelRatio || 1;
+  const rect = parent.getBoundingClientRect();
+  const w = Math.max(rect.width - 30, 300);
+  const h = 640;
+  canvas.style.height = h + 'px';
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, w, h);
+  return { ctx, w, h };
+}
+
+function drawLegend(ctx, items, x, y) {
+  ctx.font = '12px sans-serif';
+  ctx.textAlign = 'left';
+  let cx = x;
+  for (const item of items) {
+    ctx.fillStyle = item.color;
+    ctx.fillRect(cx, y, 12, 12);
+    ctx.fillStyle = '#a0aec0';
+    ctx.fillText(item.label, cx + 16, y + 10);
+    cx += ctx.measureText(item.label).width + 30;
+  }
+}
+
+// 柱状图（原始）
+function renderBarsChart(canvas, parent, groups) {
+  const { ctx, w, h } = setupCanvas(canvas, parent);
+  if (groups.length === 0) return;
+
+  const padL = 50, padR = 20, padT = 25, padB = 90;
+  const chartW = w - padL - padR;
+  const chartH = h - padT - padB;
+  const maxVal = Math.max(...groups.map(([, g]) => g.total));
+  const barW = chartW / groups.length;
+  const gap = Math.min(3, barW * 0.15);
+
+  for (let i = 0; i <= 5; i++) {
+    const y = padT + (chartH * i / 5);
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+    ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(w - padR, y); ctx.stroke();
+    ctx.fillStyle = '#718096';
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText(Math.round(maxVal * (1 - i / 5)), padL - 5, y + 3);
+  }
+
+  for (let i = 0; i < groups.length; i++) {
+    const [time, g] = groups[i];
+    const x = padL + i * barW + gap / 2;
+    const bw = barW - gap;
+    let y = padT + chartH;
+    const totalH = g.total > 0 ? chartH : 2;
+    const parts = [
+      ['info', g.info], ['debug', g.debug], ['playback', g.playback],
+      ['network', g.network], ['warn', g.warn], ['error', g.error], ['crash', g.crash]
+    ];
+    for (const [key, val] of parts) {
+      if (val === 0) continue;
+      const hh = (val / Math.max(g.total, 1)) * totalH;
+      y -= hh;
+      ctx.fillStyle = CHART_COLORS[key];
+      ctx.fillRect(x, y, bw, hh);
+    }
+    if (i % Math.ceil(groups.length / 10) === 0) {
+      ctx.fillStyle = '#718096';
+      ctx.font = '10px sans-serif';
+      ctx.textAlign = 'center';
+      const d = new Date(time);
+      ctx.fillText(`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`, x + bw / 2, padT + chartH + 25);
+    }
+    if (g.total > 0 && groups.length <= 30) {
+      ctx.fillStyle = '#a0aec0';
+      ctx.font = '10px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(g.total, x + bw / 2, padT - 5);
+    }
+  }
+
+  drawLegend(ctx, [
+    { label: '信息', color: CHART_COLORS.info },
+    { label: '网络', color: CHART_COLORS.network },
+    { label: '播放', color: CHART_COLORS.playback },
+    { label: '警告', color: CHART_COLORS.warn },
+    { label: '错误', color: CHART_COLORS.error },
+    { label: '崩溃', color: CHART_COLORS.crash }
+  ], padL + 10, h - 15);
+}
+
+// 堆叠面积图
+function renderAreaChart(canvas, parent, groups) {
+  const { ctx, w, h } = setupCanvas(canvas, parent);
+  if (groups.length === 0) return;
+
+  const padL = 50, padR = 20, padT = 25, padB = 90;
+  const chartW = w - padL - padR;
+  const chartH = h - padT - padB;
+
+  const series = ['info', 'debug', 'playback', 'network', 'warn', 'error', 'crash'];
+  const seriesColors = series.map(s => CHART_COLORS[s]);
+  const data = series.map(() => []);
+  const totals = [];
+  let maxTotal = 0;
+
+  for (let i = 0; i < groups.length; i++) {
+    const [, g] = groups[i];
+    let stack = 0;
+    const stackVals = [];
+    for (let s = 0; s < series.length; s++) {
+      stack += g[series[s]];
+      stackVals.push(stack);
+    }
+    for (let s = 0; s < series.length; s++) {
+      data[s].push(stackVals[s]);
+    }
+    totals.push(stack);
+    if (stack > maxTotal) maxTotal = stack;
+  }
+  maxTotal = Math.max(maxTotal, 10);
+
+  for (let i = 0; i <= 5; i++) {
+    const y = padT + (chartH * i / 5);
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+    ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(w - padR, y); ctx.stroke();
+    ctx.fillStyle = '#718096';
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText(Math.round(maxTotal * (1 - i / 5)), padL - 5, y + 3);
+  }
+
+  const xStep = chartW / Math.max(groups.length - 1, 1);
+  const xOf = i => padL + i * xStep;
+  const yOf = v => padT + chartH - (v / maxTotal) * chartH;
+
+  for (let s = 0; s < series.length; s++) {
+    ctx.beginPath();
+    ctx.moveTo(xOf(0), padT + chartH);
+    for (let i = 0; i < data[s].length; i++) {
+      ctx.lineTo(xOf(i), yOf(data[s][i]));
+    }
+    ctx.lineTo(xOf(data[s].length - 1), padT + chartH);
+    ctx.closePath();
+    ctx.fillStyle = seriesColors[s] + '44';
+    ctx.fill();
+  }
+
+  for (let s = 0; s < series.length; s++) {
+    ctx.beginPath();
+    for (let i = 0; i < data[s].length; i++) {
+      const x = xOf(i), y = yOf(data[s][i]);
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.strokeStyle = seriesColors[s];
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+
+  for (let i = 0; i < groups.length; i++) {
+    if (i % Math.ceil(groups.length / 10) === 0) {
+      const [time] = groups[i];
+      const d = new Date(time);
+      ctx.fillStyle = '#718096';
+      ctx.font = '10px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`, xOf(i), padT + chartH + 25);
+    }
+  }
+
+  drawLegend(ctx, [
+    { label: '崩溃', color: CHART_COLORS.crash },
+    { label: '错误', color: CHART_COLORS.error },
+    { label: '警告', color: CHART_COLORS.warn },
+    { label: '网络', color: CHART_COLORS.network },
+    { label: '播放', color: CHART_COLORS.playback },
+    { label: '调试', color: CHART_COLORS.debug },
+    { label: '信息', color: CHART_COLORS.info }
+  ], padL + 10, h - 15);
+}
+
+// 热力图
+function renderHeatmapChart(canvas, parent, groups) {
+  const { ctx, w, h } = setupCanvas(canvas, parent);
+  if (groups.length === 0) return;
+
+  const padL = 80, padR = 20, padT = 20, padB = 90;
+  const chartW = w - padL - padR;
+  const chartH = h - padT - padB;
+  const types = ['crash', 'error', 'warn', 'network', 'playback', 'debug', 'info'];
+  const typeLabels = ['崩溃', '错误', '警告', '网络', '播放', '调试', '信息'];
+  const rows = types.length;
+  const cols = Math.min(groups.length, 60);
+  const cellW = chartW / cols;
+  const cellH = chartH / rows;
+
+  const sampledGroups = groups.length > cols
+    ? groups.filter((_, i) => Math.floor(i / (groups.length / cols)) === Math.floor(cols / 2))
+    : groups;
+
+  const displayGroups = sampledGroups.length > cols
+    ? sampledGroups.slice(-cols)
+    : sampledGroups;
+
+  let maxVal = 0;
+  for (const [, g] of displayGroups) {
+    for (const t of types) {
+      if (g[t] > maxVal) maxVal = g[t];
+    }
+  }
+  maxVal = Math.max(maxVal, 1);
+
+  for (let r = 0; r < rows; r++) {
+    ctx.fillStyle = '#a0aec0';
+    ctx.font = '11px sans-serif';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(typeLabels[r], padL - 8, padT + r * cellH + cellH / 2);
+  }
+
+  for (let c = 0; c < displayGroups.length && c < cols; c++) {
+    const [, g] = displayGroups[c];
+    for (let r = 0; r < rows; r++) {
+      const val = g[types[r]];
+      const intensity = val / maxVal;
+      const x = padL + c * cellW;
+      const y = padT + r * cellH;
+      if (intensity > 0) {
+        ctx.fillStyle = CHART_COLORS[types[r]];
+        ctx.globalAlpha = 0.15 + intensity * 0.85;
+      } else {
+        ctx.fillStyle = '#2d3748';
+        ctx.globalAlpha = 0.3;
+      }
+      const cw = Math.max(cellW - 1, 2);
+      const ch = Math.max(cellH - 1, 2);
+      const rx = Math.round(x), ry = Math.round(y), rw = Math.round(cw), rh = Math.round(ch);
+      if (rw > 0 && rh > 0) {
+        ctx.fillRect(rx, ry, rw, rh);
+      }
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  const step = Math.max(1, Math.floor(displayGroups.length / 8));
+  for (let c = 0; c < displayGroups.length; c += step) {
+    const [time] = displayGroups[c];
+    const d = new Date(time);
+    ctx.fillStyle = '#718096';
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText(`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`, padL + c * cellW + cellW / 2, padT + rows * cellH + 15);
+  }
+
+  ctx.fillStyle = '#718096';
+  ctx.font = '10px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText('少', padL + chartW + 5, padT + 5);
+  const grad = ctx.createLinearGradient(padL + chartW + 15, padT + 5, padL + chartW + 15, padT + 30);
+  grad.addColorStop(0, 'rgba(66,153,225,0.15)');
+  grad.addColorStop(1, 'rgba(66,153,225,1)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(padL + chartW + 15, padT + 5, 10, 25);
+  ctx.fillStyle = '#718096';
+  ctx.fillText('多', padL + chartW + 28, padT + 30);
+}
+
+// 错误率折线图
+function renderErrorLineChart(canvas, parent, groups) {
+  const { ctx, w, h } = setupCanvas(canvas, parent);
+  if (groups.length === 0) return;
+
+  const padL = 50, padR = 20, padT = 25, padB = 90;
+  const chartW = w - padL - padR;
+  const chartH = h - padT - padB;
+
+  const data = [];
+  for (const [time, g] of groups) {
+    const total = g.total || 1;
+    const errorRate = ((g.error + g.crash) / total) * 100;
+    const warnRate = (g.warn / total) * 100;
+    data.push({ time, errorRate, warnRate, total: g.total });
+  }
+
+  const maxRate = Math.max(...data.map(d => Math.max(d.errorRate, d.warnRate)), 5);
+  const threshold = 5;
+
+  for (let i = 0; i <= 5; i++) {
+    const y = padT + (chartH * i / 5);
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+    ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(w - padR, y); ctx.stroke();
+    ctx.fillStyle = '#718096';
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText((maxRate * (1 - i / 5)).toFixed(1) + '%', padL - 5, y + 3);
+  }
+
+  const threshY = padT + chartH - (threshold / maxRate) * chartH;
+  if (threshY > padT && threshY < padT + chartH) {
+    ctx.strokeStyle = '#ed8936';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([6, 4]);
+    ctx.beginPath(); ctx.moveTo(padL, threshY); ctx.lineTo(w - padR, threshY); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#ed8936';
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(`告警阈值 ${threshold}%`, padL + 5, threshY - 5);
+  }
+
+  const xStep = chartW / Math.max(data.length - 1, 1);
+  const xOf = i => padL + i * xStep;
+  const yOf = v => padT + chartH - (v / maxRate) * chartH;
+
+  const errPath = new Path2D();
+  const warnPath = new Path2D();
+  errPath.moveTo(xOf(0), yOf(data[0].errorRate));
+  warnPath.moveTo(xOf(0), yOf(data[0].warnRate));
+
+  for (let i = 1; i < data.length; i++) {
+    errPath.lineTo(xOf(i), yOf(data[i].errorRate));
+    warnPath.lineTo(xOf(i), yOf(data[i].warnRate));
+  }
+
+  ctx.strokeStyle = '#ed8936';
+  ctx.lineWidth = 2;
+  ctx.stroke(warnPath);
+
+  ctx.strokeStyle = '#f56565';
+  ctx.lineWidth = 2.5;
+  ctx.stroke(errPath);
+
+  for (let i = 0; i < data.length; i++) {
+    if (data[i].errorRate > threshold) {
+      ctx.fillStyle = '#f56565';
+      ctx.beginPath();
+      ctx.arc(xOf(i), yOf(data[i].errorRate), 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  const fillErrPath = new Path2D();
+  fillErrPath.moveTo(xOf(0), padT + chartH);
+  for (let i = 0; i < data.length; i++) {
+    fillErrPath.lineTo(xOf(i), yOf(data[i].errorRate));
+  }
+  fillErrPath.lineTo(xOf(data.length - 1), padT + chartH);
+  fillErrPath.closePath();
+  ctx.fillStyle = 'rgba(245,101,101,0.15)';
+  ctx.fill(fillErrPath);
+
+  for (let i = 0; i < data.length; i++) {
+    if (i % Math.ceil(data.length / 10) === 0) {
+      const d = new Date(data[i].time);
+      ctx.fillStyle = '#718096';
+      ctx.font = '10px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`, xOf(i), padT + chartH + 25);
+    }
+  }
+
+  drawLegend(ctx, [
+    { label: '错误率', color: '#f56565' },
+    { label: '警告率', color: '#ed8936' }
+  ], padL + 10, h - 15);
+}
+
+// 环形分布图
+function renderDonutChart(canvas, parent, groups) {
+  const { ctx, w, h } = setupCanvas(canvas, parent);
+  if (groups.length === 0) return;
+
+  const totals = { info: 0, debug: 0, network: 0, playback: 0, warn: 0, error: 0, crash: 0 };
+  for (const [, g] of groups) {
+    for (const k of Object.keys(totals)) totals[k] += g[k];
+  }
+
+  const entries = Object.entries(totals).filter(([_, v]) => v > 0);
+  const grandTotal = entries.reduce((s, [_, v]) => s + v, 0);
+  if (grandTotal === 0) return;
+
+  const cx = w * 0.35;
+  const cy = h / 2 - 10;
+  const r = Math.min(w * 0.3, h * 0.35);
+  const innerR = r * 0.6;
+
+  let startAngle = -Math.PI / 2;
+  const sorted = [...entries].sort((a, b) => b[1] - a[1]);
+
+  for (const [key, val] of sorted) {
+    const slice = (val / grandTotal) * Math.PI * 2;
+    const endAngle = startAngle + slice;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, startAngle, endAngle);
+    ctx.arc(cx, cy, innerR, endAngle, startAngle, true);
+    ctx.closePath();
+    ctx.fillStyle = CHART_COLORS[key];
+    ctx.fill();
+    startAngle = endAngle;
+  }
+
+  ctx.fillStyle = '#e2e8f0';
+  ctx.font = 'bold 28px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(grandTotal.toLocaleString(), cx, cy - 5);
+  ctx.fillStyle = '#a0aec0';
+  ctx.font = '13px sans-serif';
+  ctx.fillText('总日志', cx, cy + 20);
+
+  let ly = cy - sorted.length * 18;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  for (const [key, val] of sorted) {
+    const pct = ((val / grandTotal) * 100).toFixed(1);
+    ctx.fillStyle = CHART_COLORS[key];
+    ctx.fillRect(w * 0.65, ly - 5, 12, 12);
+    ctx.fillStyle = '#e2e8f0';
+    ctx.font = '13px sans-serif';
+    ctx.fillText(key === 'crash' ? '崩溃' : key === 'error' ? '错误' : key === 'warn' ? '警告' : key === 'network' ? '网络' : key === 'playback' ? '播放' : key === 'debug' ? '调试' : '信息', w * 0.65 + 18, ly);
+    ctx.fillStyle = '#a0aec0';
+    ctx.textAlign = 'right';
+    ctx.fillText(`${val} (${pct}%)`, w - 20, ly);
+    ctx.textAlign = 'left';
+    ly += 22;
+  }
+}
+
 function updateTimelineSummary(sortedGroups, filtered) {
   const totalLogs = filtered.length;
   const errorLogs = filtered.filter(l => {
@@ -3032,16 +3941,26 @@ window.showTimelineTooltip = function(event, time, data) {
 };
 
 // 显示分组详情
-window.showTimelineDetail = function(time, logs) {
+window.showTimelineDetail = function(time, data) {
   const detail = document.getElementById('timelineDetail');
   const content = document.getElementById('timelineDetailContent');
-  const date = new Date(time);
-  
   if (!detail || !content) return;
+
+  const interval = parseInt(document.getElementById('timelineInterval').value) * 1000;
+  const groupStart = time;
+  const groupEnd = time + interval;
   
-  // 显示最多20条日志
-  const displayLogs = logs.slice(0, 20);
-  const totalCount = logs.length;
+  const groupLogs = [];
+  for (let i = 0; i < logs.length; i++) {
+    const l = logs[i];
+    const ts = l.timestamp || l.serverTime || 0;
+    if (ts >= groupStart && ts < groupEnd) {
+      groupLogs.push(l);
+    }
+  }
+
+  const displayLogs = groupLogs.slice(-20).reverse();
+  const totalCount = groupLogs.length;
   
   content.innerHTML = `
     <div style="margin-bottom: 12px; font-size: 13px; color: var(--text-secondary);">
@@ -3067,82 +3986,394 @@ window.hideTimelineTooltip = function() {
 
 // ========== 性能分析面板 ==========
 
+let startupPerfCache = null;
+let startupPerfCacheTime = 0;
+const STARTUP_PERF_CACHE_TTL = 60000;
+
+// 播放/网络性能：上一次采样（WIFI ADB 采集端）的流量 + 时间戳，用于算速率
+let _lastTrafficSample = null; // { ts, rxBytes, txBytes }
+let _lastPlaybackNetFetch = 0;
+const PLAYBACK_NET_MIN_INTERVAL = 4000; // 节流：4s 内不重复向设备发 logcat 拉取
+
+// 字节数 → 带单位可读文本（1024 进制）
+function _fmtBytes(b) {
+  if (b == null || !Number.isFinite(b)) return '--';
+  if (b < 0) return '--';
+  const TB = 1024 * 1024 * 1024 * 1024;
+  const GB = 1024 * 1024 * 1024;
+  const MB = 1024 * 1024;
+  const KB = 1024;
+  if (b >= TB) return (b / TB).toFixed(2) + ' TB';
+  if (b >= GB) return (b / GB).toFixed(2) + ' GB';
+  if (b >= MB) return (b / MB).toFixed(2) + ' MB';
+  if (b >= KB) return (b / KB).toFixed(1) + ' KB';
+  return Math.round(b) + ' B';
+}
+// 速率：输入「字节差值」和「毫秒间隔」→ 带单位的比特率
+//   关键：即便差值为 0，也明确返回 "0.0 Kbps"，而不是用 "--" 让用户误以为「没数据」
+function _fmtKbps(bytesDelta, msDelta) {
+  if (!Number.isFinite(bytesDelta) || bytesDelta < 0) return '--';
+  if (!Number.isFinite(msDelta) || msDelta <= 0) return '--';
+  const kbps = (bytesDelta * 8) / (msDelta / 1000) / 1000;
+  if (kbps >= 1000000) return (kbps / 1000000).toFixed(2) + ' Gbps';
+  if (kbps >= 1000)    return (kbps / 1000).toFixed(2) + ' Mbps';
+  return kbps.toFixed(1) + ' Kbps'; // 0 → "0.0 Kbps"，明确表示有数据但速率为 0
+}
+// 上一次「计算出来可用」的速率值；当 dt 太短或计数器没变时，
+// 就显示旧值而不是跳回 "--"，视觉上保持连续
+let _lastTrafficRates = { rxText: '0.0 Kbps', txText: '0.0 Kbps' };
+
+// 获取用于操作 TV Live 的 ADB serial（启动性能测量 / 截图 / 录屏 等工具功能）
+// 注意：必须返回 server 端 `/api/adb/devices` 返回的「原始 serial」（包括 WIFI 调试 GUID serial），
+// 绝不能做任何字符替换（否则 adb -s <serial> 会报 device not found）。
+// 规则：
+//   1) 优先从性能卡/工具箱两个 select 的 value（已经由 updateAllDeviceSelects 填入真实 serial）
+//   2) 其次从前端 devices Map 的 .adbSerial / .serial 字段（server 登记时保存的原始值）
+//   3) 都空时，异步刷一次 /api/adb/devices 并自动选第一个；同步返回 null，调用方重试即可
+// ❌ 绝不能用 adbDeviceId 反推 serial！因为 server 生成 id 时已用 replace(/[^a-zA-Z0-9]/g, '_') 丢失了原字符
+let _adbSerialRefreshInited = false;
+function getAdbSerial() {
+  const direct = getPerformanceSerial();
+  if (direct) return direct;
+
+  for (const [, device] of devices) {
+    if (device && device.adbSerial) return device.adbSerial;
+    if (device && device.serial) return device.serial;
+  }
+
+  if (!_adbSerialRefreshInited) {
+    _adbSerialRefreshInited = true;
+    updateAllDeviceSelects().catch(() => {})
+      .finally(() => { _adbSerialRefreshInited = false; });
+  }
+  return null;
+}
+
+async function measureStartupPerformance() {
+  const serial = getAdbSerial();
+  if (!serial) {
+    showToast('未连接 ADB 设备，无法测量启动性能', 'error');
+    return;
+  }
+
+  showToast('正在测量 TV Live 启动性能，请稍候...', 'info');
+  document.getElementById('perfColdStart').textContent = '测量中...';
+  document.getElementById('perfHotStart').textContent = '测量中...';
+  document.getElementById('perfFirstFrame').textContent = '测量中...';
+  document.getElementById('perfInteractive').textContent = '测量中...';
+
+  try {
+    const response = await fetch('/api/tvlive/startup-perf', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ serial })
+    });
+    const result = await response.json();
+    
+    if (result.success && result.data) {
+      const d = result.data;
+      const coldStartMs = d.coldStartMs || d.coldStart.totalTime || d.coldStart.waitTime;
+      const hotStartMs = d.hotStartMs || d.hotStart.waitTime || d.hotStart.totalTime;
+      const firstFrameMs = d.firstFrame;
+      const interactiveMs = d.interactive;
+      
+      startupPerfCache = { cold: coldStartMs, hot: hotStartMs, frame: firstFrameMs, interactive: interactiveMs };
+      startupPerfCacheTime = Date.now();
+      
+      document.getElementById('perfColdStart').textContent = coldStartMs ? coldStartMs + ' ms' : '-- ms';
+      document.getElementById('perfHotStart').textContent = hotStartMs ? hotStartMs + ' ms' : '-- ms';
+      document.getElementById('perfFirstFrame').textContent = firstFrameMs ? firstFrameMs + ' ms' : '-- ms';
+      document.getElementById('perfInteractive').textContent = interactiveMs ? interactiveMs + ' ms' : '-- ms';
+      
+      showToast('启动性能测量完成', 'success');
+    } else {
+      throw new Error(result.error || '测量失败');
+    }
+  } catch (err) {
+    showToast('启动性能测量失败: ' + err.message, 'error');
+    document.getElementById('perfColdStart').textContent = '-- ms';
+    document.getElementById('perfHotStart').textContent = '-- ms';
+    document.getElementById('perfFirstFrame').textContent = '-- ms';
+    document.getElementById('perfInteractive').textContent = '-- ms';
+  }
+}
+
+function calculateStartupPerformance() {
+  if (startupPerfCache && (Date.now() - startupPerfCacheTime) < STARTUP_PERF_CACHE_TTL) {
+    document.getElementById('perfColdStart').textContent = startupPerfCache.cold + ' ms';
+    document.getElementById('perfHotStart').textContent = startupPerfCache.hot + ' ms';
+    document.getElementById('perfFirstFrame').textContent = startupPerfCache.frame + ' ms';
+    document.getElementById('perfInteractive').textContent = startupPerfCache.interactive + ' ms';
+    return;
+  }
+  
+  const serial = getAdbSerial();
+  if (!serial) {
+    document.getElementById('perfColdStart').textContent = '请连接 ADB 设备';
+    document.getElementById('perfHotStart').textContent = '请连接 ADB 设备';
+    document.getElementById('perfFirstFrame').textContent = '请连接 ADB 设备';
+    document.getElementById('perfInteractive').textContent = '请连接 ADB 设备';
+    return;
+  }
+  
+  document.getElementById('perfColdStart').textContent = '-- ms';
+  document.getElementById('perfHotStart').textContent = '-- ms';
+  document.getElementById('perfFirstFrame').textContent = '-- ms';
+  document.getElementById('perfInteractive').textContent = '-- ms';
+}
+
+// 实时性能快照缓存（device-perf 返回后写入；renderPerformance 合并告警时读取）
+// 所有字段都可能是 null/NaN，表示暂未采样到
+let _lastPerfSnapshot = {
+  cpuUsagePct: null,
+  memUsagePct: null,
+  memFreeMB:    null,
+  fps:          null,
+  batteryTempC: null,
+  timestamp:    0
+};
+
 function renderPerformance() {
-  // 日志统计
   const total = logs.length;
-  const errorCount = logs.filter(l => l.logType === 'error' || l.type === 'error' || l.logType === 'crash' || l.type === 'crash').length;
-  const warnCount = logs.filter(l => l.logType === 'warn' || l.type === 'warn').length;
+  let errorCount = 0, warnCount = 0;
+  let playbackCount = 0, stallCount = 0, decodeErrCount = 0;
+  let networkCount = 0, successRequestsCount = 0;
+  const latencies = [];
+  const stallTimes = [];
+  const recentErrors = [];
+  const latencyPattern = /(\d+)\s*ms/i;
+  let firstTime = Infinity, lastTime = -Infinity;
+
+  for (let i = 0; i < logs.length; i++) {
+    const log = logs[i];
+    const type = log.logType || log.type || 'info';
+    const msg = log.message || '';
+    const msgLower = msg.toLowerCase();
+    const ts = log.timestamp || log.serverTime || 0;
+    
+    if (ts < firstTime) firstTime = ts;
+    if (ts > lastTime) lastTime = ts;
+    
+    if (type === 'error' || type === 'crash') {
+      errorCount++;
+      recentErrors.push(log);
+    } else if (type === 'warn') {
+      warnCount++;
+      recentErrors.push(log);
+    }
+    
+    if (type === 'playback') {
+      playbackCount++;
+      if (msgLower.includes('stall') || msgLower.includes('卡顿')) {
+        stallCount++;
+        const m = msg.match(latencyPattern);
+        if (m) stallTimes.push(parseInt(m[1]));
+      }
+      if (msgLower.includes('decode') || msgLower.includes('解码错误')) {
+        decodeErrCount++;
+      }
+    }
+    
+    if (type === 'network') {
+      networkCount++;
+      if (msgLower.includes('success') || msgLower.includes('200') || msgLower.includes('完成')) {
+        successRequestsCount++;
+      }
+      const m = msg.match(latencyPattern);
+      if (m) latencies.push(parseInt(m[1]));
+    }
+  }
+
   const errorRate = total > 0 ? ((errorCount / total) * 100).toFixed(1) : '0';
   const warnRate = total > 0 ? ((warnCount / total) * 100).toFixed(1) : '0';
-  
+
   document.getElementById('perfTotal').textContent = total;
   document.getElementById('perfErrorRate').textContent = errorRate + '%';
   document.getElementById('perfWarnRate').textContent = warnRate + '%';
-  
-  // 计算日志速率（每分钟）
-  if (logs.length >= 2) {
-    const firstLog = logs[0];
-    const lastLog = logs[logs.length - 1];
-    const firstTime = firstLog.timestamp || firstLog.serverTime || 0;
-    const lastTime = lastLog.timestamp || lastLog.serverTime || 0;
+
+  if (total >= 2 && lastTime > firstTime) {
     const durationMinutes = (lastTime - firstTime) / 60000;
     const rate = durationMinutes > 0 ? Math.round(total / durationMinutes) : 0;
     document.getElementById('perfRate').textContent = rate;
   } else {
     document.getElementById('perfRate').textContent = 0;
   }
-  
-  // 播放统计
-  const playbackLogs = logs.filter(l => l.logType === 'playback' || l.type === 'playback');
-  const stallLogs = playbackLogs.filter(l => (l.message || '').toLowerCase().includes('stall') || (l.message || '').toLowerCase().includes('卡顿'));
-  const decodeErrors = playbackLogs.filter(l => (l.message || '').toLowerCase().includes('decode') || (l.message || '').toLowerCase().includes('解码错误'));
-  
-  document.getElementById('perfPlayCount').textContent = playbackLogs.length;
-  document.getElementById('perfStallCount').textContent = stallLogs.length;
-  document.getElementById('perfDecodeErr').textContent = decodeErrors.length;
-  
-  // 计算平均卡顿时间
-  const stallTimes = [];
-  stallLogs.forEach(log => {
-    const msg = log.message || '';
-    const match = msg.match(/(\d+)\s*ms/i);
-    if (match) stallTimes.push(parseInt(match[1]));
-  });
+
+  document.getElementById('perfPlayCount').textContent = playbackCount;
+  document.getElementById('perfStallCount').textContent = stallCount;
+  document.getElementById('perfDecodeErr').textContent = decodeErrCount;
+
   const avgStall = stallTimes.length > 0 ? Math.round(stallTimes.reduce((a, b) => a + b, 0) / stallTimes.length) : 0;
+  const maxStall = stallTimes.length > 0 ? Math.max(...stallTimes) : 0;
   document.getElementById('perfAvgStall').textContent = avgStall + ' ms';
-  
-  // 网络统计
-  const networkLogs = logs.filter(l => l.logType === 'network' || l.type === 'network');
-  const successRequests = networkLogs.filter(l => {
-    const msg = (l.message || '').toLowerCase();
-    return msg.includes('success') || msg.includes('200') || msg.includes('完成');
-  });
-  const latencyPattern = /(\d+)\s*ms/i;
-  const latencies = [];
-  networkLogs.forEach(log => {
-    const msg = log.message || '';
-    const match = msg.match(latencyPattern);
-    if (match) latencies.push(parseInt(match[1]));
-  });
-  
-  document.getElementById('perfRequests').textContent = networkLogs.length;
-  const successRate = networkLogs.length > 0 ? ((successRequests.length / networkLogs.length) * 100).toFixed(1) : '0';
+  if (document.getElementById('perfMaxStall')) {
+    document.getElementById('perfMaxStall').textContent = maxStall + ' ms';
+  }
+
+  document.getElementById('perfRequests').textContent = networkCount;
+  const successRate = networkCount > 0 ? ((successRequestsCount / networkCount) * 100).toFixed(1) : '0';
   document.getElementById('perfSuccessRate').textContent = successRate + '%';
   const avgLatency = latencies.length > 0 ? Math.round(latencies.reduce((a, b) => a + b, 0) / latencies.length) : 0;
   const maxLatency = latencies.length > 0 ? Math.max(...latencies) : 0;
   document.getElementById('perfAvgLatency').textContent = avgLatency + ' ms';
   document.getElementById('perfMaxLatency').textContent = maxLatency + ' ms';
-  
-  // 更新性能告警
-  updatePerformanceAlerts(avgLatency, maxLatency, stallLogs, errorRate);
-  
-  // 获取实时设备性能
+
+  // 来源标签（会被下方异步 merge 覆盖，如果能抓到 ADB 数据）
+  if (document.getElementById('perfPlaySource')) {
+    const pc = playbackCount + stallCount + decodeErrCount;
+    document.getElementById('perfPlaySource').textContent = pc > 0 ? '日志解析' : '日志解析（无播放事件）';
+  }
+  if (document.getElementById('perfNetSource')) {
+    document.getElementById('perfNetSource').textContent = networkCount > 0 ? '日志解析' : '日志解析（无请求事件）';
+  }
+
+  // ===== 异步：从 WIFI ADB 直接抓播放/网络性能（logcat + TrafficStats），与日志解析结果 merge 展示 =====
+  // 节流：4s 内不重复拉，避免对设备太频繁
+  const nowT = Date.now();
+  if (nowT - _lastPlaybackNetFetch >= PLAYBACK_NET_MIN_INTERVAL) {
+    _lastPlaybackNetFetch = nowT;
+    const serial = getAdbSerial();
+    if (serial) {
+      fetch('/api/tvlive/playback-net-perf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ serial })
+      }).then(r => r.json()).catch(() => null).then(result => {
+        if (!result || !result.success || !result.data) return;
+        const { playback: pb, network: nw } = result.data;
+        if (!pb || !nw) return;
+
+        // —— 播放性能 merge：取各指标 max（日志解析/ADB 解析双源，谁数据更全就用谁）
+        const finalPlayCount  = Math.max(playbackCount, pb.playCount || 0);
+        const finalStallCount = Math.max(stallCount, pb.stallCount || 0);
+        const finalDecodeErr  = Math.max(decodeErrCount, pb.decodeErrCount || 0);
+        // stallTimes 合并后重算平均/最大
+        const allStalls = [...stallTimes, ...(pb.stallTimes || [])];
+        const finalAvgStall = allStalls.length > 0 ? Math.round(allStalls.reduce((a, b) => a + b, 0) / allStalls.length) : 0;
+        const finalMaxStall = allStalls.length > 0 ? Math.max(...allStalls) : 0;
+
+        document.getElementById('perfPlayCount').textContent = finalPlayCount;
+        document.getElementById('perfStallCount').textContent = finalStallCount;
+        document.getElementById('perfDecodeErr').textContent = finalDecodeErr;
+        document.getElementById('perfAvgStall').textContent = finalAvgStall + ' ms';
+        if (document.getElementById('perfMaxStall')) {
+          document.getElementById('perfMaxStall').textContent = finalMaxStall + ' ms';
+        }
+
+        // —— 网络性能 merge
+        const finalReq  = Math.max(networkCount, nw.requestCount || 0);
+        const finalSucc = Math.max(successRequestsCount, nw.successCount || 0);
+        const finalErr  = Math.max((networkCount - successRequestsCount), nw.errorCount || 0);
+        const finalDenom = finalSucc + finalErr;
+        const finalSR = finalDenom > 0 ? ((finalSucc / finalDenom) * 100).toFixed(1) : (nw.successCount > 0 ? '100.0' : '0');
+        const allLats = [...latencies, ...(nw.latencies || [])];
+        const finalAvgLat = allLats.length > 0 ? Math.round(allLats.reduce((a, b) => a + b, 0) / allLats.length) : 0;
+        const finalMaxLat = allLats.length > 0 ? Math.max(...allLats) : (nw.maxLatencyMs || maxLatency || 0);
+
+        document.getElementById('perfRequests').textContent = finalReq;
+        document.getElementById('perfSuccessRate').textContent = finalSR + '%';
+        document.getElementById('perfAvgLatency').textContent = finalAvgLat + ' ms';
+        document.getElementById('perfMaxLatency').textContent = finalMaxLat + ' ms';
+
+        // 流量 + 速率
+        if (document.getElementById('perfTrafficIO')) {
+          document.getElementById('perfTrafficIO').textContent =
+            `${_fmtBytes(nw.rxBytes)} / ${_fmtBytes(nw.txBytes)}`;
+        }
+        if (document.getElementById('perfTrafficRate')) {
+          const ts = result.data.timestamp || nowT;
+          // 1) 首次采样 / 没有上一帧 → 直接显示 0 Kbps（而不是 "--"）
+          //    等下一次 4s 后有了差值，就会自动替换成真实速率
+          if (!_lastTrafficSample) {
+            if (nw.rxBytes != null || nw.txBytes != null) {
+              _lastTrafficSample = { ts, rxBytes: nw.rxBytes, txBytes: nw.txBytes };
+            }
+            document.getElementById('perfTrafficRate').textContent =
+              `↓ ${_lastTrafficRates.rxText}  ↑ ${_lastTrafficRates.txText}`;
+          } else {
+            const dt = ts - _lastTrafficSample.ts;
+            // 2) 采样间隔太短（< 3s） → 保留上次速率，避免 dt 太小导致速率跳变不可信
+            if (dt < 3000 || nw.rxBytes == null || nw.txBytes == null) {
+              document.getElementById('perfTrafficRate').textContent =
+                `↓ ${_lastTrafficRates.rxText}  ↑ ${_lastTrafficRates.txText}`;
+              // 有新 rx/tx 就稍微更新一下 sample ts，但不要替换字节数（防止下一次 dt 不够）
+              if (nw.rxBytes != null || nw.txBytes != null) {
+                _lastTrafficSample = { ts, rxBytes: nw.rxBytes, txBytes: nw.txBytes };
+              }
+            } else {
+              // 3) dt ≥ 3s：正式做差，算出新速率；即使 delta=0 也显示 0 Kbps
+              const dr  = nw.rxBytes != null  && _lastTrafficSample.rxBytes != null
+                ? Math.max(0, nw.rxBytes  - _lastTrafficSample.rxBytes)  : null;
+              const dt2 = nw.txBytes != null && _lastTrafficSample.txBytes != null
+                ? Math.max(0, nw.txBytes - _lastTrafficSample.txBytes) : null;
+              const newRx = dr  != null ? _fmtKbps(dr,  dt) : _lastTrafficRates.rxText;
+              const newTx = dt2 != null ? _fmtKbps(dt2, dt) : _lastTrafficRates.txText;
+              // 速率不为 "--" 时才更新缓存值（保持连续性）
+              if (newRx !== '--') _lastTrafficRates.rxText = newRx;
+              if (newTx !== '--') _lastTrafficRates.txText = newTx;
+              document.getElementById('perfTrafficRate').textContent =
+                `↓ ${_lastTrafficRates.rxText}  ↑ ${_lastTrafficRates.txText}`;
+              _lastTrafficSample = { ts, rxBytes: nw.rxBytes, txBytes: nw.txBytes };
+            }
+          }
+        }
+
+        // 告警：merge 后的最终值 + 最新实时性能快照 一起重算
+        updatePerformanceAlerts({
+          cpuUsagePct:   _lastPerfSnapshot.cpuUsagePct,
+          memUsagePct:   _lastPerfSnapshot.memUsagePct,
+          memFreeMB:     _lastPerfSnapshot.memFreeMB,
+          fps:           _lastPerfSnapshot.fps,
+          batteryTempC:  _lastPerfSnapshot.batteryTempC,
+          stallCount:    finalStallCount,
+          playCount:     finalPlayCount,
+          errorRatePct:  parseFloat(errorRate) || 0,
+          avgLatencyMs:  finalAvgLat,
+          maxLatencyMs:  finalMaxLat
+        });
+
+        // 来源：标注双源（若 ADB 数据有缺失则附提示）
+        const missing = result.data.missing || [];
+        if (document.getElementById('perfPlaySource')) {
+          const tags = [];
+          if ((pb.playCount + pb.stallCount + pb.decodeErrCount) > 0) tags.push('ADB logcat');
+          if ((playbackCount + stallCount + decodeErrCount) > 0) tags.push('日志解析');
+          document.getElementById('perfPlaySource').textContent = tags.length
+            ? tags.join(' + ') + (missing.includes('playback_logcat') ? '（设备播放日志无tag匹配）' : '')
+            : '暂无播放数据';
+        }
+        if (document.getElementById('perfNetSource')) {
+          const tags2 = [];
+          if ((nw.requestCount + nw.successCount) > 0) tags2.push('ADB logcat');
+          if ((networkCount + successRequestsCount) > 0) tags2.push('日志解析');
+          if (nw.rxBytes != null || nw.txBytes != null) tags2.push('TrafficStats');
+          document.getElementById('perfNetSource').textContent = tags2.length
+            ? tags2.join(' + ')
+            : '暂无网络数据';
+        }
+      }).catch(() => {});
+    }
+  }
+
+  // 告警（兜底：若 playback-net-perf 还没返回/未执行，则用当前日志统计 + 最新实时性能快照 先算一次）
+  updatePerformanceAlerts({
+    cpuUsagePct:   _lastPerfSnapshot.cpuUsagePct,
+    memUsagePct:   _lastPerfSnapshot.memUsagePct,
+    memFreeMB:     _lastPerfSnapshot.memFreeMB,
+    fps:           _lastPerfSnapshot.fps,
+    batteryTempC:  _lastPerfSnapshot.batteryTempC,
+    stallCount:    stallCount,
+    playCount:     playbackCount,
+    errorRatePct:  parseFloat(errorRate) || 0,
+    avgLatencyMs:  avgLatency,
+    maxLatencyMs:  maxLatency
+  });
+
+  calculateStartupPerformance();
+
   fetchDevicePerformance();
-  
-  // 显示最近错误
-  const recentErrors = logs.filter(l => l.logType === 'error' || l.type === 'error' || l.logType === 'crash' || l.type === 'crash' || l.logType === 'warn' || l.type === 'warn');
+
   const recentContainer = document.getElementById('perfRecentErrors');
-  
   if (recentErrors.length === 0) {
     recentContainer.innerHTML = '<p class="empty-state">暂无错误与警告</p>';
   } else {
@@ -3159,171 +4390,262 @@ function renderPerformance() {
       `;
     }).join('');
   }
-  
-  // 绘制性能趋势图
+
   drawPerformanceChart();
 }
 
 // 更新性能告警
-function updatePerformanceAlerts(avgLatency, maxLatency, stallLogs, errorRate) {
-  // 网络延迟高告警
-  const alertHighLatency = document.getElementById('alertHighLatency');
-  if (alertHighLatency) {
-    if (avgLatency > 1000 || maxLatency > 3000) {
-      alertHighLatency.textContent = avgLatency > 1000 ? '延迟过高' : '严重延迟';
-      alertHighLatency.className = avgLatency > 3000 ? 'alert-danger' : 'alert-warning';
-    } else {
-      alertHighLatency.textContent = '正常';
-      alertHighLatency.className = 'alert-normal';
+// 参数说明（全部可选，传 null/NaN 表示该指标暂时无数据，按"未知/无数据"显示警告）：
+//   cpuUsagePct:  CPU 使用率 %（0~100）
+//   memUsagePct:  内存占用率 %（0~100，= memUsed/memTotal*100，可留空按 memUsed 粗估）
+//   memFreeMB:    剩余可用内存 MB（更直观的"内存不足"判断依据，优先于 memUsagePct）
+//   fps:          实时帧率 FPS
+//   batteryTempC: 电池温度 ℃
+//   stallCount:   播放卡顿次数（来自日志解析+ADB合并后的次数）
+//   playCount:    播放次数（播放事件命中次数，>0 表示确实有过播放行为）
+//   errorRatePct: 日志错误率 %（= 错误条数/总条数*100，0~100），作为附加信号
+//   avgLatencyMs: 网络平均请求延迟 ms
+//   maxLatencyMs: 网络最大请求延迟 ms
+function updatePerformanceAlerts({ cpuUsagePct=null, memUsagePct=null, memFreeMB=null, fps=null, batteryTempC=null,
+                                    stallCount=0, playCount=0, errorRatePct=0, avgLatencyMs=0, maxLatencyMs=0 } = {}) {
+  const setAlert = (id, text, level) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = text;
+    el.className = level === 'danger'  ? 'alert-danger'
+                 : level === 'warning' ? 'alert-warning'
+                 : level === 'nodata'  ? 'alert-warning'
+                 :                       'alert-normal';
+  };
+
+  const has = v => Number.isFinite(v) && v !== null;
+
+  // ------------------------------------------------------------
+  // 1) CPU 过热：判断 CPU 使用率 + 电池温度，再附加 错误率/渲染卡顿
+  // ------------------------------------------------------------
+  const alertCpu = (() => {
+    if (!has(cpuUsagePct) && !has(batteryTempC)) return { text: '无数据', level: 'nodata' };
+    const cpuHi   = has(cpuUsagePct)   && cpuUsagePct   > 80;
+    const cpuMid  = has(cpuUsagePct)   && cpuUsagePct   > 65;
+    const battHi  = has(batteryTempC)  && batteryTempC  > 58;
+    const battMid = has(batteryTempC)  && batteryTempC  > 48;
+    const errHi   = has(errorRatePct)  && errorRatePct  > 10;
+    if (cpuHi || battHi) return { text: 'CPU过热 / 高温', level: 'danger' };
+    if (cpuMid || battMid || errHi) {
+      const parts = [];
+      if (cpuMid) parts.push('CPU偏高');
+      if (battMid) parts.push('温度偏高');
+      if (errHi) parts.push('错误率高');
+      return { text: parts.join(' / ') || '负载偏高', level: 'warning' };
     }
-  }
-  
-  // 帧率过低告警（基于卡顿日志）
-  const alertLowFps = document.getElementById('alertLowFps');
-  if (alertLowFps) {
-    const recentStalls = stallLogs.filter(l => {
-      const ts = l.timestamp || l.serverTime || 0;
-      return Date.now() - ts < 300000; // 5分钟内
-    });
-    if (recentStalls.length > 3) {
-      alertLowFps.textContent = '频繁卡顿';
-      alertLowFps.className = 'alert-danger';
-    } else if (recentStalls.length > 0) {
-      alertLowFps.textContent = '偶发卡顿';
-      alertLowFps.className = 'alert-warning';
-    } else {
-      alertLowFps.textContent = '正常';
-      alertLowFps.className = 'alert-normal';
+    return { text: '正常', level: 'normal' };
+  })();
+  setAlert('alertCpuOverheat', alertCpu.text, alertCpu.level);
+
+  // ------------------------------------------------------------
+  // 2) 内存不足：优先剩余可用内存（MB），其次占用率
+  // ------------------------------------------------------------
+  const alertMem = (() => {
+    if (!has(memFreeMB) && !has(memUsagePct)) return { text: '无数据', level: 'nodata' };
+    // 剩余内存判断（更贴近"不足"这个语义）
+    if (has(memFreeMB)) {
+      if (memFreeMB < 200) return { text: '内存严重不足', level: 'danger' };
+      if (memFreeMB < 500) return { text: '内存紧张',     level: 'warning' };
     }
-  }
-  
-  // 错误率告警
-  const alertCpuOverheat = document.getElementById('alertCpuOverheat');
-  if (alertCpuOverheat) {
-    if (parseFloat(errorRate) > 5) {
-      alertCpuOverheat.textContent = '错误率过高';
-      alertCpuOverheat.className = 'alert-warning';
-    } else {
-      alertCpuOverheat.textContent = '正常';
-      alertCpuOverheat.className = 'alert-normal';
+    // 占用率判断作为补充
+    if (has(memUsagePct)) {
+      if (memUsagePct >= 90) return { text: '内存严重不足', level: 'danger' };
+      if (memUsagePct >  75) return { text: '内存占用偏高', level: 'warning' };
     }
-  }
+    // 另外：若当前进程占用（无总内存时只能粗估）> 1GB，提醒"占用偏高"
+    return { text: '正常', level: 'normal' };
+  })();
+  setAlert('alertMemLow', alertMem.text, alertMem.level);
+
+  // ------------------------------------------------------------
+  // 3) 帧率过低：FPS 值为主，播放次数 + 卡顿次数作为门槛（避免未播放时 fps=0 被误判为停滞）
+  //    判定前置：只有「playCount>0 或 stallCount>0」才认为 APP 正在渲染画面，
+  //              否则即便是 fps<=0 也判「无播放/采样中」，而不是「画面停滞」
+  // ------------------------------------------------------------
+  const alertFps = (() => {
+    const hasFps = has(fps);
+    // 有播放证据（已命中播放事件），用于区分"未播放"和"真的卡住"
+    const hasPlayEvidence = (stallCount > 0) || (playCount > 0);
+
+    if (!hasFps && !hasPlayEvidence) return { text: '采样中', level: 'nodata' };
+
+    // 频繁卡顿 → 无论 FPS 都直接打危险
+    if (stallCount > 3) return { text: '频繁卡顿', level: 'danger' };
+
+    if (hasFps) {
+      if (fps <= 0) {
+        // ⚠️ 关键：只有 APP 确实在播放（有播放证据）时 fps=0 才是真的「画面停滞」
+        //        否则是 TVLive 在后台/没播内容，按「无播放」处理避免误报
+        if (hasPlayEvidence) return { text: '画面停滞', level: 'danger' };
+        return { text: '无播放画面', level: 'nodata' };
+      }
+      if (fps < 15)  return { text: '帧率过低', level: 'danger' };
+      if (fps < 24)  return { text: '帧率偏低', level: 'warning' };
+    }
+    if (stallCount > 0) return { text: '偶发卡顿', level: 'warning' };
+    return { text: '正常', level: 'normal' };
+  })();
+  setAlert('alertLowFps', alertFps.text, alertFps.level);
+
+  // ------------------------------------------------------------
+  // 4) 网络延迟高：avg / max 延迟 + 错误率辅助判断
+  // ------------------------------------------------------------
+  const alertNet = (() => {
+    const avg = has(avgLatencyMs) ? avgLatencyMs : 0;
+    const max = has(maxLatencyMs) ? maxLatencyMs : 0;
+    if (avg <= 0 && max <= 0) return { text: '采样中', level: 'nodata' };
+    if (avg > 3000 || max > 6000) return { text: '严重延迟', level: 'danger' };
+    if (avg > 1000 || max > 3000) return { text: '延迟过高', level: 'warning' };
+    return { text: '正常', level: 'normal' };
+  })();
+  setAlert('alertHighLatency', alertNet.text, alertNet.level);
 }
 
 // 获取设备实时性能
 async function fetchDevicePerformance() {
-  const selectedDevice = document.getElementById('deviceSelect');
-  const serial = selectedDevice ? selectedDevice.value : null;
-  
-  if (!serial || serial === 'none') {
-    updatePerfDisplay(null);
+  let serial = getPerformanceSerial();
+
+  // 兜底：如果两个 select 都没选，立刻从 server 刷一次设备列表并自动选第一个
+  if (!serial) {
+    try { await updateAllDeviceSelects(); } catch (_) {}
+    serial = getPerformanceSerial();
+  }
+  if (!serial) {
+    updatePerfDisplay(null, '未连接 ADB 设备');
     return;
   }
-  
+
   try {
     const response = await fetch('/api/tvlive/device-perf', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ serial })
     });
-    
     const result = await response.json();
-    if (result.success && result.data) {
-      updatePerfDisplay(result.data);
+    if (result && result.success && result.data) {
+      updatePerfDisplay(result.data, null);
+    } else if (result && result.error) {
+      updatePerfDisplay(null, `获取失败: ${String(result.error).slice(0, 24)}`);
+    } else {
+      updatePerfDisplay(null, '接口返回为空');
     }
   } catch (error) {
     console.error('获取性能数据失败:', error);
+    updatePerfDisplay(null, `网络错误: ${error && error.message ? error.message.slice(0, 20) : '未知'}`);
   }
 }
 
 // 更新性能显示
-function updatePerfDisplay(data) {
+function updatePerfDisplay(data, reason) {
+  const $ = id => document.getElementById(id);
+  const cpuUsage = $('perfCpuUsage'), cpuBar = $('perfCpuBar');
+  const memUsage = $('perfMemUsage'), memBar = $('perfMemBar');
+  const perfFps = $('perfFps'), batteryTemp = $('perfBatteryTemp');
+  const perfLastUpdate = $('perfLastUpdate');
+
+  const has = v => Number.isFinite(v);
+
   if (!data) {
-    document.getElementById('perfCpuUsage').textContent = '--%';
-    document.getElementById('perfMemUsage').textContent = '-- MB';
-    document.getElementById('perfFps').textContent = '--';
-    document.getElementById('perfBatteryTemp').textContent = '-- ℃';
-    document.getElementById('perfCpuBar').style.width = '0%';
-    document.getElementById('perfMemBar').style.width = '0%';
-    document.getElementById('perfLastUpdate').textContent = '未连接';
+    if (cpuUsage) cpuUsage.textContent = '--%';
+    if (memUsage) memUsage.textContent = '-- MB';
+    if (perfFps) perfFps.textContent = '--';
+    if (batteryTemp) batteryTemp.textContent = '-- ℃';
+    if (cpuBar) cpuBar.style.width = '0%';
+    if (memBar) memBar.style.width = '0%';
+    if (perfLastUpdate) perfLastUpdate.textContent = reason || '未连接';
     return;
   }
-  
+
   // CPU
-  const cpuBar = document.getElementById('perfCpuBar');
-  const cpuUsage = document.getElementById('perfCpuUsage');
-  if (cpuUsage) cpuUsage.textContent = data.cpuUsage + '%';
+  const cpu = has(data.cpuUsage) ? Math.min(Math.max(0, data.cpuUsage), 100) : NaN;
+  if (cpuUsage) cpuUsage.textContent = has(cpu) ? `${cpu.toFixed(1)}%` : '--%';
   if (cpuBar) {
-    cpuBar.style.width = Math.min(data.cpuUsage, 100) + '%';
-    if (data.cpuUsage > 80) {
-      cpuBar.style.background = 'linear-gradient(90deg, #f56565, #c53030)';
-    } else if (data.cpuUsage > 60) {
-      cpuBar.style.background = 'linear-gradient(90deg, #ed8936, #dd6b20)';
-    } else {
-      cpuBar.style.background = 'linear-gradient(90deg, #48bb78, #4299e1)';
+    if (!has(cpu)) { cpuBar.style.width = '0%'; }
+    else {
+      cpuBar.style.width = cpu + '%';
+      cpuBar.style.background = cpu > 80 ? 'linear-gradient(90deg, #f56565, #c53030)'
+                             : cpu > 60 ? 'linear-gradient(90deg, #ed8936, #dd6b20)'
+                                        : 'linear-gradient(90deg, #48bb78, #4299e1)';
     }
   }
-  
+
   // 内存
-  const memBar = document.getElementById('perfMemBar');
-  const memUsage = document.getElementById('perfMemUsage');
+  const memUsed = has(data.memUsed) ? data.memUsed : NaN;
+  const memTotal = has(data.memTotal) ? data.memTotal : NaN;
   if (memUsage) {
-    if (data.memTotal > 0) {
-      const usagePercent = ((data.memUsed / data.memTotal) * 100).toFixed(1);
-      memUsage.textContent = `${data.memUsed.toFixed(0)} MB / ${data.memTotal.toFixed(0)} MB (${usagePercent}%)`;
+    if (!has(memUsed)) memUsage.textContent = '-- MB';
+    else if (has(memTotal) && memTotal > 0) {
+      const usagePercent = Math.min(100, Math.max(0, (memUsed / memTotal) * 100));
+      memUsage.textContent = `${memUsed.toFixed(0)} MB / ${memTotal.toFixed(0)} MB (${usagePercent.toFixed(1)}%)`;
       if (memBar) {
         memBar.style.width = usagePercent + '%';
-        if (parseFloat(usagePercent) > 80) {
-          memBar.style.background = 'linear-gradient(90deg, #f56565, #c53030)';
-        } else if (parseFloat(usagePercent) > 60) {
-          memBar.style.background = 'linear-gradient(90deg, #ed8936, #dd6b20)';
-        } else {
-          memBar.style.background = 'linear-gradient(90deg, #48bb78, #4299e1)';
-        }
+        memBar.style.background = usagePercent > 80 ? 'linear-gradient(90deg, #f56565, #c53030)'
+                                 : usagePercent > 60 ? 'linear-gradient(90deg, #ed8936, #dd6b20)'
+                                                     : 'linear-gradient(90deg, #48bb78, #4299e1)';
       }
     } else {
-      memUsage.textContent = `${data.memUsed.toFixed(0)} MB`;
-      if (memBar) {
-        const memPercent = Math.min((data.memUsed / 2048) * 100, 100); // 假设2GB总内存
-        memBar.style.width = memPercent + '%';
-      }
+      memUsage.textContent = `${memUsed.toFixed(0)} MB`;
+      if (memBar) memBar.style.width = Math.min((memUsed / 2048) * 100, 100) + '%';
     }
   }
-  
-  // FPS
-  const perfFps = document.getElementById('perfFps');
-  if (perfFps) {
-    perfFps.textContent = data.fps > 0 ? data.fps : '采样中...';
-  }
-  
+
+  // FPS（同时兼容后端返回 app_fps / gfxinfo_fps / surfaceflinger_fps 或最终 fps）
+  const fpsVal = has(data.fps) ? data.fps : (has(data.gfxinfo_fps) ? data.gfxinfo_fps : NaN);
+  if (perfFps) perfFps.textContent = has(fpsVal) ? `${fpsVal}` : '采样中…';
+
   // 电池温度
-  const batteryTemp = document.getElementById('perfBatteryTemp');
+  const batt = has(data.batteryTemp) ? data.batteryTemp : NaN;
   if (batteryTemp) {
-    batteryTemp.textContent = data.batteryTemp > 0 ? data.batteryTemp + ' ℃' : '--';
-    // 温度告警
-    const alertMemLow = document.getElementById('alertMemLow');
-    if (alertMemLow && data.batteryTemp > 50) {
-      alertMemLow.textContent = '温度较高';
-      alertMemLow.className = data.batteryTemp > 60 ? 'alert-danger' : 'alert-warning';
-    } else if (alertMemLow) {
-      alertMemLow.textContent = '正常';
-      alertMemLow.className = 'alert-normal';
-    }
+    batteryTemp.textContent = has(batt) ? `${batt.toFixed(1)} ℃` : '-- ℃';
   }
-  
-  // 更新时间
-  const perfLastUpdate = document.getElementById('perfLastUpdate');
+
+  // 写缓存：把实时性能快照存下来，供 renderPerformance / updatePerformanceAlerts 合并判断使用
+  const memUsedV  = has(data.memUsed)  ? data.memUsed  : NaN;
+  const memTotalV = has(data.memTotal) ? data.memTotal : NaN;
+  let memPercent = NaN;
+  if (has(memUsedV) && has(memTotalV) && memTotalV > 0) memPercent = (memUsedV / memTotalV) * 100;
+  const memFreeV  = has(memTotalV) && has(memUsedV) ? Math.max(0, memTotalV - memUsedV) : NaN;
+  const cpuV = has(data.cpuUsage) ? Math.min(100, Math.max(0, data.cpuUsage)) : NaN;
+
+  _lastPerfSnapshot = {
+    cpuUsagePct:  Number.isFinite(cpuV)   ? cpuV      : null,
+    memUsagePct:  Number.isFinite(memPercent) ? memPercent : null,
+    memFreeMB:    Number.isFinite(memFreeV)  ? memFreeV   : null,
+    fps:          Number.isFinite(fpsVal)    ? fpsVal     : null,
+    batteryTempC: Number.isFinite(batt)      ? batt       : null,
+    timestamp:    data.timestamp || Date.now()
+  };
+
+  // 实时刷新告警（每 5 秒一次 device-perf 返回后，把最新 CPU/内存/帧率/电池温度 参与计算）
+  try {
+    updatePerformanceAlerts({
+      cpuUsagePct:  _lastPerfSnapshot.cpuUsagePct,
+      memUsagePct:  _lastPerfSnapshot.memUsagePct,
+      memFreeMB:    _lastPerfSnapshot.memFreeMB,
+      fps:          _lastPerfSnapshot.fps,
+      batteryTempC: _lastPerfSnapshot.batteryTempC
+    });
+  } catch (_) {}
+
+  // 更新时间 + 字段缺失 meta 提示
   if (perfLastUpdate) {
-    const time = new Date(data.timestamp || Date.now());
-    perfLastUpdate.textContent = formatTime(data.timestamp || Date.now());
+    const missing = (data.meta && data.meta.missingFields && data.meta.missingFields.length)
+      ? ` | 缺:${data.meta.missingFields.join(',')}` : '';
+    const extra = reason ? ` · ${reason}` : missing;
+    perfLastUpdate.textContent = formatTime(data.timestamp || Date.now()) + extra;
   }
-  
+
   // 启动定时更新（如果还没启动）
   if (!perfUpdateInterval) {
     perfUpdateInterval = setInterval(() => {
       const activeTab = document.querySelector('.tab.active');
       if (activeTab && activeTab.dataset.view === 'performance') {
-        fetchDevicePerformance();
+        fetchDevicePerformance().catch(() => {});
       }
     }, 5000); // 每5秒更新
   }
@@ -3368,11 +4690,15 @@ function drawPerformanceChart() {
     return;
   }
   
-  // 按时间分组统计错误数
-  const timeWindow = 60000; // 1分钟窗口
-  const timestamps = logs.map(l => l.timestamp || l.serverTime || Date.now());
-  const startTime = Math.min(...timestamps);
-  const endTime = Math.max(...timestamps);
+  const timeWindow = 60000;
+  let startTime = Infinity, endTime = -Infinity;
+  for (let i = 0; i < logs.length; i++) {
+    const ts = logs[i].timestamp || logs[i].serverTime || Date.now();
+    if (ts < startTime) startTime = ts;
+    if (ts > endTime) endTime = ts;
+  }
+  if (startTime === Infinity) startTime = Date.now();
+  if (endTime === -Infinity) endTime = Date.now();
   const duration = Math.max(endTime - startTime, 1000);
   const windowCount = Math.min(Math.ceil(duration / timeWindow), 30);
   
@@ -3554,6 +4880,17 @@ document.getElementById('addKeyword').addEventListener('click', () => {
 document.getElementById('refreshTimeline').addEventListener('click', renderTimeline);
 document.getElementById('timelineRange').addEventListener('change', renderTimeline);
 document.getElementById('timelineInterval').addEventListener('change', renderTimeline);
+document.getElementById('timelineChartType').addEventListener('change', renderTimeline);
+
+setupTimelineChartEvents();
+
+// 启动性能测量
+const measureBtn = document.getElementById('measureStartupBtn');
+if (measureBtn) {
+  measureBtn.addEventListener('click', () => {
+    measureStartupPerformance();
+  });
+}
 
 // 时间线导出
 document.getElementById('exportTimeline').addEventListener('click', exportTimelineData);

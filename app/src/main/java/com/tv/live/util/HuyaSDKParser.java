@@ -45,6 +45,7 @@ public class HuyaSDKParser {
 
     private static volatile boolean sInitDone = false;
     private static volatile boolean sInitOk = false;
+    private static int sAutoTestRound = 0;   // 自动化测试房间轮换计数
 
     // 单例 + 配置由 SDK 直接持有，无需反射缓存字段
     private static HuyaBerry sHuyaBerry;
@@ -335,6 +336,11 @@ public class HuyaSDKParser {
             HuyaSDKLogger.init();
             HuyaSDKLogger.info(TAG, "开始初始化虎牙 SDK...");
 
+            // 🆕 SDK 兼容修复：中和 BaseApi.crashIfDebug，防止 SDK 内部
+            //    非致命模块失败（反射实例化失败/服务注册失败）被升级为
+            //    RuntimeException 导致整个 init 失败、解析回调永不触发
+            SdkCompatHook.neutralizeCrashIfDebug();
+
             Log.d(TAG, "[1/4] 准备构建 HuyaBerryConfig.Builder");
 
             // ============ 🆕 从加密存储读取凭证 =============
@@ -349,6 +355,7 @@ public class HuyaSDKParser {
                 Log.i(TAG, "  🔐 从加密存储加载凭证: " + credentials.getCredentialsSummary());
             } catch (Throwable credError) {
                 Log.e(TAG, "  ❌ 加载凭证失败: " + credError.getMessage());
+                ExceptionReporter.report("HuyaCredentials", credError);
                 // 从混淆后的编码值解码
                 gameId = decodeGameIdFallback();
                 appId = decodeAppIdFallback();
@@ -398,6 +405,7 @@ public class HuyaSDKParser {
                 // 打印完整异常链（含 cause 链）+ 提取真正缺失的类名列表，
                 // 便于逐个移出黑名单或加 Stub
                 Log.w(TAG, "❌ HuyaBerry init 失败（需要修复才能触发SDK回调）: " + logThrowableChain(initE));
+                ExceptionReporter.report("HuyaBerry.init", initE);
                 // init 失败时不抛：仍标记 done，但 sInitOk=false 让上层走纯解析兜底
             }
 
@@ -418,6 +426,7 @@ public class HuyaSDKParser {
                 HuyaSDKLogger.info(TAG, "✅ BerryEvent 事件代理已注册");
             } catch (Throwable t) {
                 HuyaSDKLogger.warn(TAG, "⚠️ BerryEvent 事件代理注册失败: " + t.getMessage());
+                ExceptionReporter.report("BerryEvent.register", t);
             }
 
             // 🔴【并行加载优化：init 成功后补发预解析】
@@ -449,19 +458,24 @@ public class HuyaSDKParser {
                 }, 1500);
             } catch (Throwable t) {
                 Log.w(TAG, "  ⚠️ BerryDebugChecker 启动失败（跳过，不影响主流程）", t);
+                ExceptionReporter.report("BerryDebugChecker.start", t);
             }
             // ============= 🆕 豆包第四段：调试检测代码（结束）=============
 
-            // 【自动化测试】init 成功 60s 后自动触发一次 parseFull（房间号 26355851 虎牙官方常用）
-            // 延时 60s 目的：避开首页 50+ 房间同时发起解析导致的 SDK 排队风暴（风暴期内首个请求会被 SDK
-            // 放到队尾，30s 超时后才收到回调→回调被静默吞掉→用户截图 "SDK 解析超时"）
-            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(new Runnable() {
+            // 【自动化测试】init 成功后每 90s 循环触发一次 parseFull（多码率房间 11342412）
+            // 目的：验证“首次解析多档 → 缓存过期/切换其他房间后重新解析”的档位一致性
+            // （用户反馈：切到其他虎牙频道再切回来，清晰度从多档变成单档）
+            final Runnable autoTestRunnable = new Runnable() {
                 @Override
                 public void run() {
                     new Thread(new Runnable() {
                         @Override
                         public void run() {
-                            final int TEST_ROOM = 26355851;
+                            // 循环覆盖所有多档房间（11342412: 2线x4档, 11342421: 2线x3档, 11602058: 3线x2档），
+                            // 验证“切走再切回”后档位是否丢失
+                            final int[] TEST_ROOMS = {11342412, 11342421, 11602058};
+                            final int TEST_ROOM = TEST_ROOMS[sAutoTestRound % TEST_ROOMS.length];
+                            sAutoTestRound++;
                             Log.i(TAG, "🧪【自动化 SDK 解析测试】开始 parseFull, roomId=" + TEST_ROOM);
                             parseFull(TEST_ROOM, new OnSDKFullResultListener() {
                                 @Override
@@ -501,17 +515,22 @@ public class HuyaSDKParser {
                             });
                         }
                     }, "HuyaSDKParser-AutoTest").start();
+                    // 90s 后再次测试：覆盖“缓存过期 + SDK 内部状态被其他房间刷新”场景
+                    new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(this, 90000);
                 }
-            }, 60000);
+            };
+            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(autoTestRunnable, 60000);
 
         } catch (Throwable e) {
             Throwable cause = e.getCause();
             if (cause != null) {
                 Log.e(TAG, "SDK 绑定异常: " + cause.getClass().getSimpleName() + ": " + cause.getMessage(), e);
                 HuyaSDKLogger.error(TAG, "SDK绑定异常: " + cause.getClass().getSimpleName() + ": " + cause.getMessage());
+                ExceptionReporter.report("HuyaSDK.bind", cause);
             } else {
                 Log.e(TAG, "SDK 绑定异常: " + e.getClass().getSimpleName() + ": " + e.getMessage(), e);
                 HuyaSDKLogger.error(TAG, "SDK绑定异常: " + e.getClass().getSimpleName() + ": " + e.getMessage());
+                ExceptionReporter.report("HuyaSDK.bind", e);
             }
             sInitOk = false;
         }
@@ -602,12 +621,16 @@ public class HuyaSDKParser {
                                             ? "SDK 返回空结果"
                                             : ("SDK 返回类型 " + dataType + "，非 LiveInfo");
                                     HuyaSDKLogger.error(TAG, err);
+                                    ExceptionReporter.reportHuyaBusinessFailure(
+                                            "CustomUI.onResultCallback", code, err,
+                                            "roomId=" + finalRoomId);
                                     outerListener.onError(err);
                                 }
                             }
                         } catch (Exception e) {
                             Log.e(TAG, "handleFullResult 异常: " + e.getMessage(), e);
                             HuyaSDKLogger.error(TAG, "handleFullResult 异常: " + e.getMessage());
+                            ExceptionReporter.report("HuyaSDK.handleFullResult", e);
                             if (!alreadyTimeout && done.compareAndSet(false, true)) {
                                 outerListener.onError("结果处理异常: " + e.getMessage());
                             }
@@ -631,12 +654,16 @@ public class HuyaSDKParser {
                 if (done.compareAndSet(false, true)) {
                     Log.w(TAG, "SDK 调用超时 (30s)");
                     HuyaSDKLogger.error(TAG, "SDK解析超时: roomId=" + roomId);
+                    ExceptionReporter.reportHuyaBusinessFailure(
+                            "HuyaSDKParser.parseFull", -99998, "SDK 解析超时 (30s)",
+                            "roomId=" + roomId);
                     listener.onError("SDK 解析超时");
                 }
             } catch (Throwable e) {
                 // 打印完整异常链：尤其 InvocationTargetException 必须看 getTargetException 才是真因
                 Log.e(TAG, "SDK 解析异常完整链：\n" + logThrowableChain(e));
                 HuyaSDKLogger.error(TAG, "SDK解析异常: " + e.getMessage() + ", roomId=" + roomId);
+                ExceptionReporter.report("HuyaSDKParser.parseFull", e);
                 String userMsg = (e.getCause() != null)
                         ? e.getCause().toString()
                         : e.toString();
@@ -700,21 +727,31 @@ public class HuyaSDKParser {
                                          AtomicBoolean done, int roomId) {
         if (liveInfo == null) {
             HuyaSDKLogger.error(TAG, "handleFullResult: liveInfo=null, roomId=" + roomId);
+            ExceptionReporter.reportHuyaBusinessFailure(
+                    "HuyaSDKParser.handleFullResult", -99997, "liveInfo=null",
+                    "roomId=" + roomId + ",code=" + code);
             if (done.compareAndSet(false, true)) listener.onError("SDK 返回空结果");
             return;
         }
         // SDK 约定 code != 0 表示失败；只有 0 + 非空 LiveInfo 才走解析
         if (code != BaseCallback.SUCCESS) {
             HuyaSDKLogger.error(TAG, "handleFullResult: code=" + code + " (非SUCCESS), roomId=" + roomId);
+            ExceptionReporter.reportHuyaBusinessFailure(
+                    "HuyaSDKParser.handleFullResult", code, "code != SUCCESS",
+                    "roomId=" + roomId);
             if (done.compareAndSet(false, true)) {
                 listener.onError("SDK 返回失败码 code=" + code);
             }
             return;
         }
 
-        List<HuyaStreamInfo> streams = extractFullStreamList(liveInfo);
+        List<HuyaStreamInfo> streams = extractFullStreamList(liveInfo, roomId);
         if (streams == null || streams.isEmpty()) {
             HuyaSDKLogger.error(TAG, "handleFullResult: 未提取到任何流, roomId=" + roomId);
+            ExceptionReporter.reportHuyaBusinessFailure(
+                    "HuyaSDKParser.extractFullStreamList", -99996,
+                    "未提取到任何流地址 / 无码率",
+                    "roomId=" + roomId);
             if (done.compareAndSet(false, true)) listener.onError("未提取到任何流地址");
             return;
         }
@@ -739,7 +776,7 @@ public class HuyaSDKParser {
     /**
      * 直接从 LiveInfo 提取完整线路×码率列表（不再使用反射兜底）
      */
-    private static List<HuyaStreamInfo> extractFullStreamList(LiveInfo liveInfo) {
+    private static List<HuyaStreamInfo> extractFullStreamList(LiveInfo liveInfo, int roomId) {
         List<HuyaStreamInfo> out = new ArrayList<>();
         try {
             // 1. 拿 lines：直接调 LiveInfo.getLines()
@@ -750,12 +787,40 @@ public class HuyaSDKParser {
             }
             Log.d(TAG, "getLines: " + linesObj.size() + " 条线路");
 
+            // ===== v3.3 诊断：反射 dump PlayerHelper.singleStreamInfo 内部结构（带 roomId 定位） =====
+            try {
+                Class<?> phCls = Class.forName("com.huya.berry.module.Player.PlayerHelper");
+                java.lang.reflect.Field ssiF = phCls.getDeclaredField("singleStreamInfo");
+                ssiF.setAccessible(true);
+                Object ssi = ssiF.get(null);
+                Log.e(TAG, "V33DBG room=" + roomId + " singleStreamInfo=" + ssi);
+                if (ssi != null) {
+                    java.lang.reflect.Field siF = ssi.getClass().getDeclaredField("singleInfo");
+                    siF.setAccessible(true);
+                    java.util.Map<?, ?> singleInfo = (java.util.Map<?, ?>) siF.get(ssi);
+                    Log.e(TAG, "V33DBG room=" + roomId + " singleInfo.size=" + (singleInfo == null ? -1 : singleInfo.size()));
+                    if (singleInfo != null) {
+                        for (java.util.Map.Entry<?, ?> e : singleInfo.entrySet()) {
+                            Object li = e.getValue();
+                            if (li == null) continue;
+                            java.lang.reflect.Field brF = li.getClass().getDeclaredField("bitRateInfoList");
+                            brF.setAccessible(true);
+                            Object brl = brF.get(li);
+                            Log.e(TAG, "V33DBG room=" + roomId + " line=" + e.getKey() + " bitRateInfoList=" + brl);
+                        }
+                    }
+                }
+            } catch (Throwable t) {
+                Log.e(TAG, "V33DBG err: " + t);
+            }
+
             for (int i = 0; i < linesObj.size(); i++) {
                 int lineValue;
                 try {
                     lineValue = ((Number) linesObj.get(i)).intValue();
                 } catch (Exception e) {
                     Log.d(TAG, "线路#" + i + " 取值失败: " + e.getMessage());
+                    ExceptionReporter.report("extractFullStreamList.lineValue", e);
                     continue;
                 }
 
@@ -777,10 +842,12 @@ public class HuyaSDKParser {
                         hlsUrl = liveInfo.getPlayUrlByLineAndBitrate(false, lineValue, br);
                     } catch (Exception e) {
                         Log.d(TAG, "HLS URL 获取失败: line=" + lineValue + " br=" + br + ": " + e.getMessage());
+                        ExceptionReporter.report("extractFullStreamList.hlsUrl", e);
                     }
                     try {
                         flvUrl = liveInfo.getPlayUrlByLineAndBitrate(true, lineValue, br);
                     } catch (Exception e) {
+                        ExceptionReporter.report("extractFullStreamList.flvUrl", e);
                         // ignore
                     }
                     if (TextUtils.isEmpty(hlsUrl) && TextUtils.isEmpty(flvUrl)) {
@@ -814,6 +881,7 @@ public class HuyaSDKParser {
 
         } catch (Exception e) {
             Log.e(TAG, "extractFullStreamList 异常: " + e.getMessage());
+            ExceptionReporter.report("extractFullStreamList.outer", e);
             if (!out.isEmpty()) return out;
             return fallbackExtractAsSingle(liveInfo);
         }
@@ -835,7 +903,9 @@ public class HuyaSDKParser {
                     flv = liveInfo.getPlayUrlByLineAndBitrate(true, line, br);
                 }
             }
-        } catch (Throwable ignored) {}
+        } catch (Throwable ignored) {
+            ExceptionReporter.report("fallbackExtractAsSingle", ignored);
+        }
 
         if ((hls == null || hls.isEmpty()) && (flv == null || flv.isEmpty())) {
             return null;

@@ -75,12 +75,6 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
         }
     }
 
-    // 保留方法用于兼容性，现在日志始终记录
-    @Deprecated
-    public void setDebugLogEnabled(boolean enabled) {
-        // 日志现在总是记录到 LogCollector
-    }
-
     public void setChannelName(String channelName) {
         this.currentChannelName = (channelName != null) ? channelName : "";
     }

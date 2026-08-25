@@ -105,7 +105,7 @@ public class EpgManagerWrapper {
         playingIndex = -1;
         selectDayIndex = dateIndex;
         epgEndTimeMap.clear();
-        new Thread(() -> {
+        com.tv.live.util.AppExecutors.io(() -> {
             List<Channel.EpgItem> originEpgList;
             try {
                 List<Channel.EpgItem> temp = EpgManager.getInstance().getEpg(currentChannel);
@@ -243,7 +243,7 @@ public class EpgManagerWrapper {
                 }
                 scrollToCurrentProgram(finalData);
             });
-        }).start();
+        });
     }
 
     private void scrollToCurrentProgram(List<Channel.EpgItem> epgList) {

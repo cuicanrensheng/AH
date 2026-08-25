@@ -17,9 +17,11 @@ import java.net.Socket;
 import java.net.URLDecoder;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.TimeUnit;
 import java.util.Locale;
+import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 网页后台管理器
@@ -49,6 +51,10 @@ public class WebServerManager {
     private Handler handler = new Handler(Looper.getMainLooper());
     private boolean isRunning = false;
 
+    // 🟢 线程池：避免每个 HTTP 连接新建线程导致线程无上限
+    private ExecutorService acceptExecutor;   // 单线程：accept 循环
+    private ExecutorService requestExecutor;  // 固定池：处理并发连接
+
     private static WebServerManager runningInstance;
 
     // 🟢 记录最后一次提交配置的时间，用于防连点锁
@@ -72,7 +78,18 @@ public class WebServerManager {
         this.port = actualPort;
         final int finalPort = actualPort;
 
-        new Thread(() -> {
+        acceptExecutor = Executors.newSingleThreadExecutor(r -> {
+            Thread t = new Thread(r, "WebServer-Accept");
+            t.setDaemon(true);
+            return t;
+        });
+        requestExecutor = Executors.newFixedThreadPool(4, r -> {
+            Thread t = new Thread(r, "WebServer-Conn");
+            t.setDaemon(true);
+            return t;
+        });
+
+        acceptExecutor.execute(() -> {
             try {
                 serverSocket = new ServerSocket();
                 serverSocket.setReuseAddress(true);
@@ -84,7 +101,7 @@ public class WebServerManager {
                 while (!serverSocket.isClosed()) {
                     try {
                         Socket socket = serverSocket.accept();
-                        new Thread(() -> handleHttpRequest(socket)).start();
+                        requestExecutor.execute(() -> handleHttpRequest(socket));
                     } catch (Exception e) {
                         if (!serverSocket.isClosed()) {
                             // 忽略正常关闭导致的异常
@@ -100,7 +117,7 @@ public class WebServerManager {
                 isRunning = false;
                 runningInstance = null;
             }
-        }).start();
+        });
     }
 
     public void stop() {
@@ -113,6 +130,8 @@ public class WebServerManager {
                 }
             }
             handler.removeCallbacksAndMessages(null);
+            if (acceptExecutor != null) acceptExecutor.shutdownNow();
+            if (requestExecutor != null) requestExecutor.shutdownNow();
         } catch (Exception e) {
             e.printStackTrace();
         }

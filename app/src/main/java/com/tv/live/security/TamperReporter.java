@@ -60,7 +60,7 @@ public final class TamperReporter {
     }
 
     /**
-     * 上报篡改行为
+     * 上报篡改行为（确认的篡改，会上报到Bugly并可能触发崩溃）
      * @param tamperType 篡改类型
      * @param detail 详细信息
      */
@@ -85,6 +85,21 @@ public final class TamperReporter {
         
         // 4. 写入本地文件日志（确保即使网络不通也能保留记录）
         writeTamperLogToFile(tamperType, typeName, detail);
+    }
+    
+    /**
+     * 上报可疑环境（仅记录日志，不上报崩溃）
+     * 用于记录USB调试、模拟器等合法但可疑的环境
+     * @param tamperType 可疑类型
+     * @param detail 详细信息
+     */
+    public static void reportSuspicious(int tamperType, String detail) {
+        String typeName = getTypeName(tamperType);
+        Log.w(TAG, "⚠️ 检测到可疑环境: " + typeName + " - " + detail);
+        
+        // 仅记录到本地日志，不上报Bugly
+        LogCollector.getInstance().warn(TAG, 
+            "可疑环境: " + typeName + " | " + detail);
     }
     
     /**

@@ -13,22 +13,22 @@ import android.widget.TextView;
 
 import java.util.List;
 
+/**
+ * 🔧 订阅源列表适配器 —— 彻底迁移到 Android 原生焦点机制：
+ *
+ *   视觉样式（蓝底 + 蓝字 + ✓）不再由代码 setBackgroundColor/setTextColor/setVisibility 手动控制，
+ *   而是由 @drawable/subscription_row_content_bg、@color/subscription_row_text、
+ *   @color/subscription_check_text 这些 state list selector 根据
+ *   state_focused / state_selected / state_activated 自动切换。
+ *
+ *   selectedPosition 变量仅承担「点击确定按钮时，把当前选中项回调出去」的数据责任，
+ *   样式 100% 跟随 Android 原生焦点链，红框焦点移到哪里视觉就到哪里。
+ */
 public class SubscriptionAdapter extends ArrayAdapter<SourceManager.SourceItem> {
 
     private int selectedPosition = -1;
     private OnActionListener actionListener;
     private android.widget.ListView listViewRef;
-
-    private static final String PROTECTED_LIVE_URL = UrlConfig.LIVE_URL;
-    private static final String PROTECTED_LIVE_URL_2 = UrlConfig.LIVE_URL_2;
-    private static final String PROTECTED_EPG_URL = UrlConfig.EPG_URL;
-    private static final String PROTECTED_EPG_URL_2 = UrlConfig.EPG_URL_2;
-
-    private static final int COLOR_SELECTED = 0xFF40A9FF;
-    private static final int COLOR_SELECTED_BG = 0x3340A9FF;
-    private static final int COLOR_BUTTON_BG = 0xFFB3D9FF;
-    private static final int COLOR_NORMAL = 0xFFFFFFFF;
-    private static final int COLOR_NORMAL_BG = 0x333545;
 
     public interface OnActionListener {
         void onSwitch(int position);
@@ -39,12 +39,42 @@ public class SubscriptionAdapter extends ArrayAdapter<SourceManager.SourceItem> 
         super(context, 0, items);
     }
 
+    /** 设置「当前选中项」——用于对话框打开时定位到默认源，以及 setItemChecked 激活原生激活态 */
     public void setSelectedPosition(int position) {
         selectedPosition = position;
+        if (listViewRef != null && position >= 0) {
+            listViewRef.setSelection(position);
+            // 🔧 配合 CHOICE_MODE_SINGLE 激活 state_activated，让原生 selector 立刻渲染蓝底/蓝字
+            if (position < listViewRef.getCount()) {
+                listViewRef.setItemChecked(position, true);
+            }
+            // 🔧 对话框打开时「立刻」同步所有可见行的 activated/selected 状态（不用等下一次 notifyDataSetChanged）
+            //  如果此时 ListView 还没有 layout children（dialog 未 show），childCount=0，
+            //  先做一次空跑，再 postDelayed 150ms 兜底再 apply 一次（等子 View 已添加）
+            applyImmediateRowActivated(listViewRef, position);
+            if (listViewRef.getChildCount() == 0) {
+                final int pos = position;
+                listViewRef.postDelayed(() -> applyImmediateRowActivated(listViewRef, pos), 150);
+            }
+        }
         notifyDataSetChanged();
     }
 
+    /**
+     * 🔧 公共接口：把 selectedPosition 对应的行「立即」应用高亮（蓝底/蓝字/加粗）。
+     * 供 SettingsDialog 在 dialog.show() 之后调用——此时 ListView 已经 layout 好所有可见子行。
+     * 不需要再 notifyDataSetChanged，因为 drawable state 变化直接触发 selector 重绘。
+     */
+    public void ensureActivatedImmediate() {
+        syncSelectedFromList();
+        if (listViewRef != null && selectedPosition >= 0) {
+            applyImmediateRowActivated(listViewRef, selectedPosition);
+        }
+    }
+
     public int getSelectedPosition() {
+        // 优先回写原生 selection（实时、和红框焦点一致），selectedPosition 仅作为 fallback 记忆
+        syncSelectedFromList();
         return selectedPosition;
     }
 
@@ -52,24 +82,20 @@ public class SubscriptionAdapter extends ArrayAdapter<SourceManager.SourceItem> 
         this.actionListener = listener;
     }
 
-    /**
-     * 绑定关联的 ListView，供就地更新高亮使用。
-     */
+    /** 绑定关联的 ListView，用来读取/同步原生 selection / activated 状态 */
     public void setListView(android.widget.ListView listView) {
         this.listViewRef = listView;
     }
 
-    /**
-     * 供外部（ListView 的 OnItemSelectedListener）在焦点于项间移动时调用，
-     * 更新选中位置并就地刷新高亮，不重建列表、不打断焦点移动。
-     */
-    public void notifySelected(int position) {
-        if (selectedPosition == position) return;
-        selectedPosition = position;
-        if (listViewRef != null) {
-            updateHighlight(listViewRef);
-        } else {
-            notifyDataSetChanged();
+    /** 从 ListView 原生 selection 回写到记忆变量，仅给「确定」按钮读取回调参数用 */
+    private void syncSelectedFromList() {
+        if (listViewRef == null) return;
+        int nativePos = listViewRef.getSelectedItemPosition();
+        // 🔧 触摸模式（Touch Mode）下 Android 的 getSelectedItemPosition() 永远返回 -1，
+        // 不能把 selectedPosition（我们手动写入的「选中行记忆」）覆盖回 -1。
+        // 只有返回了有效的 position（>=0，即遥控器/DPAD 导航模式下）才回写。
+        if (nativePos >= 0 && nativePos < getCount()) {
+            selectedPosition = nativePos;
         }
     }
 
@@ -81,24 +107,12 @@ public class SubscriptionAdapter extends ArrayAdapter<SourceManager.SourceItem> 
             holder = new ViewHolder();
             holder.tvCheck = convertView.findViewById(R.id.tv_check);
             holder.tvUrl = convertView.findViewById(R.id.tv_url);
+            // 🔧 焦点态加粗体：叠加的第二层 TextView，靠原生 color selector 在「三态=true」时显蓝字
+            holder.tvUrlBold = convertView.findViewById(R.id.tv_url_bold);
             holder.contentLayout = convertView.findViewById(R.id.content_layout);
             holder.btnCopy = convertView.findViewById(R.id.btn_copy);
             holder.btnDelete = convertView.findViewById(R.id.btn_delete);
             convertView.setTag(holder);
-
-            final View itemView = convertView;
-            itemView.setOnFocusChangeListener((v, hasFocus) -> {
-                if (hasFocus) {
-                    // 焦点移动到该项：同步选中状态后就地更新所有可见项样式。
-                    // 关键：不调用 notifyDataSetChanged 重建列表，
-                    // 否则会打断焦点移动导致高亮永远停在首位。
-                    int focusPos = getPositionForItem((android.widget.ListView) parent, itemView);
-                    if (focusPos >= 0) {
-                        selectedPosition = focusPos;
-                    }
-                    updateHighlight((ViewGroup) parent);
-                }
-            });
         } else {
             holder = (ViewHolder) convertView.getTag();
         }
@@ -106,99 +120,92 @@ public class SubscriptionAdapter extends ArrayAdapter<SourceManager.SourceItem> 
         SourceManager.SourceItem item = getItem(position);
         if (item == null) return convertView;
 
-        // 🔒 列表项只显示名称，不显示URL。URL 仅在点"复制"按钮时写入剪贴板。
-        // 避免屏上直接暴露内置/外接源地址被截屏泄露。
-        String displayText = item.name != null ? item.name : "";
-        holder.tvUrl.setText(displayText);
+        // 显示文本：名称 + isDefault 标记 ⭐（独立于焦点高亮）
+        StringBuilder display = new StringBuilder(item.name != null ? item.name : "");
+        if (item.isDefault) display.append("  ⭐");
+        String text = display.toString();
+        holder.tvUrl.setText(text);
+        // 🔧 焦点态加粗体：叠加层也填相同文本，并固定 setFakeBoldText(true) 兜底中文 ROM bold 不生效
+        holder.tvUrlBold.setText(text);
+        holder.tvUrlBold.getPaint().setFakeBoldText(true);
 
-        boolean isProtected = item.url != null && !item.url.isEmpty() &&
-                (item.url.equals(PROTECTED_LIVE_URL) || item.url.equals(PROTECTED_LIVE_URL_2)
-                 || item.url.equals(PROTECTED_EPG_URL) || item.url.equals(PROTECTED_EPG_URL_2));
-
-        if (isProtected) {
-            holder.btnDelete.setVisibility(View.GONE);
-            holder.btnCopy.setVisibility(View.GONE);
-        } else {
-            holder.btnDelete.setVisibility(View.VISIBLE);
-            holder.btnCopy.setVisibility(View.VISIBLE);
+        // 🔒 内置源保护：「名称精确匹配」或「URL 相等」双重规则 → 隐藏复制/删除
+        {
+            String n = item.name != null ? item.name : "";
+            String u = item.url != null ? item.url : "";
+            boolean nameHit =
+                    SourceManager.BUILTIN_NAME_LIVE_1.equals(n)
+                 || SourceManager.BUILTIN_NAME_LIVE_2.equals(n)
+                 || SourceManager.BUILTIN_NAME_LIVE_3.equals(n)
+                 || SourceManager.BUILTIN_NAME_EPG_1.equals(n)
+                 || SourceManager.BUILTIN_NAME_EPG_2.equals(n);
+            boolean urlHit = !u.isEmpty() && (
+                    u.equals(UrlConfig.LIVE_URL)
+                 || u.equals(UrlConfig.LIVE_URL_2)
+                 || u.equals(UrlConfig.LIVE_URL_3)
+                 || u.equals(UrlConfig.EPG_URL)
+                 || u.equals(UrlConfig.EPG_URL_2)
+            );
+            boolean isProtected = nameHit || urlHit;
+            int vis = isProtected ? View.GONE : View.VISIBLE;
+            holder.btnDelete.setVisibility(vis);
+            holder.btnCopy.setVisibility(vis);
+            holder.btnDelete.setFocusable(!isProtected);
+            holder.btnCopy.setFocusable(!isProtected);
+            holder.btnDelete.setClickable(!isProtected);
+            holder.btnCopy.setClickable(!isProtected);
         }
-
-        holder.btnCopy.setFocusable(true);
-        holder.btnDelete.setFocusable(true);
-        holder.btnDelete.setTextColor(COLOR_NORMAL);
-        holder.btnDelete.setTypeface(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.NORMAL);
-        holder.btnDelete.setBackgroundColor(0xFF55576A);
-        holder.pendingDelete = false;
-
-        // 根据选中状态设置当前项的样式
-        applyItemStyle(convertView, holder, position == selectedPosition);
 
         final View finalView = convertView;
         final int finalPosition = position;
 
+        // --- 行根 View 按键：DPAD 上下左右行间导航；ENTER/DPAD_CENTER=切换（确定）当前项 ---
         finalView.setOnKeyListener((v, keyCode, event) -> {
             if (event.getAction() == KeyEvent.ACTION_DOWN) {
                 if (keyCode == KeyEvent.KEYCODE_ENTER || keyCode == KeyEvent.KEYCODE_DPAD_CENTER) {
-                    // 🔧 修复：行根确认键按一次即切换，不再需要按两次。
-                    // 原来的两步确认（pendingKeyPosition）在手机上体验差。
-                    selectedPosition = finalPosition;
-                    if (actionListener != null && finalPosition >= 0 && finalPosition < getCount()) {
-                        actionListener.onSwitch(finalPosition);
-                    }
+                    android.util.Log.e("SUBSCRIPTION", "finalView onKey ENTER/CENTER: finalPos=" + finalPosition + " v.hasFocus=" + v.hasFocus());
+                    syncSelectedFromList();
+                    if (selectedPosition < 0 || selectedPosition >= getCount()) selectedPosition = finalPosition;
+                    if (actionListener != null) actionListener.onSwitch(selectedPosition);
                     return true;
                 } else if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
-                    // 行根右键：跳到下一行（左右键在行间自由移动）
                     if (finalPosition < getCount() - 1) {
-                        selectedPosition = finalPosition + 1;
-                        updateHighlight(parent);
-                        android.view.View target = findChildByPosition(parent, finalPosition + 1);
-                        if (target != null) {
-                            target.requestFocus();
-                        }
+                        int next = finalPosition + 1;
+                        if (listViewRef != null) listViewRef.setSelection(next);
+                        View target = findChildByPosition(parent, next);
+                        if (target != null) target.requestFocus();
                     }
                     return true;
                 } else if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
-                    // 行根左键：跳到上一行
                     if (finalPosition > 0) {
-                        selectedPosition = finalPosition - 1;
-                        updateHighlight(parent);
-                        android.view.View target = findChildByPosition(parent, finalPosition - 1);
-                        if (target != null) {
-                            target.requestFocus();
-                        }
+                        int prev = finalPosition - 1;
+                        if (listViewRef != null) listViewRef.setSelection(prev);
+                        View target = findChildByPosition(parent, prev);
+                        if (target != null) target.requestFocus();
                     }
                     return true;
                 } else if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
                     if (finalPosition > 0) {
-                        // 主动更新选中位置并就地刷新高亮，确保光标移动时高亮同步跟随
-                        selectedPosition = finalPosition - 1;
-                        updateHighlight(parent);
-                        android.view.View target = findChildByPosition(parent, finalPosition - 1);
-                        if (target != null) {
-                            target.requestFocus();
-                        }
+                        int prev = finalPosition - 1;
+                        if (listViewRef != null) listViewRef.setSelection(prev);
+                        View target = findChildByPosition(parent, prev);
+                        if (target != null) target.requestFocus();
                     }
                     return true;
                 } else if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
                     if (finalPosition < getCount() - 1) {
-                        // 主动更新选中位置并就地刷新高亮，确保光标移动时高亮同步跟随
-                        selectedPosition = finalPosition + 1;
-                        updateHighlight(parent);
-                        android.view.View target = findChildByPosition(parent, finalPosition + 1);
-                        if (target != null) {
-                            target.requestFocus();
-                        }
+                        int next = finalPosition + 1;
+                        if (listViewRef != null) listViewRef.setSelection(next);
+                        View target = findChildByPosition(parent, next);
+                        if (target != null) target.requestFocus();
                     }
-                    return true;
-                }
-            } else if (event.getAction() == KeyEvent.ACTION_UP) {
-                if (keyCode == KeyEvent.KEYCODE_ENTER || keyCode == KeyEvent.KEYCODE_DPAD_CENTER) {
                     return true;
                 }
             }
             return false;
         });
 
+        // --- btnCopy 按键：ENTER=复制地址；RIGHT=跳到下一个非 btnCopy 的焦点；LEFT=跳回行根 ---
         holder.btnCopy.setOnKeyListener((v, keyCode, event) -> {
             if (event.getAction() == KeyEvent.ACTION_DOWN) {
                 if (keyCode == KeyEvent.KEYCODE_ENTER || keyCode == KeyEvent.KEYCODE_DPAD_CENTER) {
@@ -209,15 +216,11 @@ public class SubscriptionAdapter extends ArrayAdapter<SourceManager.SourceItem> 
                 } else if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
                     if (holder.btnDelete.getVisibility() == View.VISIBLE) {
                         holder.btnDelete.requestFocus();
-                    } else {
-                        if (finalPosition < getCount() - 1) {
-                            selectedPosition = finalPosition + 1;
-                            updateHighlight(parent);
-                            android.view.View nextItem = findChildByPosition(parent, finalPosition + 1);
-                            if (nextItem != null) {
-                                nextItem.requestFocus();
-                            }
-                        }
+                    } else if (finalPosition < getCount() - 1) {
+                        int next = finalPosition + 1;
+                        if (listViewRef != null) listViewRef.setSelection(next);
+                        View nextItem = findChildByPosition(parent, next);
+                        if (nextItem != null) nextItem.requestFocus();
                     }
                     return true;
                 } else if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
@@ -228,24 +231,10 @@ public class SubscriptionAdapter extends ArrayAdapter<SourceManager.SourceItem> 
             return false;
         });
 
-        holder.btnDelete.setOnFocusChangeListener((v, hasFocus) -> {
-            if (hasFocus) {
-                holder.btnDelete.setTextColor(COLOR_SELECTED);
-                holder.btnDelete.setTypeface(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD);
-                holder.btnDelete.setBackgroundColor(COLOR_BUTTON_BG);
-            } else {
-                holder.pendingDelete = false;
-                holder.btnDelete.setTextColor(COLOR_NORMAL);
-                holder.btnDelete.setTypeface(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.NORMAL);
-                holder.btnDelete.setBackgroundColor(0xFF55576A);
-            }
-        });
-
+        // --- btnDelete 按键：ENTER=删除；LEFT=跳回 btnCopy；RIGHT=切到下一行 ---
         holder.btnDelete.setOnKeyListener((v, keyCode, event) -> {
             if (event.getAction() == KeyEvent.ACTION_DOWN) {
                 if (keyCode == KeyEvent.KEYCODE_ENTER || keyCode == KeyEvent.KEYCODE_DPAD_CENTER) {
-                    // 🔧 修复：删除按钮按一次即执行删除确认，不再需要按两次。
-                    // 原来的两步确认（pendingDelete）在手机上体验差。
                     if (actionListener != null && finalPosition >= 0 && finalPosition < getCount()) {
                         actionListener.onDelete(finalPosition);
                     }
@@ -255,12 +244,10 @@ public class SubscriptionAdapter extends ArrayAdapter<SourceManager.SourceItem> 
                     return true;
                 } else if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
                     if (finalPosition < getCount() - 1) {
-                        selectedPosition = finalPosition + 1;
-                        updateHighlight(parent);
-                        android.view.View nextItem = findChildByPosition(parent, finalPosition + 1);
-                        if (nextItem != null) {
-                            nextItem.requestFocus();
-                        }
+                        int next = finalPosition + 1;
+                        if (listViewRef != null) listViewRef.setSelection(next);
+                        View nextItem = findChildByPosition(parent, next);
+                        if (nextItem != null) nextItem.requestFocus();
                     }
                     return true;
                 }
@@ -268,22 +255,34 @@ public class SubscriptionAdapter extends ArrayAdapter<SourceManager.SourceItem> 
             return false;
         });
 
+        // --- 点击回调（触摸/鼠标场景）：行点击=切换；btnCopy=复制；btnDelete=删除 ---
         convertView.setOnClickListener(v -> {
+            android.util.Log.e("SUBSCRIPTION", "convertView onClick: position=" + position + " actionListenerNull=" + (actionListener == null));
             if (actionListener != null && position >= 0 && position < getCount()) {
                 selectedPosition = position;
+                if (listViewRef != null) {
+                    listViewRef.setSelection(position);
+                    listViewRef.setItemChecked(position, true);
+                }
+                // 🔧 触摸点击后「立刻」把所有可见行的 activated/selected 同步掉，
+                //  不等待下一次 notifyDataSetChanged → 用户看到蓝底+蓝字+加粗 0 延迟
+                applyImmediateRowActivated(listViewRef, position);
                 actionListener.onSwitch(position);
             }
         });
-
-        // 🛡️ 双重保险：content_layout 也绑同一个 onClickListener
-        // 防止某些 ROM / 厂商魔改下触摸事件仍被内层拦截（虽然已把 clickable=false）
         holder.contentLayout.setOnClickListener(v -> {
+            android.util.Log.e("SUBSCRIPTION", "contentLayout onClick: position=" + position);
             if (actionListener != null && position >= 0 && position < getCount()) {
                 selectedPosition = position;
+                if (listViewRef != null) {
+                    listViewRef.setSelection(position);
+                    listViewRef.setItemChecked(position, true);
+                }
+                // 🔧 同上：contentLayout 区域（勾选+名称）被触摸也立即同步高亮
+                applyImmediateRowActivated(listViewRef, position);
                 actionListener.onSwitch(position);
             }
         });
-
         holder.btnCopy.setOnClickListener(v -> {
             if (item.url != null && !item.url.isEmpty()) {
                 ClipboardManager cm = (ClipboardManager) getContext().getSystemService(Context.CLIPBOARD_SERVICE);
@@ -291,57 +290,23 @@ public class SubscriptionAdapter extends ArrayAdapter<SourceManager.SourceItem> 
                 android.widget.Toast.makeText(getContext(), "已复制地址", android.widget.Toast.LENGTH_SHORT).show();
             }
         });
-
         holder.btnDelete.setOnClickListener(v -> {
-            holder.pendingDelete = false;
             if (actionListener != null && position >= 0 && position < getCount()) {
                 actionListener.onDelete(position);
             }
         });
 
+        // 🔧 触摸模式也能立刻显示高亮：
+        //   ① 把原生 selection 回写到 selectedPosition（和红框焦点一致）
+        //   ② 显式给每一行的 convertView 自己写 activated/selected 状态，
+        //      不依赖 ListView.CHOICE_MODE_SINGLE 的 setActivated 回调（触摸模式下该回调不会保证触发）
+        //   ③ 覆盖：打开窗口初始态 / 滚动后 View 复用 / notifyDataSetChanged 之后刷新
+        syncSelectedFromList();
+        boolean isSel = selectedPosition >= 0 && position == selectedPosition;
+        convertView.setActivated(isSel);
+        convertView.setSelected(isSel);
+
         return convertView;
-    }
-
-    /**
-     * 就地更新所有可见项的高亮样式，不重建列表。
-     * 焦点移动时调用，遍历 ListView 的可见子视图，把选中项设为高亮，其余恢复为普通。
-     */
-    private void updateHighlight(ViewGroup parent) {
-        if (!(parent instanceof android.widget.ListView)) {
-            return;
-        }
-        android.widget.ListView listView = (android.widget.ListView) parent;
-        for (int i = 0; i < listView.getChildCount(); i++) {
-            View child = listView.getChildAt(i);
-            if (child == null) continue;
-            ViewHolder h = (ViewHolder) child.getTag();
-            if (h == null) continue;
-            int pos = getPositionForItem(listView, child);
-            boolean selected = (pos == selectedPosition);
-            applyItemStyle(child, h, selected);
-        }
-    }
-
-    /**
-     * 反查某个可见子视图对应的数据 position。
-     */
-    private int getPositionForItem(android.widget.ListView listView, View child) {
-        return listView.getPositionForView(child);
-    }
-
-    /**
-     * 设置单个列表项的高亮样式。
-     */
-    private void applyItemStyle(View itemView, ViewHolder holder, boolean isSelected) {
-        if (isSelected) {
-            holder.tvCheck.setVisibility(View.VISIBLE);
-            holder.tvUrl.setTextColor(COLOR_SELECTED);
-            itemView.setBackgroundColor(COLOR_SELECTED_BG);
-        } else {
-            holder.tvCheck.setVisibility(View.GONE);
-            holder.tvUrl.setTextColor(COLOR_NORMAL);
-            itemView.setBackgroundColor(COLOR_NORMAL_BG);
-        }
     }
 
     /**
@@ -349,11 +314,11 @@ public class SubscriptionAdapter extends ArrayAdapter<SourceManager.SourceItem> 
      * ListView.getChildAt 的索引是「屏幕可见子视图序号」，不是数据 position，
      * 列表滚动或排序后两者会不一致，因此用 getPositionForView 反查。
      */
-    private static android.view.View findChildByPosition(ViewGroup parent, int position) {
+    private static View findChildByPosition(ViewGroup parent, int position) {
         if (parent instanceof android.widget.ListView) {
             android.widget.ListView listView = (android.widget.ListView) parent;
             for (int i = 0; i < listView.getChildCount(); i++) {
-                android.view.View child = listView.getChildAt(i);
+                View child = listView.getChildAt(i);
                 if (child != null && listView.getPositionForView(child) == position) {
                     return child;
                 }
@@ -362,12 +327,32 @@ public class SubscriptionAdapter extends ArrayAdapter<SourceManager.SourceItem> 
         return null;
     }
 
+    /**
+     * 🔧 触摸点击后「立刻」同步所有可见行的 activated/selected 状态。
+     * 触摸模式下 Android 的 state_focused 永远=false，
+     * 且 ListView.CHOICE_MODE_SINGLE 的 setActivated 不保证在 setItemChecked 后立即生效，
+     * 因此手动写一遍，保证「浅蓝底 + 蓝字 + 加粗」0 延迟出现。
+     */
+    private static void applyImmediateRowActivated(android.widget.ListView listView, int clickedPosition) {
+        if (listView == null || clickedPosition < 0) return;
+        final int N = listView.getChildCount();
+        for (int i = 0; i < N; i++) {
+            View child = listView.getChildAt(i);
+            if (child == null) continue;
+            int pos = listView.getPositionForView(child);
+            if (pos < 0) continue;
+            boolean isTarget = (pos == clickedPosition);
+            child.setActivated(isTarget);
+            child.setSelected(isTarget);
+        }
+    }
+
     private static class ViewHolder {
         TextView tvCheck;
         TextView tvUrl;
+        TextView tvUrlBold; // 🔧 焦点态加粗体（叠加第二层，三态=true 时显蓝字加粗）
         android.widget.LinearLayout contentLayout;
         Button btnCopy;
         Button btnDelete;
-        boolean pendingDelete;
     }
 }

@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>TV Live 日志监控工具</title>
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=20260822b">
 </head>
 <body>
 <div class="container">
@@ -60,7 +60,7 @@
               </div>
               <div class="form-group">
                 <label>端口</label>
-                <input type="text" id="devicePort" value="9527" inputmode="numeric" pattern="[0-9]*" minlength="1" maxlength="5">
+                <input type="text" id="devicePort" value="9527" minlength="1" maxlength="5">
               </div>
               <button type="submit" id="connectBtn">🔗 连接设备</button>
             </form>
@@ -106,11 +106,11 @@
                 </div>
                 <div class="form-group">
                   <label>配对端口</label>
-                  <input type="text" id="pairPort" placeholder="配对端口" inputmode="numeric" pattern="[0-9]*" minlength="1" maxlength="5" required>
+                  <input type="text" id="pairPort" placeholder="配对端口" minlength="1" maxlength="5" required>
                 </div>
                 <div class="form-group">
                   <label>配对码（WLAN 配对码）</label>
-                  <input type="text" id="pairingCode" placeholder="6位配对码" maxlength="6" inputmode="numeric" pattern="[0-9]*" required>
+                  <input type="text" id="pairingCode" placeholder="6位配对码" maxlength="6" required>
                 </div>
                 <button type="submit" id="pairBtn" class="btn-pair">
                   🔐 配对并自动连接
@@ -293,9 +293,44 @@
                     <button class="huya-cred-toggle" id="btnHuyaCredToggle" title="显示/隐藏">👁️</button>
                   </div>
                   <div class="huya-cred-body hidden" id="huyaCredBody">
-                    <div class="cred-row"><span class="cred-label">Game ID:</span><span class="cred-value" id="huyaGameId">-</span></div>
-                    <div class="cred-row"><span class="cred-label">App ID:</span><span class="cred-value" id="huyaAppId">-</span></div>
-                    <div class="cred-row"><span class="cred-label">App Key:</span><span class="cred-value" id="huyaAppKey">-</span></div>
+                    <div class="cred-row">
+                      <span class="cred-label">Game ID:</span>
+                      <span class="cred-value" id="huyaGameId">-</span>
+                    </div>
+                    <div class="cred-row">
+                      <span class="cred-label">App ID:</span>
+                      <span class="cred-value" id="huyaAppId">-</span>
+                    </div>
+                    <div class="cred-row">
+                      <span class="cred-label">App Key:</span>
+                      <span class="cred-value" id="huyaAppKey">-</span>
+                    </div>
+                    <div class="cred-row">
+                      <span class="cred-label">来源:</span>
+                      <span class="cred-value">
+                        <span class="huya-source-tag" id="huyaSourceTag">-</span>
+                        <button class="tool-btn huya-refresh-btn" id="btnHuyaCredRefresh" title="自动从源码算法+ADB设备重新拉取">🔄 重新获取</button>
+                      </span>
+                    </div>
+                    <div class="cred-row cred-meta" id="huyaCredMeta" style="display:none">
+                      <span class="cred-label">路径:</span>
+                      <span class="cred-value" id="huyaSourceChain">-</span>
+                    </div>
+                    <div class="cred-row cred-meta" id="huyaCredDeviceRow" style="display:none">
+                      <span class="cred-label">设备:</span>
+                      <span class="cred-value" id="huyaDeviceSummary">-</span>
+                    </div>
+
+                    <details class="huya-manual-override">
+                      <summary>✏️ 手动覆盖凭证（在真机上修改过后，把新值填回此处）</summary>
+                      <div class="manual-cred-grid">
+                        <label>Game ID <input type="number" id="manualHuyaGameId" placeholder="例 2336"></label>
+                        <label>App ID <input type="text" id="manualHuyaAppId" placeholder="例 123456"></label>
+                        <label>App Key <input type="text" id="manualHuyaAppKey" placeholder="例 d8f193dd"></label>
+                        <button class="tool-btn tool-btn-primary" id="btnHuyaCredSave">💾 保存到运行期缓存</button>
+                      </div>
+                      <p class="manual-cred-hint">保存后仅在 server 内存生效，用于后续健康检查、房间解析等调用的元数据展示；不影响 APP 端。重启日志工具会失效，将重新按「源码 XOR 算法默认值」自动获取。</p>
+                    </details>
                   </div>
                 </div>
 
@@ -534,6 +569,7 @@
           <button class="tab" data-view="playback">▶️ 仅看播放</button>
           <button class="tab" data-view="debug">🔧 仅看调试</button>
           <button class="tab" data-view="crashes">💥 仅看崩溃</button>
+          <button class="tab" data-view="huya">🐯 虎牙SDK</button>
           <button class="tab" data-view="stats">📊 统计信息</button>
           <button class="tab" data-view="timeline">📈 时间线</button>
           <button class="tab" data-view="performance">⚡ 性能分析</button>
@@ -561,6 +597,10 @@
 
       <div id="crashesView" class="log-container hidden">
         <div id="crashList" class="log-list"></div>
+      </div>
+
+      <div id="huyaView" class="log-container hidden">
+        <div id="huyaList" class="log-list"></div>
       </div>
 
       <div id="statsView" class="log-container hidden">
@@ -617,6 +657,16 @@
           </div>
           <button id="refreshTimeline" class="btn-secondary">🔄 刷新</button>
           <button id="exportTimeline" class="btn-secondary">📊 导出数据</button>
+          <div class="control-group">
+            <label>📊 图表类型:</label>
+            <select id="timelineChartType">
+              <option value="area" selected>堆叠面积图</option>
+              <option value="heatmap">热力图</option>
+              <option value="errorline">错误率折线</option>
+              <option value="donut">环形分布</option>
+              <option value="bars">柱状图(原)</option>
+            </select>
+          </div>
         </div>
 
         <!-- 统计摘要面板 -->
@@ -665,8 +715,10 @@
           </div>
         </div>
 
-        <!-- 多层柱状图 -->
-        <div id="timelineChart" class="timeline-chart"></div>
+        <!-- 图表容器 -->
+        <div id="timelineChart" class="timeline-chart">
+          <canvas id="timelineCanvas" style="width:100%;min-height:640px;display:block;"></canvas>
+        </div>
 
         <!-- 事件详情面板 -->
         <div id="timelineDetail" class="timeline-detail hidden">
@@ -684,6 +736,7 @@
             <div class="perf-header">
               <span class="perf-icon">🚀</span>
               <span class="perf-title">启动性能</span>
+              <button id="measureStartupBtn" class="btn-secondary" style="margin-left:auto;padding:4px 10px;font-size:11px;">🔬 测量</button>
             </div>
             <div class="perf-content">
               <div class="perf-row">
@@ -701,6 +754,9 @@
               <div class="perf-row">
                 <span class="perf-label">界面可交互</span>
                 <span class="perf-value" id="perfInteractive">-- ms</span>
+              </div>
+              <div class="perf-row" style="justify-content:flex-end;margin-top:5px;">
+                <span class="perf-label" style="font-size:11px;color:var(--text-muted);">数据来源: ADB am start -W 实测</span>
               </div>
             </div>
           </div>
@@ -752,6 +808,14 @@
                 <span class="perf-label">解码错误</span>
                 <span class="perf-value error" id="perfDecodeErr">0</span>
               </div>
+              <div class="perf-row" style="margin-top:6px;">
+                <span class="perf-label" style="font-size:11px;color:var(--text-muted);">最大卡顿</span>
+                <span class="perf-value" id="perfMaxStall" style="font-size:12px;">0 ms</span>
+              </div>
+              <div class="perf-row">
+                <span class="perf-label" style="font-size:11px;color:var(--text-muted);">数据来源</span>
+                <span class="perf-value" id="perfPlaySource" style="font-size:11px;color:var(--text-muted);">日志解析</span>
+              </div>
             </div>
           </div>
 
@@ -777,6 +841,18 @@
                 <span class="perf-label">最大延迟</span>
                 <span class="perf-value warn" id="perfMaxLatency">0 ms</span>
               </div>
+              <div class="perf-row" style="margin-top:6px;">
+                <span class="perf-label" style="font-size:11px;color:var(--text-muted);">下行/上行</span>
+                <span class="perf-value" id="perfTrafficIO" style="font-size:12px;">0 B / 0 B</span>
+              </div>
+              <div class="perf-row">
+                <span class="perf-label" style="font-size:11px;color:var(--text-muted);">实时速率</span>
+                <span class="perf-value" id="perfTrafficRate" style="font-size:12px;">↓ 0.0 Kbps  ↑ 0.0 Kbps</span>
+              </div>
+              <div class="perf-row">
+                <span class="perf-label" style="font-size:11px;color:var(--text-muted);">数据来源</span>
+                <span class="perf-value" id="perfNetSource" style="font-size:11px;color:var(--text-muted);">日志解析</span>
+              </div>
             </div>
           </div>
 
@@ -785,6 +861,9 @@
             <div class="perf-header">
               <span class="perf-icon">⚡</span>
               <span class="perf-title">实时性能</span>
+              <select id="deviceSelect" class="perf-device-select" title="选择要读取数据的设备">
+                <option value="">请选择设备</option>
+              </select>
               <span class="perf-update" id="perfLastUpdate">--</span>
             </div>
             <div class="perf-content">
@@ -1044,6 +1123,6 @@
   </div>
 </div>
 
-<script src="app.js"></script>
+<script src="app.js?v=20260822b"></script>
 </body>
 </html>

@@ -344,7 +344,9 @@ public class HuyaStreamPlayer {
                     if (backups == null) { backups = new ArrayList<>(); }
                     else backups.clear();
 
-                    currentChannel.setMainPlayUrl(defaultUrl);
+                    // 🔴【修复清晰度残留】同 TVPlayerManager：不覆写 mainPlayUrl，
+                    // 保持 huya://room/xxx 房间协议，切回该频道时重新解析填充 variantList。
+                    // 线路/码率 URL 仍写入 backupUrls，供"线路选择"切换使用。
 
                     Set<String> seenUrls = new HashSet<>();
                     if (allVariants != null) {

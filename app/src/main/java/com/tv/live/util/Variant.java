@@ -37,18 +37,27 @@ public class Variant {
                 s.bitRate * 1000,     // Kbps → bps
                 0, 0
         );
-        // URL模式匹配推导分辨率标签（与反编译版一致）
-        String url = s.getPlayUrl();
-        if (!TextUtils.isEmpty(url)) {
-            v.height = inferHeightFromUrl(url, s.bitRate);
-            v.resolutionLabel = inferResolutionLabelFromUrl(url, s.bitRate);
-        } else {
-            v.height = s.bitRate >= 4000 ? 1080 : s.bitRate >= 2000 ? 720 : 360;
-            v.resolutionLabel = v.height + "p";
-        }
-        // 优先用SDK显示名，但用分辨率标签做UI展示
+        // 🔴【对接SDK清晰度接口】优先使用 SDK 官方清晰度名（"蓝光6M"/"蓝光4M"/"超清"/"流畅"）
+        // 作为 UI 标签，避免用 URL 码率推断导致档位合并/显示名与 SDK 不一致。
         if (!TextUtils.isEmpty(s.bitRateDisplayName)) {
             v.huyaBitRateDisplayName = s.bitRateDisplayName;
+            v.resolutionLabel = s.bitRateDisplayName;
+            // height 仅用于"按高度兜底"匹配，估算即可
+            v.height = s.bitRate >= 6000 ? 1080
+                    : s.bitRate >= 4000 ? 1080
+                    : s.bitRate >= 2000 ? 720
+                    : s.bitRate >= 1000 ? 480
+                    : 360;
+        } else {
+            // 无 SDK 名时才回退 URL 模式匹配推导分辨率标签（与反编译版一致）
+            String url = s.getPlayUrl();
+            if (!TextUtils.isEmpty(url)) {
+                v.height = inferHeightFromUrl(url, s.bitRate);
+                v.resolutionLabel = inferResolutionLabelFromUrl(url, s.bitRate);
+            } else {
+                v.height = s.bitRate >= 4000 ? 1080 : s.bitRate >= 2000 ? 720 : 360;
+                v.resolutionLabel = v.height + "p";
+            }
         }
         v.huyaLineIndex = s.lineIndex;
         v.huyaBitRate = s.bitRate;

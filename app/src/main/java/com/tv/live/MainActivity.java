@@ -79,6 +79,8 @@ public class MainActivity extends AppCompatActivity {
     private boolean number_channel_enable;
 
     private boolean isOpeningSettings = false;
+    /** 设置变更脏标记：设置页关闭(UNLOCK_SETTINGS)后置 true，onResume 才重读 SP，避免每次切前台重复读 */
+    private boolean settingsNeedReload = true;
     private SettingsDialog settingsDialog;
     private long settingsCloseTime = 0;
     private long lastSettingsOpenTime = 0;
@@ -262,13 +264,14 @@ public class MainActivity extends AppCompatActivity {
         initAppCoreManager();
         // 🟢 首次打开直接出画面：移除全屏Loading阻塞，后台静默加载直播源
         //    用户立刻看到播放器/频道面板UI，数据加载完毕自动刷新并续播
-        new Thread(() -> appCoreManager.loadLiveAndEpg()).start();
+        com.tv.live.util.AppExecutors.io(appCoreManager::loadLiveAndEpg);
 
         unlockReceiver = new BroadcastReceiver() {
             @Override
             public void onReceive(Context context, Intent intent) {
                 if ("com.tv.live.UNLOCK_SETTINGS".equals(intent.getAction())) {
                     isOpeningSettings = false;
+                    settingsNeedReload = true;
                     settingsCloseTime = System.currentTimeMillis();
                     Log.d("MainActivity", "📡 收到解锁广播，isOpeningSettings 已重置");
                 }
@@ -925,8 +928,25 @@ public class MainActivity extends AppCompatActivity {
                     if (currentPlayIndex >= 0 && currentPlayIndex < channelSourceList.size()) {
                         Channel ch = channelSourceList.get(currentPlayIndex);
                         if (ch != null && !TextUtils.isEmpty(ch.getPlayUrl())) {
-                            log("【" + (fromCache ? "缓存" : "网络") + "】自动播放频道 #" + currentPlayIndex + "：" + ch.getName());
-                            playChannel(ch, currentPlayIndex);
+                            // 🟢【核心修复】启动时"缓存回调"与"网络回调"会先后到达，都会走到这里，
+                            //    同一频道会被 playChannel 两次 → setMediaSource 两次 → 画面卡顿并重新加载直播源。
+                            //    若当前正在播放同名频道，直接跳过，不打断播放。
+                            boolean shouldPlay = true;
+                            Channel playingChannel = (mPlayerManager != null) ? mPlayerManager.getCurrentChannel() : null;
+                            if (playingChannel != null) {
+                                String playingName = playingChannel.getName();
+                                String chName = ch.getName();
+                                if (playingName != null && playingName.equals(chName)) {
+                                    shouldPlay = false;
+                                    log("【" + (fromCache ? "缓存" : "网络") + "】频道 #" + currentPlayIndex + "（" + chName + "）已在播放，跳过重复加载");
+                                    channelPanelController.setCurrentPlayIndex(currentPlayIndex);
+                                    appConfig.setLastPlayIndex(currentPlayIndex);
+                                }
+                            }
+                            if (shouldPlay) {
+                                log("【" + (fromCache ? "缓存" : "网络") + "】自动播放频道 #" + currentPlayIndex + "：" + ch.getName());
+                                playChannel(ch, currentPlayIndex);
+                            }
                         } else {
                             log("【" + (fromCache ? "缓存" : "网络") + "】⚠️ 当前索引频道无播放地址，尝试从头播放");
                             // 兜底：找到第一个有播放地址的频道播放
@@ -1020,6 +1040,11 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void loadSettings() {
+        // 🟢 脏标记优化：设置未变更时跳过 SP 读取，仅首次 / 设置页关闭 / onCreate 时真正读取
+        if (!settingsNeedReload) {
+            return;
+        }
+        settingsNeedReload = false;
         boolean epg_enable = sp.getBoolean("epg_enable", true);
         channel_reverse = sp.getBoolean("channel_reverse", false);
         number_channel_enable = sp.getBoolean("number_channel_enable", true);
@@ -1056,6 +1081,17 @@ public class MainActivity extends AppCompatActivity {
     private void playChannel(Channel channel, int index) {
         if (channel == null || channel.getPlayUrl() == null) return;
         currentPlayIndex = index;
+
+        // 🔴【修复清晰度残留】虎牙房间频道切台前重置线路状态：
+        // - currentLineIndex 归零 + 清空 backupUrls，确保 getPlayUrl() 返回 huya://room/ 房间协议，
+        //   走 playHuyaStream 重新解析并填充 variantList，避免清晰度档位残留上一个房间。
+        // - 仅对虎牙房间处理，普通频道的 backupUrls（备用源）不受影响。
+        try {
+            if (channel.getMainPlayUrl() != null && channel.getMainPlayUrl().startsWith("huya://room/")) {
+                channel.setCurrentLineIndex(0);
+                channel.clearBackupUrls();
+            }
+        } catch (Exception ignored) {}
 
         // 切台时清空数字输入缓存
         numberInputBuffer.setLength(0);

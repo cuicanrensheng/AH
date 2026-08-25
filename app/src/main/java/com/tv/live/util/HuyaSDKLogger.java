@@ -282,6 +282,20 @@ public class HuyaSDKLogger {
         dispatch(ERROR, tag, msg, "App");
     }
 
+    /** 携带 Throwable 的 ERROR：按用户规则「只 Throwable 才上传 Bugly」→ 直接上报虎牙 SDK 专属异常中心 */
+    public static void error(String tag, String msg, Throwable throwable) {
+        if (throwable != null) {
+            BuglyLogSender.reportHuyaExceptionSafely(tag, throwable, msg);
+        }
+        StringBuilder sb = new StringBuilder();
+        sb.append(msg == null ? "" : msg);
+        if (throwable != null) {
+            sb.append(" | ").append(throwable.getClass().getSimpleName())
+              .append(": ").append(throwable.getMessage());
+        }
+        dispatch(ERROR, tag, sb.toString(), "App");
+    }
+
     public static void info(String tag, String msg) {
         dispatch(INFO, tag, msg, "App");
     }
@@ -292,6 +306,20 @@ public class HuyaSDKLogger {
 
     public static void warn(String tag, String msg) {
         dispatch(WARN, tag, msg, "App");
+    }
+
+    /** 携带 Throwable 的 WARN：按用户规则「只 Throwable 才上传 Bugly」→ 直接上报 */
+    public static void warn(String tag, String msg, Throwable throwable) {
+        if (throwable != null) {
+            BuglyLogSender.reportHuyaExceptionSafely(tag, throwable, msg);
+        }
+        StringBuilder sb = new StringBuilder();
+        sb.append(msg == null ? "" : msg);
+        if (throwable != null) {
+            sb.append(" | ").append(throwable.getClass().getSimpleName())
+              .append(": ").append(throwable.getMessage());
+        }
+        dispatch(WARN, tag, sb.toString(), "App");
     }
 
     /**
@@ -320,7 +348,10 @@ public class HuyaSDKLogger {
     }
 
     /**
-     * 记录 SDK 回调信息
+     * 记录 SDK 回调信息。
+     * 按用户规则：code != 0 但没有 Throwable 时，**不上传 Bugly**，
+     * 仅通过 ExceptionReporter.reportHuyaBusinessFailure 写本地 Log + LogCollector。
+     * （如果未来想上传，需要手动包装 RuntimeException 或改为允许运营统计）
      */
     public static void onCustomUICallback(String callbackName, int code, String detail) {
         StringBuilder sb = new StringBuilder();
@@ -330,12 +361,24 @@ public class HuyaSDKLogger {
         }
         int level = (code == 0) ? INFO : ERROR;
         dispatch(level, "CustomUI", sb.toString(), "CustomUICallback");
+
+        if (code != 0) {
+            ExceptionReporter.reportHuyaBusinessFailure(
+                    "CustomUI." + callbackName, code, detail, null);
+        }
     }
 
     /**
-     * 记录 SDK 内部错误日志
+     * 记录 SDK 内部错误日志。
+     * 按用户规则「只上传异常/崩溃」：仅当 throwable != null 时上传 Bugly；
+     * 其它（纯文字 SDK error）只写本地 Log / LogCollector 环形缓冲，不上传 Bugly。
      */
     public static void onSDKError(String tag, String errorMsg, Throwable throwable) {
+        // Step 1: 仅 Throwable 上传到 Bugly（虎牙SDK专属场景 10001）
+        if (throwable != null) {
+            BuglyLogSender.reportHuyaExceptionSafely(tag, throwable, errorMsg);
+        }
+
         StringBuilder sb = new StringBuilder();
         sb.append("【SDK-Error】").append(errorMsg);
         if (throwable != null) {
@@ -343,6 +386,12 @@ public class HuyaSDKLogger {
               .append(": ").append(throwable.getMessage());
         }
         dispatch(ERROR, tag, sb.toString(), "Internal");
+
+        // 无 Throwable 的 SDK 业务错误 → 本地+LogCollector 记录（不上传Bugly）
+        if (throwable == null) {
+            ExceptionReporter.reportHuyaBusinessFailure(
+                    tag == null ? "HuyaSDK" : tag, 0, errorMsg, null);
+        }
     }
 
     /**
@@ -430,6 +479,10 @@ public class HuyaSDKLogger {
             } catch (Throwable ignored) {
             }
         }
+
+        // 转发到 LogCollector（默认开，sForwardToLogCollector=true）
+        // —— 没有这一步，HuyaSDK 内部日志不会出现在日志监控工具的「🐯 虎牙SDK」Tab
+        forwardToLogCollector(entry);
 
         // 注意：不再写回 logcat，避免与 logcat 监听形成反馈循环
         // 所有日志通过 LogCollector 和日志监控面板展示

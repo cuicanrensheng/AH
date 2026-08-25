@@ -1125,7 +1125,7 @@ public class SettingsDialog extends android.app.Dialog {
             if (llScanHeader != null) llScanHeader.setVisibility(View.VISIBLE);
             if (ivQrCode != null) ivQrCode.setVisibility(View.VISIBLE);
             
-            new Thread(() -> {
+            com.tv.live.util.AppExecutors.io(() -> {
                 Bitmap qrBitmap = null;
                 try {
                     qrBitmap = qrCodeManager.createQR(currentWebUrl, 240);
@@ -1140,7 +1140,7 @@ public class SettingsDialog extends android.app.Dialog {
                         ivQrCode.setBackgroundColor(Color.LTGRAY);
                     }
                 });
-            }).start();
+            });
 
             ivQrCode.setOnClickListener(v -> {
                 Toast.makeText(getContext(), "已生成二维码，请扫码", Toast.LENGTH_SHORT).show();
@@ -1189,12 +1189,51 @@ public class SettingsDialog extends android.app.Dialog {
 
         int currentDefault = sourceManager.indexOfUrl(sourceManager.getDefaultUrl());
         SubscriptionAdapter adapter = new SubscriptionAdapter(getContext(), sources);
-        adapter.setSelectedPosition(currentDefault);
+        // 🔧 不要在这里过早调用 adapter.setSelectedPosition(currentDefault)：
+        //  此时 listViewRef 还没 set（adapter.setListView 没调用），
+        //  listView 也还没 setAdapter → setSelectedPosition 什么都做不了，
+        //  后面 setAdapter 后第一次 layout 的所有 getView 里 activated/selected 都不会被写。
+        //  正确位置：setAdapter + setListView 之后立即调用（见下文）。
 
         adapter.setOnActionListener(new SubscriptionAdapter.OnActionListener() {
             @Override
             public void onSwitch(int position) {
-                sourceManager.setDefault(position);
+                // 🔧 诊断：确认 onSwitch 回调有没有被触发（最粗日志，Log.e 保证能在 logcat 里看到）
+                SourceManager.SourceItem pickedDiagnose = (position >= 0 && position < sources.size()) ? sources.get(position) : null;
+                android.util.Log.e("SUBSCRIPTION", "onSwitch called: position=" + position
+                    + " | pickedName=" + (pickedDiagnose != null ? pickedDiagnose.name : "null")
+                    + " | pickedUrl=" + (pickedDiagnose != null ? pickedDiagnose.url : "null")
+                    + " | spKey=" + spKey);
+                // 🔧 修复：切源后关闭重开又回源1。
+                //   - 先用 position 从「当前 adapter 的 sources」取到用户选中那项的 name+url 快照；
+                //   - 再用 sourceManager.getAllSources() 取最新经过去重合并后的列表；
+                //   - 用 name+url 双匹配定位真实索引 realPos；
+                //   - 最后 sourceManager.setDefault(realPos) 持久化。
+                //   避免 sources 与 getAllSources 顺序/数量不一致导致把「源1」错当「源3」写 isDefault=true。
+                if (position < 0 || position >= sources.size()) return;
+                SourceManager.SourceItem picked = sources.get(position);
+
+                List<SourceManager.SourceItem> latest = sourceManager.getAllSources();
+                int realPos = -1;
+                for (int i = 0; i < latest.size(); i++) {
+                    SourceManager.SourceItem si = latest.get(i);
+                    if (si != null && TextUtils.equals(si.url, picked.url) && TextUtils.equals(si.name, picked.name)) {
+                        realPos = i; break;
+                    }
+                }
+                if (realPos < 0) {
+                    // URL 匹配不到（例如 URL 还没解密的空值占位），按名称兜底定位
+                    for (int i = 0; i < latest.size(); i++) {
+                        SourceManager.SourceItem si = latest.get(i);
+                        if (si != null && TextUtils.equals(si.name, picked.name)) { realPos = i; break; }
+                    }
+                }
+                if (realPos < 0) {
+                    // 再兜底：越界就返回，避免改错默认源
+                    if (position < 0 || position >= latest.size()) return;
+                    realPos = position;
+                }
+                sourceManager.setDefault(realPos);
 
                 // 🔧 修复：清除网页推送/快速切换遗留的 custom_live_url / custom_epg_url
                 // 否则 AppCoreManager.refreshReceiver 会优先读取 custom_*_url 而非 SourceManager 默认源，
@@ -1202,15 +1241,20 @@ public class SettingsDialog extends android.app.Dialog {
                 SharedPreferences appSp = getContext().getSharedPreferences("app_settings", Context.MODE_PRIVATE);
                 if ("live_history".equals(spKey)) {
                     appSp.edit().remove("custom_live_url").apply();
+                    UrlConfig.LIVE_URL = latest.get(realPos).url;
+                    // 注意：LiveSourceLoader/TvEventBus/EpgSourceChangedEvent 在 com.tv.live.manager 包下，
+                    // 此处只赋值 UrlConfig 并发送广播，由 MainActivity/AppCoreManager 的 refreshReceiver
+                    // 去完成实际的重载，避免 SettingsDialog 引入过多依赖。
                 } else if ("epg_history".equals(spKey)) {
                     appSp.edit().remove("custom_epg_url").apply();
+                    UrlConfig.EPG_URL = latest.get(realPos).url;
                 }
 
                 Intent intent = new Intent("com.tv.live.REFRESH_LIVE_AND_EPG");
                 intent.setPackage(getContext().getPackageName());
                 getContext().sendBroadcast(intent);
 
-                Toast.makeText(getContext(), "已切换到：" + sources.get(position).name, Toast.LENGTH_SHORT).show();
+                Toast.makeText(getContext(), "已切换到：" + latest.get(realPos).name, Toast.LENGTH_SHORT).show();
                 adapter.setSelectedPosition(position);
                 lvSourceList.post(() -> {
                     adapter.notifyDataSetChanged();
@@ -1261,21 +1305,46 @@ public class SettingsDialog extends android.app.Dialog {
             }
         });
 
+        // 🔧 开启 CHOICE_MODE_SINGLE，让 ListView 原生管理 state_activated，
+        // 配合 item_subscription_row_content_bg / subscription_row_text 的 selector 实现纯原生高亮
+        lvSourceList.setChoiceMode(android.widget.ListView.CHOICE_MODE_SINGLE);
         lvSourceList.setAdapter(adapter);
         adapter.setListView(lvSourceList);
 
-        // 修复：按键上下移动时高亮不跟随光标。
-        // 用 ListView 原生选择回调驱动高亮更新，焦点在项间移动时必然触发，
-        // 避免依赖 item 根 view 的 onKeyListener / onFocusChangeListener（item 内有
-        // focusable 按钮时这些回调可能不触发，导致高亮固定在首位）。
-        lvSourceList.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+        // 🔧 正确的时机：setAdapter + setListView 「之后」立即设默认选中行，
+        // 这样 SubscriptionAdapter.setSelectedPosition 内部的 applyImmediateRowActivated
+        //  以及 postDelayed(150ms) 兜底才能真的把 activated/selected 写到可见子 View 上，
+        //  触摸模式下打开窗口「立刻」出现蓝底/蓝字/加粗，无需再点一下。
+        if (currentDefault >= 0) {
+            adapter.setSelectedPosition(currentDefault);
+        }
+
+        // 🔧 纯原生焦点机制：DPAD 上下移动触发 onItemSelected
+        //   → setItemChecked(position, true) 激活 state_activated（蓝底 + 蓝字 + ✓ 由 selector 自动渲染）
+        //   → setSelection(position) 同步原生红框位置
+        //   → view.setSelected(true) 兜底激活 state_selected（某些 ROM activated 不触发时生效）
+        // 不再调用 adapter.notifySelected（方法已删除，改成原生状态自动生效）。
+        lvSourceList.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
             @Override
-            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                adapter.notifySelected(position);
+            public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) {
+                // 原生 activated：配合 CHOICE_MODE_SINGLE，selectors 立刻切蓝
+                lvSourceList.setItemChecked(position, true);
+                // 原生 selected：兜底（TV 模拟器部分 ROM 只认 state_selected）
+                if (view != null) {
+                    // 先清除兄弟节点的 selected，保证同一时刻只有一行蓝
+                    if (parent instanceof android.view.ViewGroup) {
+                        android.view.ViewGroup vg = (android.view.ViewGroup) parent;
+                        for (int i = 0; i < vg.getChildCount(); i++) {
+                            android.view.View sib = vg.getChildAt(i);
+                            if (sib != null && sib != view) sib.setSelected(false);
+                        }
+                    }
+                    view.setSelected(true);
+                }
             }
 
             @Override
-            public void onNothingSelected(AdapterView<?> parent) {
+            public void onNothingSelected(android.widget.AdapterView<?> parent) {
             }
         });
 
@@ -1321,21 +1390,46 @@ public class SettingsDialog extends android.app.Dialog {
         dialog.setOnKeyListener((d, keyCode, event) -> {
             if (event.getAction() == KeyEvent.ACTION_DOWN) {
                 if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER) {
+                    android.util.Log.e("SUBSCRIPTION", "ENTER/DPAD_CENTER global: hasFocus=" + lvSourceList.hasFocus() + " selectedPos=" + adapter.getSelectedPosition() + " sources.size=" + sources.size());
                     if (lvSourceList.hasFocus()) {
                         int position = adapter.getSelectedPosition();
                         if (position >= 0 && position < sources.size()) {
-                            sourceManager.setDefault(position);
-                            // 🔧 同步清除 custom_*_url，与 onSwitch 一致
+                            // 🔧 与 onSwitch(position) 保持完全一致：
+                            //  - 用「name+url 双匹配」在 sourceManager.getAllSources() 里反查 realPos，
+                            //    避免 adapter.sources 快照 与 SP 中最新列表 顺序/数量不一致导致改错默认源；
+                            //  - 同步写 UrlConfig.LIVE_URL / EPG_URL 静态字段，
+                            //    防止 refreshReceiver 用 SP 读取到之前，其他读 UrlConfig 的地方拿到脏值；
+                            //  - 清除 custom_*_url，保证切源后不会被网页推送遗留地址覆盖。
+                            SourceManager.SourceItem picked = sources.get(position);
+                            List<SourceManager.SourceItem> latest = sourceManager.getAllSources();
+                            int realPos = -1;
+                            for (int i = 0; i < latest.size(); i++) {
+                                SourceManager.SourceItem li = latest.get(i);
+                                if (picked.name.equals(li.name) && picked.url.equals(li.url)) { realPos = i; break; }
+                            }
+                            if (realPos < 0) {
+                                for (int i = 0; i < latest.size(); i++) {
+                                    SourceManager.SourceItem li = latest.get(i);
+                                    if (picked.name.equals(li.name)) { realPos = i; break; }
+                                }
+                            }
+                            if (realPos < 0) {
+                                if (position < latest.size()) realPos = position;
+                                else return true;
+                            }
+                            sourceManager.setDefault(realPos);
                             SharedPreferences appSp = getContext().getSharedPreferences("app_settings", Context.MODE_PRIVATE);
                             if ("live_history".equals(spKey)) {
                                 appSp.edit().remove("custom_live_url").apply();
+                                UrlConfig.LIVE_URL = latest.get(realPos).url;
                             } else if ("epg_history".equals(spKey)) {
                                 appSp.edit().remove("custom_epg_url").apply();
+                                UrlConfig.EPG_URL = latest.get(realPos).url;
                             }
                             Intent intent = new Intent("com.tv.live.REFRESH_LIVE_AND_EPG");
                             intent.setPackage(getContext().getPackageName());
                             getContext().sendBroadcast(intent);
-                            Toast.makeText(getContext(), "已切换到：" + sources.get(position).name, Toast.LENGTH_SHORT).show();
+                            Toast.makeText(getContext(), "已切换到：" + latest.get(realPos).name, Toast.LENGTH_SHORT).show();
                             adapter.setSelectedPosition(position);
                             lvSourceList.post(() -> {
                                 adapter.notifyDataSetChanged();
@@ -1362,6 +1456,10 @@ public class SettingsDialog extends android.app.Dialog {
                 if (currentDefault >= 0) {
                     lvSourceList.setSelection(currentDefault);
                 }
+                // 🔧 对话框实际 show 出来 + 200ms 后「最后兜底」同步一次高亮。
+                //  触摸模式下 Android 不会自动激活默认行的 activated/selected，
+                //  必须由我们写一遍，保证用户还没点任何地方时就已经看到蓝底/蓝字/加粗。
+                adapter.ensureActivatedImmediate();
             }
         }, 200);
     }

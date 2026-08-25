@@ -207,11 +207,6 @@ public class VariantManager {
         callback.playUrl(selected.url);
     }
 
-    @Deprecated
-    public void switchToResolution(int targetHeight) {
-        switchToResolution(targetHeight, (String) null);
-    }
-
     public void parseMasterPlaylist(String playlist, String baseUrl) {
         List<Variant> list = new ArrayList<>();
         Pattern streamInfPattern = Pattern.compile("^#EXT-X-STREAM-INF:", Pattern.CASE_INSENSITIVE);

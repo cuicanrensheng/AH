@@ -33,7 +33,7 @@
     "appId": "com.tv.live.logmonitor",
     "productName": "TV Live 日志监控",
     "directories": {
-      "output": "dist9",
+      "output": "dist10",
       "buildResources": "assets"
     },
     "files": [

@@ -65,7 +65,7 @@ android {
     buildTypes {
         release {
             minifyEnabled true
-            shrinkResources false
+            shrinkResources true
             zipAlignEnabled true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             signingConfig signingConfigs.release
@@ -103,10 +103,10 @@ android {
                          'DebugProbesKt.bin']
         }
         jniLibs {
-            // false = SO 以未压缩(STORED)方式存储在 APK 内
-            // 安装时系统不解压 SO，直接从 base.apk 内 mmap 加载
-            // → APK 更大(24MB)，但安装后不额外产生 lib/ 解压体积
-            useLegacyPackaging false
+            // true = SO 以 deflate 压缩方式存储在 APK 内（体积优化）
+            // → APK 更小（安装时由系统解压到 /data/app/.../lib/）
+            // 注：原 false 方案 APK 大但安装后不产生解压体积；改为 true 后 APK 显著变小
+            useLegacyPackaging true
             pickFirsts += [
                     'lib/arm64-v8a/libhyaudioengine.so',
                     'lib/armeabi-v7a/libhyaudioengine.so',
@@ -115,6 +115,11 @@ android {
                     'lib/x86/libc++_shared.so',
                     'lib/x86_64/libc++_shared.so'
             ]
+            // ⚠️ 勿剔除 libmarsxlog.so / libstlport_shared.so（xlog 链路）！
+            // 实测剔除后：mars.Mars.loadDefaultMarsLibrary 加载 libmarsxlog.so 失败
+            // → 整个 mars 网络栈（StnLogic/HySignal/MtpMarsTransporter）不可用，取流失败。
+            // libc++_shared.so 同样不可剔除（libmmkv.so + libmarsstn.so 的 DT_NEEDED 硬依赖）。
+            // 这两条链是 SDK init 的强制加载项（ArkValue.initLog → Xlog.<clinit>）。
         }
     }
     androidResources {
@@ -366,6 +371,6 @@ configurations.all {
 
 // ====================================================================
 // SO 压缩：AGP 内置 stripReleaseDebugSymbols 已自动剥离 debug 符号
-// （ndkPath + debugSymbolLevel NONE），useLegacyPackaging=false 在 APK 内
-// 进一步 ZIP 压缩 SO。无需自定义脚本。
+// （debugSymbolLevel NONE），useLegacyPackaging=true 使 SO 以 deflate
+// 压缩进 APK（安装时解压）。无需自定义脚本。
 // ====================================================================

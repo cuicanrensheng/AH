@@ -43,6 +43,30 @@ public class SourceManager {
     /** SP 文件名 */
     private static final String SP_NAME = "app_settings";
 
+    // 🔒 内置源的「固定名称」——用于去重/识别，即使 URL 还没解密出来也能识别
+    public static final String BUILTIN_NAME_LIVE_1 = "内置源1 (GitHub)";
+    public static final String BUILTIN_NAME_LIVE_2 = "内置源2 (Gitee)";
+    public static final String BUILTIN_NAME_LIVE_3 = "内置源3 (本地666)";
+    public static final String BUILTIN_NAME_EPG_1  = "内置节目单1 (Catvod)";
+    public static final String BUILTIN_NAME_EPG_2  = "内置节目单2 (ERW)";
+
+    /**
+     * 快速判断某个项是否是内置源（按「名称精确匹配」或「URL匹配」双重规则）
+     * 名称优先：用于启动期 UrlConfig.LIVE_URL 还没解密的情况去重
+     */
+    public static boolean isBuiltin(SourceItem si, String spKey) {
+        if (si == null) return false;
+        String n = si.name == null ? "" : si.name;
+        if ("live_history".equals(spKey)) {
+            if (BUILTIN_NAME_LIVE_1.equals(n) || BUILTIN_NAME_LIVE_2.equals(n) || BUILTIN_NAME_LIVE_3.equals(n)) return true;
+            if (si.url != null && (UrlConfig.LIVE_URL.equals(si.url) || UrlConfig.LIVE_URL_2.equals(si.url) || UrlConfig.LIVE_URL_3.equals(si.url))) return true;
+        } else if ("epg_history".equals(spKey)) {
+            if (BUILTIN_NAME_EPG_1.equals(n) || BUILTIN_NAME_EPG_2.equals(n)) return true;
+            if (si.url != null && (UrlConfig.EPG_URL.equals(si.url) || UrlConfig.EPG_URL_2.equals(si.url))) return true;
+        }
+        return false;
+    }
+
     // ====================== 成员变量 ======================
 
     /** 上下文 */
@@ -171,12 +195,18 @@ public class SourceManager {
 
     /**
      * 删除指定位置的源
+     * 🔒 内置源禁止删除——保证核心源始终可用，同时避免误删后下次自动注入"看似重复"的项
      * @param position 位置
      * @return 是否删除成功
      */
     public boolean removeSource(int position) {
         List<SourceItem> list = getAllSources();
         if (position < 0 || position >= list.size()) return false;
+
+        SourceItem target = list.get(position);
+        if (isBuiltin(target, spKey)) {
+            return false; // 内置源拒绝删除
+        }
 
         list.remove(position);
 
@@ -189,7 +219,17 @@ public class SourceManager {
             }
         }
         if (!hasDefault && !list.isEmpty()) {
-            list.get(0).isDefault = true;
+            // 默认源优先从剩余内置源中挑一个；没有内置源就用第一个
+            for (SourceItem si : list) {
+                if (isBuiltin(si, spKey)) {
+                    si.isDefault = true;
+                    hasDefault = true;
+                    break;
+                }
+            }
+            if (!hasDefault) {
+                list.get(0).isDefault = true;
+            }
         }
 
         saveSourceList(list);
@@ -456,69 +496,121 @@ public class SourceManager {
             return list;
         }
 
-        // 兼容旧格式：如果是用 | 分隔的纯 URL（老数据）
-        if (!data.contains("##")) {
+        boolean isOldFormat = !data.contains("##");
+        boolean sanitizedAnyUrl = false; // 记录 SP 中是否存在失效 URL 被我们迁移替换
+
+        if (isOldFormat) {
+            // 兼容旧格式：如果是用 | 分隔的纯 URL（老数据）
             String[] urls = data.split("\\|");
             for (String url : urls) {
                 if (!url.trim().isEmpty()) {
                     String shortName = url.length() > 10 ? url.substring(0, 10) + "..." : url;
-                    list.add(new SourceItem(shortName, url));
+                    String u = ("live_history".equals(spKey)) ? UrlConfig.sanitizeLiveUrl(url) : url;
+                    if (u == null) u = url;
+                    if (!u.equals(url)) sanitizedAnyUrl = true;
+                    list.add(new SourceItem(shortName, u));
                 }
             }
-            // 老数据迁移：补齐缺失的内置源
-            list = ensureBuiltinSourcesPresent(list);
-            return list;
-        }
-
-        // 新格式：名称##URL##isDefault##autoUpdate##addTime || ...
-        String[] items = data.split("\\|\\|");
-        for (String item : items) {
-            if (item.trim().isEmpty()) continue;
-            String[] fields = item.split("##");
-            if (fields.length >= 2) {
-                SourceItem si = new SourceItem(fields[0], fields[1]);
-                if (fields.length >= 3) {
-                    si.isDefault = "1".equals(fields[2]);
+        } else {
+            // 新格式：名称##URL##isDefault##autoUpdate##addTime || ...
+            String[] items = data.split("\\|\\|");
+            for (String item : items) {
+                if (item.trim().isEmpty()) continue;
+                String[] fields = item.split("##");
+                if (fields.length >= 2) {
+                    String rawUrl = fields[1];
+                    String fixedUrl = ("live_history".equals(spKey)) ? UrlConfig.sanitizeLiveUrl(rawUrl) : rawUrl;
+                    if (fixedUrl == null) fixedUrl = rawUrl;
+                    if (!fixedUrl.equals(rawUrl)) sanitizedAnyUrl = true;
+                    SourceItem si = new SourceItem(fields[0], fixedUrl);
+                    if (fields.length >= 3) {
+                        si.isDefault = "1".equals(fields[2]);
+                    }
+                    if (fields.length >= 4) {
+                        si.autoUpdate = "1".equals(fields[3]);
+                    }
+                    if (fields.length >= 5) {
+                        try {
+                            si.addTime = Long.parseLong(fields[4]);
+                        } catch (Exception ignored) {}
+                    }
+                    list.add(si);
                 }
-                if (fields.length >= 4) {
-                    si.autoUpdate = "1".equals(fields[3]);
-                }
-                if (fields.length >= 5) {
-                    try {
-                        si.addTime = Long.parseLong(fields[4]);
-                    } catch (Exception ignored) {}
-                }
-                list.add(si);
             }
         }
 
-        // 补齐缺失的内置源（升级兼容：老版本用户只有一个内置源的情况）
+        // 补齐缺失的内置源 + 合并重复（升级兼容：老版本用户 / URL 还没解密的占位空记录）
+        List<SourceItem> before = deepCopyList(list);
         list = ensureBuiltinSourcesPresent(list);
+
+        // 🔧 关键修复：如果 ensureBuiltinSourcesPresent 对 list 做了改动（合并重复/补 URL/补内置源/补默认）
+        // 或者我们把 SP 中的某个永久 404 失效 URL sanitize 替换成了可用镜像，
+        // 必须立即持久化，否则内存里改对了 isDefault/URL，下次重启读 SP 又回到旧状态。
+        boolean dirty = isOldFormat || sanitizedAnyUrl;
+        if (!dirty) dirty = !listsEquivalent(before, list);
+        if (dirty) saveSourceList(list);
+
         return list;
     }
 
+    private static List<SourceItem> deepCopyList(List<SourceItem> src) {
+        List<SourceItem> r = new ArrayList<>(src.size());
+        for (SourceItem s : src) {
+            SourceItem c = new SourceItem(s.name, s.url);
+            c.isDefault = s.isDefault;
+            c.autoUpdate = s.autoUpdate;
+            c.addTime = s.addTime;
+            r.add(c);
+        }
+        return r;
+    }
+    private static boolean listsEquivalent(List<SourceItem> a, List<SourceItem> b) {
+        if (a == null && b == null) return true;
+        if (a == null || b == null) return false;
+        if (a.size() != b.size()) return false;
+        for (int i = 0; i < a.size(); i++) {
+            SourceItem x = a.get(i), y = b.get(i);
+            if (x == null && y == null) continue;
+            if (x == null || y == null) return false;
+            if (!eq(x.name, y.name)) return false;
+            if (!eq(x.url, y.url)) return false;
+            if (x.isDefault != y.isDefault) return false;
+            if (x.autoUpdate != y.autoUpdate) return false;
+        }
+        return true;
+    }
+    private static boolean eq(String a, String b) {
+        return (a == null ? "" : a).equals(b == null ? "" : b);
+    }
+
     /**
-     * 根据当前 spKey 生成两个内置源条目
+     * 根据当前 spKey 生成两个内置源条目 + 第3套本地asset源
+     * 🔒 读 URL 永远用 UrlConfig.*_RAW（永久不变备份），不能读 LIVE_URL 等会被 UI 切源覆盖的字段。
      */
     private List<SourceItem> buildBuiltinSources() {
         List<SourceItem> result = new ArrayList<>();
         if ("live_history".equals(spKey)) {
-            SourceItem src1 = new SourceItem("内置源1 (GitHub)", UrlConfig.LIVE_URL);
+            SourceItem src1 = new SourceItem(BUILTIN_NAME_LIVE_1, rawOrFallback(UrlConfig.LIVE_URL_1_RAW, UrlConfig.LIVE_URL));
             src1.isDefault = true;
             src1.autoUpdate = true;
             result.add(src1);
 
-            SourceItem src2 = new SourceItem("内置源2 (Gitee)", UrlConfig.LIVE_URL_2);
+            SourceItem src2 = new SourceItem(BUILTIN_NAME_LIVE_2, rawOrFallback(UrlConfig.LIVE_URL_2_RAW, UrlConfig.LIVE_URL_2));
             src2.isDefault = false;
             src2.autoUpdate = true;
             result.add(src2);
+
+            SourceItem src3 = new SourceItem(BUILTIN_NAME_LIVE_3, UrlConfig.LIVE_URL_3_RAW);
+            src3.isDefault = false;
+            src3.autoUpdate = false;
+            result.add(src3);
         } else if ("epg_history".equals(spKey)) {
-            SourceItem src1 = new SourceItem("内置节目单1 (Catvod)", UrlConfig.EPG_URL);
+            SourceItem src1 = new SourceItem(BUILTIN_NAME_EPG_1, rawOrFallback(UrlConfig.EPG_URL_1_RAW, UrlConfig.EPG_URL));
             src1.isDefault = true;
             src1.autoUpdate = true;
             result.add(src1);
 
-            SourceItem src2 = new SourceItem("内置节目单2 (ERW)", UrlConfig.EPG_URL_2);
+            SourceItem src2 = new SourceItem(BUILTIN_NAME_EPG_2, rawOrFallback(UrlConfig.EPG_URL_2_RAW, UrlConfig.EPG_URL_2));
             src2.isDefault = false;
             src2.autoUpdate = true;
             result.add(src2);
@@ -526,53 +618,170 @@ public class SourceManager {
         return result;
     }
 
+    /** RAW 优先；RAW 还没解密出来（启动期）就 fallback 到当前字段，避免空 URL 漏注入 */
+    private static String rawOrFallback(String raw, String fallback) {
+        if (raw != null && !raw.isEmpty()) return raw;
+        return fallback == null ? "" : fallback;
+    }
+
     /**
-     * 确保当前列表中包含两个内置源（升级兼容：老用户只有一个或零个内置源的情况）
-     * 若缺失则追加到末尾，不改变用户已有的默认源选择
+     * 内置源描述对象（数据内聚，避免重复声明多组 url/name/autoUpdate）
+     */
+    private static final class BuiltinSpec {
+        final String name;
+        final String url;
+        final boolean autoUpdate;
+        BuiltinSpec(String n, String u, boolean au) { this.name = n; this.url = u; this.autoUpdate = au; }
+    }
+
+    private BuiltinSpec[] getBuiltinSpecs() {
+        if ("live_history".equals(spKey)) {
+            return new BuiltinSpec[]{
+                    new BuiltinSpec(BUILTIN_NAME_LIVE_1, rawOrFallback(UrlConfig.LIVE_URL_1_RAW, UrlConfig.LIVE_URL), true),
+                    new BuiltinSpec(BUILTIN_NAME_LIVE_2, rawOrFallback(UrlConfig.LIVE_URL_2_RAW, UrlConfig.LIVE_URL_2), true),
+                    new BuiltinSpec(BUILTIN_NAME_LIVE_3, UrlConfig.LIVE_URL_3_RAW, false),
+            };
+        } else if ("epg_history".equals(spKey)) {
+            return new BuiltinSpec[]{
+                    new BuiltinSpec(BUILTIN_NAME_EPG_1, rawOrFallback(UrlConfig.EPG_URL_1_RAW, UrlConfig.EPG_URL), true),
+                    new BuiltinSpec(BUILTIN_NAME_EPG_2, rawOrFallback(UrlConfig.EPG_URL_2_RAW, UrlConfig.EPG_URL_2), true),
+            };
+        }
+        return new BuiltinSpec[0];
+    }
+
+    /**
+     * 确保当前列表中包含所有内置源
+     * 🔧 修复重复/默认源丢失：
+     *   - 名称精确匹配 或 URL 匹配 → 视为同一个内置源，不重复注入
+     *   - 老数据修复：名称匹配但 URL 为空/占位符 → 用当前 url 覆盖
+     *   - 🔴 关键：firstMatch 选择优先级：isDefault=true > URL 非空 > 遍历顺序，
+     *            否则遇到 SP 里先写了个空URL占位条，后面才是真正 isDefault=true 的条，
+     *            保留占位条删了真·默认条 → 下次重启读 SP 会丢默认源标记。
      */
     private List<SourceItem> ensureBuiltinSourcesPresent(List<SourceItem> existing) {
-        String url1, url2, name1, name2;
-        if ("live_history".equals(spKey)) {
-            url1 = UrlConfig.LIVE_URL;
-            url2 = UrlConfig.LIVE_URL_2;
-            name1 = "内置源1 (GitHub)";
-            name2 = "内置源2 (Gitee)";
-        } else if ("epg_history".equals(spKey)) {
-            url1 = UrlConfig.EPG_URL;
-            url2 = UrlConfig.EPG_URL_2;
-            name1 = "内置节目单1 (Catvod)";
-            name2 = "内置节目单2 (ERW)";
-        } else {
-            return existing;
+        BuiltinSpec[] specs = getBuiltinSpecs();
+        if (specs.length == 0) return existing;
+
+        // Step 1: 对每个内置 spec，在 existing 中查找所有匹配项（可能有多条重复）
+        //   🔒 匹配命中规则：
+        //      A. name 相等 无条件命中（最可靠，spec.name 是 BUILTIN_NAME_* 常量，不会被污染）
+        //      B. url 相等 仅当 「名称本身也属于该内置源的名称」时才命中
+        //         —— 这层安全网防止：UrlConfig.LIVE_URL 被外部改成源3地址、RAW 又还没回填的极端情况下，
+        //            LIVE_1 spec 通过 url 相等把源3 的条目拉进来，跨 spec 合并后删了源1/源2。
+        for (BuiltinSpec spec : specs) {
+            SourceItem best = null;
+            List<SourceItem> all = new ArrayList<>();
+            for (SourceItem si : existing) {
+                boolean nameHit = spec.name != null && spec.name.equals(si.name);
+                boolean urlMatch = spec.url != null && !spec.url.isEmpty() && spec.url.equals(si.url);
+                boolean urlHit = urlMatch && isBuiltinNameForSpec(si.name, spec);
+                if (!nameHit && !urlHit) continue;
+                all.add(si);
+                if (best == null) {
+                    best = si;
+                } else {
+                    best = pickBetterMatch(best, si);
+                }
+            }
+            if (best != null) {
+                // 除 best 之外的其他匹配项，合并 isDefault 标记后删除
+                boolean hadOtherDefault = false;
+                for (SourceItem si : all) {
+                    if (si == best) continue;
+                    if (si.isDefault) hadOtherDefault = true;
+                    existing.remove(si);
+                }
+                if (hadOtherDefault) best.isDefault = true;
+                // 老数据修复：名称正确但 URL 为空 → 补上当前 spec.url
+                if ((best.url == null || best.url.isEmpty()) && spec.url != null && !spec.url.isEmpty()) {
+                    best.url = spec.url;
+                }
+                // 🔧 内置源 URL 失效地址强制迁移（不管 URL 是否为空）：
+                //     之前某些版本 SharedPreferences 里写入了 永久 404 的 URL（如 gitee qf_1111 的 iptvedqu.m3u），
+                //     但因为「best.url 非空」所以上面的老数据修复不会覆盖。
+                //     这里统一跑一次 UrlConfig.sanitizeLiveUrl：只要命中黑名单 → 直接替换成修正后的 URL
+                //     （live_history 走迁移，epg_history 暂不做；同时 log 便于追踪）
+                if ("live_history".equals(spKey) || "epg_history".equals(spKey)) {
+                    String beforeUrl = best.url;
+                    String fixedUrl = ("live_history".equals(spKey)) ? UrlConfig.sanitizeLiveUrl(best.url) : beforeUrl;
+                    if (fixedUrl != null && !fixedUrl.equals(beforeUrl)) {
+                        android.util.Log.w("SourceManager", "内置源" + best.name + " URL 已从失效地址迁移: "
+                            + (beforeUrl != null ? beforeUrl : "null") + " -> " + fixedUrl);
+                        best.url = fixedUrl;
+                    }
+                }
+                // 同步 autoUpdate 标记（第3套源要保持 false）
+                best.autoUpdate = spec.autoUpdate;
+                // 名称修正：如果 URL 正确命中，但名称不对（用户曾自定义），保持用户名称不变。
+            }
         }
 
-        boolean has1 = false, has2 = false;
-        for (SourceItem si : existing) {
-            if (url1.equals(si.url)) has1 = true;
-            if (url2.equals(si.url)) has2 = true;
+        // Step 2: 再做一次存在性检查，如果仍然缺失（一次都没命中），就追加新条目
+        for (BuiltinSpec spec : specs) {
+            boolean found = false;
+            for (SourceItem si : existing) {
+                boolean nameHit = spec.name != null && spec.name.equals(si.name);
+                boolean urlMatch = spec.url != null && !spec.url.isEmpty() && spec.url.equals(si.url);
+                boolean urlHit   = urlMatch && isBuiltinNameForSpec(si.name, spec);
+                if (nameHit || urlHit) { found = true; break; }
+            }
+            if (!found) {
+                SourceItem s = new SourceItem(spec.name, spec.url);
+                s.autoUpdate = spec.autoUpdate;
+                existing.add(s);
+            }
         }
 
-        if (!has1) {
-            SourceItem s1 = new SourceItem(name1, url1);
-            s1.autoUpdate = true;
-            existing.add(s1);
-        }
-        if (!has2) {
-            SourceItem s2 = new SourceItem(name2, url2);
-            s2.autoUpdate = true;
-            existing.add(s2);
-        }
-
-        // 如果原本没有默认源，现在把第一个内置源设为默认
+        // Step 3: 如果原本没有默认源，优先把第 1 个内置源设为默认
         boolean hasDefault = false;
         for (SourceItem si : existing) {
             if (si.isDefault) { hasDefault = true; break; }
         }
         if (!hasDefault && !existing.isEmpty()) {
-            existing.get(0).isDefault = true;
+            // 先找内置源1（GitHub / Catvod）
+            SourceItem firstBuiltin1 = null;
+            for (SourceItem si : existing) {
+                if (BUILTIN_NAME_LIVE_1.equals(si.name) || BUILTIN_NAME_EPG_1.equals(si.name)) {
+                    firstBuiltin1 = si; break;
+                }
+            }
+            if (firstBuiltin1 != null) firstBuiltin1.isDefault = true;
+            else existing.get(0).isDefault = true;
         }
 
         return existing;
+    }
+
+    /**
+     * 合并重复内置源时，挑一个更"值得保留"的条目。
+     * 优先级：isDefault=true > URL 非空 > addTime 更新
+     * （这样就不会把空URL占位条当作 firstMatch，而把真·isDefault=true 的条当重复项删掉）
+     */
+    private static SourceItem pickBetterMatch(SourceItem a, SourceItem b) {
+        if (a == null) return b;
+        if (b == null) return a;
+        if (a.isDefault != b.isDefault) return a.isDefault ? a : b;
+        boolean aUrlOk = a.url != null && !a.url.isEmpty();
+        boolean bUrlOk = b.url != null && !b.url.isEmpty();
+        if (aUrlOk != bUrlOk) return aUrlOk ? a : b;
+        return a.addTime >= b.addTime ? a : b;
+    }
+
+    /**
+     * 🔒 URL 命中时的安全网：只有「name 本身属于这个 spec 对应的内置源名集合」，
+     * 才允许通过 URL 相等视为同一条内置源的重复。
+     * —— 这样就算 UrlConfig.LIVE_URL 被 UI 切源污染成源3的地址，LIVE_1 spec 也不会
+     *    把「name=内置源3」但 URL 与 LIVE_1.url 相等的项当成 LIVE_1 的重复项合并删除。
+     */
+    private static boolean isBuiltinNameForSpec(String siName, BuiltinSpec spec) {
+        if (siName == null) return false;
+        if (BUILTIN_NAME_LIVE_1.equals(spec.name)) return BUILTIN_NAME_LIVE_1.equals(siName);
+        if (BUILTIN_NAME_LIVE_2.equals(spec.name)) return BUILTIN_NAME_LIVE_2.equals(siName);
+        if (BUILTIN_NAME_LIVE_3.equals(spec.name)) return BUILTIN_NAME_LIVE_3.equals(siName);
+        if (BUILTIN_NAME_EPG_1.equals(spec.name))  return BUILTIN_NAME_EPG_1.equals(siName);
+        if (BUILTIN_NAME_EPG_2.equals(spec.name))  return BUILTIN_NAME_EPG_2.equals(siName);
+        return false;
     }
 
     /**

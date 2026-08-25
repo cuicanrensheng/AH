@@ -8,6 +8,7 @@ import android.util.Log;
 import com.tv.live.Channel;
 import com.tv.live.PlaylistParser;
 import com.tv.live.UrlConfig;
+import com.tv.live.util.AppExecutors;
 import com.tv.live.util.CacheManager;
 import com.tv.live.util.NetUtil;
 
@@ -140,7 +141,7 @@ public class LiveSourceLoader {
      *        · 无数据 → 才回调 onError（首次安装没网才会出现）
      */
     public void load(final LoadCallback callback) {
-        new Thread(() -> {
+        AppExecutors.io(() -> {
             // —— asset 本地内置源（不改） ——
             String assetUrl = UrlConfig.LIVE_URL;
             if (assetUrl != null && assetUrl.startsWith("asset://")) {
@@ -223,7 +224,7 @@ public class LiveSourceLoader {
             // —— 3) 网络失败且无兜底 → 才抛错误 ——
             final String err = (lastErrorMsg != null ? lastErrorMsg : "未知错误") + "（且无本地兜底数据）";
             mainHandler.post(() -> callback.onError(err));
-        }).start();
+        });
     }
     
     private String loadFromAssets(String assetPath) {

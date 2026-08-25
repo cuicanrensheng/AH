@@ -362,6 +362,8 @@ public final class SecurityGuard {
 
     /**
      * 启动安全监控
+     * 只在真正检测到Frida/Xposed等明确攻击工具时才上报
+     * 调试器检测只记录日志，避免误报
      */
     private static void startSecurityMonitor() {
         if (sAppContext == null) return;
@@ -369,29 +371,34 @@ public final class SecurityGuard {
         new Thread(() -> {
             android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND);
             
+            // 🟢 优化：降低监控频率，从10秒改为30秒
+            // 避免频繁检测影响性能和产生误报
             while (!sDestroyed && !BuildConfig.IS_DEBUG) {
                 try {
-                    Thread.sleep(10000); // 10 秒检查一次
+                    Thread.sleep(30000); // 30 秒检查一次
                     
-                    // 1. 检查调试器
-                    if (android.os.Debug.isDebuggerConnected()) {
-                        onThreatDetected(THREAT_DEBUGGER, "检测到调试器");
-                    }
-                    
-                    // 2. 检查 Frida
+                    // 1. 检查 Frida（明确的逆向工具，发现即上报）
                     if (checkFrida()) {
+                        Log.w(TAG, "检测到 Frida 工具");
                         onThreatDetected(THREAT_FRIDA, "检测到 Frida");
                     }
                     
-                    // 3. 检查 Xposed
+                    // 2. 检查 Xposed（明确的Hook框架，发现即上报）
                     if (checkXposed()) {
+                        Log.w(TAG, "检测到 Xposed 框架");
                         onThreatDetected(THREAT_XPOSED, "检测到 Xposed");
                     }
                     
-                    // 4. 检查 Root
+                    // 3. 检查调试器（仅记录日志，不上报）
+                    // 因为很多情况下是误报（如系统调试开关、USB连接等）
+                    if (android.os.Debug.isDebuggerConnected()) {
+                        Log.w(TAG, "检测到调试器连接（仅记录，不上报）");
+                        // 不调用onThreatDetected，避免误报到Bugly
+                    }
+                    
+                    // 4. 检查 Root（仅记录）
                     if (checkRoot()) {
-                        // 仅记录，不退出
-                        Log.w(TAG, "检测到 Root 环境");
+                        Log.w(TAG, "检测到 Root 环境（仅记录）");
                     }
                     
                 } catch (InterruptedException e) {

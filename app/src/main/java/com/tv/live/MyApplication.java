@@ -1,6 +1,11 @@
 package com.tv.live;
 
 import android.app.Application;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
@@ -30,6 +35,45 @@ import com.tv.live.security.SecurityGuard;
 public class MyApplication extends Application {
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
+
+    // ===== SDK 兼容修复：动态注册 receiver 补 RECEIVER_NOT_EXPORTED =====
+    // Android 14+ (targetSdk 34+) 强制要求动态注册 receiver 必须声明
+    // RECEIVER_EXPORTED / RECEIVER_NOT_EXPORTED。虎牙 SDK 的
+    // HuyaBerryImpl.init() 裸调 registerReceiver 未指定该标志，会抛
+    // SecurityException。这里统一补上 RECEIVER_NOT_EXPORTED（SDK 内部
+    // receiver 均为本应用私有广播，不需要导出）。
+    // 用反射调用 setReceiverFlags（API 33+），避免编译期 SDK 版本依赖。
+    @Override
+    public Intent registerReceiver(BroadcastReceiver receiver, IntentFilter filter) {
+        markReceiverNotExported(filter);
+        return super.registerReceiver(receiver, filter);
+    }
+
+    @Override
+    public Intent registerReceiver(BroadcastReceiver receiver, IntentFilter filter, int flags) {
+        markReceiverNotExported(filter);
+        return super.registerReceiver(receiver, filter, flags);
+    }
+
+    @Override
+    public Intent registerReceiver(BroadcastReceiver receiver, IntentFilter filter,
+                                   String broadcastPermission, Handler scheduler) {
+        markReceiverNotExported(filter);
+        return super.registerReceiver(receiver, filter, broadcastPermission, scheduler);
+    }
+
+    /** API 33+：给动态 receiver 补 RECEIVER_NOT_EXPORTED（值=4），规避 SecurityException。 */
+    private static void markReceiverNotExported(IntentFilter filter) {
+        if (Build.VERSION.SDK_INT < 33 || filter == null) {
+            return;
+        }
+        try {
+            java.lang.reflect.Method m = IntentFilter.class.getMethod("setReceiverFlags", int.class);
+            m.invoke(filter, Context.RECEIVER_NOT_EXPORTED);
+        } catch (Throwable ignore) {
+            // API 33 以下或反射失败时忽略
+        }
+    }
 
     @Override
     public void onCreate() {
@@ -88,9 +132,11 @@ public class MyApplication extends Application {
             // enable: 正式版(true)开启检测，调试版(false)跳过检测
             boolean debugDetected = AntiDebug.init(this, !BuildConfig.IS_DEBUG);
             if (debugDetected) {
-                LogCollector.getInstance().error("MyApplication", "⚠️ 检测到调试环境，应用可能被逆向分析");
-                // 正式版检测到调试时可选：终止应用或限制功能
-                // System.exit(0);
+                // 🟢 使用WARN级别而非ERROR，避免误报到Bugly
+                // 真正的篡改检测（Frida/Xposed）已在AntiDebug内部上报
+                // 此处仅记录警告，不触发Bugly上报
+                LogCollector.getInstance().warn("MyApplication", 
+                    "⚠️ 检测到可疑环境（已记录，详见反调试日志）");
             } else {
                 String mode = BuildConfig.IS_DEBUG ? "调试版：跳过反调试检测" : "反调试检测通过";
                 LogCollector.getInstance().info("MyApplication", mode);
@@ -266,13 +312,6 @@ public class MyApplication extends Application {
             LogCollector.getInstance().info("MyApplication", "崩溃处理器初始化完成");
         } catch (Throwable e) {
             Log.w("MyApplication", "CrashHandler init failed: " + e.getMessage());
-        }
-
-        try {
-            NetUtil.init(this);
-            LogCollector.getInstance().info("MyApplication", "网络工具初始化完成");
-        } catch (Throwable e) {
-            Log.w("MyApplication", "NetUtil init failed: " + e.getMessage());
         }
 
         try {

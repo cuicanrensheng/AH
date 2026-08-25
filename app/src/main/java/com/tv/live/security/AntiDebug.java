@@ -57,65 +57,91 @@ public class AntiDebug {
         boolean fridaFound = checkFrida();
         boolean xposedFound = checkXposed();
         boolean emulatorFound = checkEmulator(context);
-        boolean testSettingsFound = checkTestSettings(context);
         
-        debugDetected = debuggerFound || fridaFound || xposedFound || 
-                        emulatorFound || testSettingsFound;
+        // 🟢 优化：提高调试器检测门槛
+        // 只有当Debug.isDebuggerConnected()明确返回true时才判定为调试器
+        // 避免因TracerPid等信息误判
+        boolean confirmedDebugger = Debug.isDebuggerConnected();
+        
+        // 确认的篡改：Frida/Xposed（这些明确是逆向工具）
+        // 调试器需要更严格的验证
+        debugDetected = fridaFound || xposedFound || confirmedDebugger;
         
         if (debugDetected) {
-            Log.e(TAG, "⚠️ 检测到调试环境！");
+            Log.w(TAG, "⚠️ 检测到可疑环境: " + 
+                (confirmedDebugger ? "调试器" : "") +
+                (fridaFound ? "Frida" : "") +
+                (xposedFound ? "Xposed" : ""));
             
-            // 上报各类威胁到TamperReporter
+            // 上报各类威胁到TamperReporter（仅上报确认的篡改）
             if (!BuildConfig.IS_DEBUG) {
-                if (debuggerFound) {
-                    TamperReporter.reportTamper(
+                if (confirmedDebugger && !fridaFound && !xposedFound) {
+                    // 仅检测到调试器：使用reportSuspicious而非reportTamper
+                    // 因为很多情况可能是误报
+                    TamperReporter.reportSuspicious(
                         TamperReporter.TAMPER_DEBUGGER,
-                        "AntiDebug检测到调试器连接");
+                        "检测到调试器连接，但不确认是否为篡改");
                 }
                 if (fridaFound) {
+                    // Frida是明确的逆向工具，直接上报篡改
                     TamperReporter.reportTamper(
                         TamperReporter.TAMPER_FRIDA,
                         "AntiDebug检测到Frida工具");
                 }
                 if (xposedFound) {
+                    // Xposed是明确的Hook框架，直接上报篡改
                     TamperReporter.reportTamper(
                         TamperReporter.TAMPER_XPOSED,
                         "AntiDebug检测到Xposed框架");
                 }
-                if (emulatorFound) {
-                    TamperReporter.reportTamper(
-                        TamperReporter.TAMPER_EMULATOR,
-                        "AntiDebug检测到模拟器环境");
-                }
             }
         }
+        
+        // 记录警告级别的可疑环境（不上报崩溃，仅记录）
+        boolean adbEnabled = checkAdbEnabled(context);
+        boolean mockLocation = checkMockLocation(context);
+        
+        if (adbEnabled) {
+            Log.w(TAG, "⚠️ USB调试已开启（可能用于开发调试，非篡改）");
+        }
+        if (mockLocation) {
+            Log.w(TAG, "⚠️ 检测到模拟位置应用（可能用于测试，非篡改）");
+        }
+        if (emulatorFound) {
+            Log.w(TAG, "⚠️ 检测到模拟器环境（可能是合法测试，非篡改）");
+        }
+        
+        // 记录调试器检测的详细信息（供调试使用）
+        if (debuggerFound && !confirmedDebugger) {
+            Log.w(TAG, "调试器检测结果存疑：TracerPid检测到异常但Debug.isDebuggerConnected()未确认");
+        }
+        
         return debugDetected;
     }
 
     /**
-     * 检测调试器
+     * 检测调试器（参考信息，不作为最终判定依据）
+     * 真正的判定在init方法中使用Debug.isDebuggerConnected()
      */
     private static boolean checkDebugger(Context context) {
         try {
-            // 1. 检测 Debug.isDebuggerConnected()
+            // 1. 检测 Debug.isDebuggerConnected() - 这是最可靠的检测方式
             if (Debug.isDebuggerConnected()) {
-                Log.w(TAG, "检测到调试器连接");
+                Log.w(TAG, "检测到调试器连接 (Debug.isDebuggerConnected=true)");
                 return true;
             }
             
-            // 2. 检测 AndroidManifest 中的 debuggable 标志
+            // 2. 检测 AndroidManifest 中的 debuggable 标志（仅记录，不判定）
             ApplicationInfo appInfo = context.getApplicationInfo();
-            if ((appInfo.flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0) {
-                // debuggable=true 不一定是调试，可能是 debug 版本
-                // 仅在 release 版本中视为可疑
-                if (!isReleaseBuild()) {
-                    return false;
-                }
-                Log.w(TAG, "应用标记为可调试");
-                return true;
+            boolean isDebuggable = (appInfo.flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0;
+            if (isDebuggable && !BuildConfig.IS_DEBUG) {
+                // 正式版但有debuggable标志，可能是被重打包，记录一下
+                Log.w(TAG, "⚠️ 正式版应用但标记为可调试（可能被重打包）");
+                // 不作为篡改依据，因为可能是某些电视系统的特殊设置
             }
             
-            // 3. 检测 /proc/self/status 中的 TracerPid
+            // 3. 检测 /proc/self/status 中的 TracerPid（仅记录参考信息）
+            // 注意：这个检测在某些设备上可能不可靠
             try {
                 File file = new File("/proc/self/status");
                 if (file.exists()) {
@@ -124,31 +150,32 @@ public class AntiDebug {
                     int len = fis.read(buffer);
                     fis.close();
                     String content = new String(buffer, 0, len);
-                    if (content.contains("TracerPid:\t1") || 
-                        content.contains("TracerPid: 0")) {
-                        // 正常，无调试
-                        return false;
-                    }
-                    // TracerPid 不为 0 或 1，说明被调试
+                    
+                    // 解析 TracerPid
                     for (String line : content.split("\n")) {
                         if (line.startsWith("TracerPid:")) {
                             String pidStr = line.substring("TracerPid:".length()).trim();
                             int pid = Integer.parseInt(pidStr);
-                            if (pid > 1) {
-                                Log.w(TAG, "检测到调试器 PID: " + pid);
-                                return true;
+                            // 仅记录日志供调试，不作为判定依据
+                            if (pid != 0) {
+                                Log.d(TAG, "TracerPid=" + pid + " (参考信息)");
+                                // 注意：即使TracerPid!=0，也不一定是调试器
+                                // 某些系统进程可能会设置这个值
+                                // 只有当Debug.isDebuggerConnected()同时为true才确认
                             }
+                            break;
                         }
                     }
                 }
             } catch (Exception e) {
-                // 无法读取可能是权限问题，不视为调试
+                // 无法读取可能是权限问题，不视为异常
             }
             
         } catch (Exception e) {
             Log.e(TAG, "检测调试器失败: " + e.getMessage());
         }
-        return false;
+        // 只有Debug.isDebuggerConnected()返回true才是可靠的调试器检测
+        return Debug.isDebuggerConnected();
     }
 
     /**
@@ -312,22 +339,28 @@ public class AntiDebug {
     }
 
     /**
-     * 检测测试设置
+     * 检测 USB 调试是否开启
+     * 注意：USB调试开启≠应用被篡改，可能是用户在开发调试
      */
-    private static boolean checkTestSettings(Context context) {
+    private static boolean checkAdbEnabled(Context context) {
         try {
-            // 检测 USB 调试开关
             if (Settings.Global.getInt(context.getContentResolver(), 
                 Settings.Global.ADB_ENABLED, 0) == 1) {
-                // USB 调试开启，可能是调试环境
-                // 仅在 release 版本中报警告
-                if (isReleaseBuild()) {
-                    Log.w(TAG, "USB 调试已开启");
-                    // 不直接返回 true，因为用户可能在使用 ADB
-                }
+                Log.w(TAG, "USB调试已开启");
+                return true;
             }
-            
-            // 检测允许模拟位置
+        } catch (Exception e) {
+            // 忽略
+        }
+        return false;
+    }
+    
+    /**
+     * 检测是否启用了模拟位置
+     * 注意：模拟位置≠应用被篡改，可能是用户在测试
+     */
+    private static boolean checkMockLocation(Context context) {
+        try {
             String mockLocationApp = Settings.Secure.getString(
                 context.getContentResolver(), 
                 Settings.Secure.ALLOW_MOCK_LOCATION);
@@ -335,9 +368,8 @@ public class AntiDebug {
                 Log.w(TAG, "检测到模拟位置应用");
                 return true;
             }
-            
         } catch (Exception e) {
-            Log.e(TAG, "检测测试设置失败: " + e.getMessage());
+            // 忽略
         }
         return false;
     }

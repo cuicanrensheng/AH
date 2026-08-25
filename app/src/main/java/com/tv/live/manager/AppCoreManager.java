@@ -17,6 +17,7 @@ import com.tv.live.EpgManager;
 import com.tv.live.UrlConfig;
 import com.tv.live.config.AppConfig;
 import com.tv.live.loader.LiveSourceLoader;
+import com.tv.live.util.AppExecutors;
 import com.tv.live.util.CacheManager;
 import com.tv.live.SourceManager;
 import com.tv.live.util.HuyaSDKParser;
@@ -138,10 +139,16 @@ public class AppCoreManager {
                 log("【网络】直播源加载成功，频道总数：" + safeChannels.size());
                 synchronized (channelListLock) {
                     channelSourceList = ensureChannelListNotNull(channelSourceList);
-                    if (channelSourceList.isEmpty()) {
+                    if (safeChannels.isEmpty()) {
+                        // 🔧 网络加载但返回 0 条频道 → 视为「源地址失效/404/返回空内容」。
+                        //   原本如果 channelSourceList 非空，会继续走 mergeChannels(safeChannels)，
+                        //   结果 merge 后仍然保留上一个源的缓存列表 → UI 显示上一个源的频道，
+                        //   用户误以为「切换按钮点了没生效」。正确行为：清空列表并回调失败。
                         channelSourceList.clear();
+                    } else if (channelSourceList.isEmpty()) {
                         channelSourceList.addAll(safeChannels);
                     } else {
+                        // 只有 network 真正返回了有效频道数才做 merge，避免用空数据污染已有的缓存列表。
                         mergeChannels(safeChannels);
                     }
                 }
@@ -152,14 +159,21 @@ public class AppCoreManager {
                 if (dataLoadListener != null) {
                     // 即使已超时，只要列表真正加载成功就再回调一次刷新UI和播放
                     dataLoadListener.onLiveSourceLoaded(safeChannels, false);
+                    // 🔧 如果网络返回空频道数，额外回调 onLiveSourceFailed，让 MainActivity 弹 Toast 提示用户
+                    // （之前的代码只有 HTTP/IO 异常才 onFailed，"解析0条"被当成 onSuccess，用户毫无感知）
+                    if (safeChannels.isEmpty()) {
+                        dataLoadListener.onLiveSourceFailed("直播源返回 0 个频道，地址可能已失效或暂时不可达");
+                    }
                 }
                 if (firstTime) {
                     log("【网络】直播源列表已更新");
                 } else {
                     log("【网络】直播源列表已更新（超时后补到数据）");
                 }
-                collectAndPreloadHuyaRooms(safeChannels, "网络");
-                triggerHealthCheck(safeChannels);
+                if (!safeChannels.isEmpty()) {
+                    collectAndPreloadHuyaRooms(safeChannels, "网络");
+                    triggerHealthCheck(safeChannels);
+                }
                 loadEpg();
             }
 
@@ -280,12 +294,58 @@ public class AppCoreManager {
         }
         String[] lines = content.split("\n");
         String currentName = "";
-        String currentGroup = "";
+        String currentGroup = "未分类";
         String currentTvgId = "";
+        boolean pendingM3uUri = false;
 
-        for (String line : lines) {
-            line = line.trim();
+        for (String rawLine : lines) {
+            String line = rawLine == null ? "" : rawLine.trim();
+            if (line.isEmpty()) continue;
+
+            // ============================================================
+            // ✅ 格式 A：DIYP TXT（本地666源格式）
+            //   1) 央卫,#genre#   → 切换分组
+            //   2) CCTV-1,http://...  → 频道条目 + 同名多源合并
+            // ============================================================
+            if (line.endsWith(",#genre#") || line.endsWith("#genre#")) {
+                String group = line;
+                if (group.endsWith(",#genre#")) {
+                    group = group.substring(0, group.length() - ",#genre#".length()).trim();
+                } else if (group.endsWith("#genre#")) {
+                    int idx = group.lastIndexOf("#genre#");
+                    if (idx > 0) group = group.substring(0, idx).trim();
+                    if (group.endsWith(",")) group = group.substring(0, group.length() - 1).trim();
+                }
+                if (!group.isEmpty()) currentGroup = group;
+                pendingM3uUri = false;
+                currentName = ""; currentTvgId = "";
+                continue;
+            }
+
+            int httpIdx = line.indexOf("http://");
+            if (httpIdx < 0) httpIdx = line.indexOf("https://");
+            // DIYP 频道行：「频道名,http://...」—— http 前面必须有逗号
+            if (httpIdx > 1) {
+                int diypComma = line.lastIndexOf(',', httpIdx - 1);
+                if (diypComma > 0) {
+                    String diypName = line.substring(0, diypComma).trim();
+                    String diypUri = line.substring(diypComma + 1).trim();
+                    if (!diypName.isEmpty() && diypUri.startsWith("http")) {
+                        mergeChannelInto(channelMap, diypName, diypUri, currentGroup, "");
+                        pendingM3uUri = false;
+                        currentName = ""; currentTvgId = "";
+                        continue;
+                    }
+                }
+            }
+
+            // ============================================================
+            // 格式 B：标准 M3U (#EXTINF / group-title / tvg-id)
+            // ============================================================
             if (line.startsWith("#EXTINF:")) {
+                currentName = "";
+                currentTvgId = "";
+                // 保留之前的分组默认（#EXTINF 无 group-title 时沿用）
                 int commaIndex = line.indexOf(",");
                 if (commaIndex > 0 && commaIndex < line.length() - 1) {
                     currentName = line.substring(commaIndex + 1).trim();
@@ -304,29 +364,52 @@ public class AppCoreManager {
                         currentTvgId = line.substring(tvgIndex + 8, tvgEnd);
                     }
                 }
-            } else if (!line.startsWith("#") && !line.isEmpty()) {
-                String playUrl = line;
-                if (!TextUtils.isEmpty(currentName) && !TextUtils.isEmpty(playUrl)) {
-                    String key = !TextUtils.isEmpty(currentTvgId) ? currentTvgId : currentName;
-                    if (TextUtils.isEmpty(key)) continue;
+                pendingM3uUri = true;
+                continue;
+            }
 
-                    Channel existing = channelMap.get(key);
-                    if (existing != null) {
-                        existing.addBackupUrl(playUrl);
-                        if (!TextUtils.isEmpty(currentGroup)) {
-                            existing.setGroup(currentGroup);
-                        }
-                    } else {
-                        Channel newChannel = new Channel(currentName, playUrl, currentGroup, currentTvgId);
-                        channelMap.put(key, newChannel);
-                    }
+            if (line.startsWith("#")) {
+                // 其他 M3U 注释/标记（非 #EXTINF）不触发 URL 匹配
+                continue;
+            }
+
+            // 非注释行
+            if (pendingM3uUri && line.startsWith("http")) {
+                String playUrl = line;
+                if (!TextUtils.isEmpty(currentName)) {
+                    mergeChannelInto(channelMap, currentName, playUrl, currentGroup, currentTvgId);
                 }
-                currentName = "";
-                currentGroup = "";
-                currentTvgId = "";
+                pendingM3uUri = false;
+                currentName = ""; currentTvgId = "";
+                continue;
+            }
+
+            // 兜底：裸 URL（没分组、没#EXTINF，一行就是 URL）→ 丢未分类
+            if (!pendingM3uUri && line.startsWith("http")) {
+                mergeChannelInto(channelMap, line, line, currentGroup, "");
             }
         }
         return new ArrayList<>(channelMap.values());
+    }
+
+    /** parseLiveSource 内部用：同名合并备用源、不同名新建条目 */
+    private static void mergeChannelInto(Map<String, Channel> channelMap,
+                                         String name, String uri,
+                                         String group, String tvgId) {
+        if (TextUtils.isEmpty(name) || TextUtils.isEmpty(uri) || !uri.startsWith("http")) return;
+        String key = !TextUtils.isEmpty(tvgId) ? tvgId : name;
+        if (TextUtils.isEmpty(key)) return;
+
+        Channel existing = channelMap.get(key);
+        if (existing != null) {
+            existing.addBackupUrl(uri);
+            if (!TextUtils.isEmpty(group)) {
+                existing.setGroup(group);
+            }
+        } else {
+            Channel newChannel = new Channel(name, uri, group, tvgId);
+            channelMap.put(key, newChannel);
+        }
     }
 
     public void mergeChannels(List<Channel> newChannels) {
@@ -373,7 +456,7 @@ public class AppCoreManager {
             @Override
             public void onReceive(Context context, Intent intent) {
                 if ("com.tv.live.REFRESH_LIVE_AND_EPG".equals(intent.getAction())) {
-                    new Thread(() -> {
+                    AppExecutors.io(() -> {
                         if (cacheManager != null) {
                             cacheManager.clearAll();
                             log("【缓存】已强制清除所有缓存，正在重新拉取最新数据");
@@ -413,7 +496,7 @@ public class AppCoreManager {
                             refreshListener.onRefreshNeeded();
                         }
                         loadLiveAndEpg();
-                    }).start();
+                    });
                 }
             }
         };
@@ -531,7 +614,7 @@ public class AppCoreManager {
     public int getMaxConsecutiveSkip() { return MAX_CONSECUTIVE_SKIP; }
 
     public void onReceiveConfig(final String liveUrl, final String epgUrl) {
-        new Thread(() -> {
+        AppExecutors.io(() -> {
             appConfig.setCustomUrls(liveUrl, epgUrl);
             if (liveUrl != null) UrlConfig.LIVE_URL = liveUrl;
             if (epgUrl != null) UrlConfig.EPG_URL = epgUrl;
@@ -549,7 +632,7 @@ public class AppCoreManager {
 
             hasPlayedWithCache = false;
             loadLiveAndEpg();
-        }).start();
+        });
     }
 
     public void setOnDataLoadListener(OnDataLoadListener listener) { this.dataLoadListener = listener; }

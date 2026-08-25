@@ -71,3 +71,8 @@ app/release.keystore
 keystore.properties
 *.keystore
 *.jks
+
+# Debug temp files
+log_*.txt
+ui_honor.xml
+tools/

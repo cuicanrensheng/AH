@@ -65,9 +65,13 @@ import java.util.concurrent.Executors;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -336,7 +340,41 @@ public class TVPlayerManager {
 
     private void logError(String msg) {
         Log.e(TAG, msg);
-        com.tv.live.util.LogCollector.getInstance().error(TAG, msg);
+        // 过滤可预期的播放错误，不上报到Bugly
+        // 这些错误通常是由于直播源问题（URL过期、服务器问题等），不是应用bug
+        if (shouldReportPlaybackError(msg)) {
+            com.tv.live.util.LogCollector.getInstance().error(TAG, msg);
+        } else {
+            // 仅在本地记录日志，不上报
+            com.tv.live.util.LogCollector.getInstance().warn(TAG, "[播放过滤] " + msg);
+        }
+    }
+    
+    /**
+     * 判断播放错误是否应该上报到Bugly
+     * 只过滤明确是外部资源问题的可预期错误
+     */
+    private boolean shouldReportPlaybackError(String msg) {
+        if (msg == null || msg.isEmpty()) return false;
+        
+        String lowerMsg = msg.toLowerCase();
+        
+        // 明确是外部资源问题的错误 - 不上报到Bugly
+        String[] externalResourceErrors = {
+            "404 not found",        // 直播源URL不存在
+            "失败: http 404",        // 明确的404错误
+            "失败: http",           // HTTP请求失败
+            "打开连接失败: timeout",  // 网络超时
+            "播放异常: unexpected runtime error"  // ExoPlayer内部HLS解析错误
+        };
+        
+        for (String error : externalResourceErrors) {
+            if (lowerMsg.contains(error)) {
+                return false;
+            }
+        }
+        
+        return true;
     }
 
     private void logWarn(String msg) {
@@ -899,23 +937,23 @@ public class TVPlayerManager {
     private MediaCodecSelector createSmartSelector(boolean preferSoftware) {
         return new MediaCodecSelector() {
             @Override
-            public java.util.List<MediaCodecInfo> getDecoderInfos(
+            public List<MediaCodecInfo> getDecoderInfos(
                     String mimeType, boolean requiresSecureDecoder, boolean requiresTunnelingDecoder)
                     throws androidx.media3.exoplayer.mediacodec.MediaCodecUtil.DecoderQueryException {
 
-                java.util.List<MediaCodecInfo> all = MediaCodecSelector.DEFAULT
+                List<MediaCodecInfo> all = MediaCodecSelector.DEFAULT
                         .getDecoderInfos(mimeType, requiresSecureDecoder, requiresTunnelingDecoder);
 
                 // 1. 过滤黑名单
-                java.util.List<String> blacklist = new java.util.ArrayList<>();
+                List<String> blacklist = new ArrayList<>();
                 blacklist.add("omx.ms.");
                 blacklist.add("c2.mstar.");
                 blacklist.add("c2.amlogic.avc.decoder.awesome");
                 blacklist.add("omx.hisi.video.decoder");
 
-                java.util.List<MediaCodecInfo> filtered = new java.util.ArrayList<>();
+                List<MediaCodecInfo> filtered = new ArrayList<>();
                 for (MediaCodecInfo info : all) {
-                    String name = info.name.toLowerCase(java.util.Locale.ROOT);
+                    String name = info.name.toLowerCase(Locale.ROOT);
                     boolean blocked = false;
                     for (String prefix : blacklist) {
                         if (name.startsWith(prefix)) { blocked = true; break; }
@@ -927,8 +965,8 @@ public class TVPlayerManager {
 
                 // 2. 软解优先：把系统软解器排到最前
                 if (preferSoftware) {
-                    java.util.List<MediaCodecInfo> soft = new java.util.ArrayList<>();
-                    java.util.List<MediaCodecInfo> hard = new java.util.ArrayList<>();
+                    List<MediaCodecInfo> soft = new ArrayList<>();
+                    List<MediaCodecInfo> hard = new ArrayList<>();
                     for (MediaCodecInfo info : filtered) {
                         if (isSoftwareDecoder(info)) soft.add(info);
                         else hard.add(info);
@@ -1189,8 +1227,7 @@ public class TVPlayerManager {
                 // 回前台时 onForeground 需要等待 Surface 重建才能恢复，容易黑屏。
                 // 改为保持 playWhenReady=true，让播放器在 Surface 重建后自动恢复渲染。
                 // 实际的后台暂停由系统 Surface 销毁自动停止渲染来实现，
-                // 不需要我们主动 pause。
-                player.pause();
+                // 不需要我们主动 pause（删除 player.pause()，避免打断播放管道导致回前台重新缓冲）。
             }
             if (playerView != null && surfaceReady) {
                 pendingBindPlayer = true;
@@ -1507,8 +1544,8 @@ public class TVPlayerManager {
         HuyaSDKParser.parseFull(roomId, new HuyaSDKParser.OnSDKFullResultListener() {
             @Override
             public void onSuccess(HuyaSDKParser.HuyaStreamInfo defaultStream,
-                                  java.util.List<HuyaSDKParser.HuyaStreamInfo> allStreams,
-                                  java.util.List<String> lines) {
+                                  List<HuyaSDKParser.HuyaStreamInfo> allStreams,
+                                  List<String> lines) {
                 long costMs = System.currentTimeMillis() - parseStartTs;
                 HuyaSDKParser.CachedStreams cs = HuyaSDKParser.getCachedStreams(roomId);
                 boolean fromPreload = (cs != null && cs.streams == allStreams)
@@ -1526,7 +1563,7 @@ public class TVPlayerManager {
                 // ================================================================
                 if (defaultStream != null && allStreams != null && !allStreams.isEmpty()) {
                     // 找到 defaultStream 所在线路的所有码率流
-                    java.util.List<HuyaSDKParser.HuyaStreamInfo> sameLineStreams = new java.util.ArrayList<>();
+                    List<HuyaSDKParser.HuyaStreamInfo> sameLineStreams = new ArrayList<>();
                     for (HuyaSDKParser.HuyaStreamInfo s : allStreams) {
                         if (s != null && s.lineIndex == defaultStream.lineIndex
                                 && !TextUtils.isEmpty(s.getPlayUrl())) {
@@ -1559,13 +1596,13 @@ public class TVPlayerManager {
                 }
 
                 if (allStreams != null && allStreams.size() > 1) {
-                    java.util.Set<Integer> lineIndexSet = new java.util.TreeSet<>();
+                    Set<Integer> lineIndexSet = new TreeSet<>();
                     for (HuyaSDKParser.HuyaStreamInfo s : allStreams) {
                         if (!TextUtils.isEmpty(s.getPlayUrl())) {
                             lineIndexSet.add(s.lineIndex);
                         }
                     }
-                    java.util.List<Integer> uniqueLineIndices = new java.util.ArrayList<>(lineIndexSet);
+                    List<Integer> uniqueLineIndices = new ArrayList<>(lineIndexSet);
 
                     if (uniqueLineIndices.size() > 1) {
                         String linePrefKey = "huya_line_poll_" + roomId;
@@ -1612,7 +1649,7 @@ public class TVPlayerManager {
                 // - 存储所有线路的所有码率（Variant 带 huyaLineIndex 区分）
                 // - 当前线路的 variant 按码率降序排列，当前 URL 排第一
                 // ================================================================
-                java.util.List<Variant> allVariants = new java.util.ArrayList<>();
+                List<Variant> allVariants = new ArrayList<>();
                 if (allStreams != null) {
                     for (HuyaSDKParser.HuyaStreamInfo s : allStreams) {
                         if (!TextUtils.isEmpty(s.getPlayUrl())) {
@@ -1624,21 +1661,21 @@ public class TVPlayerManager {
                 mCurrentHuyaLineIndex = streamHolder[0].lineIndex;
 
                 // 按线路分组 + 各线路按码率降序
-                java.util.Map<Integer, java.util.List<Variant>> lineGroups = new java.util.TreeMap<>();
+                Map<Integer, List<Variant>> lineGroups = new TreeMap<>();
                 for (Variant v : allVariants) {
-                    java.util.List<Variant> group = lineGroups.get(v.huyaLineIndex);
+                    List<Variant> group = lineGroups.get(v.huyaLineIndex);
                     if (group == null) {
-                        group = new java.util.ArrayList<>();
+                        group = new ArrayList<>();
                         lineGroups.put(v.huyaLineIndex, group);
                     }
                     group.add(v);
                 }
-                for (java.util.List<Variant> group : lineGroups.values()) {
+                for (List<Variant> group : lineGroups.values()) {
                     Collections.sort(group, (a, b) -> Integer.compare(b.bandwidth, a.bandwidth));
                 }
 
                 // 当前线路的 URL 排第一
-                java.util.List<Variant> currentLineVariants = lineGroups.get(mCurrentHuyaLineIndex);
+                List<Variant> currentLineVariants = lineGroups.get(mCurrentHuyaLineIndex);
                 if (currentLineVariants != null) {
                     int defIdx = -1;
                     for (int i = 0; i < currentLineVariants.size(); i++) {
@@ -1657,9 +1694,9 @@ public class TVPlayerManager {
                 currentResolutionLabel = currentLineVariants != null && !currentLineVariants.isEmpty()
                         ? currentLineVariants.get(0).getDisplayLabel() : "";
                 int totalVariantCount = 0;
-                for (java.util.List<Variant> g : lineGroups.values()) totalVariantCount += g.size();
+                for (List<Variant> g : lineGroups.values()) totalVariantCount += g.size();
                 Log.d(TAG, "【虎牙】variantList 填充: 共 " + totalVariantCount + " 个清晰度，分布在 " + lineGroups.size() + " 条线路");
-                for (java.util.Map.Entry<Integer, java.util.List<Variant>> entry : lineGroups.entrySet()) {
+                for (java.util.Map.Entry<Integer, List<Variant>> entry : lineGroups.entrySet()) {
                     StringBuilder sb = new StringBuilder("  线路").append(entry.getKey()).append(": ");
                     for (Variant v : entry.getValue()) {
                         sb.append(v.getDisplayLabel()).append(" ");
@@ -1673,14 +1710,19 @@ public class TVPlayerManager {
                 // - 线路对话框显示: "主源", "源1", "源2", ...
                 // ================================================================
                 if (currentChannel != null) {
-                    java.util.List<String> backups = currentChannel.getBackupUrls();
-                    if (backups == null) { backups = new java.util.ArrayList<>(); }
+                    List<String> backups = currentChannel.getBackupUrls();
+                    if (backups == null) { backups = new ArrayList<>(); }
                     else backups.clear();
 
-                    currentChannel.setMainPlayUrl(defaultUrl);
+                    // 🔴【修复清晰度残留】不再把解析出的流 URL 覆写到 mainPlayUrl。
+                    // 原因：若覆写，Channel.mainPlayUrl 从 "huya://room/xxx" 变成流 URL，
+                    // 下次切回该频道时 playChannel → getPlayUrl() 返回流 URL → 直接 doPlay，
+                    // 不走 playHuyaStream → variantList 不重新填充 → 清晰度档位残留上一个房间。
+                    // mainPlayUrl 保持 huya://room/xxx 房间协议，切回时必然重新解析填充。
+                    // 线路/码率 URL 仍写入 backupUrls，供"线路选择"切换使用。
 
                     // 扁平化：收集所有变体的URL（去重），排除主URL
-                    java.util.Set<String> seenUrls = new java.util.HashSet<>();
+                    Set<String> seenUrls = new HashSet<>();
                     if (allVariants != null) {
                         for (Variant v : allVariants) {
                             if (v.url != null && !seenUrls.contains(v.url)) {
@@ -2072,7 +2114,11 @@ public class TVPlayerManager {
                     }
                     String playlist = content.toString();
                     Log.d(TAG, "【虎牙源】主播放列表长度: " + playlist.length());
-                    parseMasterPlaylist(playlist, masterUrl);
+                    // 🔴【修复】虎牙清晰度以 SDK 解析为准！
+                    // 虎牙 HLS 直接播放流（_NNNN.m3u8）拉取的内容是单码率媒体列表
+                    // （无 #EXT-X-STREAM-INF），parseMasterPlaylist 解析结果为空或仅含
+                    // 部分变体，会覆盖 SDK 解析出的完整 variantList，导致清晰度档位
+                    // 被逐步替换递减（4档→3档→1档）。这里只保留日志，不覆盖 variantList。
                 } else if (code == java.net.HttpURLConnection.HTTP_MOVED_TEMP
                         || code == java.net.HttpURLConnection.HTTP_MOVED_PERM) {
                     // 手动处理重定向，保留鉴权头（关键防盗链要求）
@@ -2099,11 +2145,12 @@ public class TVPlayerManager {
                         }
                     }
                     Log.e(TAG, "【虎牙源】主播放列表请求失败: code=" + code);
-                    synchronized (variantListLock) { variantList.clear(); }
+                    // 🔴【修复】不在此处清空 variantList：虎牙清晰度以 SDK 解析为准，
+                    // m3u8 请求失败不应清掉 SDK 解析出的完整清晰度列表。
                 }
             } catch (Exception e) {
                 Log.e(TAG, "【虎牙源】解析主播放列表失败: ", e);
-                synchronized (variantListLock) { variantList.clear(); }
+                // 🔴【修复】同上：不在此处清空 variantList。
             } finally {
                 if (connection != null) {
                     try { connection.disconnect(); } catch (Exception ignored) {}
@@ -2314,12 +2361,6 @@ public class TVPlayerManager {
         currentResolutionLabel = selected.getDisplayLabel();
         dLog("切换清晰度到：" + selected.getDisplayLabel() + "，URL=" + (selected.url != null ? selected.url.substring(0, Math.min(60, selected.url.length())) : "(空)"));
         playUrlInternal(selected.url);
-    }
-
-    /** 兼容旧版（仅按高度） */
-    @Deprecated
-    public void switchToResolution(int targetHeight) {
-        switchToResolution(targetHeight, (String) null);
     }
 
     public enum ScaleMode {FIT, FILL, ZOOM}

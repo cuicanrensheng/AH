@@ -24,6 +24,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import okhttp3.OkHttpClient;
@@ -48,6 +50,7 @@ public class LogServer {
     private volatile boolean isRunning;
     private Thread serverThread;
     private java.net.ServerSocket serverSocket;
+    private ExecutorService clientExecutor; // 连接处理线程池（避免每连接一线程）
     private int port;
     private String deviceId;
     private String deviceName;
@@ -169,6 +172,11 @@ public class LogServer {
         webSockets.clear();
         
         isRunning = true;
+        clientExecutor = Executors.newFixedThreadPool(8, r -> {
+            Thread t = new Thread(r, "LogServer-Client");
+            t.setDaemon(true);
+            return t;
+        });
         serverThread = new Thread(() -> {
             try {
                 startHttpServer();
@@ -221,6 +229,10 @@ public class LogServer {
             }
         } catch (Exception ignored) {}
         serverSocket = null;
+        if (clientExecutor != null) {
+            clientExecutor.shutdownNow();
+            clientExecutor = null;
+        }
         Log.i(TAG, "LogServer stopped");
     }
 
@@ -232,8 +244,11 @@ public class LogServer {
         while (isRunning) {
             try {
                 java.net.Socket clientSocket = serverSocket.accept();
-                new Thread(() -> handleClient(clientSocket), "LogServer-Client-" + System.currentTimeMillis())
-                        .start();
+                if (clientExecutor != null) {
+                    clientExecutor.execute(() -> handleClient(clientSocket));
+                } else {
+                    clientSocket.close();
+                }
             } catch (IOException e) {
                 if (isRunning) {
                     Log.e(TAG, "Error accepting client", e);

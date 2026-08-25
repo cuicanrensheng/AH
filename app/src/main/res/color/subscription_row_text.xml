@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 行"内容块"文字颜色：只有焦点=蓝#40A9FF；其他（含selected）=白#FFFFFF -->
+<!-- 行"名称"文字颜色：焦点=蓝#40A9FF；默认白#FFFFFF
+     三种状态任一命中就变蓝（覆盖 DPAD 焦点、ListView.setSelected、ListView.setItemChecked） -->
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:state_focused="true" android:color="#FF40A9FF"/>
+    <item android:state_focused="true"    android:color="#FF40A9FF"/>
+    <item android:state_selected="true"   android:color="#FF40A9FF"/>
+    <item android:state_activated="true"  android:color="#FF40A9FF"/>
     <item android:color="#FFFFFFFF"/>
 </selector>

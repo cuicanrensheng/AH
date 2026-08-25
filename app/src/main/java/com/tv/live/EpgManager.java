@@ -7,6 +7,7 @@ import android.os.Looper;
 import android.text.TextUtils;
 import android.util.Log;
 
+import com.tv.live.util.AppExecutors;
 import com.tv.live.util.CacheManager;
 // 🔧【清理一起看】已移除：import com.tv.live.manager.HuyaTogetherWatchManager;
 
@@ -47,6 +48,10 @@ public class EpgManager {
 
     private static final String CACHE_KEY_EPG = "epg";
 
+    // 🟢 内存上限：避免超大 EPG 源把内存打爆
+    private static final int MAX_CHANNELS = 2000;              // 频道数上限
+    private static final int MAX_PROGRAMS_PER_CHANNEL = 500;   // 每频道节目条数上限（7天范围通常 <200 条）
+
     public static EpgManager getInstance(Context ctx) {
         if (instance == null) {
             instance = new EpgManager(ctx.getApplicationContext());
@@ -71,13 +76,13 @@ public class EpgManager {
     }
 
     public void loadEpgFromM3u(String m3uUrl, Runnable callback) {
-        new Thread(() -> {
+        AppExecutors.io(() -> {
             String extractedEpgUrl = extractEpgUrlFromM3u(m3uUrl);
             if (extractedEpgUrl != null && !extractedEpgUrl.isEmpty()) {
                 epgUrl = extractedEpgUrl;
             }
             loadEpg(callback);
-        }).start();
+        });
     }
 
     private String extractEpgUrlFromM3u(String m3uUrl) {
@@ -120,7 +125,7 @@ public class EpgManager {
     }
 
     public void loadEpg(Runnable callback) {
-        new Thread(() -> {
+        AppExecutors.io(() -> {
             try (okhttp3.Response response = com.tv.live.util.NetUtil.getInstance().syncGet(epgUrl)) {
                 if (!response.isSuccessful() || response.body() == null) return;
 
@@ -157,7 +162,7 @@ public class EpgManager {
             if (callback != null) {
                 new Handler(Looper.getMainLooper()).post(callback);
             }
-        }).start();
+        });
     }
 
     public boolean loadEpgFromCache() {
@@ -209,7 +214,9 @@ public class EpgManager {
                 if ("channel".equals(tag)) {
                     // 🟢【关键修复】检测到新频道时，先保存前一个频道的完整节目列表
                     if (currentChannelName != null && !tempPrograms.isEmpty()) {
-                        channelEpgMap.put(currentChannelName, new ArrayList<>(tempPrograms));
+                        if (channelEpgMap.size() < MAX_CHANNELS) {
+                            channelEpgMap.put(currentChannelName, new ArrayList<>(tempPrograms));
+                        }
                         tempPrograms.clear();
                     }
                     currentChannelName = null;
@@ -283,6 +290,10 @@ public class EpgManager {
                         }
                         String timeStr = startHHMM + " - " + stopHHMM;
 
+                        // 🟢 内存上限：单个频道节目过多时跳过（避免超大 EPG 打爆内存）
+                        if (tempPrograms.size() >= MAX_PROGRAMS_PER_CHANNEL) {
+                            continue;
+                        }
                         Channel.EpgItem item = new Channel.EpgItem(dayName, timeStr, "", false, ymd);
                         tempPrograms.add(item);
 
@@ -303,7 +314,9 @@ public class EpgManager {
 
         // 🟢【关键修复】解析结束后，保存最后一个频道的节目列表
         if (currentChannelName != null && !tempPrograms.isEmpty()) {
-            channelEpgMap.put(currentChannelName, new ArrayList<>(tempPrograms));
+            if (channelEpgMap.size() < MAX_CHANNELS) {
+                channelEpgMap.put(currentChannelName, new ArrayList<>(tempPrograms));
+            }
         }
     }
 

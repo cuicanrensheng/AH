@@ -7,7 +7,7 @@ import android.provider.Settings;
 import android.security.keystore.KeyGenParameterSpec;
 import android.security.keystore.KeyProperties;
 import android.util.Base64;
-import android.util.Log;
+import com.tv.live.util.LogBridge;
 
 import java.security.KeyStore;
 import java.security.MessageDigest;
@@ -75,7 +75,7 @@ public class EncryptedStorage {
                 try {
                     generateOrLoadKey();
                 } catch (Exception keystoreError) {
-                    Log.w(TAG, "Android Keystore 不可用，降级到旧版本方案: " + keystoreError.getMessage());
+                    LogBridge.w(TAG, "Android Keystore 不可用，降级到旧版本方案: " + keystoreError.getMessage());
                     generateLegacyKey();
                 }
             } else {
@@ -83,9 +83,9 @@ public class EncryptedStorage {
                 generateLegacyKey();
             }
             initialized = true;
-            Log.i(TAG, "✅ EncryptedStorage 初始化成功");
+            LogBridge.i(TAG, "✅ EncryptedStorage 初始化成功");
         } catch (Exception e) {
-            Log.e(TAG, "❌ EncryptedStorage 初始化失败: " + e.getMessage());
+            LogBridge.e(TAG, "❌ EncryptedStorage 初始化失败: " + e.getMessage());
         }
     }
 
@@ -113,13 +113,13 @@ public class EncryptedStorage {
                             .build());
             
             keyGenerator.generateKey();
-            Log.i(TAG, "✅ 生成新的 AES-256 密钥");
+            LogBridge.i(TAG, "✅ 生成新的 AES-256 密钥");
         }
 
         // 从 Keystore 加载密钥
         KeyStore.SecretKeyEntry keyEntry = (KeyStore.SecretKeyEntry) keyStore.getEntry(KEY_ALIAS, null);
         secretKey = keyEntry.getSecretKey();
-        Log.i(TAG, "✅ 加载 AES-256 密钥成功");
+        LogBridge.i(TAG, "✅ 加载 AES-256 密钥成功");
     }
 
     /**
@@ -145,7 +145,7 @@ public class EncryptedStorage {
         byte[] keyBytes = digest.digest(deviceKey.getBytes("UTF-8"));
         
         secretKey = new SecretKeySpec(keyBytes, "AES");
-        Log.i(TAG, "✅ 使用降级方案生成密钥（安全性较低）");
+        LogBridge.i(TAG, "✅ 使用降级方案生成密钥（安全性较低）");
     }
 
     /**
@@ -177,7 +177,7 @@ public class EncryptedStorage {
      */
     public String encrypt(String key, String plainText) {
         if (!initialized || secretKey == null) {
-            Log.e(TAG, "加密存储未初始化");
+            LogBridge.e(TAG, "加密存储未初始化");
             return plainText;
         }
 
@@ -202,7 +202,7 @@ public class EncryptedStorage {
             
             return encrypted;
         } catch (Exception e) {
-            Log.e(TAG, "加密失败: " + e.getMessage());
+            LogBridge.w(TAG, "加密失败: " + e.getMessage());
             return plainText;
         }
     }
@@ -214,7 +214,7 @@ public class EncryptedStorage {
      */
     public String decrypt(String key) {
         if (!initialized || secretKey == null) {
-            Log.e(TAG, "加密存储未初始化");
+            LogBridge.e(TAG, "加密存储未初始化");
             return null;
         }
 
@@ -227,7 +227,7 @@ public class EncryptedStorage {
             // 解析格式: Base64(IV):Base64(Ciphertext+Tag)
             String[] parts = encrypted.split(":");
             if (parts.length != 2) {
-                Log.e(TAG, "密文格式错误");
+                LogBridge.e(TAG, "密文格式错误");
                 return null;
             }
 
@@ -242,7 +242,7 @@ public class EncryptedStorage {
             byte[] decryptedBytes = cipher.doFinal(encryptedBytes);
             return new String(decryptedBytes, "UTF-8");
         } catch (Exception e) {
-            Log.e(TAG, "解密失败（可能密钥已失效）: " + e.getMessage());
+            LogBridge.e(TAG, "解密失败（可能密钥已失效）: " + e.getMessage());
             // 密钥失效时清除数据
             prefs.edit().remove(key).apply();
             return null;
@@ -308,7 +308,7 @@ public class EncryptedStorage {
      */
     public void clearAll() {
         prefs.edit().clear().apply();
-        Log.i(TAG, "已清除所有加密存储数据");
+        LogBridge.i(TAG, "已清除所有加密存储数据");
     }
 
     /**
@@ -358,10 +358,10 @@ public class EncryptedStorage {
                 generateLegacyKey();
             }
             
-            Log.i(TAG, "✅ 密钥已重新生成");
+            LogBridge.i(TAG, "✅ 密钥已重新生成");
             return true;
         } catch (Exception e) {
-            Log.e(TAG, "❌ 密钥重新生成失败: " + e.getMessage());
+            LogBridge.e(TAG, "❌ 密钥重新生成失败: " + e.getMessage());
             return false;
         }
     }

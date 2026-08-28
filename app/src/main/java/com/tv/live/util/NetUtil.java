@@ -3,7 +3,7 @@ package com.tv.live.util;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.text.TextUtils;
-import android.util.Log;
+import com.tv.live.util.LogBridge;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -75,7 +75,7 @@ public class NetUtil {
                 .addNetworkInterceptor(new SensitiveDataProtectionInterceptor())
                 .build();
         
-        Log.i(TAG, "NetUtil 初始化完成（含安全配置）");
+        LogBridge.i(TAG, "NetUtil 初始化完成（含安全配置）");
     }
 
     /**
@@ -126,11 +126,7 @@ public class NetUtil {
         public Response intercept(Chain chain) throws IOException {
             Request originalRequest = chain.request();
             String url = originalRequest.url().toString();
-            String host = originalRequest.url().host();
-            
-            // 检查是否为敏感域名
-            boolean isSensitiveRequest = isSensitiveDomain(host);
-            
+
             Request.Builder requestBuilder = originalRequest.newBuilder()
                     .header("Accept-Encoding", "identity");
 
@@ -142,26 +138,18 @@ public class NetUtil {
                 addIntegrityHeaders(requestBuilder, originalRequest);
             }
 
-            // 记录请求日志
-            long startTime = System.currentTimeMillis();
-            Log.d(TAG, "请求: " + originalRequest.method() + " " + host + (isSensitiveRequest ? " [安全]" : ""));
-
             Response response;
             try {
                 response = chain.proceed(requestBuilder.build());
             } catch (IOException e) {
-                Log.e(TAG, "请求失败: " + url + " -> " + e.getMessage());
+                LogBridge.e(TAG, "请求失败: " + url + " -> " + e.getMessage());
                 throw e;
             }
 
-            // 记录响应日志
-            long duration = System.currentTimeMillis() - startTime;
+            // 仅记录异常响应（成功响应不打日志，避免噪音淹没真正的问题日志）
             int code = response.code();
-            Log.d(TAG, "响应: " + code + " (" + duration + "ms) " + host);
-
-            // 检测异常响应
             if (code >= 400) {
-                Log.w(TAG, "异常响应: " + code + " " + url);
+                LogBridge.w(TAG, "异常响应: " + code + " " + url);
             }
 
             return response;
@@ -182,10 +170,9 @@ public class NetUtil {
             String host = request.url().host();
             if (isSensitiveDomain(host)) {
                 int code = response.code();
-                // 验证响应的完整性（在实际项目中可以添加响应签名验证）
-                if (code >= 200 && code < 300) {
-                    // 响应成功，可以在这里添加响应验证逻辑
-                    Log.d(TAG, "敏感请求响应验证: " + host + " -> " + code);
+                // 响应完整性验证（实际项目中可在此添加签名校验）
+                if (code >= 400) {
+                    LogBridge.w(TAG, "敏感请求异常响应: " + host + " -> " + code);
                 }
             }
 
@@ -265,7 +252,7 @@ public class NetUtil {
             
             return hexString.toString();
         } catch (Exception e) {
-            Log.e(TAG, "计算请求签名失败: " + e.getMessage());
+            LogBridge.e(TAG, "计算请求签名失败: " + e.getMessage());
             return "";
         }
     }
@@ -291,7 +278,7 @@ public class NetUtil {
                 }
             }
         } catch (Exception e) {
-            Log.w(TAG, "获取设备ID失败: " + e.getMessage());
+            LogBridge.w(TAG, "获取设备ID失败: " + e.getMessage());
         }
         return "unknown";
     }
@@ -343,8 +330,6 @@ public class NetUtil {
             }
         }
         
-        Log.d("NetUtil", "【UA检测】当前正在使用的请求头 User-Agent: " + userAgent);
-
         headerMap.put("User-Agent", userAgent);
         headerMap.put("Accept", "*");
         headerMap.put("Connection", "keep-alive");

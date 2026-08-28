@@ -2,11 +2,11 @@ package com.tv.live.util;
 
 import android.content.Context;
 import android.text.TextUtils;
-import android.util.Log;
+import com.tv.live.MyApplication;
+import com.tv.live.util.LogBridge;
 
 import java.io.PrintWriter;
 import java.io.StringWriter;
-import java.lang.reflect.Method;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -55,12 +55,12 @@ public class ExceptionReporter {
 
     public static void init(Context context) {
         enabled = true;
-        Log.i(TAG, "ExceptionReporter initialized (policy: throwable+events / biz-masked / tracking-on)");
+        LogBridge.i(TAG, "ExceptionReporter initialized (policy: throwable+events / biz-masked / tracking-on)");
     }
 
     public static void setEnabled(boolean value) {
         enabled = value;
-        Log.i(TAG, "ExceptionReporter " + (value ? "enabled" : "disabled"));
+        LogBridge.i(TAG, "ExceptionReporter " + (value ? "enabled" : "disabled"));
     }
 
     // ==================== LogCollector 依赖的对外入口 ====================
@@ -76,7 +76,7 @@ public class ExceptionReporter {
         if (throwable != null) {
             report(tag, msg, throwable);
         } else {
-            Log.w(TAG, "[reportError no-throwable skip] tag=" + (tag == null ? "" : tag)
+            LogBridge.w(TAG, "[reportError no-throwable skip] tag=" + (tag == null ? "" : tag)
                     + " msg=" + filterSensitive(msg == null ? "" : msg));
         }
     }
@@ -96,7 +96,7 @@ public class ExceptionReporter {
 
         // —— 关键：无 Throwable 不上传异常路径（用户规则核心）——
         if (throwable == null) {
-            Log.w(TAG, "[non-throwable skip Bugly-exception] module=" + module
+            LogBridge.w(TAG, "[non-throwable skip Bugly-exception] module=" + module
                     + " context=" + filterSensitive(context == null ? "" : context));
             return;
         }
@@ -109,7 +109,7 @@ public class ExceptionReporter {
         int count = reportCount.incrementAndGet();
         if (count > MAX_REPORTS_PER_SESSION) {
             if (count == MAX_REPORTS_PER_SESSION + 1) {
-                Log.w(TAG, "Report count exceeded limit " + MAX_REPORTS_PER_SESSION + ", stop reporting.");
+                LogBridge.w(TAG, "Report count exceeded limit " + MAX_REPORTS_PER_SESSION + ", stop reporting.");
             }
             return;
         }
@@ -117,9 +117,9 @@ public class ExceptionReporter {
         String stackTrace = getStackTrace(throwable);
 
         // 本地收集（logcat / LogCollector）→ 不过滤（因为本地是自己看）
-        Log.e(TAG, "[" + module + "] Exception reported: " + throwable.getMessage(), throwable);
+        LogBridge.e(TAG, "[" + module + "] Exception reported: " + throwable.getMessage(), throwable);
         if (context != null && !context.isEmpty()) {
-            Log.e(TAG, "[" + module + "] Context: " + context);
+            LogBridge.e(TAG, "[" + module + "] Context: " + context);
         }
         try {
             LogCollector.getInstance().error(module,
@@ -130,7 +130,7 @@ public class ExceptionReporter {
         try {
             BuglyLogSender.reportHuyaExceptionSafely(module, throwable, context);
         } catch (Throwable t) {
-            Log.e(TAG, "Bugly report failed", t);
+            LogBridge.e(TAG, "Bugly report failed", t);
         }
     }
 
@@ -152,7 +152,7 @@ public class ExceptionReporter {
           .append(" | code=").append(code)
           .append(" | errorMsg=").append(errorMsg == null ? "" : errorMsg)
           .append(" | room=").append(roomInfo == null ? "" : roomInfo);
-        Log.e(TAG, sb.toString());
+        LogBridge.e(TAG, sb.toString());
         try {
             LogCollector.getInstance().error(module == null ? "HuyaBizFail" : module,
                     filterSensitive(sb.toString()));
@@ -165,10 +165,10 @@ public class ExceptionReporter {
                 BuglyLogSender.getInstance(ctx)
                         .reportHuyaBusinessFailureAsEvent(module, code, errorMsg, roomInfo);
             } else {
-                Log.w(TAG, "App Context unavailable, skip huya biz-fail track event upload");
+                LogBridge.w(TAG, "App Context unavailable, skip huya biz-fail track event upload");
             }
         } catch (Throwable t) {
-            Log.w(TAG, "reportHuyaBusinessFailureAsEvent upload failed (local log still kept)", t);
+            LogBridge.w(TAG, "reportHuyaBusinessFailureAsEvent upload failed (local log still kept)", t);
         }
     }
 
@@ -262,13 +262,9 @@ public class ExceptionReporter {
      * 失败返回 null（此时仅本地记录，不影响主流程）。
      */
     private static Context getAppContext() {
-        try {
-            Class<?> atCls = Class.forName("android.app.ActivityThread");
-            Method m = atCls.getMethod("currentApplication");
-            Object app = m.invoke(null);
-            if (app instanceof Context) return (Context) app;
-        } catch (Throwable t) {
-            Log.w(TAG, "getAppContext via ActivityThread failed: " + t.getMessage());
+        MyApplication app = MyApplication.getInstance();
+        if (app != null) {
+            return app.getApplicationContext();
         }
         return null;
     }

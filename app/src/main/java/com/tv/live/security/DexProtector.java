@@ -3,7 +3,7 @@ package com.tv.live.security;
 import android.content.Context;
 import android.content.pm.ApplicationInfo;
 import android.os.Build;
-import android.util.Log;
+import com.tv.live.util.LogBridge;
 
 import com.tv.live.BuildConfig;
 
@@ -53,9 +53,9 @@ public final class DexProtector {
                 protectDex(context);
                 checkDexIntegrity(context);
                 startDexMonitor(context);
-                Log.i(TAG, "DEX 保护初始化完成");
+                LogBridge.i(TAG, "DEX 保护初始化完成");
             } catch (Throwable e) {
-                Log.w(TAG, "DEX 保护初始化异常: " + e.getMessage());
+                LogBridge.w(TAG, "DEX 保护初始化异常: " + e.getMessage());
             }
         }
         return true;
@@ -75,10 +75,10 @@ public final class DexProtector {
             
             // 2. 计算 APK/DEX 的 hash
             sDexHash = computeFileHash(apkFile);
-            Log.i(TAG, "DEX hash: " + (sDexHash != null ? sDexHash.substring(0, 16) + "..." : "null"));
+            LogBridge.i(TAG, "DEX hash: " + (sDexHash != null ? sDexHash.substring(0, 16) + "..." : "null"));
             
         } catch (Exception e) {
-            Log.e(TAG, "保护 DEX 失败: " + e.getMessage());
+            LogBridge.e(TAG, "保护 DEX 失败: " + e.getMessage());
         }
     }
 
@@ -94,7 +94,7 @@ public final class DexProtector {
             
             // 检查 APK 是否被修改
             if (sDexLastModified > 0 && apkFile.lastModified() != sDexLastModified) {
-                Log.e(TAG, "⚠️ APK 文件被修改! lastModified 已变化");
+                LogBridge.e(TAG, "⚠️ APK 文件被修改! lastModified 已变化");
                 triggerTamperDetected(context, "APK 文件被修改");
                 return;
             }
@@ -103,7 +103,7 @@ public final class DexProtector {
             checkDexFile(context);
             
         } catch (Exception e) {
-            Log.e(TAG, "DEX 完整性检查失败: " + e.getMessage());
+            LogBridge.e(TAG, "DEX 完整性检查失败: " + e.getMessage());
         }
     }
 
@@ -127,7 +127,7 @@ public final class DexProtector {
             }
             
         } catch (Exception e) {
-            Log.w(TAG, "DEX 文件检查异常: " + e.getMessage());
+            LogBridge.w(TAG, "DEX 文件检查异常: " + e.getMessage());
         }
     }
 
@@ -148,7 +148,7 @@ public final class DexProtector {
                 String name = file.getName().toLowerCase();
                 for (String suspicious : suspiciousNames) {
                     if (name.contains(suspicious)) {
-                        Log.w(TAG, "检测到可疑文件: " + file.getAbsolutePath());
+                        LogBridge.w(TAG, "检测到可疑文件: " + file.getAbsolutePath());
                         break;
                     }
                 }
@@ -178,7 +178,7 @@ public final class DexProtector {
                     } catch (InterruptedException e) {
                         break;
                     } catch (Throwable e) {
-                        Log.e(TAG, "DEX 监控异常: " + e.getMessage());
+                        LogBridge.e(TAG, "DEX 监控异常: " + e.getMessage());
                     }
                 }
             }, "DexMonitor").start();
@@ -189,7 +189,7 @@ public final class DexProtector {
      * 触发篡改检测
      */
     private static void triggerTamperDetected(Context context, String reason) {
-        Log.e(TAG, "⚠️ 触发篡改检测: " + reason);
+        LogBridge.e(TAG, "⚠️ 触发篡改检测: " + reason);
         
         // 通知安全中心
         try {

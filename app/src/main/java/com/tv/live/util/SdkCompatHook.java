@@ -1,6 +1,6 @@
 package com.tv.live.util;
 
-import android.util.Log;
+import com.tv.live.util.LogBridge;
 
 import java.lang.reflect.Field;
 
@@ -40,10 +40,10 @@ public final class SdkCompatHook {
             Field listener = baseApi.getDeclaredField("sOnCrashListener");
             listener.setAccessible(true);
             listener.set(null, null);
-            Log.i(TAG, "✅ 已中和 BaseApi.crashIfDebug（sOnCrashListener=null），SDK init 不再因非致命错误抛异常");
+            LogBridge.i(TAG, "✅ 已中和 BaseApi.crashIfDebug（sOnCrashListener=null），SDK init 不再因非致命错误抛异常");
         } catch (Throwable t) {
             // 失败不致命：仅失去保护，SDK 仍按原逻辑运行
-            Log.w(TAG, "⚠️ 中和 BaseApi.crashIfDebug 失败（不影响主流程）: " + t);
+            LogBridge.w(TAG, "⚠️ 中和 BaseApi.crashIfDebug 失败（不影响主流程）: " + t);
         }
     }
 }

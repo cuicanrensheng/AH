@@ -3,7 +3,7 @@ package com.tv.live.loader;
 import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
-import android.util.Log;
+import com.tv.live.util.LogBridge;
 
 import com.tv.live.Channel;
 import com.tv.live.PlaylistParser;
@@ -164,60 +164,60 @@ public class LiveSourceLoader {
             // —— 1) 网络多源 fallback：LIVE_URL → LIVE_URL_2 ——
             String lastErrorMsg = null;
             List<String> sources = Arrays.asList(UrlConfig.LIVE_URL, UrlConfig.LIVE_URL_2);
-            Log.e(TAG, "LOAD: source count=" + sources.size() + " LIVE_URL='" + UrlConfig.LIVE_URL + "' LIVE_URL_2='" + UrlConfig.LIVE_URL_2 + "'");
+            LogBridge.e(TAG, "LOAD: source count=" + sources.size() + " LIVE_URL='" + UrlConfig.LIVE_URL + "' LIVE_URL_2='" + UrlConfig.LIVE_URL_2 + "'");
             for (int i = 0; i < sources.size(); i++) {
                 String url = sources.get(i);
                 if (url == null || url.trim().isEmpty()) {
-                    Log.e(TAG, "LOAD: source #" + (i+1) + " is null/empty, skipping");
+                    LogBridge.e(TAG, "LOAD: source #" + (i+1) + " is null/empty, skipping");
                     continue;
                 }
                 String acceleratedUrl = getAcceleratedUrl(url);
-                Log.d(TAG, "【网络】直播源 #" + (i + 1) + " 开始加载：" + acceleratedUrl);
-                Log.e(TAG, "LOAD: source #" + (i+1) + " downloading: " + acceleratedUrl);
+                LogBridge.d(TAG, "【网络】直播源 #" + (i + 1) + " 开始加载：" + acceleratedUrl);
+                LogBridge.e(TAG, "LOAD: source #" + (i+1) + " downloading: " + acceleratedUrl);
                 try {
                     String rawContent = downloadRawContent(acceleratedUrl);
                     if (rawContent == null || rawContent.isEmpty()) {
-                        Log.e(TAG, "LOAD: source #" + (i+1) + " download returned empty/null");
+                        LogBridge.e(TAG, "LOAD: source #" + (i+1) + " download returned empty/null");
                         throw new IOException("下载为空");
                     }
                     List<Channel> channels = PlaylistParser.parseContent(rawContent);
                     if (channels == null || channels.isEmpty()) {
-                        Log.e(TAG, "LOAD: source #" + (i+1) + " parsed 0 channels");
+                        LogBridge.e(TAG, "LOAD: source #" + (i+1) + " parsed 0 channels");
                         throw new IOException("解析后频道数=0");
                     }
                     // 🟢 成功 → 同时保存 24h 缓存 + 永久兜底
                     cacheManager.saveFileCache("live_source", rawContent);
                     if (channels.size() >= MIN_CHANNELS_FOR_FALLBACK) {
                         saveFallback(rawContent);
-                        Log.d(TAG, "【网络】永久兜底已更新，频道数 " + channels.size());
+                        LogBridge.d(TAG, "【网络】永久兜底已更新，频道数 " + channels.size());
                     } else {
-                        Log.w(TAG, "【网络】返回频道数过少（" + channels.size() + " < " + MIN_CHANNELS_FOR_FALLBACK + "），不覆盖永久兜底");
+                        LogBridge.w(TAG, "【网络】返回频道数过少（" + channels.size() + " < " + MIN_CHANNELS_FOR_FALLBACK + "），不覆盖永久兜底");
                     }
                     final List<Channel> finalChannels = channels;
-                    Log.d(TAG, "【网络】直播源 #" + (i + 1) + " 加载成功，共 " + finalChannels.size() + " 个频道");
-                    Log.e(TAG, "LOAD: source #" + (i+1) + " SUCCESS, channels=" + finalChannels.size());
+                    LogBridge.d(TAG, "【网络】直播源 #" + (i + 1) + " 加载成功，共 " + finalChannels.size() + " 个频道");
+                    LogBridge.e(TAG, "LOAD: source #" + (i+1) + " SUCCESS, channels=" + finalChannels.size());
                     mainHandler.post(() -> callback.onSuccess(finalChannels));
                     return;
                 } catch (Exception e) {
                     lastErrorMsg = "源#" + (i + 1) + "(" + url + "): " + e.getMessage();
-                    Log.w(TAG, "【网络】直播源 #" + (i + 1) + " 失败：" + e.getMessage());
+                    LogBridge.w(TAG, "【网络】直播源 #" + (i + 1) + " 失败：" + e.getMessage());
                 }
             }
 
             // —— 2) 网络全部失败 → 读本地永久兜底 ——
-            Log.w(TAG, "【兜底】网络全部失败，尝试读取本地永久兜底 " + FALLBACK_FILE);
+            LogBridge.w(TAG, "【兜底】网络全部失败，尝试读取本地永久兜底 " + FALLBACK_FILE);
             String fallback = readFallback();
             if (fallback != null && !fallback.isEmpty()) {
                 try {
                     List<Channel> fallbackChannels = PlaylistParser.parseContent(fallback);
                     if (fallbackChannels != null && !fallbackChannels.isEmpty()) {
-                        Log.i(TAG, "【兜底】启用本地永久兜底，共 " + fallbackChannels.size() + " 个频道，继续可看电视");
+                        LogBridge.i(TAG, "【兜底】启用本地永久兜底，共 " + fallbackChannels.size() + " 个频道，继续可看电视");
                         final List<Channel> finalFb = fallbackChannels;
                         mainHandler.post(() -> callback.onSuccess(finalFb));
                         return;
                     }
                 } catch (Exception ex) {
-                    Log.e(TAG, "【兜底】解析失败：" + ex.getMessage());
+                    LogBridge.e(TAG, "【兜底】解析失败：" + ex.getMessage());
                 }
             }
 
@@ -499,7 +499,7 @@ public class LiveSourceLoader {
                     if (responseCode != 200 || resp.body() == null) {
                         lastCode = responseCode;
                         lastError = "HTTP " + responseCode;
-                        Log.w(TAG, "下载失败 attempt=" + attempt + "/" + DOWNLOAD_MAX_RETRIES
+                        LogBridge.w(TAG, "下载失败 attempt=" + attempt + "/" + DOWNLOAD_MAX_RETRIES
                                 + " code=" + responseCode + " url=" + urlStr);
                         if (responseCode >= 400 && responseCode < 500) {
                             break;
@@ -507,20 +507,20 @@ public class LiveSourceLoader {
                         continue;
                     }
                     String content = resp.body().string();
-                    Log.d(TAG, "下载成功 attempt=" + attempt + " size=" + content.length()
+                    LogBridge.d(TAG, "下载成功 attempt=" + attempt + " size=" + content.length()
                             + " url=" + urlStr.substring(0, Math.min(80, urlStr.length())));
                     return content;
                 }
             } catch (Exception e) {
                 lastError = e.getClass().getSimpleName() + ": " + e.getMessage();
-                Log.w(TAG, "下载异常 attempt=" + attempt + "/" + DOWNLOAD_MAX_RETRIES
+                LogBridge.w(TAG, "下载异常 attempt=" + attempt + "/" + DOWNLOAD_MAX_RETRIES
                         + " url=" + urlStr + " err=" + lastError);
             }
             if (attempt < DOWNLOAD_MAX_RETRIES) {
                 try { Thread.sleep(DOWNLOAD_RETRY_DELAY_MS); } catch (InterruptedException ignored) {}
             }
         }
-        Log.e(TAG, "下载最终失败 code=" + lastCode + " url=" + urlStr + " err=" + lastError);
+        LogBridge.e(TAG, "下载最终失败 code=" + lastCode + " url=" + urlStr + " err=" + lastError);
         return null;
     }
 
@@ -543,7 +543,7 @@ public class LiveSourceLoader {
             fos.write(content.getBytes("UTF-8"));
             fos.flush();
         } catch (IOException e) {
-            Log.e(TAG, "保存永久兜底失败：" + e.getMessage());
+            LogBridge.e(TAG, "保存永久兜底失败：" + e.getMessage());
         } finally {
             if (fos != null) { try { fos.close(); } catch (IOException ignored) {} }
         }
@@ -565,7 +565,7 @@ public class LiveSourceLoader {
             }
             return sb.toString();
         } catch (IOException e) {
-            Log.e(TAG, "读取永久兜底失败：" + e.getMessage());
+            LogBridge.e(TAG, "读取永久兜底失败：" + e.getMessage());
             return null;
         } finally {
             if (br != null) { try { br.close(); } catch (IOException ignored) {} }

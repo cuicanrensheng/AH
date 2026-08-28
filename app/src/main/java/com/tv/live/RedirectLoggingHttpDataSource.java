@@ -3,7 +3,7 @@ package com.tv.live;
 import android.annotation.SuppressLint;
 import android.net.Uri;
 import android.text.TextUtils;
-import android.util.Log;
+import com.tv.live.util.LogBridge;
 import android.webkit.CookieManager;
 
 import androidx.media3.common.C;
@@ -64,12 +64,12 @@ public class RedirectLoggingHttpDataSource extends BaseDataSource implements Htt
         String finalMsg = "[" + getTimeStr() + "] " + msg;
         if (isError) {
             // 错误日志：正式版和调试版都记录
-            Log.e(TAG, finalMsg);
+            LogBridge.e(TAG, finalMsg);
             LogCollector.getInstance().error(TAG, msg);
         } else {
             // 网络日志：仅调试版记录
             if (BuildConfig.IS_DEBUG) {
-                Log.d(TAG, finalMsg);
+                LogBridge.d(TAG, finalMsg);
                 LogCollector.getInstance().network(TAG, msg);
             }
         }

@@ -1,5 +1,7 @@
 package com.tv.live.util;
 
+
+import com.tv.live.util.LogBridge;
 import android.app.Activity;
 import android.app.Dialog;
 import android.content.BroadcastReceiver;
@@ -159,7 +161,7 @@ public class LifecycleHelper {
             try {
                 manager.release();
             } catch (Exception e) {
-                android.util.Log.e("LifecycleHelper", "释放资源失败: " + e.getMessage());
+                LogBridge.e("LifecycleHelper", "释放资源失败: " + e.getMessage());
             }
         }
     }

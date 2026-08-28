@@ -8,7 +8,7 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.text.Editable;
 import android.text.TextUtils;
-import android.util.Log; // 🟢 添加原生日志
+import com.tv.live.util.LogBridge; // 🟢 添加原生日志
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.EditText;
@@ -109,7 +109,7 @@ public class SourceDialogManager {
                         refreshDisplayList(sourceManager, displayItems, adapter, "");
                         adapter.setSelectedPosition(-1);
                         // 🟢 替换为原生日志
-                        Log.d(TAG, "【设置】删除源：" + item.name);
+                        LogBridge.d(TAG, "【设置】删除源：" + item.name);
                         Toast.makeText(context, "已删除", Toast.LENGTH_SHORT).show();
                     })
                     .setNegativeButton("取消", null)
@@ -183,7 +183,7 @@ public class SourceDialogManager {
                                 sourceManager.setDefault(realPos);
                                 refreshDisplayList(sourceManager, displayItems, adapter, searchEt.getText().toString());
                                 // 🟢 替换为原生日志
-                                Log.d(TAG, "【设置】设为默认源：" + selectedItem.name);
+                                LogBridge.d(TAG, "【设置】设为默认源：" + selectedItem.name);
                                 Toast.makeText(context, "已设为默认源", Toast.LENGTH_SHORT).show();
                                 break;
                             case 2: // 移到顶部
@@ -191,14 +191,14 @@ public class SourceDialogManager {
                                 refreshDisplayList(sourceManager, displayItems, adapter, searchEt.getText().toString());
                                 adapter.setSelectedPosition(0);
                                 // 🟢 替换为原生日志
-                                Log.d(TAG, "【设置】移到顶部：" + selectedItem.name);
+                                LogBridge.d(TAG, "【设置】移到顶部：" + selectedItem.name);
                                 Toast.makeText(context, "已移到顶部", Toast.LENGTH_SHORT).show();
                                 break;
                             case 3: // 移到底部
                                 sourceManager.moveToBottom(realPos);
                                 refreshDisplayList(sourceManager, displayItems, adapter, searchEt.getText().toString());
                                 // 🟢 替换为原生日志
-                                Log.d(TAG, "【设置】移到底部：" + selectedItem.name);
+                                LogBridge.d(TAG, "【设置】移到底部：" + selectedItem.name);
                                 Toast.makeText(context, "已移到底部", Toast.LENGTH_SHORT).show();
                                 break;
                             case 4: // 刷新此源
@@ -208,14 +208,14 @@ public class SourceDialogManager {
                                 refreshIntent.setPackage(context.getPackageName());
                                 context.sendBroadcast(refreshIntent);
                                 // 🟢 替换为原生日志
-                                Log.d(TAG, "【设置】刷新单个源：" + selectedItem.name);
+                                LogBridge.d(TAG, "【设置】刷新单个源：" + selectedItem.name);
                                 Toast.makeText(context, "正在刷新…", Toast.LENGTH_SHORT).show();
                                 break;
                             case 5: // 切换自动更新
                                 boolean newState = sourceManager.toggleAutoUpdate(realPos);
                                 refreshDisplayList(sourceManager, displayItems, adapter, searchEt.getText().toString());
                                 // 🟢 替换为原生日志
-                                Log.d(TAG, "【设置】" + selectedItem.name + " 自动更新：" + (newState ? "开启" : "关闭"));
+                                LogBridge.d(TAG, "【设置】" + selectedItem.name + " 自动更新：" + (newState ? "开启" : "关闭"));
                                 Toast.makeText(context, "自动更新已" + (newState ? "开启" : "关闭"), Toast.LENGTH_SHORT).show();
                                 break;
                             case 6: // 删除
@@ -227,7 +227,7 @@ public class SourceDialogManager {
                                             refreshDisplayList(sourceManager, displayItems, adapter, searchEt.getText().toString());
                                             adapter.setSelectedPosition(-1);
                                             // 🟢 替换为原生日志
-                                            Log.d(TAG, "【设置】删除源：" + selectedItem.name);
+                                            LogBridge.d(TAG, "【设置】删除源：" + selectedItem.name);
                                             Toast.makeText(context, "已删除", Toast.LENGTH_SHORT).show();
                                         })
                                         .setNegativeButton("取消", null)
@@ -238,7 +238,7 @@ public class SourceDialogManager {
                                 ClipboardManager cm = (ClipboardManager) context.getSystemService(Context.CLIPBOARD_SERVICE);
                                 cm.setPrimaryClip(ClipData.newPlainText("sources", exportText));
                                 // 🟢 替换为原生日志
-                                Log.d(TAG, "【设置】导出 " + sourceManager.size() + " 个源到剪贴板");
+                                LogBridge.d(TAG, "【设置】导出 " + sourceManager.size() + " 个源到剪贴板");
                                 Toast.makeText(context, "已复制到剪贴板", Toast.LENGTH_SHORT).show();
                                 break;
                             case 8: // 导入
@@ -253,7 +253,7 @@ public class SourceDialogManager {
                                             displayItems.clear();
                                             adapter.notifyDataSetChanged();
                                             // 🟢 替换为原生日志
-                                            Log.d(TAG, "【设置】清空全部" + title);
+                                            LogBridge.d(TAG, "【设置】清空全部" + title);
                                             Toast.makeText(context, "已全部清空", Toast.LENGTH_SHORT).show();
                                         })
                                         .setNegativeButton("取消", null)
@@ -295,7 +295,7 @@ public class SourceDialogManager {
             
             refreshDisplayList(sourceManager, displayItems, adapter, searchEt.getText().toString());
             adapter.setSelectedPosition(0);
-            Log.d(TAG, "【设置】切换" + title + "：" + item.name);
+            LogBridge.d(TAG, "【设置】切换" + title + "：" + item.name);
             Toast.makeText(context, "已切换，正在刷新…", Toast.LENGTH_SHORT).show();
         });
 
@@ -317,7 +317,7 @@ public class SourceDialogManager {
                         context.sendBroadcast(clickIntent);
                         refreshDisplayList(sourceManager, displayItems, adapter, searchEt.getText().toString());
                         adapter.setSelectedPosition(0);
-                        Log.d(TAG, "【设置】键盘切换" + title + "：" + item.name);
+                        LogBridge.d(TAG, "【设置】键盘切换" + title + "：" + item.name);
                         Toast.makeText(context, "已切换，正在刷新…", Toast.LENGTH_SHORT).show();
                         return true;
                     }

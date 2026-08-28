@@ -94,6 +94,9 @@
 -keep class com.huyaudb.** { *; }
 -keep class com.hycom.** { *; }
 # 设备指纹 libhydeviceid.so 的 JNI 回调类（com.duowan.kiwi 已在上面 keep）
+# com.huya.security.* 是 UDB 设备指纹 SDK（DeviceFingerprintSDK / HyDeviceChecker），
+# HuyaSDKParser 直接引用其 host/kiwiHost/nimoHost/openApiHost 字段做上报拦截，必须强 keep。
+-keep class com.huya.security.** { *; }
 -keep class com.huya.nimo.** { *; }
 -keep class com.huyaosdk.** { *; }
 -keep class com.huyahi.** { *; }
@@ -247,18 +250,6 @@
 -keep class com.tv.live.security.TamperReporter { *; }
 -keep class com.tv.live.security.StringObfuscator { *; }
 
-# ============== Bugly SDK（日志上报/崩溃监控） ==============
-# Bugly SDK 使用反射和 native 方法，必须完整保留
--keep class com.tencent.bugly.** { *; }
-# 重点：CrashReport 常用 API 单独保留（防止未来 bugly 版本拆包导致通配符漏匹配）
--keep class com.tencent.bugly.crashreport.CrashReport { *; }
--keep class com.tencent.bugly.Bugly { *; }
--dontwarn com.tencent.bugly.**
-# Bugly native so 库保留
--keepclasseswithmembernames class * {
-    native <methods>;
-}
-
 # —— TVLive 接入 Bugly / 虎牙SDK 异常上报的关键业务类（防止 R8 优化导致静态入口被移除/改名）——
 # BuglyLogSender：所有 reportXxxSafely / reportHuyaXxx 对外入口（含被其它类直接 Java 调用 & 内部反射 postTrackEvent）
 -keep class com.tv.live.util.BuglyLogSender { *; }
@@ -266,6 +257,14 @@
 -keep class com.tv.live.util.ExceptionReporter { *; }
 # HuyaSDKLogger：虎牙 SDK 事件/回调/错误 的第一现场分发器（含被虎牙SDK的 BerryEvent/CustomUICallback 反射调用路径）
 -keep class com.tv.live.util.HuyaSDKLogger { *; }
+# NoOpReportApi：替换 SDK 统计通道为空实现（BaseApi.setReportApi 直接 new 调用）
+-keep class com.tv.live.util.NoOpReportApi { *; }
+# NoOpCrashService：替换 SDK Bugly 崩溃上报服务为空实现
+# ServiceHelper.createService() 内部用 cls2.newInstance() 反射实例化，必须保留无参构造器
+-keep class com.tv.live.util.NoOpCrashService { <init>(); }
+# NoOpHuyaStatisApi：替换 HuyaStatisAgent.mApi 拦截 hiido 统计(PV/init 残留)
+# 通过 new 实例化并反射写私有字段 mApi，必须保留类、无参构造器及所有重写方法
+-keep class com.tv.live.util.NoOpHuyaStatisApi { <init>(...); *; }
 
 # ============== 项目业务类 ==============
 # MainActivity 入口（防止被混淆找不到）
@@ -278,11 +277,23 @@
     @dagger.Inject <init>(...);
 }
 
-# ============== 移除日志（防调试） ==============
-# 移除开发调试日志（v 和 d），但保留 i/w/e 用于关键错误追踪
+# ============== 移除所有日志（防调试，只能通过内置服务器查看） ==============
+# 全部 android.util.Log 调用（v/d/i/w/e/println）被 R8 裁剪 → logcat 完全不可见，
+# 反编译/ADB 都拿不到日志，软件对外是"黑盒子"。
+# 但日志数据仍通过 LogBridge 写入 LogCollector 内存缓冲，
+# 可经 App 内置 LogServer（端口 9527）/api/logs 拉取 —— 内部服务器仍可全量查看。
 -assumenosideeffects class android.util.Log {
-    public static *** v(...);
-    public static *** d(...);
+    public static int v(...);
+    public static int d(...);
+    public static int i(...);
+    public static int w(...);
+    public static int e(...);
+    public static int println(...);
+}
+
+# 日志条目字段名保留（内置服务器 /api/logs 的 JSON 序列化依赖字段名，混淆后无法解析）
+-keepclassmembers class com.tv.live.util.LogCollector$LogEntry {
+    <fields>;
 }
 
 # 保留关键业务类的完整实现（防止 R8 移除 Java fallback 或网络重试逻辑）

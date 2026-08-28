@@ -1,5 +1,7 @@
 package com.tv.live;
 
+
+import com.tv.live.util.LogBridge;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
@@ -163,7 +165,7 @@ public class SubscriptionAdapter extends ArrayAdapter<SourceManager.SourceItem> 
         finalView.setOnKeyListener((v, keyCode, event) -> {
             if (event.getAction() == KeyEvent.ACTION_DOWN) {
                 if (keyCode == KeyEvent.KEYCODE_ENTER || keyCode == KeyEvent.KEYCODE_DPAD_CENTER) {
-                    android.util.Log.e("SUBSCRIPTION", "finalView onKey ENTER/CENTER: finalPos=" + finalPosition + " v.hasFocus=" + v.hasFocus());
+                    LogBridge.e("SUBSCRIPTION", "finalView onKey ENTER/CENTER: finalPos=" + finalPosition + " v.hasFocus=" + v.hasFocus());
                     syncSelectedFromList();
                     if (selectedPosition < 0 || selectedPosition >= getCount()) selectedPosition = finalPosition;
                     if (actionListener != null) actionListener.onSwitch(selectedPosition);
@@ -257,7 +259,7 @@ public class SubscriptionAdapter extends ArrayAdapter<SourceManager.SourceItem> 
 
         // --- 点击回调（触摸/鼠标场景）：行点击=切换；btnCopy=复制；btnDelete=删除 ---
         convertView.setOnClickListener(v -> {
-            android.util.Log.e("SUBSCRIPTION", "convertView onClick: position=" + position + " actionListenerNull=" + (actionListener == null));
+            LogBridge.e("SUBSCRIPTION", "convertView onClick: position=" + position + " actionListenerNull=" + (actionListener == null));
             if (actionListener != null && position >= 0 && position < getCount()) {
                 selectedPosition = position;
                 if (listViewRef != null) {
@@ -271,7 +273,7 @@ public class SubscriptionAdapter extends ArrayAdapter<SourceManager.SourceItem> 
             }
         });
         holder.contentLayout.setOnClickListener(v -> {
-            android.util.Log.e("SUBSCRIPTION", "contentLayout onClick: position=" + position);
+            LogBridge.e("SUBSCRIPTION", "contentLayout onClick: position=" + position);
             if (actionListener != null && position >= 0 && position < getCount()) {
                 selectedPosition = position;
                 if (listViewRef != null) {

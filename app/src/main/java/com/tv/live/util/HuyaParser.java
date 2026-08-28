@@ -3,7 +3,7 @@ package com.tv.live.util;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.TextUtils;
-import android.util.Log;
+import com.tv.live.util.LogBridge;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -54,15 +54,15 @@ public class HuyaParser {
             return;
         }
         final long roomLong = roomId;
-        Log.d("HuyaParser", "开始解析房间：" + roomId);
+        LogBridge.d("HuyaParser", "开始解析房间：" + roomId);
 
         StreamCache cached = sCache.get(roomLong);
         if (cached != null && cached.isValid()) {
-            Log.d("HuyaParser", "使用缓存：hls=" + cacheSafe(cached.hls));
+            LogBridge.d("HuyaParser", "使用缓存：hls=" + cacheSafe(cached.hls));
             postSuccess(listener, cached.hls, cached.flv);
             return;
         }
-        Log.d("HuyaParser", "缓存未命中，开始获取播放地址");
+        LogBridge.d("HuyaParser", "缓存未命中，开始获取播放地址");
 
         Runnable worker = new Runnable() {
             @Override
@@ -73,9 +73,9 @@ public class HuyaParser {
 
                     // 方案1：StreamInfo API (mp.huya.com) - 首选，已验证可用
                     try {
-                        Log.d("HuyaParser", "尝试从StreamInfo API获取播放地址");
+                        LogBridge.d("HuyaParser", "尝试从StreamInfo API获取播放地址");
                         String streamInfoResult = fetchFromStreamInfoAPI(roomLong);
-                        Log.d("HuyaParser", "从StreamInfoAPI获取到地址：" + (streamInfoResult == null ? "null" : streamInfoResult.length() + "字符"));
+                        LogBridge.d("HuyaParser", "从StreamInfoAPI获取到地址：" + (streamInfoResult == null ? "null" : streamInfoResult.length() + "字符"));
                         if (!TextUtils.isEmpty(streamInfoResult)) {
                             if (streamInfoResult.contains(".m3u8")) {
                                 hls = streamInfoResult;
@@ -89,17 +89,17 @@ public class HuyaParser {
                             return;
                         }
                     } catch (Throwable t) {
-                        Log.d("HuyaParser", "StreamInfoAPI 异常: " + t.getMessage());
+                        LogBridge.d("HuyaParser", "StreamInfoAPI 异常: " + t.getMessage());
                     }
 
                     // 方案2：移动端网页解析（主方案）
                     try {
-                        Log.d("HuyaParser", "尝试从移动端网页获取播放地址");
+                        LogBridge.d("HuyaParser", "尝试从移动端网页获取播放地址");
                         String mHtml = fetchHtml("https://m.huya.com/" + roomId);
                         if (!TextUtils.isEmpty(mHtml)) {
                             String result = extractUrlFromHtml(mHtml, true);
                             if (!TextUtils.isEmpty(result)) {
-                                Log.d("HuyaParser", "从移动端网页获取到地址：" + head(result, 60));
+                                LogBridge.d("HuyaParser", "从移动端网页获取到地址：" + head(result, 60));
                                 if (result.contains(".m3u8")) {
                                     hls = result;
                                 } else if (result.contains(".flv")) {
@@ -113,17 +113,17 @@ public class HuyaParser {
                             return;
                         }
                     } catch (Throwable t) {
-                        Log.d("HuyaParser", "移动端网页解析异常：" + t.getMessage());
+                        LogBridge.d("HuyaParser", "移动端网页解析异常：" + t.getMessage());
                     }
 
                     // 方案3：PC网页解析
                     try {
-                        Log.d("HuyaParser", "尝试从PC网页获取播放地址");
+                        LogBridge.d("HuyaParser", "尝试从PC网页获取播放地址");
                         String pcHtml = fetchHtml("https://www.huya.com/" + roomId);
                         if (!TextUtils.isEmpty(pcHtml)) {
                             String result = extractUrlFromHtml(pcHtml, false);
                             if (!TextUtils.isEmpty(result)) {
-                                Log.d("HuyaParser", "从PC网页获取到地址：" + head(result, 60));
+                                LogBridge.d("HuyaParser", "从PC网页获取到地址：" + head(result, 60));
                                 if (result.contains(".m3u8")) {
                                     hls = result;
                                 } else if (result.contains(".flv")) {
@@ -137,12 +137,12 @@ public class HuyaParser {
                             return;
                         }
                     } catch (Throwable t) {
-                        Log.d("HuyaParser", "PC网页解析异常：" + t.getMessage());
+                        LogBridge.d("HuyaParser", "PC网页解析异常：" + t.getMessage());
                     }
 
                     // 方案4: 通过 StreamInfo API 备用
                     try {
-                        Log.d("HuyaParser", "尝试从StreamInfo API获取播放地址");
+                        LogBridge.d("HuyaParser", "尝试从StreamInfo API获取播放地址");
                         String streamInfoResult = fetchFromStreamInfoAPI(roomLong);
                         if (!TextUtils.isEmpty(streamInfoResult)) {
                             if (streamInfoResult.contains(".m3u8")) {
@@ -157,12 +157,12 @@ public class HuyaParser {
                             return;
                         }
                     } catch (Throwable t) {
-                        Log.d("HuyaParser", "StreamInfo API异常：" + t.getMessage());
+                        LogBridge.d("HuyaParser", "StreamInfo API异常：" + t.getMessage());
                     }
 
                     postFailed(listener, "解析失败，无可用播放地址（4种方案均未返回有效URL）");
                 } catch (Throwable t) {
-                    Log.d("HuyaParser", "获取播放地址异常：" + t.getMessage());
+                    LogBridge.d("HuyaParser", "获取播放地址异常：" + t.getMessage());
                     postFailed(listener, "解析异常：" + (t.getMessage() == null ? t.getClass().getSimpleName() : t.getMessage()));
                 }
             }
@@ -212,7 +212,7 @@ public class HuyaParser {
         Response resp = sClient.newCall(req).execute();
         if (resp == null || !resp.isSuccessful() || resp.body() == null) {
             if (resp != null) {
-                Log.d("HuyaParser", "fetchHtml请求失败，状态码：" + resp.code());
+                LogBridge.d("HuyaParser", "fetchHtml请求失败，状态码：" + resp.code());
             }
             return null;
         }
@@ -231,22 +231,22 @@ public class HuyaParser {
         Response resp = sClient.newCall(req).execute();
         if (resp == null || !resp.isSuccessful() || resp.body() == null) {
             if (resp != null) {
-                Log.d("HuyaParser", "fetchFromStreamInfoAPI请求失败，状态码：" + resp.code());
+                LogBridge.d("HuyaParser", "fetchFromStreamInfoAPI请求失败，状态码：" + resp.code());
             }
             return null;
         }
         String jsonStr = resp.body().string();
-        Log.d("HuyaParser", "StreamInfoAPI返回长度：" + jsonStr.length());
+        LogBridge.d("HuyaParser", "StreamInfoAPI返回长度：" + jsonStr.length());
         if (TextUtils.isEmpty(jsonStr)) {
             return null;
         }
-        Log.d("HuyaParser", "StreamInfoAPI前500字符：" + head(jsonStr, 500));
+        LogBridge.d("HuyaParser", "StreamInfoAPI前500字符：" + head(jsonStr, 500));
         try {
             JSONObject json = new JSONObject(jsonStr);
-            Log.d("HuyaParser", "StreamInfoAPI JSON keys: " + json.keys());
+            LogBridge.d("HuyaParser", "StreamInfoAPI JSON keys: " + json.keys());
             JSONObject data = json.optJSONObject("data");
             if (data != null) {
-                Log.d("HuyaParser", "data keys: " + data.keys());
+                LogBridge.d("HuyaParser", "data keys: " + data.keys());
                 JSONObject live = data.optJSONObject("liveData");
                 if (live != null) {
                     JSONArray streamList = live.optJSONArray("stream");
@@ -272,7 +272,7 @@ public class HuyaParser {
                 }
             }
         } catch (Throwable t) {
-            Log.d("HuyaParser", "解析StreamInfoAPI失败：" + t.getMessage());
+            LogBridge.d("HuyaParser", "解析StreamInfoAPI失败：" + t.getMessage());
         }
         return extractUrlFromJsonString(jsonStr);
     }
@@ -336,7 +336,7 @@ public class HuyaParser {
                 return candidates.get(0);
             }
         } catch (Throwable t) {
-            Log.d("HuyaParser", "extractUrlFromJsonString异常：" + t.getMessage());
+            LogBridge.d("HuyaParser", "extractUrlFromJsonString异常：" + t.getMessage());
         }
         return null;
     }
@@ -401,7 +401,7 @@ public class HuyaParser {
                 }
             }
         } catch (Throwable t) {
-            Log.d("HuyaParser", "extractUrlFromHtml异常：" + t.getMessage());
+            LogBridge.d("HuyaParser", "extractUrlFromHtml异常：" + t.getMessage());
         }
         return null;
     }

@@ -3,7 +3,7 @@ package com.tv.live.manager;
 import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
-import android.util.Log;
+import com.tv.live.util.LogBridge;
 import android.view.View;
 import android.widget.ProgressBar;
 import android.widget.TextView;
@@ -178,7 +178,7 @@ public class InfoDisplayManager {
                 else return "SD";
             }
         }catch (Exception e){
-            Log.e("InfoDisplayManager", "【分辨率解析异常】" + resolution + " err:" + e.getMessage());
+            LogBridge.e("InfoDisplayManager", "【分辨率解析异常】" + resolution + " err:" + e.getMessage());
         }
         return resolution;
     }

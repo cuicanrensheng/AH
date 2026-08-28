@@ -1,5 +1,7 @@
 package com.tv.live;
 
+
+import com.tv.live.util.LogBridge;
 import android.text.Html;
 import android.text.Spannable;
 import android.text.SpannableString;
@@ -165,6 +167,8 @@ public class SettingsDialog extends android.app.Dialog {
 
         sw_boot.setChecked(sp.getBoolean("boot_auto_start", false));
         bootStartManager.updateBootStatusText(tv_boot_status);
+        // 点击自启状态文本可查看状态详情（设备/系统/自启条件诊断）
+        tv_boot_status.setOnClickListener(v -> bootStartManager.showBootStatusDialog());
         sw_reverse.setChecked(sp.getBoolean("channel_reverse", false));
         sw_pip.setChecked(sp.getBoolean("pip_enable", false));
 
@@ -304,7 +308,7 @@ public class SettingsDialog extends android.app.Dialog {
         
         mainHandler.postDelayed(() -> {
             items[0].requestFocus();
-            android.util.Log.d("Settings", "First item focused");
+            LogBridge.d("Settings", "First item focused");
         }, 100);
     }
 
@@ -334,7 +338,7 @@ public class SettingsDialog extends android.app.Dialog {
             };
             if (items.length > 0 && items[0] != null) {
                 items[0].requestFocus();
-                android.util.Log.d("SettingsDialog", "Focus requested to first item");
+                LogBridge.d("SettingsDialog", "Focus requested to first item");
             }
         }, 300);
     }
@@ -1200,7 +1204,7 @@ public class SettingsDialog extends android.app.Dialog {
             public void onSwitch(int position) {
                 // 🔧 诊断：确认 onSwitch 回调有没有被触发（最粗日志，Log.e 保证能在 logcat 里看到）
                 SourceManager.SourceItem pickedDiagnose = (position >= 0 && position < sources.size()) ? sources.get(position) : null;
-                android.util.Log.e("SUBSCRIPTION", "onSwitch called: position=" + position
+                LogBridge.e("SUBSCRIPTION", "onSwitch called: position=" + position
                     + " | pickedName=" + (pickedDiagnose != null ? pickedDiagnose.name : "null")
                     + " | pickedUrl=" + (pickedDiagnose != null ? pickedDiagnose.url : "null")
                     + " | spKey=" + spKey);
@@ -1390,7 +1394,7 @@ public class SettingsDialog extends android.app.Dialog {
         dialog.setOnKeyListener((d, keyCode, event) -> {
             if (event.getAction() == KeyEvent.ACTION_DOWN) {
                 if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER) {
-                    android.util.Log.e("SUBSCRIPTION", "ENTER/DPAD_CENTER global: hasFocus=" + lvSourceList.hasFocus() + " selectedPos=" + adapter.getSelectedPosition() + " sources.size=" + sources.size());
+                    LogBridge.e("SUBSCRIPTION", "ENTER/DPAD_CENTER global: hasFocus=" + lvSourceList.hasFocus() + " selectedPos=" + adapter.getSelectedPosition() + " sources.size=" + sources.size());
                     if (lvSourceList.hasFocus()) {
                         int position = adapter.getSelectedPosition();
                         if (position >= 0 && position < sources.size()) {
@@ -1893,14 +1897,14 @@ public class SettingsDialog extends android.app.Dialog {
                 }
             } else if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER) {
                 if (System.currentTimeMillis() - mShowTime < IGNORE_KEY_DELAY_MS) {
-                    android.util.Log.d("SettingsDialog", "忽略打开后短时间内的按键，防止误触");
+                    LogBridge.d("SettingsDialog", "忽略打开后短时间内的按键，防止误触");
                     return true;
                 }
                 performItemAction(selectedItemPosition);
                 return true;
             }
         } catch (Exception e) {
-            android.util.Log.e("SettingsDialog", "onKeyDown 异常: " + e.getMessage(), e);
+            LogBridge.e("SettingsDialog", "onKeyDown 异常: " + e.getMessage(), e);
         }
         return super.onKeyDown(keyCode, event);
     }
@@ -1913,7 +1917,7 @@ public class SettingsDialog extends android.app.Dialog {
         try {
             return super.onKeyUp(keyCode, event);
         } catch (Exception e) {
-            android.util.Log.e("SettingsDialog", "onKeyUp 异常: " + e.getMessage(), e);
+            LogBridge.e("SettingsDialog", "onKeyUp 异常: " + e.getMessage(), e);
             return true;
         }
     }
@@ -1928,7 +1932,7 @@ public class SettingsDialog extends android.app.Dialog {
     @Override
     public void dismiss() {
         if (isDismissing) {
-            android.util.Log.d("SettingsDialog", "dismiss 已在执行中，忽略重复调用");
+            LogBridge.d("SettingsDialog", "dismiss 已在执行中，忽略重复调用");
             return;
         }
         isDismissing = true;
@@ -1943,12 +1947,12 @@ public class SettingsDialog extends android.app.Dialog {
             try {
                 getContext().sendBroadcast(unlockIntent);
             } catch (Exception e) {
-                android.util.Log.e("SettingsDialog", "发送解锁广播失败: " + e.getMessage(), e);
+                LogBridge.e("SettingsDialog", "发送解锁广播失败: " + e.getMessage(), e);
             }
 
             super.dismiss();
         } catch (Exception e) {
-            android.util.Log.e("SettingsDialog", "dismiss 异常: " + e.getMessage(), e);
+            LogBridge.e("SettingsDialog", "dismiss 异常: " + e.getMessage(), e);
             isDismissing = false;
         }
 
@@ -1958,7 +1962,7 @@ public class SettingsDialog extends android.app.Dialog {
                 activity.refreshSettings();
             }
         } catch (Exception e) {
-            android.util.Log.e("SettingsDialog", "refreshSettings 异常: " + e.getMessage(), e);
+            LogBridge.e("SettingsDialog", "refreshSettings 异常: " + e.getMessage(), e);
         }
     }
 

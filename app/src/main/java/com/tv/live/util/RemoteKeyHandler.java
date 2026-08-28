@@ -1,5 +1,7 @@
 package com.tv.live.util;
 
+
+import com.tv.live.util.LogBridge;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.KeyEvent;
@@ -165,7 +167,7 @@ public class RemoteKeyHandler {
                 return handleKeyUp(keyCode, panelOpen);
             }
         } catch (Exception e) {
-            android.util.Log.e("RemoteKeyHandler", "handleKeyEvent 异常 keyCode=" + keyCode + ": " + e.getMessage(), e);
+            LogBridge.e("RemoteKeyHandler", "handleKeyEvent 异常 keyCode=" + keyCode + ": " + e.getMessage(), e);
         }
 
         return false;

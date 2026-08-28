@@ -8,7 +8,7 @@ import android.content.SharedPreferences;
 import android.content.res.Configuration;
 import android.graphics.Color;
 import android.text.TextUtils;
-import android.util.Log;
+import com.tv.live.util.LogBridge;
 import android.view.ContextThemeWrapper;
 import android.view.View;
 import android.view.ViewGroup;
@@ -154,13 +154,13 @@ public class DecoderModeManager {
     public void setDecoderMode(int mode) {
         if (mDecoderMode == mode) return;
         mDecoderMode = mode;
-        Log.d(TAG, "手动切换解码器模式：" + mode);
+        LogBridge.d(TAG, "手动切换解码器模式：" + mode);
         if (player != null) performDecoderSwitch();
     }
 
     public void performDecoderSwitch() {
         if (isSwitching) {
-            Log.w(TAG, "正在解码器切换中，忽略当前请求");
+            LogBridge.w(TAG, "正在解码器切换中，忽略当前请求");
             return;
         }
         isSwitching = true;
@@ -179,7 +179,7 @@ public class DecoderModeManager {
                 player = null;
             }
         } catch (Exception e) {
-            Log.e(TAG, "释放旧播放器异常", e);
+            LogBridge.e(TAG, "释放旧播放器异常", e);
         }
 
         if (playerView != null) {
@@ -226,7 +226,7 @@ public class DecoderModeManager {
             ContextCompat.registerReceiver(context, decoderModeReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED);
             decoderReceiverRegistered = true;
         } catch (Exception e) {
-            Log.e(TAG, "注册解码器广播失败", e);
+            LogBridge.e(TAG, "注册解码器广播失败", e);
         }
     }
 
@@ -239,7 +239,7 @@ public class DecoderModeManager {
             }
             decoderReceiverRegistered = false;
         } catch (Exception e) {
-            Log.e(TAG, "注销解码器广播失败", e);
+            LogBridge.e(TAG, "注销解码器广播失败", e);
         }
     }
 
@@ -312,7 +312,7 @@ public class DecoderModeManager {
             ContextCompat.registerReceiver(context, rendererModeReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED);
             rendererReceiverRegistered = true;
         } catch (Exception e) {
-            Log.e(TAG, "注册渲染方式广播失败", e);
+            LogBridge.e(TAG, "注册渲染方式广播失败", e);
         }
     }
 
@@ -325,7 +325,7 @@ public class DecoderModeManager {
             }
             rendererReceiverRegistered = false;
         } catch (Exception e) {
-            Log.e(TAG, "注销渲染方式广播失败", e);
+            LogBridge.e(TAG, "注销渲染方式广播失败", e);
         }
     }
 

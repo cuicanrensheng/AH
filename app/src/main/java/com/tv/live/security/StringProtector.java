@@ -1,7 +1,7 @@
 package com.tv.live.security;
 
 import android.util.Base64;
-import android.util.Log;
+import com.tv.live.util.LogBridge;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -51,9 +51,9 @@ public final class StringProtector {
         if (enable) {
             // 生成动态密钥
             sDynamicKey = generateDynamicKey();
-            Log.i(TAG, "字符串保护已启用");
+            LogBridge.i(TAG, "字符串保护已启用");
         } else {
-            Log.i(TAG, "字符串保护已禁用（调试模式）");
+            LogBridge.i(TAG, "字符串保护已禁用（调试模式）");
         }
     }
 
@@ -111,7 +111,7 @@ public final class StringProtector {
                 }
                 return decrypted;
             } catch (Exception e) {
-                Log.e(TAG, "解密字符串失败: " + key);
+                LogBridge.e(TAG, "解密字符串失败: " + key);
                 return null;
             }
         }
@@ -143,7 +143,7 @@ public final class StringProtector {
             byte[] encryptedBytes = xorEncrypt(plainBytes, sDynamicKey);
             return Base64.encodeToString(encryptedBytes, Base64.NO_WRAP);
         } catch (Exception e) {
-            Log.e(TAG, "加密失败: " + e.getMessage());
+            LogBridge.w(TAG, "加密失败: " + e.getMessage());
             return plain; // 失败时返回原文（调试模式）
         }
     }
@@ -158,7 +158,7 @@ public final class StringProtector {
             byte[] decryptedBytes = xorDecrypt(encryptedBytes, sDynamicKey);
             return new String(decryptedBytes, StandardCharsets.UTF_8);
         } catch (Exception e) {
-            Log.e(TAG, "解密失败: " + e.getMessage());
+            LogBridge.e(TAG, "解密失败: " + e.getMessage());
             return null;
         }
     }
@@ -216,7 +216,7 @@ public final class StringProtector {
         if (!sEnabled) return;
         sDynamicKey = generateDynamicKey();
         clearCache();
-        Log.i(TAG, "动态密钥已更新");
+        LogBridge.i(TAG, "动态密钥已更新");
     }
 
     /**

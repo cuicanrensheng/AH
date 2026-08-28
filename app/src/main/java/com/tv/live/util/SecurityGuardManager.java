@@ -9,7 +9,7 @@ import android.os.Build;
 import android.os.Debug;
 import android.provider.Settings;
 import android.util.Base64;
-import android.util.Log;
+import com.tv.live.util.LogBridge;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -129,7 +129,7 @@ public class SecurityGuardManager {
         }
         
         mInitialized = true;
-        Log.i(TAG, "安全管理器初始化完成，签名哈希: " + 
+        LogBridge.i(TAG, "安全管理器初始化完成，签名哈希: " + 
             (mExpectedSignatureHash != null ? mExpectedSignatureHash.substring(0, 16) + "..." : "unknown"));
     }
 
@@ -160,7 +160,7 @@ public class SecurityGuardManager {
         checkRuntimeEnvironment(report);
         
         // 记录日志
-        Log.i(TAG, "安全检测完成: " + report.getSummary());
+        LogBridge.i(TAG, "安全检测完成: " + report.getSummary());
         
         mLastReport.update(report);
         return report;
@@ -175,11 +175,11 @@ public class SecurityGuardManager {
             if (Debug.isDebuggerConnected()) {
                 report.debugDetected = true;
                 report.threats.add("检测到调试器");
-                Log.w(TAG, "⚠️ 调试器已附加");
+                LogBridge.w(TAG, "⚠️ 调试器已附加");
                 return;
             }
         } catch (Exception e) {
-            Log.e(TAG, "调试检测异常: " + e.getMessage());
+            LogBridge.e(TAG, "调试检测异常: " + e.getMessage());
         }
         
         // 方法2: 检测进程状态（/proc/pid/status 中的 TracerPid）
@@ -190,7 +190,7 @@ public class SecurityGuardManager {
                 if (pid > 0) {
                     report.debugDetected = true;
                     report.threats.add("检测到调试器(TracerPid=" + pid + ")");
-                    Log.w(TAG, "⚠️ TracerPid=" + pid);
+                    LogBridge.w(TAG, "⚠️ TracerPid=" + pid);
                 }
             }
         } catch (Exception e) {
@@ -203,7 +203,7 @@ public class SecurityGuardManager {
             boolean isDebuggable = (appInfo.flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0;
             if (isDebuggable && !Build.TAGS.equals("release-keys")) {
                 // Debug 版本允许调试，只记录
-                Log.d(TAG, "应用为可调试版本 (debuggable=true)");
+                LogBridge.d(TAG, "应用为可调试版本 (debuggable=true)");
             }
         } catch (Exception e) {
             // ignore
@@ -219,7 +219,7 @@ public class SecurityGuardManager {
             report.fridaDetected = true;
             report.hookDetected = true;
             report.threats.add("检测到 Frida 框架");
-            Log.w(TAG, "⚠️ Frida 端口已开启");
+            LogBridge.w(TAG, "⚠️ Frida 端口已开启");
         }
         
         // 2. 检测 Xposed/Substrate
@@ -227,21 +227,21 @@ public class SecurityGuardManager {
             report.xposedDetected = true;
             report.hookDetected = true;
             report.threats.add("检测到 Xposed/Substrate 框架");
-            Log.w(TAG, "⚠️ Xposed 框架已加载");
+            LogBridge.w(TAG, "⚠️ Xposed 框架已加载");
         }
         
         // 3. 检测 Magisk
         if (isMagiskDetected()) {
             report.hookDetected = true;
             report.threats.add("检测到 Magisk 模块");
-            Log.w(TAG, "⚠️ Magisk 已安装");
+            LogBridge.w(TAG, "⚠️ Magisk 已安装");
         }
         
         // 4. 检测注入的 so 库
         if (detectSuspiciousLibraries()) {
             report.hookDetected = true;
             report.threats.add("检测到可疑的本地库注入");
-            Log.w(TAG, "⚠️ 检测到可疑库");
+            LogBridge.w(TAG, "⚠️ 检测到可疑库");
         }
     }
 
@@ -392,7 +392,7 @@ public class SecurityGuardManager {
         if (suFound || isTestKeyBuild() || hasWriteAccess("/system")) {
             report.rootDetected = true;
             report.threats.add("检测到 Root 权限");
-            Log.w(TAG, "⚠️ 检测到 Root 环境");
+            LogBridge.w(TAG, "⚠️ 检测到 Root 环境");
         }
     }
 
@@ -424,7 +424,7 @@ public class SecurityGuardManager {
         if (currentSignature == null) {
             report.integrityOk = false;
             report.threats.add("无法获取应用签名");
-            Log.e(TAG, "❌ 无法获取应用签名");
+            LogBridge.e(TAG, "❌ 无法获取应用签名");
             return;
         }
         
@@ -435,7 +435,7 @@ public class SecurityGuardManager {
         if (storedSignature != null && !currentSignature.equals(storedSignature)) {
             report.integrityOk = false;
             report.threats.add("应用签名已变更（可能被二次打包）");
-            Log.e(TAG, "❌ 签名不匹配! 当前: " + currentSignature.substring(0, 16) + 
+            LogBridge.e(TAG, "❌ 签名不匹配! 当前: " + currentSignature.substring(0, 16) + 
                 "... 存储: " + storedSignature.substring(0, 16) + "...");
         }
         
@@ -443,7 +443,7 @@ public class SecurityGuardManager {
         if (isTestKeyBuild()) {
             report.integrityOk = false;
             report.threats.add("使用测试密钥构建");
-            Log.w(TAG, "⚠️ 应用使用测试密钥");
+            LogBridge.w(TAG, "⚠️ 应用使用测试密钥");
         }
     }
 
@@ -462,7 +462,7 @@ public class SecurityGuardManager {
                 return Base64.encodeToString(hash, Base64.NO_WRAP);
             }
         } catch (Exception e) {
-            Log.e(TAG, "获取签名失败: " + e.getMessage());
+            LogBridge.e(TAG, "获取签名失败: " + e.getMessage());
         }
         return null;
     }
@@ -475,28 +475,28 @@ public class SecurityGuardManager {
         if (isProxyConfigured()) {
             report.proxyDetected = true;
             report.threats.add("检测到代理服务器");
-            Log.w(TAG, "⚠️ 检测到代理配置");
+            LogBridge.w(TAG, "⚠️ 检测到代理配置");
         }
         
         // 2. 检测 VPN
         if (isVpnActive()) {
             report.vpnDetected = true;
             report.threats.add("检测到 VPN 连接");
-            Log.w(TAG, "⚠️ 检测到 VPN");
+            LogBridge.w(TAG, "⚠️ 检测到 VPN");
         }
         
         // 3. 检测模拟器
         if (isEmulator()) {
             report.emulatorDetected = true;
             report.threats.add("运行在模拟器环境");
-            Log.d(TAG, "ℹ️ 应用运行在模拟器上");
+            LogBridge.d(TAG, "ℹ️ 应用运行在模拟器上");
         }
         
         // 4. 检测 USB 调试
         if (isUsbDebuggingEnabled()) {
             report.usbDebuggingEnabled = true;
             report.threats.add("USB 调试已开启");
-            Log.w(TAG, "⚠️ USB 调试已开启");
+            LogBridge.w(TAG, "⚠️ USB 调试已开启");
         }
     }
 
@@ -652,17 +652,17 @@ public class SecurityGuardManager {
         SecurityReport report = mLastReport;
         
         if (blockRoot && report.rootDetected) {
-            Log.e(TAG, "❌ Root 环境被禁止运行");
+            LogBridge.e(TAG, "❌ Root 环境被禁止运行");
             return true;
         }
         
         if (blockDebug && (report.debugDetected || report.hookDetected)) {
-            Log.e(TAG, "❌ 调试/Hook 环境被禁止运行");
+            LogBridge.e(TAG, "❌ 调试/Hook 环境被禁止运行");
             return true;
         }
         
         if (blockHooking && report.hookDetected) {
-            Log.e(TAG, "❌ Hook 框架被禁止运行");
+            LogBridge.e(TAG, "❌ Hook 框架被禁止运行");
             return true;
         }
         

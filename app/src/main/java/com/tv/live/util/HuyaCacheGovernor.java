@@ -3,7 +3,8 @@ package com.tv.live.util;
 import android.content.Context;
 import android.os.Build;
 import android.os.Environment;
-import android.util.Log;
+import com.huya.berry.client.HuyaBerryConfig;
+import com.tv.live.util.LogBridge;
 
 import java.io.File;
 import java.lang.reflect.Method;
@@ -25,10 +26,18 @@ import java.util.concurrent.atomic.AtomicLong;
  * 导致 "应用安装后占用变大"。
  *
  * 【治理手段】
- * ① 反射在 HuyaBerryConfig.Builder#build() 之前，自动禁用日志/上报/游戏/连麦等不需要的功能，
- *    并尽力把 SDK 的 cache/file 目录重定向到 App cacheDir。
+ * ① 在 HuyaBerryConfig.Builder#build() 之前【直接调用】官方 setter，禁用崩溃上报/日志/播放器/
+ *    连麦/摄像头等（isOpenBugly/debugMode/isNeedPlay/cameraMode/oneKeyGangUp/hidePauseBtn/
+ *    landscapeMode = false），并把 SDK 的 cache/file 目录重定向到 App cacheDir。
  * ② 启动时递归扫描虎牙 SDK 常见写入目录，按「过期先删、超容量 LRU 再删」原则清理。
  * ③ 对已知的日志/dump/xlog/crash/native_crash/MMKV 损坏锁文件等直接清理。
+ *
+ * 【崩溃上报/运营统计/APM 的关闭分工】
+ *   - 崩溃上报（主）：builder.isOpenBugly(false)（init 时跳过 CrashHandler/ICrashService 初始化分支，防 Bugly 类不存在崩溃）
+ *   - 崩溃上报（兜底）：init 前向 ServiceCenter 注册 NoOpCrashService（SDK CrashService 硬引用已删除的 bugly 类，拦截其注册防 NoClassDefFoundError）
+ *   - APM 上报：SDK init 成功后 MonitorCenter.getInstance().stopReport()
+ *   - 运营统计：SDK init 成功后 BaseApi.setReportApi(NoOpReportApi)（替换为空实现）
+ *   Builder 上不存在 isOpenStat/isOpenAnalytics/isOpenApm/isOpenReport/isOpenMonitor 开关。
  */
 public class HuyaCacheGovernor {
 
@@ -63,7 +72,7 @@ public class HuyaCacheGovernor {
             try {
                 performCleanup(ctx);
             } catch (Throwable t) {
-                Log.w(TAG, "startupCleanup failed: " + t.getMessage());
+                LogBridge.w(TAG, "startupCleanup failed: " + t.getMessage());
             }
         }, "HuyaCacheCleanup").start();
     }
@@ -71,13 +80,18 @@ public class HuyaCacheGovernor {
     /**
      * HuyaSDKParser.init 内部调用：在 Builder.build() 之前调用。
      *
-     * 反射扫描 HuyaBerryConfig.Builder，尝试自动：
-     *   - 关闭日志写入 (isOpenLog / openLog / enableLog / debugMode)
-     *   - 关闭 Bugly/数据上报 (isOpenBugly isOpenAnalytics / openStatistics)
-     *   - 关闭不需要的功能（gamesdk/webview/连麦/摄像头等，冗余开关不报错也没副作用）
-     *   - 设置缓存/文件目录到 context.getCacheDir()/huya_sdk（系统设置"清除缓存"能把它清掉）
+     * 直接调用 HuyaBerryConfig.Builder 的真实开关（反编译确认的完整 setter 列表）：
+     *   - isOpenBugly(false)  → 关闭 SDK 内部 Bugly 崩溃上报（init 时跳过 CrashHandler/ICrashService 初始化）
+     *   - debugMode(false)    → 关闭 debug 日志
+     *   - isNeedPlay(false)   → 跳过 SDK 播放器模块
+     *   - cameraMode/oneKeyGangUp/hidePauseBtn/landscapeMode(false) → 关摄像头/连麦/按钮
+     * 并把 SDK 写入目录统一重定向到 context.getCacheDir()/huya_sdk（系统"清除缓存"可清掉）。
+     *
+     * ⚠️ 注意：Builder 上不存在 isOpenStat/isOpenAnalytics/isOpenApm/isOpenReport/isOpenMonitor
+     * 等"统计/APM"开关（反编译确认仅 12 个方法）。运营统计与 APM 的关闭在 SDK init 成功后
+     * 由 HuyaSDKParser 直接调用 MonitorCenter.stopReport() + BaseApi.setReportApi(NoOpReportApi) 完成。
      */
-    public static void applyOnBuilder(Object builder, Context ctx) {
+    public static void applyOnBuilder(HuyaBerryConfig.Builder builder, Context ctx) {
         if (builder == null) return;
         try {
             // 1) 先尝试 setRootDir / setBaseDir / setCacheDir / setLogDir / setFileDir：把 SDK 写入全部收到 cacheDir/huya_sdk
@@ -115,85 +129,23 @@ public class HuyaCacheGovernor {
                 trySetDir(builder, "xLogDir",       logDir);
                 trySetDir(builder, "setCrashDir",   new File(base, "crash"));
                 trySetDir(builder, "crashDir",      new File(base, "crash"));
-                Log.i(TAG, "✅ SDK 根目录重定向至: " + base);
+                LogBridge.i(TAG, "✅ SDK 根目录重定向至: " + base);
             } catch (Throwable t) {
-                Log.w(TAG, "⚠️ SDK 目录重定向失败: " + t.getMessage());
+                LogBridge.w(TAG, "⚠️ SDK 目录重定向失败: " + t.getMessage());
             }
 
-            // 2) 布尔型开关 — 直接尝试调用 setter，存在（兼容签名可强转）就置 false，不存在静默跳过
-            //    列表按经验 + SDK 常见命名规律排列，覆盖度更广
-            String[][] boolSwitches = {
-                    // 日志 / 调试 — 写入磁盘最多，优先级最高
-                    {"debugMode", "false"},
-                    {"isDebug", "false"},
-                    {"debug", "false"},
-                    {"isOpenLog", "false"},
-                    {"openLog", "false"},
-                    {"enableLog", "false"},
-                    {"isEnableLog", "false"},
-                    {"isLogEnable", "false"},
-                    {"logEnable", "false"},
-                    {"isOpenXLog", "false"},
-                    {"openXLog", "false"},
-                    {"xlogEnable", "false"},
-                    {"isOpenConsoleLog", "false"},
-                    {"printLog", "false"},
-                    {"isPrintLog", "false"},
-                    // Bugly / 崩溃上报
-                    {"isOpenBugly", "false"},
-                    {"openBugly", "false"},
-                    {"enableBugly", "false"},
-                    {"buglyEnable", "false"},
-                    {"isBuglyEnable", "false"},
-                    {"isOpenCrashReport", "false"},
-                    {"openCrashReport", "false"},
-                    {"enableCrashReport", "false"},
-                    // 数据统计 / 埋点 / 分析
-                    {"isOpenAnalytics", "false"},
-                    {"openAnalytics", "false"},
-                    {"enableAnalytics", "false"},
-                    {"isOpenStat", "false"},
-                    {"openStat", "false"},
-                    {"enableStat", "false"},
-                    {"isOpenApm", "false"},
-                    {"openApm", "false"},
-                    {"enableApm", "false"},
-                    {"isOpenReport", "false"},
-                    {"openReport", "false"},
-                    {"enableReport", "false"},
-                    {"isOpenMonitor", "false"},
-                    {"openMonitor", "false"},
-                    // 功能组件（不需要，减少初始化+写入）
-                    {"isNeedPlay", "false"},
-                    {"cameraMode", "false"},
-                    {"oneKeyGangUp", "false"},
-                    {"isOpenGame", "false"},
-                    {"openGame", "false"},
-                    {"enableGame", "false"},
-                    {"isOpenGameSdk", "false"},
-                    {"openGameSdk", "false"},
-                    {"enableGameSdk", "false"},
-                    {"isOpenBeauty", "false"},
-                    {"openBeauty", "false"},
-                    {"isOpenPush", "false"},
-                    {"openPush", "false"},
-                    {"isOpenIm", "false"},
-                    {"openIm", "false"},
-                    {"isOpenLive", "false"},
-                    {"isOpenLiveTool", "false"},
-                    {"isOpenCamera", "false"},
-                    {"enableCamera", "false"},
-                    {"isOpenUpload", "false"},
-                    {"openUpload", "false"},
-            };
-            int applied = 0, tried = 0;
-            for (String[] pair : boolSwitches) {
-                tried++;
-                if (trySetBool(builder, pair[0], false)) applied++;
-            }
-            Log.i(TAG, "✅ SDK 精简开关: 尝试 " + tried + " 项, 命中 " + applied + " 项");
+            // 2) 布尔型开关 — 直接调用 Builder 真实 setter（反编译确认的完整列表），
+            //    不再用反射探测（isOpenStat/isOpenAnalytics/isOpenApm 等在 Builder 上不存在）
+            builder.isOpenBugly(false);       // 关闭 SDK 内部 Bugly 崩溃上报（init 时跳过 CrashHandler/ICrashService）
+            builder.debugMode(false);         // 关闭 debug 日志
+            builder.isNeedPlay(false);        // 不需要 SDK 播放器模块
+            builder.cameraMode(false);        // 不启用摄像头推流
+            builder.oneKeyGangUp(false);      // 不启用一键连麦
+            builder.hidePauseBtn(false);      // 隐藏暂停按钮
+            builder.landscapeMode(false);     // 竖屏
+            LogBridge.i(TAG, "✅ SDK 精简开关已直接调用（isOpenBugly/debugMode/isNeedPlay/cameraMode/oneKeyGangUp/hidePauseBtn/landscapeMode = false）");
         } catch (Throwable t) {
-            Log.w(TAG, "applyOnBuilder failed, ignore: " + t.getMessage());
+            LogBridge.w(TAG, "applyOnBuilder failed, ignore: " + t.getMessage());
         }
     }
 
@@ -205,38 +157,6 @@ public class HuyaCacheGovernor {
             if (m == null) return;
             m.invoke(builder, dir);
         } catch (Throwable t) { /* ignore */ }
-    }
-
-    private static boolean trySetBool(Object builder, String methodName, boolean value) {
-        // 同时尝试：foo(boolean) / setFoo(boolean) / isSetFoo(boolean) 三种命名
-        String[] candidates;
-        if (methodName.startsWith("is") && methodName.length() > 2
-                && Character.isUpperCase(methodName.charAt(2))) {
-            String base = methodName.substring(2);
-            candidates = new String[]{
-                    methodName,
-                    "set" + base,
-                    Character.toLowerCase(base.charAt(0)) + base.substring(1),
-                    "enable" + base,
-            };
-        } else {
-            String cap = Character.toUpperCase(methodName.charAt(0)) + methodName.substring(1);
-            candidates = new String[]{
-                    methodName,
-                    "set" + cap,
-                    "is" + cap,
-                    "enable" + cap,
-            };
-        }
-        for (String name : candidates) {
-            try {
-                Method m = findMethod(builder, name, boolean.class);
-                if (m == null) continue;
-                m.invoke(builder, value);
-                return true;
-            } catch (Throwable ignored) {}
-        }
-        return false;
     }
 
     private static Method findMethod(Object o, String name, Class<?> paramType) {
@@ -265,7 +185,7 @@ public class HuyaCacheGovernor {
         List<FileEntry> all = new ArrayList<>();
         for (File root : candidates) beforeBytes += walkAndCollect(root, all, true);
 
-        Log.i(TAG, "扫描到 SDK 候选目录 " + candidates.size() + " 个, 共 " + all.size()
+        LogBridge.i(TAG, "扫描到 SDK 候选目录 " + candidates.size() + " 个, 共 " + all.size()
                 + " 个文件, 当前占用 = " + human(beforeBytes));
 
         // Step 1: 删除肯定安全的内容（日志/崩溃 dump / 过期 7 天）
@@ -284,7 +204,7 @@ public class HuyaCacheGovernor {
         all.clear();
         long afterStep1 = 0L;
         for (File root : candidates) afterStep1 += walkAndCollect(root, all, false);
-        Log.i(TAG, "Step1(日志/崩溃/过期) 清理: " + human(deletedStep1)
+        LogBridge.i(TAG, "Step1(日志/崩溃/过期) 清理: " + human(deletedStep1)
                 + "  剩余 " + all.size() + " 文件 = " + human(afterStep1));
 
         // Step 2: 如果仍大于 MAX_TOTAL_BYTES，按 LRU 清理到 TARGET_TOTAL_BYTES
@@ -306,13 +226,13 @@ public class HuyaCacheGovernor {
                     }
                 }
             }
-            Log.i(TAG, "Step2(容量超限LRU) 清理: " + human(freed));
+            LogBridge.i(TAG, "Step2(容量超限LRU) 清理: " + human(freed));
         }
 
         long after = 0L;
         for (File root : candidates) after += walkSize(root);
         long cost = System.currentTimeMillis() - start;
-        Log.i(TAG, "✅ 清理完成: " + human(beforeBytes) + " → " + human(after)
+        LogBridge.i(TAG, "✅ 清理完成: " + human(beforeBytes) + " → " + human(after)
                 + "  节省 " + human(beforeBytes - after) + "  耗时 " + cost + "ms");
     }
 

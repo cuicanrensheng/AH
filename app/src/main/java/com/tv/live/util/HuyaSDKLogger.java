@@ -1,7 +1,11 @@
 package com.tv.live.util;
 
+import android.Manifest;
+import android.content.pm.PackageManager;
 import android.text.TextUtils;
-import android.util.Log;
+import androidx.core.content.ContextCompat;
+import com.tv.live.MyApplication;
+import com.tv.live.util.LogBridge;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -141,13 +145,23 @@ public class HuyaSDKLogger {
         // 启动 logcat 监听，捕获 SDK 的 auk 标签日志
         startAukLogCapture();
 
-        Log.i(TAG, "✅ HuyaSDKLogger 初始化完成（logcat 监听 SDK 日志）");
+        LogBridge.i(TAG, "✅ HuyaSDKLogger 初始化完成（logcat 监听 SDK 日志）");
     }
 
     /**
      * 启动 logcat 监听，捕获 SDK 的 auk 标签日志
+     *
+     * <p>注意：读取 logcat 需要 READ_LOGS 权限（signature|privileged，普通应用无法获得）。
+     * Android 13+（尤其小米 ROM）上，无权限应用调用 logcat 会触发系统
+     * "要允许...访问所有设备日志吗" 弹窗（SystemUI 的 LogAccessDialogActivity）。
+     * 因此仅在系统已授予该权限时才启动监听，避免每次初始化 SDK 都弹窗。
      */
     private static void startAukLogCapture() {
+        if (ContextCompat.checkSelfPermission(MyApplication.getInstance(),
+                Manifest.permission.READ_LOGS) != PackageManager.PERMISSION_GRANTED) {
+            LogBridge.w(TAG, "⚠️ 无 READ_LOGS 权限，跳过 logcat 监听（避免触发系统日志权限弹窗）");
+            return;
+        }
         Thread captureThread = new Thread(() -> {
             Process process = null;
             BufferedReader reader = null;
@@ -166,7 +180,7 @@ public class HuyaSDKLogger {
                     parseAndDispatchAukLog(line);
                 }
             } catch (Exception e) {
-                Log.w(TAG, "⚠️ auk 日志捕获线程退出: " + e.getMessage());
+                LogBridge.w(TAG, "⚠️ auk 日志捕获线程退出: " + e.getMessage());
             } finally {
                 try {
                     if (reader != null) reader.close();
@@ -359,7 +373,7 @@ public class HuyaSDKLogger {
         if (!TextUtils.isEmpty(detail)) {
             sb.append(" ").append(detail);
         }
-        int level = (code == 0) ? INFO : ERROR;
+        int level = (code == 0) ? DEBUG : ERROR;
         dispatch(level, "CustomUI", sb.toString(), "CustomUICallback");
 
         if (code != 0) {

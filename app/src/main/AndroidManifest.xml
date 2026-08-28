@@ -79,11 +79,22 @@
                 <action android:name="android.intent.action.QUICKBOOT_POWERON" />
                 <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
                 <action android:name="android.intent.action.ACTION_POWER_CONNECTED" />
+                <!-- 创维/酷开老电视开机联网校时/网络变化时的兜底触发源 -->
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <!-- 5.1.1/6.0 可静态注册；7.0+ 由 Application 动态注册兜底 -->
+                <action android:name="android.net.conn.CONNECTIVITY_CHANGE" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.SCREEN_ON" />
                 <action android:name="android.intent.action.USER_PRESENT" />
+            </intent-filter>
+            <!-- 外部存储挂载/拔出（U 盘/内存卡），开机后常见，5.1.1~7.0 均可静态注册 -->
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_MOUNTED" />
+                <action android:name="android.intent.action.MEDIA_EJECT" />
+                <data android:scheme="file" />
             </intent-filter>
         </receiver>
 

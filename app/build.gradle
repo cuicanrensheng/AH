@@ -156,7 +156,7 @@ task dptJiaGu {
         def apkDir = file("${buildDir}/outputs/apk/release")
         def outDir = file("${buildDir}/outputs/apk/release/dpt")
         outDir.mkdirs()
-        def javaBin = new File(System.getProperty('java.home'), 'bin/java.exe')
+        def javaBin = new File(System.getProperty('java.home'), 'bin/java')
         apkDir.eachFileMatch(~/.*\.apk/) { apk ->
             if (apk.name.contains('-unsigned')) return
             logger.lifecycle "[dpt] 加固: ${apk.name}"

@@ -2,7 +2,7 @@ package com.tv.live.util;
 
 import android.content.Context;
 import android.text.TextUtils;
-import android.util.Log;
+import com.tv.live.util.LogBridge;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -74,7 +74,7 @@ public class AppCacheInspector {
             try {
                 performFullInspection(ctx.getApplicationContext());
             } catch (Throwable t) {
-                Log.w(TAG, "startupCleanup 异常, 忽略: " + t.getMessage());
+                LogBridge.w(TAG, "startupCleanup 异常, 忽略: " + t.getMessage());
             }
         }, "AppCacheInspector-Cleanup").start();
     }
@@ -335,7 +335,7 @@ public class AppCacheInspector {
         if (jsSaved    > 0) sb.append("  · JsParser 过期插件     : -").append(human(jsFreed)).append(" 文件数=").append(jsSaved).append("\n");
         if (rtSaved    > 0) sb.append("  · 运行时 traces/drops   : -").append(human(rtFreed)).append(" 文件数=").append(rtSaved).append("\n");
         if (wvSaved    > 0) sb.append("  · WebView 资源缓存      : -").append(human(wvFreed)).append(" 文件数=").append(wvSaved).append("\n");
-        Log.i(TAG, sb.toString());
+        LogBridge.i(TAG, sb.toString());
     }
 
     // ============================================================
@@ -350,11 +350,8 @@ public class AppCacheInspector {
     }
 
     private static String Environment_SUBDIR_DOWNLOADS() {
-        try {
-            return (String) android.os.Environment.class.getField("DIRECTORY_DOWNLOADS").get(null);
-        } catch (Throwable t) {
-            return "Download";
-        }
+        // DIRECTORY_DOWNLOADS 是 public static final 常量，直接引用即可（无需反射）
+        return android.os.Environment.DIRECTORY_DOWNLOADS;
     }
 
     private static boolean BuildCheckAtLeastQ() {
@@ -493,7 +490,7 @@ public class AppCacheInspector {
         deleteChildren(extCache);
 
         long after = sizeOf(cache) + sizeOf(extCache);
-        Log.i(TAG, "clearAllUserCache: " + human(before) + " → " + human(after));
+        LogBridge.i(TAG, "clearAllUserCache: " + human(before) + " → " + human(after));
         return Math.max(0L, before - after);
     }
 

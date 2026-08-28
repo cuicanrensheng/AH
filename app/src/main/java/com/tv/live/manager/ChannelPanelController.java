@@ -1,21 +1,27 @@
 package com.tv.live.manager;
 
 import android.content.Context;
-import android.util.Log;
+import com.tv.live.util.LogBridge;
 import android.view.KeyEvent;
 import android.view.View;
 import android.widget.ListView;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import com.tv.live.Channel;
 import com.tv.live.MainActivity;
+import com.tv.live.util.HuyaSDKParser;
 import com.tv.live.widget.ChannelListManager;
 import com.tv.live.widget.DateListManager;
 import com.tv.live.widget.EpgManagerWrapper;
 import com.tv.live.widget.GroupListManager;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * 频道面板控制器
@@ -56,6 +62,16 @@ public class ChannelPanelController {
 
     private boolean epgPanelOpen = false;
     private boolean epgEnable = true;
+
+    /** 🆕 已加载过的虎牙固定分组（虎牙电影/电视剧/动漫/综艺/一起看），缓存避免重复拉取 */
+    private final Set<String> loadedFixedGroups = new HashSet<>();
+
+    /** 🆕 SDK 独立线路分组预加载是否已触发（防止重复触发） */
+    private boolean sdkGroupsPreloadStarted = false;
+    /** 🆕 SDK 独立线路分组预加载是否正在执行中 */
+    private volatile boolean sdkGroupsPreloading = false;
+    /** 🆕 预加载专用单线程执行器（避免占用主线程/打断直播 UI） */
+    private final ExecutorService sdkPreloadExecutor = Executors.newSingleThreadExecutor();
 
     private boolean mIsFirstLaunch = true;
 
@@ -142,7 +158,7 @@ public class ChannelPanelController {
                         try {
                             if (epgManagerWrapper != null) {
                                 epgManagerWrapper.refresh(nowPlaying, channelSourceList, currentSelectedDateIndex);
-                                android.util.Log.d("ChannelPanel", "🟢【虎牙EPG刷新】解析完成，已刷新右侧面板："
+                                LogBridge.d("ChannelPanel", "🟢【虎牙EPG刷新】解析完成，已刷新右侧面板："
                                         + (nowPlaying.getName() == null ? "" : nowPlaying.getName().substring(0, Math.min(20, nowPlaying.getName().length()))));
                             }
                         } catch (Exception ignored) {}
@@ -171,7 +187,7 @@ public class ChannelPanelController {
             btnShowEpg.setBackgroundColor(hasFocus ? 0x3340A9FF : 0x00000000);
         });
         btnShowEpg.setOnKeyListener((v, keyCode, event) -> {
-            android.util.Log.d("ChannelPanel", "btnShowEpg onKey keyCode:" + keyCode + ", action:" + event.getAction());
+            LogBridge.d("ChannelPanel", "btnShowEpg onKey keyCode:" + keyCode + ", action:" + event.getAction());
             if (event.getAction() == KeyEvent.ACTION_DOWN) {
                 if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
                     onEpgButtonClicked();
@@ -187,7 +203,7 @@ public class ChannelPanelController {
             btnBackGroup.setBackgroundColor(hasFocus ? 0x3340A9FF : 0x00000000);
         });
         btnBackGroup.setOnKeyListener((v, keyCode, event) -> {
-            android.util.Log.d("ChannelPanel", "btnBackGroup onKey keyCode:" + keyCode + ", action:" + event.getAction());
+            LogBridge.d("ChannelPanel", "btnBackGroup onKey keyCode:" + keyCode + ", action:" + event.getAction());
             if (event.getAction() == KeyEvent.ACTION_DOWN) {
                 if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
                     onBackGroupClicked();
@@ -201,7 +217,13 @@ public class ChannelPanelController {
     public void setChannels(List<Channel> channels) {
         if (channels == null) return;
         this.channelSourceList = channels;
-        android.util.Log.d("ChannelPanel", "setChannels: 原始频道数=" + channels.size());
+        LogBridge.d("ChannelPanel", "setChannels: 原始频道数=" + channels.size());
+        // 🆕 注册虎牙一起看5大固定分组（虎牙电影/电视剧/动漫/综艺/一起看），排在用户自己分组之后
+        groupListManager.setFixedGroups(HuyaTogetherWatchGroupManager.GROUP_NAMES);
+        // 🆕 注册 HTTP API 线路 8 组预置普通分组（怀旧老片/外国电影/影视热播/海外追剧/剧集追剧/海外动漫/动漫动画/综艺娱乐），
+        // 启动即固定进分组列表，HTTP API 加载完成后只更新频道、不再新增分组、不再刷新分组列表
+        groupListManager.setPresetGroups(HuyaTogetherWatchManager.HTTP_API_GROUP_NAMES);
+        loadedFixedGroups.clear();
         groupListManager.setGroups(this.channelSourceList);
         // 🔧 修复：切源后重置分组状态为"全部"，否则 currentGroupName 残留旧源组名，
         // 导致 togglePanel() 走 else 分支用旧组名过滤新源 → 频道列表为空
@@ -212,6 +234,106 @@ public class ChannelPanelController {
         channelListManagerEpg.setChannels(this.channelSourceList, currentPlayIndex);
         // 异步加载虎牙一起看频道（关键词子分类：电影_喜剧/电影_动作/剧集_古装等），加载完成后追加并刷新分组
         loadHuyaTogetherWatchChannels();
+        // 🆕 SDK 独立线路：启动即后台预加载虎牙 5 大固定分组，点击时直接缓存命中，无需等待
+        preloadSdkFixedGroups();
+    }
+
+    /**
+     * 🆕 SDK 独立线路后台预加载：一次性拉取虎牙 5 大固定分组（电影/电视剧/动漫/综艺/一起看）。
+     * SDK 未就绪时注册就绪回调，等初始化完成后自动补发；已就绪则直接触发。
+     * 预加载成功后将 5 个分组全部写入 loadedFixedGroups 缓存并合并到频道列表，
+     * 用户点击任意固定分组时走本地过滤（秒开），不再触发 SDK 网络请求。
+     */
+    private void preloadSdkFixedGroups() {
+        if (sdkGroupsPreloadStarted) {
+            // 切换源后 setChannels 会 clear loadedFixedGroups，此时重新补预加载
+            if (loadedFixedGroups.isEmpty() && !sdkGroupsPreloading) {
+                sdkPreloadExecutor.execute(() -> doPreloadSdkFixedGroups());
+            }
+            return;
+        }
+        sdkGroupsPreloadStarted = true;
+        // 🆕 预加载整体在专用子线程执行：SDK 就绪检查、就绪等待、触发 fetchAllGroups 均不占用主线程
+        sdkPreloadExecutor.execute(new Runnable() {
+            @Override public void run() {
+                if (HuyaSDKParser.isSDKAvailable()) {
+                    doPreloadSdkFixedGroups();
+                } else {
+                    HuyaSDKParser.addInitReadyListener(new Runnable() {
+                        @Override public void run() {
+                            sdkPreloadExecutor.execute(() -> doPreloadSdkFixedGroups());
+                        }
+                    });
+                }
+            }
+        });
+    }
+
+    private void doPreloadSdkFixedGroups() {
+        if (activity == null || activity.isFinishing() || activity.isDestroyed()) return;
+        if (sdkGroupsPreloading) return;
+        sdkGroupsPreloading = true;
+        LogBridge.d("ChannelPanel", "🚀 SDK 独立线路后台预加载虎牙 5 大固定分组…");
+        HuyaTogetherWatchGroupManager.getInstance().fetchAllGroups(
+                new HuyaTogetherWatchGroupManager.OnGroupsListener() {
+            @Override
+            public void onSuccess(List<HuyaTogetherWatchGroupManager.Group> groups) {
+                sdkGroupsPreloading = false;
+                if (activity == null || activity.isFinishing() || activity.isDestroyed()) return;
+                if (groups == null || groups.isEmpty()) {
+                    LogBridge.w("ChannelPanel", "SDK 固定分组预加载: 返回空");
+                    return;
+                }
+                long t0 = System.currentTimeMillis();
+                // 与 loadFixedGroupChannels 相同的双重去重逻辑（channelId / huyaRoomId）
+                HashSet<String> existIds = new HashSet<>();
+                HashSet<Integer> existRooms = new HashSet<>();
+                for (Channel c : channelSourceList) {
+                    if (c.getChannelId() != null) existIds.add(c.getChannelId());
+                    if (c.getHuyaRoomId() > 0) existRooms.add(c.getHuyaRoomId());
+                }
+                int totalAdded = 0;
+                java.util.ArrayList<Integer> twRoomIds = new java.util.ArrayList<>();
+                for (HuyaTogetherWatchGroupManager.Group g : groups) {
+                    if (g == null || g.name == null || g.channels == null) continue;
+                    int added = 0;
+                    for (Channel c : g.channels) {
+                        if (c == null) continue;
+                        if (c.getHuyaRoomId() > 0 && existRooms.contains(c.getHuyaRoomId())) continue;
+                        if (c.getChannelId() != null && existIds.contains(c.getChannelId())) continue;
+                        channelSourceList.add(c);
+                        if (c.getChannelId() != null) existIds.add(c.getChannelId());
+                        if (c.getHuyaRoomId() > 0) {
+                            existRooms.add(c.getHuyaRoomId());
+                            twRoomIds.add(c.getHuyaRoomId());
+                        }
+                        added++;
+                    }
+                    loadedFixedGroups.add(g.name);
+                    LogBridge.d("ChannelPanel", "SDK 分组[" + g.name + "]预加载完成，新增 " + added + " 个频道");
+                    totalAdded += added;
+                }
+                LogBridge.d("ChannelPanel", "✅ SDK 5 大固定分组预加载完成，共新增 " + totalAdded
+                        + " 个频道，总计 " + channelSourceList.size()
+                        + "，耗时 " + (System.currentTimeMillis() - t0) + "ms");
+                // 后台并行预解析直播源，缩短起播时间
+                if (!twRoomIds.isEmpty()) {
+                    HuyaSDKParser.preloadRooms(twRoomIds);
+                }
+                // 刷新分组与频道列表（分组已固定，只更新计数）
+                groupListManager.setGroups(channelSourceList, false);
+                channelListManager.setChannels(channelSourceList, currentPlayIndex);
+                channelListManagerEpg.setChannels(channelSourceList, currentPlayIndex);
+            }
+
+            @Override
+            public void onError(String errMsg) {
+                sdkGroupsPreloading = false;
+                if (activity == null || activity.isFinishing() || activity.isDestroyed()) return;
+                LogBridge.w("ChannelPanel", "SDK 固定分组预加载失败: " + errMsg
+                        + "（用户点击分组时仍会走单组拉取）");
+            }
+        });
     }
 
     /**
@@ -224,7 +346,7 @@ public class ChannelPanelController {
             @Override
             public void onSuccess(List<Channel> channels) {
                 if (channels == null || channels.isEmpty()) {
-                    Log.d("ChannelPanel", "虎牙一起看: 未获取到频道");
+                    LogBridge.d("ChannelPanel", "虎牙一起看: 未获取到频道");
                     return;
                 }
                 panelLayout.post(() -> {
@@ -245,13 +367,13 @@ public class ChannelPanelController {
                             if (c.getHuyaRoomId() > 0) twRoomIds.add(c.getHuyaRoomId());
                         }
                     }
-                    Log.d("ChannelPanel", "虎牙一起看加载完成，新增 " + added + " 个频道，总计 " + channelSourceList.size());
+                    LogBridge.d("ChannelPanel", "虎牙一起看加载完成，新增 " + added + " 个频道，总计 " + channelSourceList.size());
                     if (!twRoomIds.isEmpty()) {
-                        Log.d("ChannelPanel", "🟢【虎牙预解析】(一起看) 收集到 " + twRoomIds.size() + " 个房间，开始后台并行预解析");
+                        LogBridge.d("ChannelPanel", "🟢【虎牙预解析】(一起看) 收集到 " + twRoomIds.size() + " 个房间，开始后台并行预解析");
                         com.tv.live.util.HuyaSDKParser.preloadRooms(twRoomIds);
                     }
-                    // 刷新分组与频道列表
-                    groupListManager.setGroups(channelSourceList);
+                    // 刷新分组与频道列表（分组已固定，只更新计数）
+                    groupListManager.setGroups(channelSourceList, false);
                     // 🔧 同步重置分组状态（与 setChannels 一致）
                     currentGroupName = GroupListManager.GROUP_ALL;
                     currentGroupChannelList.clear();
@@ -263,9 +385,95 @@ public class ChannelPanelController {
 
             @Override
             public void onFailed(String errorMsg) {
-                Log.d("ChannelPanel", "加载虎牙一起看失败: " + errorMsg);
+                LogBridge.d("ChannelPanel", "加载虎牙一起看失败: " + errorMsg);
             }
         });
+    }
+
+    /**
+     * 🆕 点击虎牙一起看固定分组（虎牙电影/电视剧/动漫/综艺/一起看）：
+     * 频道唯一来源为 SDK 内部一起看列表（HuyaTogetherWatchGroupManager 独立路线）。
+     * 首次点击异步拉取 → 按 channelId/huyaRoomId 去重追加到 channelSourceList（标记 isHuyaSdkTogetherWatch）；
+     * 再次点击走本地过滤（缓存命中）。
+     */
+    private void loadFixedGroupChannels(final String groupName) {
+        if (channelSourceList == null) return;
+        // 缓存命中：直接本地过滤
+        if (loadedFixedGroups.contains(groupName)) {
+            currentGroupChannelList.clear();
+            for (Channel c : channelSourceList) {
+                if (groupName.equals(GroupListManager.getNormalizedGroup(c))) {
+                    currentGroupChannelList.add(c);
+                }
+            }
+            channelListManager.setChannelsByGroup(channelSourceList, groupName, currentPlayIndex);
+            return;
+        }
+        // 加载中占位：清空右侧列表
+        currentGroupChannelList.clear();
+        channelListManager.setFilteredChannels(new ArrayList<Channel>(), null);
+        // Toast.makeText(context, "正在加载「" + groupName + "」…", Toast.LENGTH_SHORT).show();
+
+        HuyaTogetherWatchGroupManager.getInstance().fetchGroup(groupName,
+                new HuyaTogetherWatchGroupManager.OnChannelsListener() {
+                    @Override
+                    public void onSuccess(List<Channel> channels) {
+                        if (activity == null || activity.isFinishing() || activity.isDestroyed()) return;
+                        loadedFixedGroups.add(groupName);
+                        if (channels == null || channels.isEmpty()) {
+                            LogBridge.w("ChannelPanel", "虎牙固定分组[" + groupName + "]无频道");
+                            // 🔇 屏蔽"暂无频道"弹窗
+                            // Toast.makeText(context, "「" + groupName + "」暂无频道", Toast.LENGTH_SHORT).show();
+                            groupListManager.setGroups(channelSourceList, false);
+                            return;
+                        }
+                        // 按 channelId / huyaRoomId 双重去重追加，避免与关键词路线重复
+                        HashSet<String> existIds = new HashSet<>();
+                        HashSet<Integer> existRooms = new HashSet<>();
+                        for (Channel c : channelSourceList) {
+                            if (c.getChannelId() != null) existIds.add(c.getChannelId());
+                            if (c.getHuyaRoomId() > 0) existRooms.add(c.getHuyaRoomId());
+                        }
+                        int added = 0;
+                        java.util.ArrayList<Integer> twRoomIds = new java.util.ArrayList<>();
+                        for (Channel c : channels) {
+                            if (c == null) continue;
+                            if (c.getHuyaRoomId() > 0 && existRooms.contains(c.getHuyaRoomId())) continue;
+                            if (c.getChannelId() != null && existIds.contains(c.getChannelId())) continue;
+                            channelSourceList.add(c);
+                            if (c.getChannelId() != null) existIds.add(c.getChannelId());
+                            if (c.getHuyaRoomId() > 0) {
+                                existRooms.add(c.getHuyaRoomId());
+                                twRoomIds.add(c.getHuyaRoomId());
+                            }
+                            added++;
+                        }
+                        LogBridge.d("ChannelPanel", "虎牙固定分组[" + groupName + "]加载完成，新增 " + added + " 个频道，总计 " + channelSourceList.size());
+                        // 后台并行预解析直播源，缩短起播时间
+                        if (!twRoomIds.isEmpty()) {
+                            com.tv.live.util.HuyaSDKParser.preloadRooms(twRoomIds);
+                        }
+                        // 刷新分组（分组已固定，固定分组频道不生成普通分组，仅"全部"计数更新）
+                        groupListManager.setGroups(channelSourceList, false);
+                        // 当前分组过滤显示
+                        currentGroupChannelList.clear();
+                        for (Channel c : channelSourceList) {
+                            if (groupName.equals(GroupListManager.getNormalizedGroup(c))) {
+                                currentGroupChannelList.add(c);
+                            }
+                        }
+                        channelListManager.setChannelsByGroup(channelSourceList, groupName, currentPlayIndex);
+                        lvChannelList.setSelection(0);
+                    }
+
+                    @Override
+                    public void onError(String errMsg) {
+                        if (activity == null || activity.isFinishing() || activity.isDestroyed()) return;
+                        LogBridge.w("ChannelPanel", "虎牙固定分组[" + groupName + "]加载失败: " + errMsg);
+                        // 🔇 屏蔽"加载失败/正在获取中"弹窗
+                        // Toast.makeText(context, "「" + groupName + "」加载失败: " + errMsg, Toast.LENGTH_SHORT).show();
+                    }
+                });
     }
 
     private void onGroupClicked(int position) {
@@ -274,6 +482,11 @@ public class ChannelPanelController {
         lvGroup.setSelection(position);
         String groupName = groupListManager.getCurrentGroup(position);
         currentGroupName = groupName;
+        // 🆕 虎牙一起看固定分组（虎牙电影/电视剧/动漫/综艺/一起看）：SDK 独立路线，异步拉取 + 缓存
+        if (groupListManager.isFixedGroup(position)) {
+            loadFixedGroupChannels(groupName);
+            return;
+        }
         if (GroupListManager.GROUP_ALL.equals(groupName)) {
             currentGroupChannelList.clear();
             currentGroupChannelList.addAll(channelSourceList);
@@ -329,7 +542,7 @@ public class ChannelPanelController {
         
         if (currentPlayIndex < 0 || currentPlayIndex >= channelSourceList.size()) {
             currentPlayIndex = channelSourceList.size() - 1;
-            Log.w("ChannelPanelController", "playPrev: currentPlayIndex 越界，已重置为最后一个有效索引 " + currentPlayIndex);
+            LogBridge.w("ChannelPanelController", "playPrev: currentPlayIndex 越界，已重置为最后一个有效索引 " + currentPlayIndex);
         }
 
         Channel currentChannel = channelSourceList.get(currentPlayIndex);
@@ -371,7 +584,7 @@ public class ChannelPanelController {
         
         if (currentPlayIndex < 0 || currentPlayIndex >= channelSourceList.size()) {
             currentPlayIndex = channelSourceList.size() - 1;
-            Log.w("ChannelPanelController", "playNext: currentPlayIndex 越界，已重置为最后一个有效索引 " + currentPlayIndex);
+            LogBridge.w("ChannelPanelController", "playNext: currentPlayIndex 越界，已重置为最后一个有效索引 " + currentPlayIndex);
         }
 
         Channel currentChannel = channelSourceList.get(currentPlayIndex);
@@ -527,7 +740,7 @@ public class ChannelPanelController {
 
         panelLayout.postDelayed(() -> {
             if (activity == null || activity.isFinishing() || activity.isDestroyed()) {
-                Log.d("ChannelPanelController", "togglePanel postDelayed: Activity已销毁，取消操作");
+                LogBridge.d("ChannelPanelController", "togglePanel postDelayed: Activity已销毁，取消操作");
                 return;
             }
 
@@ -596,7 +809,7 @@ public class ChannelPanelController {
             }
             panelLayout.post(() -> {
                 lvChannelListEpg.requestFocus();
-                android.util.Log.d("ChannelPanel", "Right panel opened, focus on channel list");
+                LogBridge.d("ChannelPanel", "Right panel opened, focus on channel list");
             });
         } else {
             if (llRightPanel != null) {
@@ -732,8 +945,9 @@ public class ChannelPanelController {
     }
 
     public void release() {
-        Log.d("ChannelPanelController", "release: 级联清理所有组件引用");
+        LogBridge.d("ChannelPanelController", "release: 级联清理所有组件引用");
 
+        loadedFixedGroups.clear();
         if (groupListManager != null) {
             groupListManager.release();
             groupListManager = null;

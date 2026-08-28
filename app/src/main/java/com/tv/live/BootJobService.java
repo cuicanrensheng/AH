@@ -4,7 +4,7 @@ import android.app.job.JobParameters;
 import android.app.job.JobService;
 import android.content.Intent;
 import android.os.Build;
-import android.util.Log;
+import com.tv.live.util.LogBridge;
 
 /**
  * JobScheduler 兜底服务
@@ -25,7 +25,7 @@ public class BootJobService extends JobService {
 
     @Override
     public boolean onStartJob(JobParameters params) {
-        Log.d(TAG, "JobScheduler 触发启动");
+        LogBridge.d(TAG, "JobScheduler 触发启动");
 
         // 在子线程中执行启动，避免阻塞主线程
         new Thread(() -> {
@@ -34,7 +34,7 @@ public class BootJobService extends JobService {
             // 方案 1：直接启动 Activity
             success = startActivityDirectly();
             if (success) {
-                Log.d(TAG, "JobScheduler 直接启动成功");
+                LogBridge.d(TAG, "JobScheduler 直接启动成功");
                 jobFinished(params, false);
                 return;
             }
@@ -42,7 +42,7 @@ public class BootJobService extends JobService {
             // 方案 2：Launcher 方式启动
             success = startActivityAsLauncher();
             if (success) {
-                Log.d(TAG, "JobScheduler Launcher 方式启动成功");
+                LogBridge.d(TAG, "JobScheduler Launcher 方式启动成功");
                 jobFinished(params, false);
                 return;
             }
@@ -51,13 +51,13 @@ public class BootJobService extends JobService {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 success = startWithForegroundService();
                 if (success) {
-                    Log.d(TAG, "JobScheduler 前台服务方式启动成功");
+                    LogBridge.d(TAG, "JobScheduler 前台服务方式启动成功");
                     jobFinished(params, false);
                     return;
                 }
             }
 
-            Log.e(TAG, "JobScheduler 所有启动方案均失败");
+            LogBridge.e(TAG, "JobScheduler 所有启动方案均失败");
             jobFinished(params, false);
         }).start();
 
@@ -67,7 +67,7 @@ public class BootJobService extends JobService {
 
     @Override
     public boolean onStopJob(JobParameters params) {
-        Log.w(TAG, "JobScheduler 任务被系统中断");
+        LogBridge.w(TAG, "JobScheduler 任务被系统中断");
         // 返回 true 表示希望系统稍后重试
         return true;
     }
@@ -84,7 +84,7 @@ public class BootJobService extends JobService {
             startActivity(mainIntent);
             return true;
         } catch (Exception e) {
-            Log.e(TAG, "直接启动失败", e);
+            LogBridge.e(TAG, "直接启动失败", e);
             return false;
         }
     }
@@ -99,7 +99,7 @@ public class BootJobService extends JobService {
                 return true;
             }
         } catch (Exception e) {
-            Log.e(TAG, "Launcher 方式启动失败", e);
+            LogBridge.e(TAG, "Launcher 方式启动失败", e);
         }
         return false;
     }
@@ -115,10 +115,10 @@ public class BootJobService extends JobService {
             } else {
                 startService(serviceIntent);
             }
-            Log.d(TAG, "已启动前台服务兜底");
+            LogBridge.d(TAG, "已启动前台服务兜底");
             return true;
         } catch (Exception e) {
-            Log.e(TAG, "前台服务启动失败", e);
+            LogBridge.e(TAG, "前台服务启动失败", e);
             return false;
         }
     }

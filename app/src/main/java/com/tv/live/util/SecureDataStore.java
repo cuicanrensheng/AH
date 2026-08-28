@@ -5,7 +5,7 @@ import android.content.SharedPreferences;
 import android.security.keystore.KeyGenParameterSpec;
 import android.security.keystore.KeyProperties;
 import android.util.Base64;
-import android.util.Log;
+import com.tv.live.util.LogBridge;
 
 import java.security.KeyStore;
 import java.security.MessageDigest;
@@ -76,9 +76,9 @@ public class SecureDataStore {
         try {
             initializeKey();
             mInitialized = true;
-            Log.i(TAG, "安全存储初始化完成");
+            LogBridge.i(TAG, "安全存储初始化完成");
         } catch (Exception e) {
-            Log.e(TAG, "安全存储初始化失败: " + e.getMessage());
+            LogBridge.e(TAG, "安全存储初始化失败: " + e.getMessage());
         }
     }
 
@@ -99,7 +99,7 @@ public class SecureDataStore {
             KEY_ALIAS, null);
         mSecretKey = entry.getSecretKey();
         
-        Log.d(TAG, "加密密钥已就绪");
+        LogBridge.d(TAG, "加密密钥已就绪");
     }
 
     /**
@@ -119,7 +119,7 @@ public class SecureDataStore {
             .build());
         
         keyGenerator.generateKey();
-        Log.d(TAG, "新加密密钥已生成");
+        LogBridge.d(TAG, "新加密密钥已生成");
     }
 
     /**
@@ -140,9 +140,9 @@ public class SecureDataStore {
             mCache.put(key, value);
             mCacheValid.put(key, true);
             
-            Log.d(TAG, "已存储加密值: " + key);
+            LogBridge.d(TAG, "已存储加密值: " + key);
         } catch (Exception e) {
-            Log.e(TAG, "存储失败 [" + key + "]: " + e.getMessage());
+            LogBridge.e(TAG, "存储失败 [" + key + "]: " + e.getMessage());
         }
     }
 
@@ -173,7 +173,7 @@ public class SecureDataStore {
                 return decryptedValue;
             }
         } catch (Exception e) {
-            Log.e(TAG, "读取失败 [" + key + "]: " + e.getMessage());
+            LogBridge.e(TAG, "读取失败 [" + key + "]: " + e.getMessage());
         }
         
         return defaultValue;
@@ -234,7 +234,7 @@ public class SecureDataStore {
         mCache.remove(key + "_int");
         mCache.remove(key + "_bool");
         mCacheValid.remove(key);
-        Log.d(TAG, "已删除: " + key);
+        LogBridge.d(TAG, "已删除: " + key);
     }
 
     /**
@@ -248,7 +248,7 @@ public class SecureDataStore {
         mPrefs.edit().clear().apply();
         mCache.clear();
         mCacheValid.clear();
-        Log.i(TAG, "已清除所有安全存储数据");
+        LogBridge.i(TAG, "已清除所有安全存储数据");
     }
 
     /**
@@ -343,6 +343,6 @@ public class SecureDataStore {
     public void clearCache() {
         mCache.clear();
         mCacheValid.clear();
-        Log.d(TAG, "内存缓存已清除");
+        LogBridge.d(TAG, "内存缓存已清除");
     }
 }

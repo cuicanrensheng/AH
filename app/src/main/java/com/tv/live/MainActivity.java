@@ -7,14 +7,16 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
+import android.database.ContentObserver;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.provider.Settings;
 import android.text.TextUtils;
-import android.util.Log;
+import com.tv.live.util.LogBridge;
 import android.view.KeyEvent;
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
@@ -92,6 +94,8 @@ public class MainActivity extends AppCompatActivity {
     private long mLastBackHandleMs = 0L;
     // 🔧 已注册的系统级 API33+ OnBackInvokedCallback（用于 onDestroy 清理或重建时去重，避免内存泄漏）
     private Object mSystemBackInvokedCb = null;
+    // 🔧 跟随系统"自动旋转"开关：开关开 → sensorLandscape（跟随手机旋转横屏）；关 → 固定横屏
+    private ContentObserver autoRotateObserver = null;
 
     private static boolean isOkKey(int keyCode) {
         return keyCode == KeyEvent.KEYCODE_DPAD_CENTER
@@ -189,16 +193,52 @@ public class MainActivity extends AppCompatActivity {
         return playerView;
     }
 
+    /**
+     * 跟随系统"自动旋转"开关决定屏幕方向（适配 Android 5.1.1 ~ 最新版本）：
+     * - 系统"自动旋转"开启 → sensorLandscape：跟随手机重力传感器，左/右横屏自动切换；
+     * - 系统"自动旋转"关闭 → landscape：锁定固定横屏，不跟随；
+     * - TV 设备系统无"自动旋转"项（ACCELEROMETER_ROTATION 默认 0）→ 固定横屏，不影响 TV 体验。
+     */
+    private void applyAutoRotateOrientation() {
+        boolean autoRotate = false;
+        try {
+            // API 21+（5.1.1）~ 最新版本均可读取；个别 ROM 异常时兜底按"关闭"处理
+            autoRotate = Settings.System.getInt(
+                    getContentResolver(), Settings.System.ACCELEROMETER_ROTATION, 0) == 1;
+        } catch (Exception ignored) {
+        }
+        setRequestedOrientation(autoRotate
+                ? ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                : ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         // APK 签名校验（防二次打包/防反编译后重新签名）
-        SecurityCheck.verifyOnStart(this);
+        // ⚡ 已移到后台线程：verifySignature 要读 APK 签名块（IO），verifyDexIntegrity
+        // 会读整个 classes.dex 计算 SHA-256（IO 大头），弱 TV 设备上合计可达数百毫秒，
+        // 同步执行会卡住首帧渲染。校验失败时内部会切回主线程 toast+退出，异步化不影响行为。
+        // （MyApplication 后台线程的 initSecurity() 也会执行一次，这里再做一次兜底。）
+        com.tv.live.util.AppExecutors.io(() -> SecurityCheck.verifyOnStart(this));
         mInstanceRef = new WeakReference<>(this);
         sp = getSharedPreferences("app_settings", MODE_PRIVATE);
-        // 跟随重力传感器在左横屏/右横屏间自动切换（与 Manifest 的 sensorLandscape 一致）。
-        // TV 设备无加速度传感器，系统会自动回退为固定横屏，不影响 TV 体验。
-        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+        // 只有手机系统"自动旋转"开启时才跟随手机旋转横屏（sensorLandscape）；
+        // 关闭时锁定固定横屏（landscape）。TV 无自动旋转设置，固定横屏，不影响 TV 体验。
+        applyAutoRotateOrientation();
+        // 监听系统"自动旋转"开关变化，切换时无需重启应用即可实时生效（ContentObserver，API21+）
+        autoRotateObserver = new ContentObserver(new Handler(Looper.getMainLooper())) {
+            @Override
+            public void onChange(boolean selfChange) {
+                applyAutoRotateOrientation();
+            }
+        };
+        try {
+            getContentResolver().registerContentObserver(
+                    Settings.System.getUriFor(Settings.System.ACCELEROMETER_ROTATION),
+                    true, autoRotateObserver);
+        } catch (Exception ignored) {
+        }
         displayManager = new DisplayManager(this);
         setContentView(R.layout.activity_main);
         displayManager.applyFullScreen();
@@ -273,7 +313,7 @@ public class MainActivity extends AppCompatActivity {
                     isOpeningSettings = false;
                     settingsNeedReload = true;
                     settingsCloseTime = System.currentTimeMillis();
-                    Log.d("MainActivity", "📡 收到解锁广播，isOpeningSettings 已重置");
+                    LogBridge.d("MainActivity", "📡 收到解锁广播，isOpeningSettings 已重置");
                 }
             }
         };
@@ -369,7 +409,7 @@ public class MainActivity extends AppCompatActivity {
         try {
             return super.onKeyDown(keyCode, event);
         } catch (Exception e) {
-            android.util.Log.e("KEY_DEBUG", "onKeyDown 异常 keyCode=" + keyCode + ": " + e.getMessage(), e);
+            LogBridge.e("KEY_DEBUG", "onKeyDown 异常 keyCode=" + keyCode + ": " + e.getMessage(), e);
             return true;
         }
     }
@@ -379,7 +419,7 @@ public class MainActivity extends AppCompatActivity {
         try {
             return super.onKeyUp(keyCode, event);
         } catch (Exception e) {
-            android.util.Log.e("KEY_DEBUG", "onKeyUp 异常 keyCode=" + keyCode + ": " + e.getMessage(), e);
+            LogBridge.e("KEY_DEBUG", "onKeyUp 异常 keyCode=" + keyCode + ": " + e.getMessage(), e);
             return true;
         }
     }
@@ -397,12 +437,12 @@ public class MainActivity extends AppCompatActivity {
         try {
             panelOpen = channelPanelController.isPanelOpen();
         } catch (Exception e) {
-            android.util.Log.e("KEY_DEBUG", "isPanelOpen 异常: " + e.getMessage(), e);
+            LogBridge.e("KEY_DEBUG", "isPanelOpen 异常: " + e.getMessage(), e);
             panelOpen = false;
         }
 
         try {
-            android.util.Log.d("KEY_DEBUG", "keyCode=" + keyCode + " action=" + action + " repeat=" + event.getRepeatCount());
+            LogBridge.d("KEY_DEBUG", "keyCode=" + keyCode + " action=" + action + " repeat=" + event.getRepeatCount());
 
             if (action == KeyEvent.ACTION_DOWN) {
                 if (event.getRepeatCount() == 0) {
@@ -479,7 +519,7 @@ public class MainActivity extends AppCompatActivity {
                         return true;
                     } else if (keyCode == KeyEvent.KEYCODE_BACK) {
                         panelOpenOnBackDown = panelOpen;
-                        android.util.Log.d("KEY_DEBUG", "Back DOWN: panelOpen=" + panelOpen + ", panelOpenOnBackDown=" + panelOpenOnBackDown);
+                        LogBridge.d("KEY_DEBUG", "Back DOWN: panelOpen=" + panelOpen + ", panelOpenOnBackDown=" + panelOpenOnBackDown);
                         if (panelOpen) {
                             channelPanelController.hidePanel();
                         }
@@ -505,12 +545,12 @@ public class MainActivity extends AppCompatActivity {
                         return true;
                     }
                 } else if (keyCode == KeyEvent.KEYCODE_BACK) {
-                    android.util.Log.d("KEY_DEBUG", "Back UP: panelOpenOnBackDown=" + panelOpenOnBackDown + ", panelOpen=" + panelOpen);
+                    LogBridge.d("KEY_DEBUG", "Back UP: panelOpenOnBackDown=" + panelOpenOnBackDown + ", panelOpen=" + panelOpen);
                     if (settingsDialog != null && settingsDialog.isShowing()) {
                         return super.dispatchKeyEvent(event);
                     }
                     if (!panelOpenOnBackDown && !panelOpen) {
-                        android.util.Log.d("KEY_DEBUG", "Calling onBackPressed()");
+                        LogBridge.d("KEY_DEBUG", "Calling onBackPressed()");
                         onBackPressed();
                     }
                     return true;
@@ -523,7 +563,7 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         } catch (Exception e) {
-            android.util.Log.e("KEY_DEBUG", "dispatchKeyEvent 异常 keyCode=" + keyCode + ": " + e.getMessage(), e);
+            LogBridge.e("KEY_DEBUG", "dispatchKeyEvent 异常 keyCode=" + keyCode + ": " + e.getMessage(), e);
         }
 
         return super.dispatchKeyEvent(event);
@@ -828,7 +868,7 @@ public class MainActivity extends AppCompatActivity {
                 playerControlManager.hideExoController();
             }
 
-            Log.d("MainActivity", "PlayerView 重建完成");
+            LogBridge.d("MainActivity", "PlayerView 重建完成");
         });
 
         mPlayerManager.attachPlayerView(playerView);
@@ -845,7 +885,7 @@ public class MainActivity extends AppCompatActivity {
             sdkContainer.setOnTouchListener(touchListener);
             sdkContainer.setClickable(true);
             sdkContainer.setFocusable(false);
-            Log.d("MainActivity", "SDK 播放器容器手势监听已绑定");
+            LogBridge.d("MainActivity", "SDK 播放器容器手势监听已绑定");
         }
 
         playerStateListener = new PlayerStateListenerImpl(this);
@@ -1082,17 +1122,6 @@ public class MainActivity extends AppCompatActivity {
         if (channel == null || channel.getPlayUrl() == null) return;
         currentPlayIndex = index;
 
-        // 🔴【修复清晰度残留】虎牙房间频道切台前重置线路状态：
-        // - currentLineIndex 归零 + 清空 backupUrls，确保 getPlayUrl() 返回 huya://room/ 房间协议，
-        //   走 playHuyaStream 重新解析并填充 variantList，避免清晰度档位残留上一个房间。
-        // - 仅对虎牙房间处理，普通频道的 backupUrls（备用源）不受影响。
-        try {
-            if (channel.getMainPlayUrl() != null && channel.getMainPlayUrl().startsWith("huya://room/")) {
-                channel.setCurrentLineIndex(0);
-                channel.clearBackupUrls();
-            }
-        } catch (Exception ignored) {}
-
         // 切台时清空数字输入缓存
         numberInputBuffer.setLength(0);
         mMainHandler.removeCallbacks(numberInputConfirmTask);
@@ -1200,7 +1229,7 @@ public class MainActivity extends AppCompatActivity {
     private boolean handleBackPressed() {
         long now = System.currentTimeMillis();
         if (now - mLastBackHandleMs < 300L) {
-            android.util.Log.d("KEY_DEBUG", "handleBackPressed: 300ms 内重复触发，已忽略 (安卓13+双路径去抖)");
+            LogBridge.d("KEY_DEBUG", "handleBackPressed: 300ms 内重复触发，已忽略 (安卓13+双路径去抖)");
             return true;
         }
         mLastBackHandleMs = now;
@@ -1222,7 +1251,7 @@ public class MainActivity extends AppCompatActivity {
                         return true;
                     }
                 } catch (Exception e) {
-                    android.util.Log.e("KEY_DEBUG", "handleBackPressed hidePanel 异常: " + e.getMessage(), e);
+                    LogBridge.e("KEY_DEBUG", "handleBackPressed hidePanel 异常: " + e.getMessage(), e);
                 }
             }
 
@@ -1235,7 +1264,7 @@ public class MainActivity extends AppCompatActivity {
                         return true;
                     }
                 } catch (Exception e) {
-                    android.util.Log.e("KEY_DEBUG", "handleBackPressed exitMenu 异常: " + e.getMessage(), e);
+                    LogBridge.e("KEY_DEBUG", "handleBackPressed exitMenu 异常: " + e.getMessage(), e);
                     exitMenuDialog = null;
                 }
             }
@@ -1252,20 +1281,20 @@ public class MainActivity extends AppCompatActivity {
                         return true;
                     }
                 } catch (Exception e) {
-                    android.util.Log.e("KEY_DEBUG", "handleBackPressed settingsDialog 异常: " + e.getMessage(), e);
+                    LogBridge.e("KEY_DEBUG", "handleBackPressed settingsDialog 异常: " + e.getMessage(), e);
                     settingsDialog = null;
                 }
             }
 
             // ⏱ 设置刚关闭（1 秒内）→ 忽略一次退出操作，避免用户按返回键导致设置关闭后立刻触发退出确认
             if (settingsCloseTime > 0 && System.currentTimeMillis() - settingsCloseTime < 1000) {
-                android.util.Log.d("KEY_DEBUG", "设置刚关闭，忽略退出操作");
+                LogBridge.d("KEY_DEBUG", "设置刚关闭，忽略退出操作");
                 return true;
             }
 
             // 🚪 主退出逻辑：根据设置判断是否弹出退出确认弹窗
             boolean exitDialogEnabled = sp != null && sp.getBoolean("exit_dialog_enable", false);
-            android.util.Log.d("KEY_DEBUG", "退出确认弹窗开关: " + exitDialogEnabled + "，Build.VERSION.SDK_INT=" + Build.VERSION.SDK_INT);
+            LogBridge.d("KEY_DEBUG", "退出确认弹窗开关: " + exitDialogEnabled + "，Build.VERSION.SDK_INT=" + Build.VERSION.SDK_INT);
             if (exitDialogEnabled) {
                 showExitMenu();
             } else {
@@ -1273,7 +1302,7 @@ public class MainActivity extends AppCompatActivity {
             }
             return true;
         } catch (Exception e) {
-            android.util.Log.e("KEY_DEBUG", "handleBackPressed 异常: " + e.getMessage(), e);
+            LogBridge.e("KEY_DEBUG", "handleBackPressed 异常: " + e.getMessage(), e);
             // 出错兜底：直接退出避免卡死
             try { finishAffinity(); } catch (Exception ignored) {}
             return true;
@@ -1301,14 +1330,14 @@ public class MainActivity extends AppCompatActivity {
             OnBackPressedCallback callback = new OnBackPressedCallback(true) {
                 @Override
                 public void handleOnBackPressed() {
-                    android.util.Log.d("KEY_DEBUG", "【OnBackPressedCallback】(AndroidX) triggered");
+                    LogBridge.d("KEY_DEBUG", "【OnBackPressedCallback】(AndroidX) triggered");
                     handleBackPressed();
                 }
             };
             getOnBackPressedDispatcher().addCallback(this, callback);
             log("【BackCompat】已注册 AndroidX OnBackPressedCallback (通用方案)");
         } catch (Throwable t) {
-            Log.e("BackCompat", "注册 OnBackPressedCallback 失败: " + t.getMessage());
+            LogBridge.e("BackCompat", "注册 OnBackPressedCallback 失败: " + t.getMessage());
         }
 
         // —— 保险 2：系统 API 33+ OnBackInvokedCallback（荣耀安卓16手势返回兜底）
@@ -1324,7 +1353,7 @@ public class MainActivity extends AppCompatActivity {
                         } catch (Throwable ignore) {}
                     }
                     final Runnable handler = () -> {
-                        android.util.Log.d("KEY_DEBUG", "【OnBackInvokedCallback】(System API 33+) gesture back triggered");
+                        LogBridge.d("KEY_DEBUG", "【OnBackInvokedCallback】(System API 33+) gesture back triggered");
                         runOnUiThread(this::handleBackPressed);
                     };
                     android.window.OnBackInvokedCallback systemCb = new android.window.OnBackInvokedCallback() {
@@ -1338,7 +1367,7 @@ public class MainActivity extends AppCompatActivity {
                     log("【BackCompat】已注册系统级 OnBackInvokedCallback (API 33+ 荣耀安卓16兜底)");
                 }
             } catch (Throwable t) {
-                Log.e("BackCompat", "注册系统 OnBackInvokedCallback 失败: " + t.getMessage());
+                LogBridge.e("BackCompat", "注册系统 OnBackInvokedCallback 失败: " + t.getMessage());
             }
         }
     }
@@ -1359,10 +1388,10 @@ public class MainActivity extends AppCompatActivity {
 
             if (isOpeningSettings) {
                 if (now - lastSettingsOpenTime > 5000) {
-                    Log.d("Settings", "强制解锁 isOpeningSettings（超过 5 秒）");
+                    LogBridge.d("Settings", "强制解锁 isOpeningSettings（超过 5 秒）");
                     isOpeningSettings = false;
                 } else {
-                    Log.d("Settings", "isOpeningSettings 为 true，被拦截（距离上次尝试不到 5 秒）");
+                    LogBridge.d("Settings", "isOpeningSettings 为 true，被拦截（距离上次尝试不到 5 秒）");
                     return;
                 }
             }
@@ -1377,7 +1406,7 @@ public class MainActivity extends AppCompatActivity {
                     channelPanelController.hidePanel();
                 }
             } catch (Exception e) {
-                Log.e("Settings", "hidePanel 失败", e);
+                LogBridge.e("Settings", "hidePanel 失败", e);
             }
 
             try {
@@ -1385,19 +1414,19 @@ public class MainActivity extends AppCompatActivity {
                     playerControlManager.onOpenSettings();
                 }
             } catch (Exception e) {
-                Log.e("Settings", "onOpenSettings 失败", e);
+                LogBridge.e("Settings", "onOpenSettings 失败", e);
             }
 
             try {
                 settingsDialog = new SettingsDialog(this);
                 settingsDialog.show();
-                Log.d("Settings", "SettingsDialog 显示成功");
+                LogBridge.d("Settings", "SettingsDialog 显示成功");
             } catch (Exception e) {
-                Log.e("Settings", "显示 SettingsDialog 失败", e);
+                LogBridge.e("Settings", "显示 SettingsDialog 失败", e);
                 isOpeningSettings = false;
             }
         } catch (Exception e) {
-            Log.e("Settings", "打开设置失败", e);
+            LogBridge.e("Settings", "打开设置失败", e);
             isOpeningSettings = false;
         }
     }
@@ -1420,7 +1449,7 @@ public class MainActivity extends AppCompatActivity {
                 channelPanelController.setReverse(channel_reverse);
             }
             
-            Log.d("MainActivity", "设置已主动刷新，无需切后台");
+            LogBridge.d("MainActivity", "设置已主动刷新，无需切后台");
         });
     }
 
@@ -1460,7 +1489,7 @@ public class MainActivity extends AppCompatActivity {
         if (!sp.getBoolean("debug_log_enable", false)) {
             return; // 没开记录开关，直接拦截
         }
-        Log.d("MainActivity", msg);
+        LogBridge.d("MainActivity", msg);
         // 传入 "播放" tag 以通过白名单过滤
         LogCollector.getInstance().addLog("播放", msg);
     }
@@ -1545,7 +1574,7 @@ public class MainActivity extends AppCompatActivity {
         if (requestCode == 100) {
             isOpeningSettings = false;
             okKeyTriggered = false;
-            android.util.Log.d("MainActivity", "onActivityResult: Settings closed, isOpeningSettings reset to false");
+            LogBridge.d("MainActivity", "onActivityResult: Settings closed, isOpeningSettings reset to false");
         }
     }
 
@@ -1711,6 +1740,14 @@ public class MainActivity extends AppCompatActivity {
                 unregisterReceiver(unlockReceiver);
             } catch (Exception ignored) {}
             unlockReceiver = null;
+        }
+
+        // 注销系统"自动旋转"开关监听
+        if (autoRotateObserver != null) {
+            try {
+                getContentResolver().unregisterContentObserver(autoRotateObserver);
+            } catch (Exception ignored) {}
+            autoRotateObserver = null;
         }
 
         // 清理其他引用

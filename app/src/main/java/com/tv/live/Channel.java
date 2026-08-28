@@ -24,6 +24,12 @@ public class Channel implements Parcelable {
     private boolean isTogetherWatch = false;
     private int huyaRoomId = 0;
 
+    // 🆕【SDK独立一起看分组】标识该频道来自 SDK 内部一起看列表（独立分组，不受其他源影响）
+    private boolean isHuyaSdkTogetherWatch = false;
+
+    // 🟢 一起看/游戏直播频道：完整长整型 uid（presenterUid），用作该频道的开播 key（huya://uid/ 协议）
+    private long huyaUid = 0;
+
     public Channel(String name, String mainPlayUrl, String group, String channelId) {
         this.name = name;
         this.mainPlayUrl = mainPlayUrl;
@@ -133,6 +139,22 @@ public class Channel implements Parcelable {
         this.huyaRoomId = huyaRoomId;
     }
 
+    public boolean isHuyaSdkTogetherWatch() {
+        return isHuyaSdkTogetherWatch;
+    }
+
+    public void setHuyaSdkTogetherWatch(boolean v) {
+        isHuyaSdkTogetherWatch = v;
+    }
+
+    public long getHuyaUid() {
+        return huyaUid;
+    }
+
+    public void setHuyaUid(long huyaUid) {
+        this.huyaUid = huyaUid;
+    }
+
     // ==================== Parcelable 实现 ====================
     protected Channel(Parcel in) {
         name = in.readString();
@@ -144,6 +166,8 @@ public class Channel implements Parcelable {
         currentLineIndex = in.readInt();
         isTogetherWatch = in.readByte() != 0;
         huyaRoomId = in.readInt();
+        isHuyaSdkTogetherWatch = in.readByte() != 0;
+        huyaUid = in.readLong();
     }
 
     public static final Creator<Channel> CREATOR = new Creator<Channel>() {
@@ -174,6 +198,8 @@ public class Channel implements Parcelable {
         dest.writeInt(currentLineIndex);
         dest.writeByte((byte) (isTogetherWatch ? 1 : 0));
         dest.writeInt(huyaRoomId);
+        dest.writeByte((byte) (isHuyaSdkTogetherWatch ? 1 : 0));
+        dest.writeLong(huyaUid);
     }
 
     public static class EpgItem {

@@ -4,7 +4,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Build;
-import android.util.Log;
+import com.tv.live.util.LogBridge;
 
 /**
  * 开机自启 - 实际启动执行器
@@ -46,13 +46,13 @@ public class BootStartReceiver extends BroadcastReceiver {
         }
 
         String action = intent.getAction();
-        Log.d(TAG, "收到启动广播：" + action);
+        LogBridge.d(TAG, "收到启动广播：" + action);
 
         if (!"com.tv.live.START_APP".equals(action)) {
             return;
         }
 
-        Log.d(TAG, "开始启动应用...");
+        LogBridge.d(TAG, "开始启动应用...");
 
         // ====================================================================
         // 多重兜底方案，确保能启动成功
@@ -62,29 +62,29 @@ public class BootStartReceiver extends BroadcastReceiver {
         boolean success = startActivityDirectly(context);
 
         if (success) {
-            Log.d(TAG, "方案 1 成功：直接启动 Activity");
+            LogBridge.d(TAG, "方案 1 成功：直接启动 Activity");
             return;
         }
 
         // 方案 2：用特殊标志启动
-        Log.w(TAG, "方案 1 失败，尝试方案 2：特殊标志启动");
+        LogBridge.w(TAG, "方案 1 失败，尝试方案 2：特殊标志启动");
         success = startActivityWithSpecialFlags(context);
 
         if (success) {
-            Log.d(TAG, "方案 2 成功：特殊标志启动");
+            LogBridge.d(TAG, "方案 2 成功：特殊标志启动");
             return;
         }
 
         // 方案 3：从 Launcher 入口启动（最后的兜底）
-        Log.w(TAG, "方案 2 失败，尝试方案 3：Launcher 方式启动");
+        LogBridge.w(TAG, "方案 2 失败，尝试方案 3：Launcher 方式启动");
         success = startActivityAsLauncher(context);
 
         if (success) {
-            Log.d(TAG, "方案 3 成功：Launcher 方式启动");
+            LogBridge.d(TAG, "方案 3 成功：Launcher 方式启动");
             return;
         }
 
-        Log.e(TAG, "所有方案都失败，启动应用失败");
+        LogBridge.e(TAG, "所有方案都失败，启动应用失败");
     }
 
     // ====================================================================
@@ -109,10 +109,10 @@ public class BootStartReceiver extends BroadcastReceiver {
             }
 
             context.startActivity(mainIntent);
-            Log.d(TAG, "直接启动 Activity 成功");
+            LogBridge.d(TAG, "直接启动 Activity 成功");
             return true;
         } catch (Exception e) {
-            Log.e(TAG, "直接启动 Activity 失败", e);
+            LogBridge.e(TAG, "直接启动 Activity 失败", e);
             return false;
         }
     }
@@ -139,10 +139,10 @@ public class BootStartReceiver extends BroadcastReceiver {
             mainIntent.addFlags(Intent.FLAG_RECEIVER_FOREGROUND);
 
             context.startActivity(mainIntent);
-            Log.d(TAG, "特殊标志启动成功");
+            LogBridge.d(TAG, "特殊标志启动成功");
             return true;
         } catch (Exception e) {
-            Log.e(TAG, "特殊标志启动失败", e);
+            LogBridge.e(TAG, "特殊标志启动失败", e);
             return false;
         }
     }
@@ -171,14 +171,14 @@ public class BootStartReceiver extends BroadcastReceiver {
                 mainIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 mainIntent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
                 context.startActivity(mainIntent);
-                Log.d(TAG, "Launcher 方式启动成功");
+                LogBridge.d(TAG, "Launcher 方式启动成功");
                 return true;
             } else {
-                Log.e(TAG, "获取 Launcher Intent 失败");
+                LogBridge.e(TAG, "获取 Launcher Intent 失败");
                 return false;
             }
         } catch (Exception e) {
-            Log.e(TAG, "Launcher 方式启动失败", e);
+            LogBridge.e(TAG, "Launcher 方式启动失败", e);
             return false;
         }
     }

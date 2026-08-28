@@ -13,7 +13,7 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.TextUtils;
-import android.util.Log;
+import com.tv.live.util.LogBridge;
 import android.view.ContextThemeWrapper;
 import android.view.View;
 import android.view.ViewGroup;
@@ -155,7 +155,7 @@ public class TVPlayerManager {
     private OnPlayerViewRecreatedListener onPlayerViewRecreatedListener;
     private boolean isRenderingSwitching = false;
 
-    private final Map<String, String> reusableHeaderMap = new HashMap<>();
+    private final Map<String, String> reusableHeaderMap = Collections.synchronizedMap(new HashMap<>());
     // 由 SDK 解析返回的专用播放请求头
     // 在 doPlay 构建 reusableHeaderMap 时优先覆盖，避免 CDN 302 后鉴权头丢失
     private Map<String, String> mPendingPlaybackHeaders = null;
@@ -215,7 +215,7 @@ public class TVPlayerManager {
             case "soft":   mDecoderMode = DECODER_MODE_SOFT;   break;
             default:       mDecoderMode = DECODER_MODE_AUTO;   break;
         }
-        Log.i(TAG, "📺 启动时读取解码器设置: decoder_mode=" + savedMode + " → mDecoderMode=" + mDecoderMode);
+        LogBridge.i(TAG, "📺 启动时读取解码器设置: decoder_mode=" + savedMode + " → mDecoderMode=" + mDecoderMode);
 
         hideChannelRunnable = () -> hideChannelNum();
 
@@ -235,7 +235,7 @@ public class TVPlayerManager {
                     int state = player.getPlaybackState();
                     if (state == Player.STATE_IDLE || state == Player.STATE_ENDED) {
                         // 播放器已空闲/结束且未恢复，判定为异常，触发重试
-                        Log.w(TAG, "检测到播放器异常状态(state=" + state + ")，自动重试...");
+                        LogBridge.w(TAG, "检测到播放器异常状态(state=" + state + ")，自动重试...");
                         autoRetry("播放卡住");
                         return;
                     }
@@ -246,7 +246,7 @@ public class TVPlayerManager {
                             lastPositionUpdateTime = now;
                         }
                         if (now - lastPositionUpdateTime > STUCK_TIMEOUT) {
-                            Log.w(TAG, "检测到长时间缓冲(" + STUCK_TIMEOUT + "ms)，自动重试...");
+                            LogBridge.w(TAG, "检测到长时间缓冲(" + STUCK_TIMEOUT + "ms)，自动重试...");
                             autoRetry("播放卡住");
                             return;
                         }
@@ -255,7 +255,7 @@ public class TVPlayerManager {
                         lastPositionUpdateTime = 0;
                     }
                 } catch (Exception e) {
-                    Log.e(TAG, "卡住检测异常", e);
+                    LogBridge.e(TAG, "卡住检测异常", e);
                 }
                 mHandler.postDelayed(this, 2000);
             }
@@ -328,18 +328,18 @@ public class TVPlayerManager {
     
     private void dLog(String msg) {
         if (sp.getBoolean("log_enable", false)) {
-            Log.d(TAG, msg);
+            LogBridge.d(TAG, msg);
             com.tv.live.util.LogCollector.getInstance().addLog(TAG, msg);
         }
     }
 
     private void logPlayback(String msg) {
-        Log.i(TAG, "[PLAY] " + msg);
+        LogBridge.i(TAG, "[PLAY] " + msg);
         com.tv.live.util.LogCollector.getInstance().playback(TAG, msg);
     }
 
     private void logError(String msg) {
-        Log.e(TAG, msg);
+        LogBridge.e(TAG, msg);
         // 过滤可预期的播放错误，不上报到Bugly
         // 这些错误通常是由于直播源问题（URL过期、服务器问题等），不是应用bug
         if (shouldReportPlaybackError(msg)) {
@@ -378,20 +378,18 @@ public class TVPlayerManager {
     }
 
     private void logWarn(String msg) {
-        Log.w(TAG, msg);
+        LogBridge.w(TAG, msg);
         com.tv.live.util.LogCollector.getInstance().warn(TAG, msg);
     }
 
     private void logNetwork(String msg) {
         if (BuildConfig.IS_DEBUG) {
-            Log.i(TAG, "[NET] " + msg);
+            LogBridge.i(TAG, "[NET] " + msg);
             com.tv.live.util.LogCollector.getInstance().network(TAG, msg);
         }
     }
     
     private void initPlayer() {
-        com.tv.live.util.DeviceCapabilities.ensureDetected(context);
-
         // 🎯 解码器模式 → 是否优先软解（硬解不足时的降级策略）
         // 方案 1：全 MediaCodec，靠 fallback + MediaCodecSelector 切换
         boolean preferSoftware;
@@ -639,7 +637,7 @@ public class TVPlayerManager {
         
         // 🔴 如果备用源也是虎牙房间号，直接跳过，递归尝试下一个！
         if (isHuyaRoomUrl(backupUrl)) {
-            Log.w(TAG, "备用源是虎牙房间号，跳过！尝试下一个...");
+            LogBridge.w(TAG, "备用源是虎牙房间号，跳过！尝试下一个...");
             return trySwitchBackup();
         }
         
@@ -665,6 +663,18 @@ public class TVPlayerManager {
             retryRunnable = null;
         }
         isRetrying = false;
+    }
+
+    /**
+     * 🟢【优化】异步播放准备阶段（后台线程）或 ExoPlayer 同步操作的异常统一处理（主线程执行）
+     */
+    private void handleAsyncPlaybackError(Throwable e) {
+        LogBridge.e(TAG, "播放异常", e);
+        if (e instanceof RedirectFailedException) {
+            if (listener != null) listener.onPlayError("源跳转失败：" + e.getMessage());
+            return;
+        }
+        autoRetry("播放异常：" + e.getMessage(), e);
     }
 
     private void autoRetry(String reason) {
@@ -719,7 +729,7 @@ public class TVPlayerManager {
             if (!TextUtils.isEmpty(currentUrl)) {
                 // 如果是虎牙流 URL，重新触发完整解析（获取新签名+headers）
                 if (currentUrl.contains(".huya.com") && mHuyaRoomId > 0) {
-                    Log.d(TAG, "【虎牙】重试：重新触发解析获取新签名, roomId=" + mHuyaRoomId);
+                    LogBridge.d(TAG, "【虎牙】重试：重新触发解析获取新签名, roomId=" + mHuyaRoomId);
                     playHuyaStream(mHuyaRoomId, 0);
                 } else {
                     playUrlInternal(currentUrl);
@@ -765,13 +775,13 @@ public class TVPlayerManager {
      */
     private void handleSurfaceLost() {
         try {
-            Log.w(TAG, "handleSurfaceLost: 开始处理 Surface 失效");
+            LogBridge.w(TAG, "handleSurfaceLost: 开始处理 Surface 失效");
             // 1. 解除 player 与 view 的绑定，让 PlayerView 重新创建 surface
             if (playerView != null) {
                 try {
                     playerView.setPlayer(null);
                 } catch (Exception e) {
-                    Log.w(TAG, "setPlayer(null) 异常: " + e.getMessage());
+                    LogBridge.w(TAG, "setPlayer(null) 异常: " + e.getMessage());
                 }
             }
             // 2. 重置 surface 状态
@@ -805,18 +815,18 @@ public class TVPlayerManager {
                         }
                         // 重置 player 并重放当前 URL（从最新状态恢复）
                         if (!TextUtils.isEmpty(currentUrl)) {
-                            Log.d(TAG, "Surface 重建完成，重新播放: " + currentUrl);
+                            LogBridge.d(TAG, "Surface 重建完成，重新播放: " + currentUrl);
                             // 注意：playUrlInternal 会重新 prepare+play，无需手动 reset
                             playUrlInternal(currentUrl);
                         }
                         pendingBindPlayer = false;
                     } catch (Exception e) {
-                        Log.e(TAG, "Surface 重建后恢复播放异常: " + e.getMessage(), e);
+                        LogBridge.e(TAG, "Surface 重建后恢复播放异常: " + e.getMessage(), e);
                     }
                 }, 500); // 给 Surface 重建留 500ms
             }
         } catch (Exception e) {
-            Log.e(TAG, "handleSurfaceLost 异常", e);
+            LogBridge.e(TAG, "handleSurfaceLost 异常", e);
         }
     }
 
@@ -868,7 +878,7 @@ public class TVPlayerManager {
 
     private void performDecoderSwitch() {
         if (isSwitching) {
-            Log.w(TAG, "正在解码器切换中，忽略当前请求");
+            LogBridge.w(TAG, "正在解码器切换中，忽略当前请求");
             return;
         }
         isSwitching = true;
@@ -887,7 +897,7 @@ public class TVPlayerManager {
                 player = null;
             }
         } catch (Exception e) {
-            Log.e(TAG, "释放旧播放器异常", e);
+            LogBridge.e(TAG, "释放旧播放器异常", e);
         }
 
         initPlayer();
@@ -999,7 +1009,7 @@ public class TVPlayerManager {
             ContextCompat.registerReceiver(context, decoderModeReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED);
             decoderReceiverRegistered = true;
         } catch (Exception e) {
-            Log.e(TAG, "注册解码器广播失败", e);
+            LogBridge.e(TAG, "注册解码器广播失败", e);
         }
     }
 
@@ -1012,7 +1022,7 @@ public class TVPlayerManager {
             }
             decoderReceiverRegistered = false;
         } catch (Exception e) {
-            Log.e(TAG, "注销解码器广播失败", e);
+            LogBridge.e(TAG, "注销解码器广播失败", e);
         }
     }
 
@@ -1102,7 +1112,7 @@ public class TVPlayerManager {
             ContextCompat.registerReceiver(context, rendererModeReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED);
             rendererReceiverRegistered = true;
         } catch (Exception e) {
-            Log.e(TAG, "注册渲染方式广播失败", e);
+            LogBridge.e(TAG, "注册渲染方式广播失败", e);
         }
     }
 
@@ -1115,7 +1125,7 @@ public class TVPlayerManager {
             }
             rendererReceiverRegistered = false;
         } catch (Exception e) {
-            Log.e(TAG, "注销渲染方式广播失败", e);
+            LogBridge.e(TAG, "注销渲染方式广播失败", e);
         }
     }
 
@@ -1160,7 +1170,7 @@ public class TVPlayerManager {
                 }
             }
         } catch (Exception e) {
-            Log.e(TAG, "切前台异常", e);
+            LogBridge.e(TAG, "切前台异常", e);
         }
     }
 
@@ -1185,7 +1195,7 @@ public class TVPlayerManager {
                                     player.play();
                                 }
                                 pendingBindPlayer = false;
-                                Log.d(TAG, "Surface已重建，播放已恢复（重试第" + retryCount[0] + "次）");
+                                LogBridge.d(TAG, "Surface已重建，播放已恢复（重试第" + retryCount[0] + "次）");
                                 return;
                             }
                             // 🔧 每次重试都尝试强制绑定+播放，避免 Surface 回调丢失
@@ -1203,17 +1213,17 @@ public class TVPlayerManager {
                             if (pendingBindPlayer && retryCount[0] < maxRetries) {
                                 mHandler.postDelayed(this, 300);
                             } else if (retryCount[0] >= maxRetries) {
-                                Log.w(TAG, "Surface恢复重试已达上限(" + maxRetries + "次)，停止重试");
+                                LogBridge.w(TAG, "Surface恢复重试已达上限(" + maxRetries + "次)，停止重试");
                                 pendingBindPlayer = false;
                             }
                         }
                     } catch (Exception e) {
-                        Log.e(TAG, "恢复播放重试异常", e);
+                        LogBridge.e(TAG, "恢复播放重试异常", e);
                     }
                 }
             }, 300);
         } catch (Exception e) {
-            Log.e(TAG, "启动恢复重试异常", e);
+            LogBridge.e(TAG, "启动恢复重试异常", e);
         }
     }
 
@@ -1233,7 +1243,7 @@ public class TVPlayerManager {
                 pendingBindPlayer = true;
             }
         } catch (Exception e) {
-            Log.e(TAG, "切后台异常", e);
+            LogBridge.e(TAG, "切后台异常", e);
         }
     }
 
@@ -1246,11 +1256,11 @@ public class TVPlayerManager {
             if (player != null && playerView != null) {
                 if (playerView.getPlayer() != player) {
                     playerView.setPlayer(player);
-                    Log.d(TAG, "播放器已绑定到视图");
+                    LogBridge.d(TAG, "播放器已绑定到视图");
                 }
             }
         } catch (Exception e) {
-            Log.e(TAG, "绑定播放器到视图失败", e);
+            LogBridge.e(TAG, "绑定播放器到视图失败", e);
         }
     }
 
@@ -1263,7 +1273,7 @@ public class TVPlayerManager {
                 surfaceCallbackBound = false;
             }
         } catch (Exception e) {
-            Log.e(TAG, "解绑PlayerView异常", e);
+            LogBridge.e(TAG, "解绑PlayerView异常", e);
         }
     }
 
@@ -1292,21 +1302,19 @@ public class TVPlayerManager {
                         }
                     }
                     pendingBindPlayer = false;
-                    Log.d(TAG, "Surface创建成功，播放器已绑定视图并持续播放");
+                    LogBridge.d(TAG, "Surface创建成功，播放器已绑定视图并持续播放");
                 }
 
                 @Override
                 public void surfaceChanged(android.view.SurfaceHolder holder, int format, int width, int height) {
-                    Log.d(TAG, "Surface变化: " + width + "x" + height);
+                    LogBridge.d(TAG, "Surface变化: " + width + "x" + height);
                 }
 
                 @Override
                 public void surfaceDestroyed(android.view.SurfaceHolder holder) {
                     surfaceReady = false;
                     pendingBindPlayer = true;
-                    Log.d(TAG, "Surface销毁，播放器保持运行不解绑");
-                    // 🔧 Surface 销毁时不要暂停播放器，保持 playWhenReady=true，
-                    // 这样 Surface 重建后播放器会自动恢复渲染，避免黑屏。
+                    LogBridge.d(TAG, "Surface销毁，播放器保持运行不解绑");
                 }
             });
             surfaceCallbackBound = true;
@@ -1445,6 +1453,12 @@ public class TVPlayerManager {
         return url.startsWith("huya://room/");
     }
 
+    /** 🟢 主播UID协议（huya://uid/），SDK getLiveData(uid) 通道，成功率最高 */
+    private boolean isHuyaUidProtocolUrl(String url) {
+        if (TextUtils.isEmpty(url)) return false;
+        return url.startsWith("huya://uid/");
+    }
+
     private void playUrlInternal(String url) {
         playUrlInternal(url, 0);
     }
@@ -1453,6 +1467,20 @@ public class TVPlayerManager {
         // 🔧【缓存治理】每次起播前，后台快速巡检一次 ExoPlayer 临时分片目录的水位
         try { AppCacheInspector.onBeforePlayback(context); } catch (Throwable ignored) {}
 
+        // 🟢 主播UID协议优先（huya://uid/）：一起看/分类列表返回的 channelId 不是可播房号时，
+        //    用 presenterUid 走 SDK getLiveData(uid) 通道，成功率最高
+        if (isHuyaUidProtocolUrl(url)) {
+            String uidStr = url.replace("huya://uid/", "").trim();
+            long uid;
+            try {
+                uid = Long.parseLong(uidStr);
+            } catch (NumberFormatException e) {
+                autoRetry("虎牙UID格式错误: " + url);
+                return;
+            }
+            playHuyaStreamByUid(uid, initialSeekPosition);
+            return;
+        }
         if (isHuyaProtocolUrl(url)) {
             String roomIdStr = url.replace("huya://room/", "").trim();
             int roomId;
@@ -1492,7 +1520,20 @@ public class TVPlayerManager {
      * 内即可进入播放（之前=点频道后才实时解析，需 3s~30s 等待）。
      */
     private void playHuyaStream(int roomId, long initialSeekPosition) {
-        mHuyaRoomId = roomId;
+        playHuyaStreamDual(0, roomId, initialSeekPosition);
+    }
+
+    /** 通过主播UID播放（huya://uid/ 协议，SDK getLiveData(uid) 通道） */
+    private void playHuyaStreamByUid(long uid, long initialSeekPosition) {
+        playHuyaStreamDual(uid, 0, initialSeekPosition);
+    }
+
+    /** 双通道播放核心：uid>0 走 uid 通道（parseFullByUid），否则 roomId 通道（parseFull） */
+    private void playHuyaStreamDual(final long uid, final int roomId, long initialSeekPosition) {
+        final int effectiveRoomId = (roomId > 0 ? roomId : (int) uid);
+        // uid 通道缓存 key 用负数，避免与正数 roomId 冲突
+        final int cacheKey = (uid > 0 ? (int) -uid : roomId);
+        mHuyaRoomId = effectiveRoomId;
         final long parseStartTs = System.currentTimeMillis();
 
         // 隐藏 SDK 容器，确保 ExoPlayer 可见
@@ -1516,41 +1557,63 @@ public class TVPlayerManager {
 
         // 仅使用 SDK 解析完整线路+码率信息
         if (!HuyaSDKParser.isSDKAvailable()) {
-            Log.e(TAG, "【虎牙】SDK 不可用, roomId=" + roomId);
-            mHandler.post(() -> {
-                Toast.makeText(context, "虎牙 SDK 不可用，无法解析直播源", Toast.LENGTH_SHORT).show();
-                if (sourceFailedListener != null) {
-                    sourceFailedListener.onSourceFailed();
+            // SDK 尚未就绪 → 不立即报错，改为等待 SDK 就绪后自动重试
+            // parseFull 内部已集成 addInitReadyListener，会在 SDK ready 后自动重试解析
+            LogBridge.w(TAG, "【虎牙】SDK 尚未就绪, roomId=" + effectiveRoomId + " → 等待 SDK 初始化完成后自动重试");
+            final long startTime = System.currentTimeMillis();
+            HuyaSDKParser.addInitReadyListener(new Runnable() {
+                @Override public void run() {
+                    long waitTime = System.currentTimeMillis() - startTime;
+                    LogBridge.i(TAG, "【虎牙】SDK 就绪(等待" + waitTime + "ms), 开始解析 roomId=" + effectiveRoomId);
+                    // 重新进入播放流程
+                    mHandler.post(new Runnable() {
+                        @Override public void run() {
+                            playHuyaStreamDual(uid, roomId, initialSeekPosition);
+                        }
+                    });
                 }
             });
+            // 超时保护：若 15s 内 SDK 仍未就绪，降级为错误提示
+            mHandler.postDelayed(new Runnable() {
+                @Override public void run() {
+                    if (!HuyaSDKParser.isSDKAvailable()) {
+                        LogBridge.e(TAG, "【虎牙】SDK 等待超时(15s), roomId=" + effectiveRoomId);
+                        Toast.makeText(context, "虎牙 SDK 初始化超时，请重试", Toast.LENGTH_SHORT).show();
+                        if (sourceFailedListener != null) {
+                            sourceFailedListener.onSourceFailed();
+                        }
+                    }
+                }
+            }, 15000);
             return;
         }
 
         // 🟢【性能诊断】：入口先检查是否命中缓存（parseFull 内部也会做，但这里打印
         //   用户点击→开始播放的耗时感知日志，方便定位首帧速度）
-        HuyaSDKParser.CachedStreams cached = HuyaSDKParser.getCachedStreams(roomId);
+        HuyaSDKParser.CachedStreams cached = HuyaSDKParser.getCachedStreams(cacheKey);
         if (cached != null && cached.streams != null && !cached.streams.isEmpty()) {
             long ageSec = (System.currentTimeMillis() - cached.timestamp) / 1000;
-            Log.i(TAG, "🚀【虎牙并行加载】命中预解析缓存！房间=" + roomId
+            LogBridge.i(TAG, "🚀【虎牙并行加载】命中预解析缓存！房间=" + effectiveRoomId
                     + "，缓存年龄=" + ageSec + "s，流数=" + cached.streams.size()
                     + "，即将瞬时启动播放（跳过实时SDK等待）");
         } else {
-            Log.w(TAG, "⚠️【虎牙并行加载】未命中预解析缓存（房间=" + roomId
+            LogBridge.w(TAG, "⚠️【虎牙并行加载】未命中预解析缓存（房间=" + effectiveRoomId
                     + "），退化为实时解析，等待时间约 3~30s。"
                     + " 通常是：该房间在预解析前30名之外 / 直播源刚加载完用户就立刻点击 / 缓存已过期（>60s）");
         }
 
-        Log.d(TAG, "【虎牙】使用 SDK 全量解析, roomId=" + roomId);
-        HuyaSDKParser.parseFull(roomId, new HuyaSDKParser.OnSDKFullResultListener() {
+        LogBridge.d(TAG, "【虎牙】使用 SDK 全量解析, roomId=" + effectiveRoomId
+                + (uid > 0 ? " (uid通道 uid=" + uid + ")" : ""));
+        HuyaSDKParser.OnSDKFullResultListener sdkFullListener = new HuyaSDKParser.OnSDKFullResultListener() {
             @Override
             public void onSuccess(HuyaSDKParser.HuyaStreamInfo defaultStream,
                                   List<HuyaSDKParser.HuyaStreamInfo> allStreams,
                                   List<String> lines) {
                 long costMs = System.currentTimeMillis() - parseStartTs;
-                HuyaSDKParser.CachedStreams cs = HuyaSDKParser.getCachedStreams(roomId);
+                HuyaSDKParser.CachedStreams cs = HuyaSDKParser.getCachedStreams(cacheKey);
                 boolean fromPreload = (cs != null && cs.streams == allStreams)
                         || (costMs < 300);  // 缓存命中几乎瞬时返回，<300ms 基本是命中
-                Log.i(TAG, "⚡【虎牙解析耗时】" + costMs + "ms, roomId=" + roomId
+                LogBridge.i(TAG, "⚡【虎牙解析耗时】" + costMs + "ms, roomId=" + effectiveRoomId
                         + "，缓存命中=" + fromPreload
                         + "，流数=" + (allStreams != null ? allStreams.size() : 0));
                 // 🟢【新增】使用数组包装器，允许在轮询逻辑中修改 defaultStream 引用
@@ -1573,10 +1636,9 @@ public class TVPlayerManager {
                     HuyaSDKParser.HuyaStreamInfo deviceBest =
                             HuyaSDKParser.selectBestStreamForDevice(sameLineStreams);
                     if (deviceBest != null && deviceBest != defaultStream) {
-                        Log.i(TAG, "【电视适配】默认流已调整: " + defaultStream.bitRateDisplayName
+                        LogBridge.i(TAG, "【画质选择】默认流已调整: " + defaultStream.bitRateDisplayName
                                 + " → " + deviceBest.bitRateDisplayName
-                                + " (适配目标高度="
-                                + (com.tv.live.util.DeviceCapabilities.isTv() ? 720 : "自动") + "p)");
+                                + " (统一最高画质)");
                         streamHolder[0] = deviceBest;
                     }
                 }
@@ -1585,7 +1647,7 @@ public class TVPlayerManager {
                 // 🟢【新增】线路轮询逻辑：多次进入同一直播间时自动切换线路
                 // ================================================================
                 if (streamHolder[0] == null || TextUtils.isEmpty(streamHolder[0].getPlayUrl())) {
-                    Log.e(TAG, "【虎牙】SDK 解析返回空默认地址");
+                    LogBridge.e(TAG, "【虎牙】SDK 解析返回空默认地址");
                     mHandler.post(() -> {
                         Toast.makeText(context, "虎牙 SDK 解析失败：返回空地址", Toast.LENGTH_SHORT).show();
                         if (sourceFailedListener != null) {
@@ -1605,7 +1667,7 @@ public class TVPlayerManager {
                     List<Integer> uniqueLineIndices = new ArrayList<>(lineIndexSet);
 
                     if (uniqueLineIndices.size() > 1) {
-                        String linePrefKey = "huya_line_poll_" + roomId;
+                        String linePrefKey = "huya_line_poll_" + effectiveRoomId;
                         int lastLineIdx = sp.getInt(linePrefKey, uniqueLineIndices.get(0));
 
                         int currentPos = -1;
@@ -1621,7 +1683,7 @@ public class TVPlayerManager {
                         int targetLineIndex = uniqueLineIndices.get(nextPos);
 
                         if (targetLineIndex != streamHolder[0].lineIndex) {
-                            Log.d(TAG, "【虎牙】线路轮询：切换到线路 " + targetLineIndex);
+                            LogBridge.d(TAG, "【虎牙】线路轮询：切换到线路 " + targetLineIndex);
                             HuyaSDKParser.HuyaStreamInfo targetStream = null;
                             for (HuyaSDKParser.HuyaStreamInfo s : allStreams) {
                                 if (s.lineIndex == targetLineIndex && !TextUtils.isEmpty(s.getPlayUrl())) {
@@ -1695,13 +1757,13 @@ public class TVPlayerManager {
                         ? currentLineVariants.get(0).getDisplayLabel() : "";
                 int totalVariantCount = 0;
                 for (List<Variant> g : lineGroups.values()) totalVariantCount += g.size();
-                Log.d(TAG, "【虎牙】variantList 填充: 共 " + totalVariantCount + " 个清晰度，分布在 " + lineGroups.size() + " 条线路");
+                LogBridge.d(TAG, "【虎牙】variantList 填充: 共 " + totalVariantCount + " 个清晰度，分布在 " + lineGroups.size() + " 条线路");
                 for (java.util.Map.Entry<Integer, List<Variant>> entry : lineGroups.entrySet()) {
                     StringBuilder sb = new StringBuilder("  线路").append(entry.getKey()).append(": ");
                     for (Variant v : entry.getValue()) {
                         sb.append(v.getDisplayLabel()).append(" ");
                     }
-                    Log.d(TAG, sb.toString());
+                    LogBridge.d(TAG, sb.toString());
                 }
 
                 // ================================================================
@@ -1734,10 +1796,10 @@ public class TVPlayerManager {
                         }
                     }
 
-                    Log.d(TAG, "【虎牙】扁平化线路: 主源 + " + backups.size() + " 个备源 (总变体数=" + allVariants.size() + ")");
+                    LogBridge.d(TAG, "【虎牙】扁平化线路: 主源 + " + backups.size() + " 个备源 (总变体数=" + allVariants.size() + ")");
                 }
 
-                Log.d(TAG, "【虎牙】SDK 全量解析成功, 默认流=" + defaultUrl.substring(0, Math.min(80, defaultUrl.length())));
+                LogBridge.d(TAG, "【虎牙】SDK 全量解析成功, 默认流=" + defaultUrl.substring(0, Math.min(80, defaultUrl.length())));
 
                 mPendingPlaybackHeaders = null;
                 mHandler.post(() -> doPlay(defaultUrl, initialSeekPosition));
@@ -1745,7 +1807,7 @@ public class TVPlayerManager {
 
             @Override
             public void onError(String error) {
-                Log.e(TAG, "【虎牙】SDK 全量解析失败: " + error);
+                LogBridge.e(TAG, "【虎牙】SDK 全量解析失败: " + error);
                 mHandler.post(() -> {
                     Toast.makeText(context, "虎牙 SDK 解析失败: " + error, Toast.LENGTH_SHORT).show();
                     if (sourceFailedListener != null) {
@@ -1753,7 +1815,13 @@ public class TVPlayerManager {
                     }
                 });
             }
-        });
+        };
+
+        if (uid > 0) {
+            HuyaSDKParser.parseFullByUid(uid, sdkFullListener);
+        } else {
+            HuyaSDKParser.parseFull(roomId, sdkFullListener);
+        }
     }
 
     // ================================================================
@@ -1773,7 +1841,7 @@ public class TVPlayerManager {
                     || lowerUrl.contains(".flv.huya.com/")
                     || lowerUrl.contains(".hls.huya.com/")
                     || (lowerUrl.startsWith("http") && (lowerUrl.contains("/src?ws") || lowerUrl.contains("&wssecret=")));
-            Log.d(TAG, "doPlay: url=" + playUrl.substring(0, Math.min(100, playUrl.length())) + " isHls=" + isHlsUrl(playUrl) + " isRealStream=" + isRealStream);
+            LogBridge.d(TAG, "doPlay: url=" + playUrl.substring(0, Math.min(100, playUrl.length())) + " isHls=" + isHlsUrl(playUrl) + " isRealStream=" + isRealStream);
 
             // 计算最终播放 URL（处理线路切换）
             String finalUrl;
@@ -1798,7 +1866,7 @@ public class TVPlayerManager {
                         finalUrl = backups.get(backupIndex);
                     } else {
                         finalUrl = currentChannel.getMainPlayUrl();
-                        Log.w(TAG, "线路索引越界，已自动切回主源");
+                        LogBridge.w(TAG, "线路索引越界，已自动切回主源");
                     }
                 }
                 dLog("切换线路后播放：" + finalUrl);
@@ -1816,7 +1884,7 @@ public class TVPlayerManager {
             }
 
         } catch (Exception e) {
-            Log.e(TAG, "播放异常", e);
+            LogBridge.e(TAG, "播放异常", e);
             if (e instanceof RedirectFailedException) {
                 if (listener != null) listener.onPlayError("源跳转失败：" + e.getMessage());
                 return;
@@ -1848,61 +1916,87 @@ public class TVPlayerManager {
      * - 不注入 Referer/Origin/Cookie
      */
     private void doPlayNormal(String url, long initialSeekPosition) {
-        Log.d(TAG, "【普通源】开始播放: " + url.substring(0, Math.min(80, url.length())));
+        LogBridge.d(TAG, "【普通源】开始播放: " + url.substring(0, Math.min(80, url.length())));
 
         if (isHlsUrl(url)) {
             fetchAndParseMasterPlaylistNormal(url);
-            Log.i(TAG, "🔴 [DEBUG-1] fetchAndParseMasterPlaylistNormal 返回！继续执行");
+            LogBridge.i(TAG, "🔴 [DEBUG-1] fetchAndParseMasterPlaylistNormal 返回！继续执行");
         } else {
             synchronized (variantListLock) { variantList.clear(); }
-            Log.i(TAG, "🔴 [DEBUG-1] 非 HLS，variantList 已清空");
+            LogBridge.i(TAG, "🔴 [DEBUG-1] 非 HLS，variantList 已清空");
         }
 
-        Log.i(TAG, "🔴 [DEBUG-2] 准备创建 SharedPreferences 和 httpFactory...");
-        SharedPreferences sp = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE);
-        boolean debugEnabled = sp.getBoolean("debug_log_enable", false);
-        Log.i(TAG, "🔴 [DEBUG-3] sp ready, debugEnabled=" + debugEnabled);
+        // 🟢【优化】headers/httpFactory/MediaSource 构建移入后台线程：
+        // 1) NetUtil.getInstance() 是懒初始化（OkHttpClient + TOFU 证书绑定构建），
+        //    主线程首次调用会阻塞约 100~300ms，恰与首帧 vsync 竞争；
+        // 2) MediaSource 构建不依赖首帧前的任何 UI。
+        // 构建完成后 post 回主线程执行 setMediaSource/prepare/play（ExoPlayer 非线程安全）。
+        final String channelName = currentChannelName; // 主线程捕获，供后台线程使用
+        new Thread(() -> {
+            try {
+                LogBridge.i(TAG, "🔴 [DEBUG-2] 准备创建 SharedPreferences 和 httpFactory...(后台)");
+                SharedPreferences sp = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE);
+                boolean debugEnabled = sp.getBoolean("debug_log_enable", false);
+                LogBridge.i(TAG, "🔴 [DEBUG-3] sp ready, debugEnabled=" + debugEnabled);
 
-        RedirectLoggingHttpDataSource.Factory httpFactory = new RedirectLoggingHttpDataSource.Factory();
-        httpFactory.setDebugLogEnabled(debugEnabled);
+                RedirectLoggingHttpDataSource.Factory httpFactory = new RedirectLoggingHttpDataSource.Factory();
+                httpFactory.setDebugLogEnabled(debugEnabled);
 
-        // 普通 Headers：仅默认 UA + Accept
-        Headers globalHeaders = NetUtil.getInstance().createCommonHeaders(url);
-        reusableHeaderMap.clear();
-        for (String name : globalHeaders.names()) {
-            reusableHeaderMap.put(name, globalHeaders.get(name));
-        }
-        dLog("【普通源】使用默认 headers " + reusableHeaderMap.size() + " 项");
+                // 普通 Headers：仅默认 UA + Accept（后台构建局部 map，避免阻塞主线程）
+                Headers globalHeaders = NetUtil.getInstance().createCommonHeaders(url);
+                Map<String, String> localHeaders = new HashMap<>();
+                for (String name : globalHeaders.names()) {
+                    localHeaders.put(name, globalHeaders.get(name));
+                }
+                dLog("【普通源】使用默认 headers " + localHeaders.size() + " 项");
 
-        httpFactory.setDefaultRequestProperties(reusableHeaderMap);
-        httpFactory.setChannelName(currentChannelName);
-        httpFactory.setMaxRedirects(sp.getInt(KEY_REDIRECT_MAX_COUNT, 5))
-                .setAllowCrossDomainRedirects(sp.getBoolean(KEY_REDIRECT_CROSS_DOMAIN, true))
-                .setAllowCrossProtocolRedirects(sp.getBoolean(KEY_REDIRECT_CROSS_PROTOCOL, true))
-                .setFollowRedirectsWithHeaders(sp.getBoolean(KEY_REDIRECT_FOLLOW_HEADERS, true))
-                .setIgnoreSslErrorRedirect(sp.getBoolean(KEY_REDIRECT_IGNORE_SSL, false))
-                .setConnectTimeoutMs(5000)
-                .setReadTimeoutMs(8000);
+                httpFactory.setDefaultRequestProperties(localHeaders);
+                httpFactory.setChannelName(channelName);
+                httpFactory.setMaxRedirects(sp.getInt(KEY_REDIRECT_MAX_COUNT, 5))
+                        .setAllowCrossDomainRedirects(sp.getBoolean(KEY_REDIRECT_CROSS_DOMAIN, true))
+                        .setAllowCrossProtocolRedirects(sp.getBoolean(KEY_REDIRECT_CROSS_PROTOCOL, true))
+                        .setFollowRedirectsWithHeaders(sp.getBoolean(KEY_REDIRECT_FOLLOW_HEADERS, true))
+                        .setIgnoreSslErrorRedirect(sp.getBoolean(KEY_REDIRECT_IGNORE_SSL, false))
+                        .setConnectTimeoutMs(5000)
+                        .setReadTimeoutMs(8000);
 
-        MediaItem mediaItem = MediaItem.fromUri(url);
-        MediaSource mediaSource;
-        if (isHlsUrl(url)) {
-            mediaSource = new HlsMediaSource.Factory(httpFactory).createMediaSource(mediaItem);
-        } else {
-            mediaSource = new ProgressiveMediaSource.Factory(httpFactory).createMediaSource(mediaItem);
-        }
+                MediaItem mediaItem = MediaItem.fromUri(url);
+                MediaSource mediaSource;
+                if (isHlsUrl(url)) {
+                    mediaSource = new HlsMediaSource.Factory(httpFactory).createMediaSource(mediaItem);
+                } else {
+                    mediaSource = new ProgressiveMediaSource.Factory(httpFactory).createMediaSource(mediaItem);
+                }
 
-        ensurePlayerBoundToView();
-        Log.i(TAG, "🔴 [DEBUG-doPlayNormal] setMediaSource 前！player state=" + player.getPlaybackState());
-        player.setMediaSource(mediaSource, true);
-        Log.i(TAG, "🔴 [DEBUG-doPlayNormal] prepare 前！state=" + player.getPlaybackState());
-        player.prepare();
-        Log.i(TAG, "🔴 [DEBUG-doPlayNormal] prepare 后！state=" + player.getPlaybackState());
-        if (initialSeekPosition > 0) player.seekTo(initialSeekPosition);
-        Log.i(TAG, "🔴 [DEBUG-doPlayNormal] play() 前！state=" + player.getPlaybackState());
-        player.play();
-        Log.i(TAG, "🔴 [DEBUG-doPlayNormal] play() 后！state=" + player.getPlaybackState());
-        startStuckDetection();
+                // 同步写回共享 map（供 PlayerContract.getReusableHeaderMap 读取）
+                synchronized (reusableHeaderMap) {
+                    reusableHeaderMap.clear();
+                    reusableHeaderMap.putAll(localHeaders);
+                }
+
+                // 回主线程执行 ExoPlayer 操作（ExoPlayer 必须在创建它的线程调用）
+                mHandler.post(() -> {
+                    try {
+                        ensurePlayerBoundToView();
+                        LogBridge.i(TAG, "🔴 [DEBUG-doPlayNormal] setMediaSource 前！player state=" + player.getPlaybackState());
+                        player.setMediaSource(mediaSource, true);
+                        LogBridge.i(TAG, "🔴 [DEBUG-doPlayNormal] prepare 前！state=" + player.getPlaybackState());
+                        player.prepare();
+                        LogBridge.i(TAG, "🔴 [DEBUG-doPlayNormal] prepare 后！state=" + player.getPlaybackState());
+                        if (initialSeekPosition > 0) player.seekTo(initialSeekPosition);
+                        LogBridge.i(TAG, "🔴 [DEBUG-doPlayNormal] play() 前！state=" + player.getPlaybackState());
+                        player.play();
+                        LogBridge.i(TAG, "🔴 [DEBUG-doPlayNormal] play() 后！state=" + player.getPlaybackState());
+                        startStuckDetection();
+                    } catch (Exception e) {
+                        handleAsyncPlaybackError(e);
+                    }
+                });
+            } catch (Exception e) {
+                LogBridge.e(TAG, "播放准备(后台)异常", e);
+                mHandler.post(() -> handleAsyncPlaybackError(e));
+            }
+        }, "TVPlayer-Prepare-Normal").start();
     }
 
     /**
@@ -1914,87 +2008,115 @@ public class TVPlayerManager {
      * - Cookie 与 WebView 同步
      */
     private void doPlayHuya(String url, long initialSeekPosition) {
-        Log.d(TAG, "【虎牙源】开始播放: " + url.substring(0, Math.min(80, url.length())));
+        LogBridge.d(TAG, "【虎牙源】开始播放: " + url.substring(0, Math.min(80, url.length())));
 
         // 🔴【修复】不再清空 variantList！variantList 已在 playHuyaStream 中填充好，
         // 包含所有线路×码率的清晰度选项，此处直接保留供 UI 使用。
         // 之前的 variantList.clear() 会导致清晰度选择对话框为空。
 
-        SharedPreferences sp = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE);
-        boolean debugEnabled = sp.getBoolean("debug_log_enable", false);
-
-        RedirectLoggingHttpDataSource.Factory httpFactory = new RedirectLoggingHttpDataSource.Factory();
-        httpFactory.setDebugLogEnabled(debugEnabled);
-
-        // 虎牙专属 headers：浏览器 UA + Referer + Origin
-        Headers globalHeaders = NetUtil.getInstance().createCommonHeaders(url);
-        reusableHeaderMap.clear();
-        for (String name : globalHeaders.names()) {
-            reusableHeaderMap.put(name, globalHeaders.get(name));
-        }
-        reusableHeaderMap.put("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36");
-        // 🔴【关键】Referer 必须是具体房间页 URL，主页 URL 会被 CDN 403
-        String huyaReferer = mHuyaRoomId > 0 ? "https://www.huya.com/" + mHuyaRoomId : "https://www.huya.com/";
-        reusableHeaderMap.put("Referer", huyaReferer);
-        // 🔴【移除 Origin】CDN 不期望非浏览器请求携带 Origin 头，可能导致 403
-        reusableHeaderMap.put("Accept", "*/*");
-        reusableHeaderMap.put("Accept-Language", "zh-CN,zh;q=0.9");
-        reusableHeaderMap.put("Accept-Encoding", "identity");
-        reusableHeaderMap.put("Connection", "keep-alive");
-        dLog("【虎牙源】已启用浏览器UA+Referer(" + huyaReferer + ") 防盗链头");
-
-        // 🔴【关键】SDK 返回的解析器专用头优先覆盖
-        // 这套 headers 的 UA/Referer/Origin/Cookie 与解析 PC 网页时完全一致
-        if (mPendingPlaybackHeaders != null && !mPendingPlaybackHeaders.isEmpty()) {
-            int cnt = 0;
-            for (Map.Entry<String, String> e : mPendingPlaybackHeaders.entrySet()) {
-                // 🔴【跳过 Origin/Referer】Origin 触发 CDN 拦截；Referer 用房间页 URL 覆盖
-                if ("Origin".equalsIgnoreCase(e.getKey())) continue;
-                if ("Referer".equalsIgnoreCase(e.getKey())) continue;
-                reusableHeaderMap.put(e.getKey(), e.getValue());
-                cnt++;
-                // 🔴【调试】打印每个 header 的名称和值前50字符
-                Log.d(TAG, "  Header[" + e.getKey() + "] = " + e.getValue().substring(0, Math.min(50, e.getValue().length())));
-            }
-            Log.d(TAG, "【虎牙源】解析器专用Headers注入 " + cnt + " 项(含Cookie="
-                    + (mPendingPlaybackHeaders.containsKey("Cookie") ? "是" : "否") + ")");
-        } else {
-            Log.d(TAG, "【虎牙源】mPendingPlaybackHeaders 为空，走默认虎牙 headers");
-        }
+        // 🟢【优化】headers/Cookie/MediaSource 构建移入后台线程（同 doPlayNormal 优化）：
+        // NetUtil.getInstance() 懒初始化、CookieManager 访问、MediaSource 构建
+        // 均不依赖首帧前的 UI，移至后台避免阻塞主线程。
+        // 注意：mPendingPlaybackHeaders 在此处（主线程）快照并清空，后台线程只读快照。
+        final String channelName = currentChannelName; // 主线程捕获
+        final int roomId = mHuyaRoomId;               // 主线程捕获（用于 Referer）
+        final Map<String, String> pendingHeaders = mPendingPlaybackHeaders;
         mPendingPlaybackHeaders = null;
 
-        // Cookie 与 WebView 同步（仅当解析器未提供 Cookie 时）
-        boolean sendCookie = sp.getBoolean(KEY_REDIRECT_SEND_COOKIE, true);
-        if (sendCookie && !reusableHeaderMap.containsKey("Cookie")) {
-            String cookies = CookieManager.getInstance().getCookie(url);
-            if (cookies != null) reusableHeaderMap.put("Cookie", cookies);
-        }
+        new Thread(() -> {
+            try {
+                SharedPreferences sp = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE);
+                boolean debugEnabled = sp.getBoolean("debug_log_enable", false);
 
-        httpFactory.setDefaultRequestProperties(reusableHeaderMap);
-        httpFactory.setChannelName(currentChannelName);
-        // 虎牙源强制启用跨域+跨协议+保留头重定向（防盗链要求）
-        httpFactory.setMaxRedirects(sp.getInt(KEY_REDIRECT_MAX_COUNT, 5))
-                .setAllowCrossDomainRedirects(true)
-                .setAllowCrossProtocolRedirects(true)
-                .setFollowRedirectsWithHeaders(true)
-                .setIgnoreSslErrorRedirect(sp.getBoolean(KEY_REDIRECT_IGNORE_SSL, false))
-                .setConnectTimeoutMs(5000)
-                .setReadTimeoutMs(8000);
+                RedirectLoggingHttpDataSource.Factory httpFactory = new RedirectLoggingHttpDataSource.Factory();
+                httpFactory.setDebugLogEnabled(debugEnabled);
 
-        MediaItem mediaItem = MediaItem.fromUri(url);
-        MediaSource mediaSource;
-        if (isHlsUrl(url)) {
-            mediaSource = new HlsMediaSource.Factory(httpFactory).createMediaSource(mediaItem);
-        } else {
-            mediaSource = new ProgressiveMediaSource.Factory(httpFactory).createMediaSource(mediaItem);
-        }
+                // 虎牙专属 headers：浏览器 UA + Referer + Origin（后台构建局部 map）
+                Headers globalHeaders = NetUtil.getInstance().createCommonHeaders(url);
+                Map<String, String> localHeaders = new HashMap<>();
+                for (String name : globalHeaders.names()) {
+                    localHeaders.put(name, globalHeaders.get(name));
+                }
+                localHeaders.put("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36");
+                // 🔴【关键】Referer 必须是具体房间页 URL，主页 URL 会被 CDN 403
+                String huyaReferer = roomId > 0 ? "https://www.huya.com/" + roomId : "https://www.huya.com/";
+                localHeaders.put("Referer", huyaReferer);
+                // 🔴【移除 Origin】CDN 不期望非浏览器请求携带 Origin 头，可能导致 403
+                localHeaders.put("Accept", "*/*");
+                localHeaders.put("Accept-Language", "zh-CN,zh;q=0.9");
+                localHeaders.put("Accept-Encoding", "identity");
+                localHeaders.put("Connection", "keep-alive");
+                dLog("【虎牙源】已启用浏览器UA+Referer(" + huyaReferer + ") 防盗链头");
 
-        ensurePlayerBoundToView();
-        player.setMediaSource(mediaSource, true);
-        player.prepare();
-        if (initialSeekPosition > 0) player.seekTo(initialSeekPosition);
-        player.play();
-        startStuckDetection();
+                // 🔴【关键】SDK 返回的解析器专用头优先覆盖
+                // 这套 headers 的 UA/Referer/Origin/Cookie 与解析 PC 网页时完全一致
+                if (pendingHeaders != null && !pendingHeaders.isEmpty()) {
+                    int cnt = 0;
+                    for (Map.Entry<String, String> e : pendingHeaders.entrySet()) {
+                        // 🔴【跳过 Origin/Referer】Origin 触发 CDN 拦截；Referer 用房间页 URL 覆盖
+                        if ("Origin".equalsIgnoreCase(e.getKey())) continue;
+                        if ("Referer".equalsIgnoreCase(e.getKey())) continue;
+                        localHeaders.put(e.getKey(), e.getValue());
+                        cnt++;
+                        // 🔴【调试】打印每个 header 的名称和值前50字符
+                        LogBridge.d(TAG, "  Header[" + e.getKey() + "] = " + e.getValue().substring(0, Math.min(50, e.getValue().length())));
+                    }
+                    LogBridge.d(TAG, "【虎牙源】解析器专用Headers注入 " + cnt + " 项(含Cookie="
+                            + (pendingHeaders.containsKey("Cookie") ? "是" : "否") + ")");
+                } else {
+                    LogBridge.d(TAG, "【虎牙源】mPendingPlaybackHeaders 为空，走默认虎牙 headers");
+                }
+
+                // Cookie 与 WebView 同步（仅当解析器未提供 Cookie 时）
+                boolean sendCookie = sp.getBoolean(KEY_REDIRECT_SEND_COOKIE, true);
+                if (sendCookie && !localHeaders.containsKey("Cookie")) {
+                    String cookies = CookieManager.getInstance().getCookie(url);
+                    if (cookies != null) localHeaders.put("Cookie", cookies);
+                }
+
+                // 同步写回共享 map（供 PlayerContract.getReusableHeaderMap 读取）
+                synchronized (reusableHeaderMap) {
+                    reusableHeaderMap.clear();
+                    reusableHeaderMap.putAll(localHeaders);
+                }
+
+                httpFactory.setDefaultRequestProperties(localHeaders);
+                httpFactory.setChannelName(channelName);
+                // 虎牙源强制启用跨域+跨协议+保留头重定向（防盗链要求）
+                httpFactory.setMaxRedirects(sp.getInt(KEY_REDIRECT_MAX_COUNT, 5))
+                        .setAllowCrossDomainRedirects(true)
+                        .setAllowCrossProtocolRedirects(true)
+                        .setFollowRedirectsWithHeaders(true)
+                        .setIgnoreSslErrorRedirect(sp.getBoolean(KEY_REDIRECT_IGNORE_SSL, false))
+                        .setConnectTimeoutMs(5000)
+                        .setReadTimeoutMs(8000);
+
+                MediaItem mediaItem = MediaItem.fromUri(url);
+                MediaSource mediaSource;
+                if (isHlsUrl(url)) {
+                    mediaSource = new HlsMediaSource.Factory(httpFactory).createMediaSource(mediaItem);
+                } else {
+                    mediaSource = new ProgressiveMediaSource.Factory(httpFactory).createMediaSource(mediaItem);
+                }
+
+                // 回主线程执行 ExoPlayer 操作（ExoPlayer 非线程安全）
+                mHandler.post(() -> {
+                    try {
+                        ensurePlayerBoundToView();
+                        player.setMediaSource(mediaSource, true);
+                        player.prepare();
+                        if (initialSeekPosition > 0) player.seekTo(initialSeekPosition);
+                        player.play();
+                        startStuckDetection();
+                    } catch (Exception e) {
+                        handleAsyncPlaybackError(e);
+                    }
+                });
+            } catch (Exception e) {
+                LogBridge.e(TAG, "播放准备(后台)异常", e);
+                mHandler.post(() -> handleAsyncPlaybackError(e));
+            }
+        }, "TVPlayer-Prepare-Huya").start();
     }
 
     /**
@@ -2006,7 +2128,7 @@ public class TVPlayerManager {
         ensurePlaylistExecutor().execute(() -> {
             java.net.HttpURLConnection connection = null;
             try {
-                Log.d(TAG, "【普通源】解析主播放列表: " + masterUrl.substring(0, Math.min(100, masterUrl.length())));
+                LogBridge.d(TAG, "【普通源】解析主播放列表: " + masterUrl.substring(0, Math.min(100, masterUrl.length())));
 
                 java.net.URL url = new java.net.URL(masterUrl);
                 connection = (java.net.HttpURLConnection) url.openConnection();
@@ -2019,7 +2141,7 @@ public class TVPlayerManager {
                 connection.setRequestProperty("Accept", "*/*");
 
                 int code = connection.getResponseCode();
-                Log.d(TAG, "【普通源】主播放列表响应码: " + code);
+                LogBridge.d(TAG, "【普通源】主播放列表响应码: " + code);
 
                 if (code == java.net.HttpURLConnection.HTTP_OK) {
                     StringBuilder content = new StringBuilder();
@@ -2031,23 +2153,23 @@ public class TVPlayerManager {
                         }
                     }
                     String playlist = content.toString();
-                    Log.d(TAG, "【普通源】主播放列表长度: " + playlist.length());
+                    LogBridge.d(TAG, "【普通源】主播放列表长度: " + playlist.length());
                     parseMasterPlaylist(playlist, masterUrl);
                 } else if (code == java.net.HttpURLConnection.HTTP_MOVED_TEMP
                         || code == java.net.HttpURLConnection.HTTP_MOVED_PERM) {
                     String newUrl = connection.getHeaderField("Location");
-                    Log.d(TAG, "【普通源】重定向到: " + newUrl);
+                    LogBridge.d(TAG, "【普通源】重定向到: " + newUrl);
                     isParsingMasterPlaylist = false;
                     if (newUrl != null) {
                         fetchAndParseMasterPlaylistNormal(newUrl);
                         return;
                     }
                 } else {
-                    Log.e(TAG, "【普通源】主播放列表请求失败: code=" + code);
+                    LogBridge.e(TAG, "【普通源】主播放列表请求失败: code=" + code);
                     synchronized (variantListLock) { variantList.clear(); }
                 }
             } catch (Exception e) {
-                Log.e(TAG, "【普通源】解析主播放列表失败: ", e);
+                LogBridge.e(TAG, "【普通源】解析主播放列表失败: ", e);
                 synchronized (variantListLock) { variantList.clear(); }
             } finally {
                 if (connection != null) {
@@ -2068,7 +2190,7 @@ public class TVPlayerManager {
         ensurePlaylistExecutor().execute(() -> {
             java.net.HttpURLConnection connection = null;
             try {
-                Log.d(TAG, "【虎牙源】解析主播放列表: " + masterUrl.substring(0, Math.min(100, masterUrl.length())));
+                LogBridge.d(TAG, "【虎牙源】解析主播放列表: " + masterUrl.substring(0, Math.min(100, masterUrl.length())));
 
                 java.net.URL url = new java.net.URL(masterUrl);
                 connection = (java.net.HttpURLConnection) url.openConnection();
@@ -2097,11 +2219,11 @@ public class TVPlayerManager {
                 String cookies = android.webkit.CookieManager.getInstance().getCookie(masterUrl);
                 if (cookies != null && !cookies.isEmpty()) {
                     connection.setRequestProperty("Cookie", cookies);
-                    Log.d(TAG, "【虎牙源】发送 Cookie: " + cookies.substring(0, Math.min(80, cookies.length())));
+                    LogBridge.d(TAG, "【虎牙源】发送 Cookie: " + cookies.substring(0, Math.min(80, cookies.length())));
                 }
 
                 int code = connection.getResponseCode();
-                Log.d(TAG, "【虎牙源】主播放列表响应码: " + code);
+                LogBridge.d(TAG, "【虎牙源】主播放列表响应码: " + code);
 
                 if (code == java.net.HttpURLConnection.HTTP_OK) {
                     StringBuilder content = new StringBuilder();
@@ -2113,7 +2235,7 @@ public class TVPlayerManager {
                         }
                     }
                     String playlist = content.toString();
-                    Log.d(TAG, "【虎牙源】主播放列表长度: " + playlist.length());
+                    LogBridge.d(TAG, "【虎牙源】主播放列表长度: " + playlist.length());
                     // 🔴【修复】虎牙清晰度以 SDK 解析为准！
                     // 虎牙 HLS 直接播放流（_NNNN.m3u8）拉取的内容是单码率媒体列表
                     // （无 #EXT-X-STREAM-INF），parseMasterPlaylist 解析结果为空或仅含
@@ -2123,7 +2245,7 @@ public class TVPlayerManager {
                         || code == java.net.HttpURLConnection.HTTP_MOVED_PERM) {
                     // 手动处理重定向，保留鉴权头（关键防盗链要求）
                     String newUrl = connection.getHeaderField("Location");
-                    Log.d(TAG, "【虎牙源】手动重定向到: " + newUrl);
+                    LogBridge.d(TAG, "【虎牙源】手动重定向到: " + newUrl);
                     isParsingMasterPlaylist = false;
                     if (newUrl != null) {
                         fetchAndParseMasterPlaylistHuya(newUrl);
@@ -2140,16 +2262,16 @@ public class TVPlayerManager {
                                 err.append(new String(buf, 0, len));
                             }
                             if (err.length() > 0) {
-                                Log.e(TAG, "【虎牙源】错误响应体: " + err.substring(0, Math.min(200, err.length())));
+                                LogBridge.e(TAG, "【虎牙源】错误响应体: " + err.substring(0, Math.min(200, err.length())));
                             }
                         }
                     }
-                    Log.e(TAG, "【虎牙源】主播放列表请求失败: code=" + code);
+                    LogBridge.e(TAG, "【虎牙源】主播放列表请求失败: code=" + code);
                     // 🔴【修复】不在此处清空 variantList：虎牙清晰度以 SDK 解析为准，
                     // m3u8 请求失败不应清掉 SDK 解析出的完整清晰度列表。
                 }
             } catch (Exception e) {
-                Log.e(TAG, "【虎牙源】解析主播放列表失败: ", e);
+                LogBridge.e(TAG, "【虎牙源】解析主播放列表失败: ", e);
                 // 🔴【修复】同上：不在此处清空 variantList。
             } finally {
                 if (connection != null) {
@@ -2206,7 +2328,7 @@ public class TVPlayerManager {
         if (!list.isEmpty()) {
             dLog("解析到 " + list.size() + " 个清晰度");
         } else {
-            Log.w(TAG, "未解析到任何清晰度流，可能是直播源本身不支持多码率或网络被拦截");
+            LogBridge.w(TAG, "未解析到任何清晰度流，可能是直播源本身不支持多码率或网络被拦截");
         }
     }
 
@@ -2312,7 +2434,7 @@ public class TVPlayerManager {
                 currentResolutionLabel = currentLine.get(0).getDisplayLabel();
             }
         }
-        Log.d(TAG, "【虎牙】切换到线路 " + lineIndex + ", 当前线路清晰度: " + getAvailableResolutions());
+        LogBridge.d(TAG, "【虎牙】切换到线路 " + lineIndex + ", 当前线路清晰度: " + getAvailableResolutions());
     }
 
     /**
@@ -2327,7 +2449,7 @@ public class TVPlayerManager {
             snapshot = new ArrayList<>(variantList);
         }
         if (snapshot.isEmpty()) {
-            Log.w(TAG, "无多码率信息，无法切换清晰度");
+            LogBridge.w(TAG, "无多码率信息，无法切换清晰度");
             return;
         }
         String matchLabel = (matchLabelOpt != null && matchLabelOpt.length > 0) ? matchLabelOpt[0] : null;
@@ -2381,7 +2503,7 @@ public class TVPlayerManager {
                     break;
             }
         } catch (Exception e) {
-            Log.e(TAG, "设置缩放模式异常", e);
+            LogBridge.e(TAG, "设置缩放模式异常", e);
         }
     }
 
@@ -2389,10 +2511,10 @@ public class TVPlayerManager {
         try {
             if (player != null) {
                 player.setVideoSurface(surface);
-                Log.d(TAG, "播放器已绑定 Surface");
+                LogBridge.d(TAG, "播放器已绑定 Surface");
             }
         } catch (Exception e) {
-            Log.e(TAG, "绑定 Surface 失败", e);
+            LogBridge.e(TAG, "绑定 Surface 失败", e);
         }
     }
 
@@ -2447,7 +2569,7 @@ public class TVPlayerManager {
                 }
             }
         } catch (Exception e) {
-            Log.e(TAG, "获取直播信息异常", e);
+            LogBridge.e(TAG, "获取直播信息异常", e);
         }
         return info;
     }
@@ -2578,28 +2700,28 @@ public class TVPlayerManager {
             if (mHandler != null) mHandler.removeCallbacksAndMessages(null);
             updateWakeLock(false);
             try { unregisterDecoderModeReceiver(); } catch (Exception e) {
-                Log.w(TAG, "注销解码器广播异常: " + e.getMessage());
+                LogBridge.w(TAG, "注销解码器广播异常: " + e.getMessage());
             }
             try { unregisterRendererModeReceiver(); } catch (Exception e) {
-                Log.w(TAG, "注销渲染方式广播异常: " + e.getMessage());
+                LogBridge.w(TAG, "注销渲染方式广播异常: " + e.getMessage());
             }
 
             // 清理子模块（每个独立 try-catch）
             if (decoderModeManager != null) {
                 try { decoderModeManager.release(); } catch (Exception e) {
-                    Log.w(TAG, "decoderModeManager.release 异常: " + e.getMessage());
+                    LogBridge.w(TAG, "decoderModeManager.release 异常: " + e.getMessage());
                 }
                 decoderModeManager = null;
             }
             if (variantManager != null) {
                 try { variantManager.release(); } catch (Exception e) {
-                    Log.w(TAG, "variantManager.release 异常: " + e.getMessage());
+                    LogBridge.w(TAG, "variantManager.release 异常: " + e.getMessage());
                 }
                 variantManager = null;
             }
             if (huyaStreamPlayer != null) {
                 try { huyaStreamPlayer.release(); } catch (Exception e) {
-                    Log.w(TAG, "huyaStreamPlayer.release 异常: " + e.getMessage());
+                    LogBridge.w(TAG, "huyaStreamPlayer.release 异常: " + e.getMessage());
                 }
                 huyaStreamPlayer = null;
             }
@@ -2625,12 +2747,12 @@ public class TVPlayerManager {
                 try {
                     if (playerListener != null) {
                         try { player.removeListener(playerListener); }
-                        catch (Exception e) { Log.w(TAG, "removeListener 异常: " + e.getMessage()); }
+                        catch (Exception e) { LogBridge.w(TAG, "removeListener 异常: " + e.getMessage()); }
                         playerListener = null;
                     }
                     player.release();
                 } catch (Exception e) {
-                    Log.w(TAG, "player.release 异常: " + e.getMessage());
+                    LogBridge.w(TAG, "player.release 异常: " + e.getMessage());
                 }
                 player = null;
             }
@@ -2651,7 +2773,7 @@ public class TVPlayerManager {
                     // Media3 1.7.1 + Android 14/15 的 SpatializerWrapperV32 Bug，
                     // 移除未注册的监听器抛 IllegalArgumentException。这里吞掉即可，
                     // 不影响后续清理流程（instance = null 在 finally 保证执行）。
-                    Log.w(TAG, "trackSelector.release 异常（已吞掉，不影响清理）: " + e.getMessage());
+                    LogBridge.w(TAG, "trackSelector.release 异常（已吞掉，不影响清理）: " + e.getMessage());
                 }
                 trackSelector = null;
             }
@@ -2659,7 +2781,7 @@ public class TVPlayerManager {
             // 清理健康检查器
             if (healthChecker != null) {
                 try { healthChecker.release(); }
-                catch (Exception e) { Log.w(TAG, "healthChecker.release 异常: " + e.getMessage()); }
+                catch (Exception e) { LogBridge.w(TAG, "healthChecker.release 异常: " + e.getMessage()); }
                 healthChecker = null;
             }
 
@@ -2681,7 +2803,7 @@ public class TVPlayerManager {
             sp = null;
         } catch (Exception e) {
             // 顶层兜底：捕获任何漏网的异常，确保 finally 仍能执行
-            Log.e(TAG, "释放异常（顶层兜底）", e);
+            LogBridge.e(TAG, "释放异常（顶层兜底）", e);
         } finally {
             // 🔧【核心修复】必须放在 finally，确保即使中途异常，
             //    TVPlayerManager 单例引用也会被清空，下次 getInstance() 会重建。

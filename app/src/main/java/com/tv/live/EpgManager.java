@@ -5,7 +5,7 @@ import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.TextUtils;
-import android.util.Log;
+import com.tv.live.util.LogBridge;
 
 import com.tv.live.util.AppExecutors;
 import com.tv.live.util.CacheManager;

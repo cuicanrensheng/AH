@@ -6,7 +6,7 @@ import android.os.Build;
 import android.os.Debug;
 import android.os.Environment;
 import android.provider.Settings;
-import android.util.Log;
+import com.tv.live.util.LogBridge;
 
 import com.tv.live.BuildConfig;
 
@@ -41,7 +41,7 @@ public class AntiDebug {
      */
     public static boolean init(Context context, boolean enable) {
         if (!enable) {
-            Log.i(TAG, "反调试检测已禁用（调试模式）");
+            LogBridge.i(TAG, "反调试检测已禁用（调试模式）");
             initialized = true;
             debugDetected = false;
             return false;
@@ -68,7 +68,7 @@ public class AntiDebug {
         debugDetected = fridaFound || xposedFound || confirmedDebugger;
         
         if (debugDetected) {
-            Log.w(TAG, "⚠️ 检测到可疑环境: " + 
+            LogBridge.w(TAG, "⚠️ 检测到可疑环境: " + 
                 (confirmedDebugger ? "调试器" : "") +
                 (fridaFound ? "Frida" : "") +
                 (xposedFound ? "Xposed" : ""));
@@ -102,18 +102,18 @@ public class AntiDebug {
         boolean mockLocation = checkMockLocation(context);
         
         if (adbEnabled) {
-            Log.w(TAG, "⚠️ USB调试已开启（可能用于开发调试，非篡改）");
+            LogBridge.w(TAG, "⚠️ USB调试已开启（可能用于开发调试，非篡改）");
         }
         if (mockLocation) {
-            Log.w(TAG, "⚠️ 检测到模拟位置应用（可能用于测试，非篡改）");
+            LogBridge.w(TAG, "⚠️ 检测到模拟位置应用（可能用于测试，非篡改）");
         }
         if (emulatorFound) {
-            Log.w(TAG, "⚠️ 检测到模拟器环境（可能是合法测试，非篡改）");
+            LogBridge.w(TAG, "⚠️ 检测到模拟器环境（可能是合法测试，非篡改）");
         }
         
         // 记录调试器检测的详细信息（供调试使用）
         if (debuggerFound && !confirmedDebugger) {
-            Log.w(TAG, "调试器检测结果存疑：TracerPid检测到异常但Debug.isDebuggerConnected()未确认");
+            LogBridge.w(TAG, "调试器检测结果存疑：TracerPid检测到异常但Debug.isDebuggerConnected()未确认");
         }
         
         return debugDetected;
@@ -127,7 +127,7 @@ public class AntiDebug {
         try {
             // 1. 检测 Debug.isDebuggerConnected() - 这是最可靠的检测方式
             if (Debug.isDebuggerConnected()) {
-                Log.w(TAG, "检测到调试器连接 (Debug.isDebuggerConnected=true)");
+                LogBridge.w(TAG, "检测到调试器连接 (Debug.isDebuggerConnected=true)");
                 return true;
             }
             
@@ -136,7 +136,7 @@ public class AntiDebug {
             boolean isDebuggable = (appInfo.flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0;
             if (isDebuggable && !BuildConfig.IS_DEBUG) {
                 // 正式版但有debuggable标志，可能是被重打包，记录一下
-                Log.w(TAG, "⚠️ 正式版应用但标记为可调试（可能被重打包）");
+                LogBridge.w(TAG, "⚠️ 正式版应用但标记为可调试（可能被重打包）");
                 // 不作为篡改依据，因为可能是某些电视系统的特殊设置
             }
             
@@ -158,7 +158,7 @@ public class AntiDebug {
                             int pid = Integer.parseInt(pidStr);
                             // 仅记录日志供调试，不作为判定依据
                             if (pid != 0) {
-                                Log.d(TAG, "TracerPid=" + pid + " (参考信息)");
+                                LogBridge.d(TAG, "TracerPid=" + pid + " (参考信息)");
                                 // 注意：即使TracerPid!=0，也不一定是调试器
                                 // 某些系统进程可能会设置这个值
                                 // 只有当Debug.isDebuggerConnected()同时为true才确认
@@ -172,7 +172,7 @@ public class AntiDebug {
             }
             
         } catch (Exception e) {
-            Log.e(TAG, "检测调试器失败: " + e.getMessage());
+            LogBridge.e(TAG, "检测调试器失败: " + e.getMessage());
         }
         // 只有Debug.isDebuggerConnected()返回true才是可靠的调试器检测
         return Debug.isDebuggerConnected();
@@ -200,7 +200,7 @@ public class AntiDebug {
                                 cmdline.contains("frida-server") ||
                                 cmdline.contains("frida-qt") ||
                                 cmdline.contains("REJECT")) {
-                                Log.w(TAG, "检测到 Frida 相关进程");
+                                LogBridge.w(TAG, "检测到 Frida 相关进程");
                                 return true;
                             }
                         }
@@ -218,7 +218,7 @@ public class AntiDebug {
                     socket.connect(new java.net.InetSocketAddress("127.0.0.1", 
                         Integer.parseInt(port)), 100);
                     socket.close();
-                    Log.w(TAG, "检测到 Frida 默认端口: " + port);
+                    LogBridge.w(TAG, "检测到 Frida 默认端口: " + port);
                     return true;
                 } catch (Exception e) {
                     // 端口未开放，正常
@@ -234,13 +234,13 @@ public class AntiDebug {
             };
             for (String path : fridaPaths) {
                 if (new File(path).exists()) {
-                    Log.w(TAG, "检测到 Frida 文件: " + path);
+                    LogBridge.w(TAG, "检测到 Frida 文件: " + path);
                     return true;
                 }
             }
             
         } catch (Exception e) {
-            Log.e(TAG, "检测 Frida 失败: " + e.getMessage());
+            LogBridge.e(TAG, "检测 Frida 失败: " + e.getMessage());
         }
         return false;
     }
@@ -253,7 +253,7 @@ public class AntiDebug {
             // 1. 检测 Xposed 框架类
             try {
                 Class.forName("de.robv.android.xposed.XposedBridge");
-                Log.w(TAG, "检测到 Xposed 框架");
+                LogBridge.w(TAG, "检测到 Xposed 框架");
                 return true;
             } catch (ClassNotFoundException e) {
                 // 正常
@@ -268,7 +268,7 @@ public class AntiDebug {
             };
             for (String path : xposedPaths) {
                 if (new File(path).exists()) {
-                    Log.w(TAG, "检测到 Xposed/LSPosed: " + path);
+                    LogBridge.w(TAG, "检测到 Xposed/LSPosed: " + path);
                     return true;
                 }
             }
@@ -278,7 +278,7 @@ public class AntiDebug {
                 for (java.util.Map.Entry<String, String> entry : System.getenv().entrySet()) {
                     if (entry.getKey().contains("XPOSED") || 
                         entry.getValue().contains("xposed")) {
-                        Log.w(TAG, "检测到 Xposed 环境变量");
+                        LogBridge.w(TAG, "检测到 Xposed 环境变量");
                         return true;
                     }
                 }
@@ -287,7 +287,7 @@ public class AntiDebug {
             }
             
         } catch (Exception e) {
-            Log.e(TAG, "检测 Xposed 失败: " + e.getMessage());
+            LogBridge.e(TAG, "检测 Xposed 失败: " + e.getMessage());
         }
         return false;
     }
@@ -307,7 +307,7 @@ public class AntiDebug {
             };
             for (String path : emulatorFiles) {
                 if (new File(path).exists()) {
-                    Log.w(TAG, "检测到模拟器文件: " + path);
+                    LogBridge.w(TAG, "检测到模拟器文件: " + path);
                     return true;
                 }
             }
@@ -318,7 +318,7 @@ public class AntiDebug {
                 fingerprint.contains("sdk") ||
                 fingerprint.contains("vbox") ||
                 fingerprint.contains("emulator")) {
-                Log.w(TAG, "检测到模拟器指纹");
+                LogBridge.w(TAG, "检测到模拟器指纹");
                 return true;
             }
             
@@ -333,7 +333,7 @@ public class AntiDebug {
             }
             
         } catch (Exception e) {
-            Log.e(TAG, "检测模拟器失败: " + e.getMessage());
+            LogBridge.e(TAG, "检测模拟器失败: " + e.getMessage());
         }
         return false;
     }
@@ -346,7 +346,7 @@ public class AntiDebug {
         try {
             if (Settings.Global.getInt(context.getContentResolver(), 
                 Settings.Global.ADB_ENABLED, 0) == 1) {
-                Log.w(TAG, "USB调试已开启");
+                LogBridge.w(TAG, "USB调试已开启");
                 return true;
             }
         } catch (Exception e) {
@@ -365,7 +365,7 @@ public class AntiDebug {
                 context.getContentResolver(), 
                 Settings.Secure.ALLOW_MOCK_LOCATION);
             if (mockLocationApp != null && !mockLocationApp.isEmpty()) {
-                Log.w(TAG, "检测到模拟位置应用");
+                LogBridge.w(TAG, "检测到模拟位置应用");
                 return true;
             }
         } catch (Exception e) {
@@ -419,7 +419,7 @@ public class AntiDebug {
             }
             return sb.toString();
         } catch (Exception e) {
-            Log.e(TAG, "计算 MD5 失败: " + e.getMessage());
+            LogBridge.e(TAG, "计算 MD5 失败: " + e.getMessage());
             return null;
         }
     }

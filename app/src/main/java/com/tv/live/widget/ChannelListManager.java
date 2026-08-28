@@ -1,5 +1,7 @@
 package com.tv.live.widget;
 
+
+import com.tv.live.util.LogBridge;
 import android.content.Context;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -129,7 +131,7 @@ public class ChannelListManager {
                 holder.tvChannel.setTextSize(16);
 
                 boolean isSelected = (position == selectedPosition);
-                android.util.Log.d("ChannelList", "getView pos:" + position + ", selectedPos:" + selectedPosition + ", isSelected:" + isSelected);
+                LogBridge.d("ChannelList", "getView pos:" + position + ", selectedPos:" + selectedPosition + ", isSelected:" + isSelected);
 
                 if (isSelected) {
                     holder.tvChannel.setTextColor(COLOR_BLUE);
@@ -198,7 +200,7 @@ public class ChannelListManager {
                 holder.tvChannel.setTextSize(16);
 
                 boolean isSelected = (position == selectedPosition);
-                android.util.Log.d("ChannelList", "getView(byGroup) pos:" + position + ", selectedPos:" + selectedPosition + ", isSelected:" + isSelected);
+                LogBridge.d("ChannelList", "getView(byGroup) pos:" + position + ", selectedPos:" + selectedPosition + ", isSelected:" + isSelected);
 
                 if (isSelected) {
                     holder.tvChannel.setTextColor(COLOR_BLUE);
@@ -265,7 +267,7 @@ public class ChannelListManager {
                 holder.tvChannel.setTextSize(16);
 
                 boolean isSelected = (position == selectedPosition);
-                android.util.Log.d("ChannelList", "getView(byGroup) pos:" + position + ", selectedPos:" + selectedPosition + ", isSelected:" + isSelected);
+                LogBridge.d("ChannelList", "getView(byGroup) pos:" + position + ", selectedPos:" + selectedPosition + ", isSelected:" + isSelected);
 
                 if (isSelected) {
                     holder.tvChannel.setTextColor(COLOR_BLUE);

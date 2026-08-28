@@ -2,33 +2,27 @@ package com.tv.live.util;
 
 import android.content.Context;
 import android.text.TextUtils;
-import android.util.Log;
+import com.tv.live.util.LogBridge;
 
-import com.tencent.bugly.crashreport.CrashReport;
 import com.tv.live.BuildConfig;
 
-import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 
 /**
- * Bugly 日志发送器
+ * 日志发送器（原 Bugly 普通版上报通道）
  *
- * ⚠️ 用户最终规则（严格执行，2026-08-22 更新）：
- *   1. 上传「异常 / 崩溃（Throwable）」到 Bugly —— 仅真实 Throwable 对象才走 postCatchedException；
- *      无 Throwable 的业务失败（code=-1、房间下线、超时、null结果）不包装 RuntimeException、不走异常路径。
- *   2. 上传「运营统计 / 自定义事件」（BerryEvent、埋点、页面访问、功能使用、虎牙SDK业务失败）
- *      —— 走 CrashReport.postTrackEvent（或 Bugly.report）兼容反射路径；
- *      但上传前对 eventId / params.key / params.value 全部应用敏感词打码。
- *   3. 敏感词分两类（命中后，无论是异常 extraUserData 还是 运营统计参数都必须打码）：
- *        ① 业务敏感（直播源 / 频道 / 虎牙 / rtmp / hls / flv / m3u8 / 房间号 / http(s):// …）
- *           → 命中则整条值替换成 [MASKED_BIZ]
- *        ② 凭证敏感（password / token / secret / appkey / HY_APPKEY …）
- *           → 只把 key=value 中的 value 打码成 ****
+ * ⚠️ 实验（2026-08-28）：Bugly 普通版引用（com.tencent.bugly:crashreport）已从 build.gradle 移除。
+ *    本类保留原有类名/方法签名（调用方零改动），内部所有上传逻辑降级为「本地日志」：
+ *    - init() 不再调用 CrashReport.initCrashReport
+ *    - reportException / reportHuyaException / reportEvent 仅输出打码后的本地日志
+ *    - 敏感词打码逻辑保留（日志中不泄露直播源/频道/凭证信息）
  *
- *   4. App Key（Bugly 后台看到的 "064332ed-d30e..."）Bugly Android SDK 实际上不使用；
- *      初始化 CrashReport.initCrashReport() 只需要 AppId = 4a23007223。
+ * 原用户规则（2026-08-22）：
+ *   1. 上传「异常 / 崩溃（Throwable）」—— 仅真实 Throwable 才走异常路径
+ *   2. 上传「运营统计 / 自定义事件」—— 上传前 eventId / params 全部敏感词打码
+ *   3. 敏感词分两类：业务敏感→整条 [MASKED_BIZ]，凭证敏感→仅 value 打码 ****
  */
 public class BuglyLogSender {
     private static final String TAG = "BuglyLogSender";
@@ -61,7 +55,7 @@ public class BuglyLogSender {
     private String deviceModel;
     private String appVersion;
 
-    /** Bugly 场景标签：虎牙 SDK 抛出的 Throwable 统一打 10001，后台"场景筛选"可切到虎牙SDK专属 */
+    /** Bugly 场景标签：虎牙 SDK 抛出的 Throwable 统一打 10001（已随 Bugly 移除，保留常量兼容调用方） */
     public static final int SCENE_TAG_HUYA_SDK = 10001;
 
     private BuglyLogSender(Context context) {
@@ -84,40 +78,16 @@ public class BuglyLogSender {
 
     public void init(String appId) {
         if (isInitialized) {
-            Log.w(TAG, "Bugly already initialized");
-            return;
-        }
-        if (TextUtils.isEmpty(appId)) {
-            Log.e(TAG, "Bugly AppID is empty, skip initialization");
+            LogBridge.w(TAG, "BuglyLogSender already initialized (local-only mode)");
             return;
         }
 
-        try {
-            // init 前先设置通用维度（值本身不含敏感词，所以安全）
-            try { CrashReport.setUserSceneTag(context, SCENE_TAG_HUYA_SDK); } catch (Throwable ignore) {}
-            try { CrashReport.setAppChannel(context, detectChannel()); } catch (Throwable ignore) {}
-            try { CrashReport.setAppVersion(context, appVersion); } catch (Throwable ignore) {}
-            CrashReport.putUserData(context, "device_model", deviceModel);
-            CrashReport.putUserData(context, "device_name", deviceName);
-            CrashReport.putUserData(context, "app_version", appVersion);
-            CrashReport.putUserData(context, "device_id", deviceId);
-            CrashReport.putUserData(context, "sdk_integration", "huya_berry_bugly_v2");
-            CrashReport.putUserData(context, "is_tv_device",
-                    DeviceCapabilities.isTv() ? "tv" : "phone");
-            CrashReport.putUserData(context, "policy",
-                    "throwable_and_events__biz_masked__tracking_on");
-
-            // Bugly Android SDK 只需要 AppId；第三个参数 IS_DEBUG 控制 SDK 自身日志
-            CrashReport.initCrashReport(context, appId, BuildConfig.IS_DEBUG);
-            CrashReport.setUserId(deviceId);
-
-            isInitialized = true;
-            isEnabled = true;
-            Log.i(TAG, "Bugly initialized: appId=" + appId + ", channel=" + detectChannel()
-                    + ", huya_scene=" + SCENE_TAG_HUYA_SDK);
-        } catch (Exception e) {
-            Log.e(TAG, "Bugly initialization failed", e);
-        }
+        // Bugly 普通版引用已移除（实验）：不再调用 CrashReport.initCrashReport。
+        // 所有上报降级为本地日志，isEnabled 恒为 false。
+        isInitialized = true;
+        isEnabled = false;
+        LogBridge.i(TAG, "BuglyLogSender initialized in LOCAL-ONLY mode (Bugly dependency removed), channel="
+                + detectChannel());
     }
 
     private static String detectChannel() {
@@ -136,13 +106,13 @@ public class BuglyLogSender {
     public static void reportLogSafely(String tag, String msg, String type) {
         // 纯文字 log：本地打一行即可（没有 Throwable → 不走异常上报；没有 eventId → 不走运营统计）
         if (BuildConfig.IS_DEBUG) {
-            Log.d(TAG, "LOG[" + (type == null ? "?" : type) + "] "
+            LogBridge.d(TAG, "LOG[" + (type == null ? "?" : type) + "] "
                     + (tag == null ? "" : tag) + ": " + maskAllSensitive(msg == null ? "" : msg));
         }
     }
 
     /**
-     * 运营埋点事件：按用户规则"上传运营统计"，但对事件名和参数先做敏感词打码。
+     * 运营埋点事件：本地记录（打码后）。
      */
     public static void reportEventSafely(String eventName, Map<String, String> params) {
         try {
@@ -151,11 +121,11 @@ public class BuglyLogSender {
                 return;
             }
         } catch (Throwable t) {
-            Log.w(TAG, "reportEventSafely failed, fallback local", t);
+            LogBridge.w(TAG, "reportEventSafely failed, fallback local", t);
         }
         // fallback：本地打一行
         if (BuildConfig.IS_DEBUG) {
-            Log.d(TAG, "[EVENT local-only-fallback] " + maskAllSensitive(eventName)
+            LogBridge.d(TAG, "[EVENT local-only-fallback] " + maskAllSensitive(eventName)
                     + " " + (params == null ? "" : maskAllSensitiveMap(params).toString()));
         }
     }
@@ -176,13 +146,12 @@ public class BuglyLogSender {
     // ==================== 虎牙 SDK 专用静态入口 ====================
 
     /**
-     * 仅当 throwable != null 时上报异常（严格遵守"只上传异常/崩溃"）。
-     * 无 Throwable 的 SDK 业务失败（code=-1、result==null、timeout、房间下线等）
-     * 只本地打 Log.w + 走 reportHuyaBusinessFailure（运营统计事件），绝不包装 RuntimeException 上传异常。
+     * 仅当 throwable != null 时记录异常（本地日志）。
+     * 无 Throwable 的 SDK 业务失败只本地打 Log.w，绝不包装 RuntimeException。
      */
     public static void reportHuyaExceptionSafely(String tag, Throwable throwable, String extraInfo) {
         if (throwable == null) {
-            Log.w(TAG, "[HUYA local-only non-throwable skip-exception] tag=" + tag
+            LogBridge.w(TAG, "[HUYA local-only non-throwable skip-exception] tag=" + tag
                     + " extra=" + maskAllSensitive(extraInfo == null ? "" : extraInfo));
             return;
         }
@@ -191,13 +160,12 @@ public class BuglyLogSender {
                 sInstance.reportHuyaException(tag, throwable, extraInfo);
             }
         } catch (Exception e) {
-            Log.e(TAG, "reportHuyaExceptionSafely failed", e);
+            LogBridge.e(TAG, "reportHuyaExceptionSafely failed", e);
         }
     }
 
     /**
-     * 虎牙 BerryEvent / 回调结果统计：
-     * 按用户最新规则「上传运营统计」，所以先 mask，再调实例 reportHuyaEvent → postTrackEventCompat
+     * 虎牙 BerryEvent / 回调结果统计：本地记录（打码后）。
      */
     public static void reportHuyaEventSafely(String eventName, Map<String, String> params) {
         StringBuilder sb = new StringBuilder();
@@ -210,103 +178,69 @@ public class BuglyLogSender {
             }
             if (sb.length() > 2) sb.setLength(sb.length() - 2);
         }
-        Log.i(TAG, sb.toString());
+        LogBridge.i(TAG, sb.toString());
 
         try {
             if (sInstance != null) sInstance.reportHuyaEvent(eventName, params);
         } catch (Throwable t) {
-            Log.w(TAG, "reportHuyaEventSafely upload failed (local log kept)", t);
+            LogBridge.w(TAG, "reportHuyaEventSafely failed (local log kept)", t);
         }
     }
 
     // ========================== 实例方法 ==========================
 
-    /** 纯文字业务日志 → 本地，不走 Bugly。 */
+    /** 纯文字业务日志 → 本地。 */
     public void reportLog(String tag, String msg, String type) {
         if (BuildConfig.IS_DEBUG) {
-            Log.d(TAG, "LOG[local-only] [" + type + "] " + tag + ": " + maskAllSensitive(msg));
+            LogBridge.d(TAG, "LOG[local-only] [" + type + "] " + tag + ": " + maskAllSensitive(msg));
         }
     }
 
     /**
-     * 通用异常上报（非虎牙模块的 Throwable）。
-     * throwable == null 直接 return，避免包装伪异常上传。
+     * 通用异常记录（非虎牙模块的 Throwable）。Bugly 已移除 → 仅本地日志。
      */
     public void reportException(String tag, Throwable throwable, String extraInfo) {
-        if (!isEnabled || !isInitialized) return;
         if (throwable == null) return;
-
-        try {
-            CrashReport.setUserSceneTag(context, 10000);
-            CrashReport.putUserData(context, "exception_module",
-                    maskAllSensitive(truncateMsg(tag == null ? "unknown" : tag)));
-            if (extraInfo != null) {
-                CrashReport.putUserData(context, "exception_extra",
-                        maskAllSensitive(truncateMsg(extraInfo)));
-            }
-            CrashReport.postCatchedException(throwable);
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to report exception", e);
+        if (BuildConfig.IS_DEBUG) {
+            LogBridge.e(TAG, "[EXCEPTION local-only] " + (tag == null ? "unknown" : tag)
+                    + " | " + maskAllSensitive(truncateMsg(throwable.getMessage() == null
+                    ? throwable.toString() : throwable.getMessage())));
         }
     }
 
     /**
-     * 🐯 虎牙 SDK 抛出的 Throwable 专属上报入口。
-     *  - 场景 tag = 10001（SCENE_TAG_HUYA_SDK），Bugly 后台按场景筛选即可只看虎牙SDK异常
-     *  - throwable == null → 严格不上传（logcat 本地告警）
-     *  - putUserData 全部走 maskAllSensitive：业务敏感→[MASKED_BIZ]，凭证敏感→value=****
+     * 🐯 虎牙 SDK 抛出的 Throwable 记录入口。Bugly 已移除 → 仅本地日志（打码后）。
      */
     public void reportHuyaException(String tag, Throwable throwable, String extraInfo) {
-        if (!isEnabled || !isInitialized) return;
         if (throwable == null) {
-            Log.w(TAG, "[HUYA local-only skip-no-throwable] tag=" + tag + " extra=" + extraInfo);
+            LogBridge.w(TAG, "[HUYA local-only skip-no-throwable] tag=" + tag + " extra=" + extraInfo);
             return;
         }
-        try {
-            CrashReport.setUserSceneTag(context, SCENE_TAG_HUYA_SDK);
-            CrashReport.putUserData(context, "huya_sdk_tag",
-                    maskAllSensitive(truncateMsg(tag == null ? "unknown" : tag)));
-            CrashReport.putUserData(context, "huya_sdk_exception_at",
-                    String.valueOf(System.currentTimeMillis()));
-            if (extraInfo != null) {
-                CrashReport.putUserData(context, "huya_sdk_extra",
-                        maskAllSensitive(truncateMsg(extraInfo)));
-            }
-            CrashReport.putUserData(context, "huya_sdk_ex_type",
-                    throwable.getClass().getSimpleName());
-            String msg = throwable.getMessage();
-            if (msg != null) {
-                CrashReport.putUserData(context, "huya_sdk_ex_msg",
-                        maskAllSensitive(truncateMsg(msg)));
-            }
-            CrashReport.postCatchedException(throwable);
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to report huya exception", e);
-        }
+        String msg = throwable.getMessage();
+        LogBridge.w(TAG, "[HUYA_EXCEPTION local-only] " + (tag == null ? "unknown" : tag)
+                + " | " + maskAllSensitive(truncateMsg(msg == null ? throwable.toString() : msg))
+                + (extraInfo != null ? " | extra=" + maskAllSensitive(truncateMsg(extraInfo)) : ""));
     }
 
-    // ========= 运营统计 / 事件埋点：先打码，再上传 =========
+    // ========= 运营统计 / 事件埋点：本地记录（打码后） =========
 
     public void reportEvent(String eventName, Map<String, String> params) {
-        if (!isEnabled || !isInitialized) return;
-
         String maskedEventId = maskAllSensitive(eventName == null ? "unnamed_event" : eventName);
-        // 如果事件名本身就是敏感内容，直接改名（避免事件列表里出现敏感词）
+        // 如果事件名本身就是敏感内容，直接改名
         if ("[MASKED_BIZ]".equals(maskedEventId)) {
             maskedEventId = "masked_biz_event";
         } else if (maskedEventId.length() > 64) {
-            maskedEventId = maskedEventId.substring(0, 64); // Bugly eventId 通常上限 64
+            maskedEventId = maskedEventId.substring(0, 64);
         }
         Map<String, String> maskedProps = maskAllSensitiveMap(params);
 
         if (BuildConfig.IS_DEBUG) {
-            Log.d(TAG, "[EVENT upload] " + maskedEventId + " " + maskedProps);
+            LogBridge.d(TAG, "[EVENT local-only] " + maskedEventId + " " + maskedProps);
         }
-        postTrackEventCompat(maskedEventId, maskedProps);
     }
 
     public void reportHuyaEvent(String eventName, Map<String, String> params) {
-        // 虎牙事件：在事件名前加 "huya_" 前缀，Bugly 后台可按前缀筛选
+        // 虎牙事件：在事件名前加 "huya_" 前缀
         String name = eventName == null ? "event" : eventName;
         if (!name.startsWith("huya_") && !name.startsWith("HUYA_")) {
             name = "huya_" + name;
@@ -315,63 +249,15 @@ public class BuglyLogSender {
     }
 
     /**
-     * 上报虎牙 SDK 业务失败（无 Throwable，所以走"运营统计"路径而非异常路径）。
-     * ExceptionReporter.reportHuyaBusinessFailure 会调用这里。
+     * 上报虎牙 SDK 业务失败（无 Throwable，走"运营统计"路径）。Bugly 已移除 → 本地记录。
      */
     public void reportHuyaBusinessFailureAsEvent(String module, int code, String errorMsg, String roomInfo) {
-        if (!isEnabled || !isInitialized) return;
         Map<String, String> m = new HashMap<>();
         m.put("module", module == null ? "" : module);
         m.put("code", String.valueOf(code));
         m.put("error", errorMsg == null ? "" : errorMsg);
         m.put("room", roomInfo == null ? "" : roomInfo);
         reportEvent("huya_biz_fail", m);
-    }
-
-    /**
-     * 三版本反射兼容调 Bugly 运营统计事件：
-     *   优先 CrashReport.postTrackEvent(ctx, eventId, props) （Bugly 原生新版）
-     *   → 降级 testTrackEvent(...)
-     *   → 降级 Bugly.report(ctx, eventId, props)
-     *
-     * 注意：入参必须是已经 mask 过的 eventId / props。
-     */
-    @SuppressWarnings({"unused", "SameParameterValue"})
-    private void postTrackEventCompat(String eventId, Map<String, String> props) {
-        if (TextUtils.isEmpty(eventId)) return;
-        Map<String, String> safeProps = (props == null) ? new HashMap<String, String>() : props;
-
-        // 1) CrashReport.postTrackEvent(Context, String, Map)
-        try {
-            Method m1 = CrashReport.class.getMethod("postTrackEvent",
-                    Context.class, String.class, Map.class);
-            m1.invoke(null, context, eventId, safeProps);
-            if (BuildConfig.IS_DEBUG) Log.v(TAG, "postTrackEvent via CrashReport.postTrackEvent: " + eventId);
-            return;
-        } catch (Throwable ignore) {}
-
-        // 2) testTrackEvent(Context, String, String, Map, long)
-        try {
-            Method m2 = CrashReport.class.getMethod("testTrackEvent",
-                    Context.class, String.class, String.class, Map.class, long.class);
-            m2.invoke(null, context, eventId, "app", safeProps, 1L);
-            if (BuildConfig.IS_DEBUG) Log.v(TAG, "postTrackEvent via testTrackEvent: " + eventId);
-            return;
-        } catch (Throwable ignore) {}
-
-        // 3) com.tencent.bugly.Bugly.report(Context, String, Map)
-        try {
-            Class<?> buglyCls = Class.forName("com.tencent.bugly.Bugly");
-            Method m3 = buglyCls.getMethod("report",
-                    Context.class, String.class, Map.class);
-            m3.invoke(null, context, eventId, safeProps);
-            if (BuildConfig.IS_DEBUG) Log.v(TAG, "postTrackEvent via Bugly.report: " + eventId);
-        } catch (Throwable ignore) {
-            if (BuildConfig.IS_DEBUG) {
-                Log.d(TAG, "[EVENT upload skipped: Bugly postTrackEvent API not available in current SDK version] "
-                        + eventId + " " + safeProps);
-            }
-        }
     }
 
     public void reportEvent(String eventName) { reportEvent(eventName, new HashMap<String, String>()); }
@@ -471,7 +357,8 @@ public class BuglyLogSender {
             try {
                 android.content.pm.PackageManager pm = context.getPackageManager();
                 android.content.pm.PackageInfo pi = pm.getPackageInfo(context.getPackageName(), 0);
-                appVersion = pi.versionName + " (" + pi.versionCode + ")";
+                long vc = androidx.core.content.pm.PackageInfoCompat.getLongVersionCode(pi);
+                appVersion = pi.versionName + " (" + vc + ")";
             } catch (Exception e) {
                 appVersion = "0.0.0";
             }
@@ -487,8 +374,7 @@ public class BuglyLogSender {
 
     public String getStatusInfo() {
         return String.format(Locale.ROOT,
-                "Bugly: %s, Init: %s, Device: %s, Policy: throwable+events/biz-masked/tracking-on",
-            isEnabled ? "enabled" : "disabled",
+                "Bugly: removed(local-only), Init: %s, Device: %s, Policy: local-log/masked",
             isInitialized ? "yes" : "no",
             deviceId);
     }

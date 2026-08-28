@@ -3,7 +3,7 @@ package com.tv.live.util;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.text.TextUtils;
-import android.util.Log;
+import com.tv.live.util.LogBridge;
 import android.view.View;
 import android.webkit.CookieManager;
 import android.widget.FrameLayout;
@@ -204,180 +204,207 @@ public class HuyaStreamPlayer {
         }
 
         if (!HuyaSDKParser.isSDKAvailable()) {
-            Log.e(TAG, "【虎牙】SDK 不可用, roomId=" + roomId);
-            mHandler.post(() -> {
-                Toast.makeText(context, "虎牙 SDK 不可用，无法解析直播源", Toast.LENGTH_SHORT).show();
-                callback.onSourceFailed();
+            LogBridge.w(TAG, "【虎牙】SDK 尚未就绪, roomId=" + roomId + " → 等待 SDK 初始化完成后自动重试");
+            HuyaSDKParser.addInitReadyListener(new Runnable() {
+                @Override public void run() {
+                    mHandler.post(new Runnable() {
+                        @Override public void run() {
+                            playHuyaStream(roomId, 0);
+                        }
+                    });
+                }
             });
+            mHandler.postDelayed(new Runnable() {
+                @Override public void run() {
+                    if (!HuyaSDKParser.isSDKAvailable()) {
+                        LogBridge.e(TAG, "【虎牙】SDK 等待超时(15s), roomId=" + roomId);
+                        Toast.makeText(context, "虎牙 SDK 初始化超时，请重试", Toast.LENGTH_SHORT).show();
+                        callback.onSourceFailed();
+                    }
+                }
+            }, 15000);
             return;
         }
 
         HuyaSDKParser.CachedStreams cached = HuyaSDKParser.getCachedStreams(roomId);
         if (cached != null && cached.streams != null && !cached.streams.isEmpty()) {
             long ageSec = (System.currentTimeMillis() - cached.timestamp) / 1000;
-            Log.i(TAG, "🚀【虎牙并行加载】命中预解析缓存！房间=" + roomId
+            LogBridge.i(TAG, "🚀【虎牙并行加载】命中预解析缓存！房间=" + roomId
                     + "，缓存年龄=" + ageSec + "s，流数=" + cached.streams.size()
                     + "，即将瞬时启动播放");
         } else {
-            Log.w(TAG, "⚠️【虎牙并行加载】未命中预解析缓存（房间=" + roomId + "）");
+            LogBridge.w(TAG, "⚠️【虎牙并行加载】未命中预解析缓存（房间=" + roomId + "）");
         }
 
-        Log.d(TAG, "【虎牙】使用 SDK 全量解析, roomId=" + roomId);
-        HuyaSDKParser.parseFull(roomId, new HuyaSDKParser.OnSDKFullResultListener() {
-            @Override
-            public void onSuccess(HuyaSDKParser.HuyaStreamInfo defaultStream,
-                                  List<HuyaSDKParser.HuyaStreamInfo> allStreams,
-                                  List<String> lines) {
-                long costMs = System.currentTimeMillis() - parseStartTs;
-                HuyaSDKParser.CachedStreams cs = HuyaSDKParser.getCachedStreams(roomId);
-                boolean fromPreload = (cs != null && cs.streams == allStreams)
-                        || (costMs < 300);
-                Log.i(TAG, "⚡【虎牙解析耗时】" + costMs + "ms, roomId=" + roomId
-                        + "，缓存命中=" + fromPreload
-                        + "，流数=" + (allStreams != null ? allStreams.size() : 0));
+        LogBridge.d(TAG, "【虎牙】使用 SDK 全量解析, roomId=" + roomId);
+        try {
+            HuyaSDKParser.parseFull(roomId, new HuyaSDKParser.OnSDKFullResultListener() {
+                @Override
+                public void onSuccess(HuyaSDKParser.HuyaStreamInfo defaultStream,
+                                      List<HuyaSDKParser.HuyaStreamInfo> allStreams,
+                                      List<String> lines) {
+                    long costMs = System.currentTimeMillis() - parseStartTs;
+                    HuyaSDKParser.CachedStreams cs = HuyaSDKParser.getCachedStreams(roomId);
+                    boolean fromPreload = (cs != null && cs.streams == allStreams)
+                            || (costMs < 300);
+                    LogBridge.i(TAG, "⚡【虎牙解析耗时】" + costMs + "ms, roomId=" + roomId
+                            + "，缓存命中=" + fromPreload
+                            + "，流数=" + (allStreams != null ? allStreams.size() : 0));
 
-                final HuyaSDKParser.HuyaStreamInfo[] streamHolder = {defaultStream};
+                    final HuyaSDKParser.HuyaStreamInfo[] streamHolder = {defaultStream};
 
-                if (streamHolder[0] == null || TextUtils.isEmpty(streamHolder[0].getPlayUrl())) {
-                    Log.e(TAG, "【虎牙】SDK 解析返回空默认地址");
+                    if (streamHolder[0] == null || TextUtils.isEmpty(streamHolder[0].getPlayUrl())) {
+                        LogBridge.e(TAG, "【虎牙】SDK 解析返回空默认地址");
+                        mHandler.post(() -> {
+                            Toast.makeText(context, "虎牙 SDK 解析失败：返回空地址", Toast.LENGTH_SHORT).show();
+                            callback.onSourceFailed();
+                        });
+                        return;
+                    }
+
+                    if (allStreams != null && allStreams.size() > 1) {
+                        Set<Integer> lineIndexSet = new TreeSet<>();
+                        for (HuyaSDKParser.HuyaStreamInfo s : allStreams) {
+                            if (!TextUtils.isEmpty(s.getPlayUrl())) {
+                                lineIndexSet.add(s.lineIndex);
+                            }
+                        }
+                        List<Integer> uniqueLineIndices = new ArrayList<>(lineIndexSet);
+
+                        if (uniqueLineIndices.size() > 1) {
+                            String linePrefKey = "huya_line_poll_" + roomId;
+                            SharedPreferences sp = callback.getSharedPrefs();
+                            int lastLineIdx = sp.getInt(linePrefKey, uniqueLineIndices.get(0));
+
+                            int currentPos = -1;
+                            for (int i = 0; i < uniqueLineIndices.size(); i++) {
+                                if (uniqueLineIndices.get(i) == lastLineIdx) {
+                                    currentPos = i;
+                                    break;
+                                }
+                            }
+                            if (currentPos == -1) currentPos = 0;
+
+                            int nextPos = (currentPos + 1) % uniqueLineIndices.size();
+                            int targetLineIndex = uniqueLineIndices.get(nextPos);
+
+                            if (targetLineIndex != streamHolder[0].lineIndex) {
+                                LogBridge.d(TAG, "【虎牙】线路轮询：切换到线路 " + targetLineIndex);
+                                HuyaSDKParser.HuyaStreamInfo targetStream = null;
+                                for (HuyaSDKParser.HuyaStreamInfo s : allStreams) {
+                                    if (s.lineIndex == targetLineIndex && !TextUtils.isEmpty(s.getPlayUrl())) {
+                                        if (s.isDefaultBitrate) {
+                                            targetStream = s;
+                                            break;
+                                        }
+                                        if (targetStream == null || s.bitRate > targetStream.bitRate) {
+                                            targetStream = s;
+                                        }
+                                    }
+                                }
+                                if (targetStream != null) {
+                                    streamHolder[0] = targetStream;
+                                }
+                            }
+                            sp.edit().putInt(linePrefKey, streamHolder[0].lineIndex).apply();
+                        }
+                    }
+
+                    List<Variant> allVariants = new ArrayList<>();
+                    if (allStreams != null) {
+                        for (HuyaSDKParser.HuyaStreamInfo s : allStreams) {
+                            if (!TextUtils.isEmpty(s.getPlayUrl())) {
+                                allVariants.add(Variant.fromHuyaStreamInfo(s));
+                            }
+                        }
+                    }
+                    final String defaultUrl = streamHolder[0].getPlayUrl();
+                    variantManager.setCurrentHuyaLineIndex(streamHolder[0].lineIndex);
+
+                    Map<Integer, List<Variant>> lineGroups = new TreeMap<>();
+                    for (Variant v : allVariants) {
+                        List<Variant> group = lineGroups.get(v.huyaLineIndex);
+                        if (group == null) {
+                            group = new ArrayList<>();
+                            lineGroups.put(v.huyaLineIndex, group);
+                        }
+                        group.add(v);
+                    }
+                    for (List<Variant> group : lineGroups.values()) {
+                        Collections.sort(group, (a, b) -> Integer.compare(b.bandwidth, a.bandwidth));
+                    }
+
+                    List<Variant> currentLineVariants = lineGroups.get(variantManager.getCurrentHuyaLineIndex());
+                    if (currentLineVariants != null) {
+                        int defIdx = -1;
+                        for (int i = 0; i < currentLineVariants.size(); i++) {
+                            if (defaultUrl.equals(currentLineVariants.get(i).url)) { defIdx = i; break; }
+                        }
+                        if (defIdx > 0) {
+                            Variant defV = currentLineVariants.remove(defIdx);
+                            currentLineVariants.add(0, defV);
+                        }
+                    }
+
+                    variantManager.setVariantList(allVariants);
+                    variantManager.setCurrentResolutionLabel(currentLineVariants != null && !currentLineVariants.isEmpty()
+                            ? currentLineVariants.get(0).getDisplayLabel() : "");
+
+                    int totalVariantCount = 0;
+                    for (List<Variant> g : lineGroups.values()) totalVariantCount += g.size();
+                    LogBridge.d(TAG, "【虎牙】variantList 填充: 共 " + totalVariantCount + " 个清晰度，分布在 " + lineGroups.size() + " 条线路");
+
+                    if (currentChannel != null) {
+                        List<String> backups = currentChannel.getBackupUrls();
+                        if (backups == null) { backups = new ArrayList<>(); }
+                        else backups.clear();
+
+                        // 🔴【修复清晰度残留】同 TVPlayerManager：不覆写 mainPlayUrl，
+                        // 保持 huya://room/xxx 房间协议，切回该频道时重新解析填充 variantList。
+                        // 线路/码率 URL 仍写入 backupUrls，供"线路选择"切换使用。
+
+                        Set<String> seenUrls = new HashSet<>();
+                        if (allVariants != null) {
+                            for (Variant v : allVariants) {
+                                if (v.url != null && !seenUrls.contains(v.url)) {
+                                    seenUrls.add(v.url);
+                                    if (!v.url.equals(defaultUrl) && !backups.contains(v.url)) {
+                                        backups.add(v.url);
+                                    }
+                                }
+                            }
+                        }
+
+                        LogBridge.d(TAG, "【虎牙】扁平化线路: 主源 + " + backups.size() + " 个备源 (总变体数=" + allVariants.size() + ")");
+                    }
+
+                    LogBridge.d(TAG, "【虎牙】SDK 全量解析成功, 默认流=" + defaultUrl.substring(0, Math.min(80, defaultUrl.length())));
+
+                    callback.setPendingHeaders(null);
+                    mHandler.post(() -> doPlay(defaultUrl, initialSeekPosition));
+                }
+
+                @Override
+                public void onError(String error) {
+                    LogBridge.e(TAG, "【虎牙】SDK 全量解析失败: " + error);
                     mHandler.post(() -> {
-                        Toast.makeText(context, "虎牙 SDK 解析失败：返回空地址", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(context, "虎牙 SDK 解析失败: " + error, Toast.LENGTH_SHORT).show();
                         callback.onSourceFailed();
                     });
-                    return;
                 }
-
-                if (allStreams != null && allStreams.size() > 1) {
-                    Set<Integer> lineIndexSet = new TreeSet<>();
-                    for (HuyaSDKParser.HuyaStreamInfo s : allStreams) {
-                        if (!TextUtils.isEmpty(s.getPlayUrl())) {
-                            lineIndexSet.add(s.lineIndex);
-                        }
-                    }
-                    List<Integer> uniqueLineIndices = new ArrayList<>(lineIndexSet);
-
-                    if (uniqueLineIndices.size() > 1) {
-                        String linePrefKey = "huya_line_poll_" + roomId;
-                        SharedPreferences sp = callback.getSharedPrefs();
-                        int lastLineIdx = sp.getInt(linePrefKey, uniqueLineIndices.get(0));
-
-                        int currentPos = -1;
-                        for (int i = 0; i < uniqueLineIndices.size(); i++) {
-                            if (uniqueLineIndices.get(i) == lastLineIdx) {
-                                currentPos = i;
-                                break;
-                            }
-                        }
-                        if (currentPos == -1) currentPos = 0;
-
-                        int nextPos = (currentPos + 1) % uniqueLineIndices.size();
-                        int targetLineIndex = uniqueLineIndices.get(nextPos);
-
-                        if (targetLineIndex != streamHolder[0].lineIndex) {
-                            Log.d(TAG, "【虎牙】线路轮询：切换到线路 " + targetLineIndex);
-                            HuyaSDKParser.HuyaStreamInfo targetStream = null;
-                            for (HuyaSDKParser.HuyaStreamInfo s : allStreams) {
-                                if (s.lineIndex == targetLineIndex && !TextUtils.isEmpty(s.getPlayUrl())) {
-                                    if (s.isDefaultBitrate) {
-                                        targetStream = s;
-                                        break;
-                                    }
-                                    if (targetStream == null || s.bitRate > targetStream.bitRate) {
-                                        targetStream = s;
-                                    }
-                                }
-                            }
-                            if (targetStream != null) {
-                                streamHolder[0] = targetStream;
-                            }
-                        }
-                        sp.edit().putInt(linePrefKey, streamHolder[0].lineIndex).apply();
-                    }
-                }
-
-                List<Variant> allVariants = new ArrayList<>();
-                if (allStreams != null) {
-                    for (HuyaSDKParser.HuyaStreamInfo s : allStreams) {
-                        if (!TextUtils.isEmpty(s.getPlayUrl())) {
-                            allVariants.add(Variant.fromHuyaStreamInfo(s));
-                        }
-                    }
-                }
-                final String defaultUrl = streamHolder[0].getPlayUrl();
-                variantManager.setCurrentHuyaLineIndex(streamHolder[0].lineIndex);
-
-                Map<Integer, List<Variant>> lineGroups = new TreeMap<>();
-                for (Variant v : allVariants) {
-                    List<Variant> group = lineGroups.get(v.huyaLineIndex);
-                    if (group == null) {
-                        group = new ArrayList<>();
-                        lineGroups.put(v.huyaLineIndex, group);
-                    }
-                    group.add(v);
-                }
-                for (List<Variant> group : lineGroups.values()) {
-                    Collections.sort(group, (a, b) -> Integer.compare(b.bandwidth, a.bandwidth));
-                }
-
-                List<Variant> currentLineVariants = lineGroups.get(variantManager.getCurrentHuyaLineIndex());
-                if (currentLineVariants != null) {
-                    int defIdx = -1;
-                    for (int i = 0; i < currentLineVariants.size(); i++) {
-                        if (defaultUrl.equals(currentLineVariants.get(i).url)) { defIdx = i; break; }
-                    }
-                    if (defIdx > 0) {
-                        Variant defV = currentLineVariants.remove(defIdx);
-                        currentLineVariants.add(0, defV);
-                    }
-                }
-
-                variantManager.setVariantList(allVariants);
-                variantManager.setCurrentResolutionLabel(currentLineVariants != null && !currentLineVariants.isEmpty()
-                        ? currentLineVariants.get(0).getDisplayLabel() : "");
-
-                int totalVariantCount = 0;
-                for (List<Variant> g : lineGroups.values()) totalVariantCount += g.size();
-                Log.d(TAG, "【虎牙】variantList 填充: 共 " + totalVariantCount + " 个清晰度，分布在 " + lineGroups.size() + " 条线路");
-
-                if (currentChannel != null) {
-                    List<String> backups = currentChannel.getBackupUrls();
-                    if (backups == null) { backups = new ArrayList<>(); }
-                    else backups.clear();
-
-                    // 🔴【修复清晰度残留】同 TVPlayerManager：不覆写 mainPlayUrl，
-                    // 保持 huya://room/xxx 房间协议，切回该频道时重新解析填充 variantList。
-                    // 线路/码率 URL 仍写入 backupUrls，供"线路选择"切换使用。
-
-                    Set<String> seenUrls = new HashSet<>();
-                    if (allVariants != null) {
-                        for (Variant v : allVariants) {
-                            if (v.url != null && !seenUrls.contains(v.url)) {
-                                seenUrls.add(v.url);
-                                if (!v.url.equals(defaultUrl) && !backups.contains(v.url)) {
-                                    backups.add(v.url);
-                                }
-                            }
-                        }
-                    }
-
-                    Log.d(TAG, "【虎牙】扁平化线路: 主源 + " + backups.size() + " 个备源 (总变体数=" + allVariants.size() + ")");
-                }
-
-                Log.d(TAG, "【虎牙】SDK 全量解析成功, 默认流=" + defaultUrl.substring(0, Math.min(80, defaultUrl.length())));
-
-                callback.setPendingHeaders(null);
-                mHandler.post(() -> doPlay(defaultUrl, initialSeekPosition));
-            }
-
-            @Override
-            public void onError(String error) {
-                Log.e(TAG, "【虎牙】SDK 全量解析失败: " + error);
-                mHandler.post(() -> {
-                    Toast.makeText(context, "虎牙 SDK 解析失败: " + error, Toast.LENGTH_SHORT).show();
-                    callback.onSourceFailed();
-                });
-            }
-        });
+            });
+        } catch (Throwable t) {
+            // 🔴【关键修复】捕获 SDK 调用时直接抛出的 UnsatisfiedLinkError 等致命错误，
+            // 避免未捕获异常走到 CrashHandler 弹出崩溃页面。
+            String msg = t instanceof UnsatisfiedLinkError
+                    ? "虎牙 SDK 原生库与当前系统不兼容"
+                    : "虎牙 SDK 调用异常: " + t.getMessage();
+            LogBridge.e(TAG, "【虎牙】SDK 调用被外层捕获: " + msg, t);
+            mHandler.post(() -> {
+                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show();
+                callback.onSourceFailed();
+            });
+        }
     }
 
     private void doPlay(String url, long initialSeekPosition) {
@@ -393,7 +420,7 @@ public class HuyaStreamPlayer {
                     || lowerUrl.contains(".flv.huya.com/")
                     || lowerUrl.contains(".hls.huya.com/")
                     || (lowerUrl.startsWith("http") && (lowerUrl.contains("/src?ws") || lowerUrl.contains("&wssecret=")));
-            Log.d(TAG, "doPlay: url=" + playUrl.substring(0, Math.min(100, playUrl.length())) + " isHls=" + isHlsUrl(playUrl));
+            LogBridge.d(TAG, "doPlay: url=" + playUrl.substring(0, Math.min(100, playUrl.length())) + " isHls=" + isHlsUrl(playUrl));
 
             String finalUrl;
             Channel currentChannel = callback.getCurrentChannel();
@@ -418,7 +445,7 @@ public class HuyaStreamPlayer {
                         finalUrl = backups.get(backupIndex);
                     } else {
                         finalUrl = currentChannel.getMainPlayUrl();
-                        Log.w(TAG, "线路索引越界，已自动切回主源");
+                        LogBridge.w(TAG, "线路索引越界，已自动切回主源");
                     }
                 }
                 callback.dLog("切换线路后播放：" + finalUrl);
@@ -435,7 +462,7 @@ public class HuyaStreamPlayer {
             }
 
         } catch (Exception e) {
-            Log.e(TAG, "播放异常", e);
+            LogBridge.e(TAG, "播放异常", e);
             if (e instanceof RedirectFailedException) {
                 callback.onPlayError("源跳转失败：" + e.getMessage());
                 return;
@@ -449,7 +476,7 @@ public class HuyaStreamPlayer {
         ExoPlayer player = callback.getPlayer();
         String currentChannelName = callback.getCurrentChannelName();
 
-        Log.d(TAG, "【普通源】开始播放: " + url.substring(0, Math.min(80, url.length())));
+        LogBridge.d(TAG, "【普通源】开始播放: " + url.substring(0, Math.min(80, url.length())));
 
         if (isHlsUrl(url)) {
             fetchAndParseMasterPlaylistNormal(url);
@@ -499,7 +526,7 @@ public class HuyaStreamPlayer {
         ExoPlayer player = callback.getPlayer();
         String currentChannelName = callback.getCurrentChannelName();
 
-        Log.d(TAG, "【虎牙源】开始播放: " + url.substring(0, Math.min(80, url.length())));
+        LogBridge.d(TAG, "【虎牙源】开始播放: " + url.substring(0, Math.min(80, url.length())));
 
         SharedPreferences sp = callback.getSharedPrefs();
         boolean debugEnabled = sp.getBoolean("debug_log_enable", false);
@@ -532,10 +559,10 @@ public class HuyaStreamPlayer {
                 reusableHeaderMap.put(e.getKey(), e.getValue());
                 cnt++;
             }
-            Log.d(TAG, "【虎牙源】解析器专用Headers注入 " + cnt + " 项(含Cookie="
+            LogBridge.d(TAG, "【虎牙源】解析器专用Headers注入 " + cnt + " 项(含Cookie="
                     + (mPendingPlaybackHeaders.containsKey("Cookie") ? "是" : "否") + ")");
         } else {
-            Log.d(TAG, "【虎牙源】mPendingPlaybackHeaders 为空，走默认虎牙 headers");
+            LogBridge.d(TAG, "【虎牙源】mPendingPlaybackHeaders 为空，走默认虎牙 headers");
         }
         callback.setPendingHeaders(null);
 
@@ -575,7 +602,7 @@ public class HuyaStreamPlayer {
         sPlaylistExecutor.execute(() -> {
             HttpURLConnection connection = null;
             try {
-                Log.d(TAG, "【普通源】解析主播放列表: " + masterUrl.substring(0, Math.min(100, masterUrl.length())));
+                LogBridge.d(TAG, "【普通源】解析主播放列表: " + masterUrl.substring(0, Math.min(100, masterUrl.length())));
 
                 URL url = new URL(masterUrl);
                 connection = (HttpURLConnection) url.openConnection();
@@ -588,7 +615,7 @@ public class HuyaStreamPlayer {
                 connection.setRequestProperty("Accept", "*/*");
 
                 int code = connection.getResponseCode();
-                Log.d(TAG, "【普通源】主播放列表响应码: " + code);
+                LogBridge.d(TAG, "【普通源】主播放列表响应码: " + code);
 
                 if (code == HttpURLConnection.HTTP_OK) {
                     StringBuilder content = new StringBuilder();
@@ -600,23 +627,23 @@ public class HuyaStreamPlayer {
                         }
                     }
                     String playlist = content.toString();
-                    Log.d(TAG, "【普通源】主播放列表长度: " + playlist.length());
+                    LogBridge.d(TAG, "【普通源】主播放列表长度: " + playlist.length());
                     variantManager.parseMasterPlaylist(playlist, masterUrl);
                 } else if (code == HttpURLConnection.HTTP_MOVED_TEMP
                         || code == HttpURLConnection.HTTP_MOVED_PERM) {
                     String newUrl = connection.getHeaderField("Location");
-                    Log.d(TAG, "【普通源】重定向到: " + newUrl);
+                    LogBridge.d(TAG, "【普通源】重定向到: " + newUrl);
                     variantManager.setParsingMasterPlaylist(false);
                     if (newUrl != null) {
                         fetchAndParseMasterPlaylistNormal(newUrl);
                         return;
                     }
                 } else {
-                    Log.e(TAG, "【普通源】主播放列表请求失败: code=" + code);
+                    LogBridge.e(TAG, "【普通源】主播放列表请求失败: code=" + code);
                     variantManager.clearVariantList();
                 }
             } catch (Exception e) {
-                Log.e(TAG, "【普通源】解析主播放列表失败: ", e);
+                LogBridge.e(TAG, "【普通源】解析主播放列表失败: ", e);
                 variantManager.clearVariantList();
             } finally {
                 if (connection != null) {
@@ -634,7 +661,7 @@ public class HuyaStreamPlayer {
         sPlaylistExecutor.execute(() -> {
             HttpURLConnection connection = null;
             try {
-                Log.d(TAG, "【虎牙源】解析主播放列表: " + masterUrl.substring(0, Math.min(100, masterUrl.length())));
+                LogBridge.d(TAG, "【虎牙源】解析主播放列表: " + masterUrl.substring(0, Math.min(100, masterUrl.length())));
 
                 URL url = new URL(masterUrl);
                 connection = (HttpURLConnection) url.openConnection();
@@ -663,7 +690,7 @@ public class HuyaStreamPlayer {
                 }
 
                 int code = connection.getResponseCode();
-                Log.d(TAG, "【虎牙源】主播放列表响应码: " + code);
+                LogBridge.d(TAG, "【虎牙源】主播放列表响应码: " + code);
 
                 if (code == HttpURLConnection.HTTP_OK) {
                     StringBuilder content = new StringBuilder();
@@ -675,23 +702,23 @@ public class HuyaStreamPlayer {
                         }
                     }
                     String playlist = content.toString();
-                    Log.d(TAG, "【虎牙源】主播放列表长度: " + playlist.length());
+                    LogBridge.d(TAG, "【虎牙源】主播放列表长度: " + playlist.length());
                     variantManager.parseMasterPlaylist(playlist, masterUrl);
                 } else if (code == HttpURLConnection.HTTP_MOVED_TEMP
                         || code == HttpURLConnection.HTTP_MOVED_PERM) {
                     String newUrl = connection.getHeaderField("Location");
-                    Log.d(TAG, "【虎牙源】手动重定向到: " + newUrl);
+                    LogBridge.d(TAG, "【虎牙源】手动重定向到: " + newUrl);
                     variantManager.setParsingMasterPlaylist(false);
                     if (newUrl != null) {
                         fetchAndParseMasterPlaylistHuya(newUrl);
                         return;
                     }
                 } else {
-                    Log.e(TAG, "【虎牙源】主播放列表请求失败: code=" + code);
+                    LogBridge.e(TAG, "【虎牙源】主播放列表请求失败: code=" + code);
                     variantManager.clearVariantList();
                 }
             } catch (Exception e) {
-                Log.e(TAG, "【虎牙源】解析主播放列表失败: ", e);
+                LogBridge.e(TAG, "【虎牙源】解析主播放列表失败: ", e);
                 variantManager.clearVariantList();
             } finally {
                 if (connection != null) {

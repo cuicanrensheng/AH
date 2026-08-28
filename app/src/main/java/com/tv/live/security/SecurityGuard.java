@@ -4,7 +4,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.os.Build;
 import android.os.Process;
-import android.util.Log;
+import com.tv.live.util.LogBridge;
 import android.widget.Toast;
 
 import com.tv.live.BuildConfig;
@@ -68,9 +68,9 @@ public final class SecurityGuard {
         if (!BuildConfig.IS_DEBUG) {
             // 正式版：启动后台监控
             startSecurityMonitor();
-            Log.i(TAG, "安全守卫已启用");
+            LogBridge.i(TAG, "安全守卫已启用");
         } else {
-            Log.i(TAG, "安全守卫：调试模式，仅记录日志");
+            LogBridge.i(TAG, "安全守卫：调试模式，仅记录日志");
         }
     }
 
@@ -88,7 +88,7 @@ public final class SecurityGuard {
         }
         
         String threatName = getThreatName(threatType);
-        Log.e(TAG, "⚠️ 检测到安全威胁: " + threatName + " - " + detail);
+        LogBridge.e(TAG, "⚠️ 检测到安全威胁: " + threatName + " - " + detail);
         
         // 上报篡改事件到 TamperReporter
         reportThreatToReporter(threatType, threatName, detail);
@@ -135,7 +135,7 @@ public final class SecurityGuard {
                 "SecurityGuard检测到: " + threatName + " | " + detail);
                 
         } catch (Exception e) {
-            Log.e(TAG, "上报威胁失败: " + e.getMessage());
+            LogBridge.e(TAG, "上报威胁失败: " + e.getMessage());
         }
     }
     
@@ -214,7 +214,7 @@ public final class SecurityGuard {
                 } catch (Exception ignored) {}
             }).start();
         } catch (Exception e) {
-            Log.e(TAG, "显示警告失败: " + e.getMessage());
+            LogBridge.e(TAG, "显示警告失败: " + e.getMessage());
         }
     }
 
@@ -224,7 +224,7 @@ public final class SecurityGuard {
     private static void blockFunctionality() {
         // 设置全局标志位，让应用关键功能失效
         // 例如：停止播放、断开网络等
-        Log.w(TAG, "🔒 已阻止应用功能");
+        LogBridge.w(TAG, "🔒 已阻止应用功能");
     }
 
     /**
@@ -234,7 +234,7 @@ public final class SecurityGuard {
         if (sDestroyed) return;
         sDestroyed = true;
         
-        Log.w(TAG, "🚪 正在退出应用...");
+        LogBridge.w(TAG, "🚪 正在退出应用...");
         
         // 延迟 2 秒后退出，让用户看到警告
         new Thread(() -> {
@@ -261,7 +261,7 @@ public final class SecurityGuard {
         if (sDestroyed) return;
         sDestroyed = true;
         
-        Log.w(TAG, "💥 触发自毁程序...");
+        LogBridge.w(TAG, "💥 触发自毁程序...");
         
         new Thread(() -> {
             try {
@@ -309,9 +309,9 @@ public final class SecurityGuard {
                 }
             }
             
-            Log.i(TAG, "敏感数据已清理");
+            LogBridge.i(TAG, "敏感数据已清理");
         } catch (Exception e) {
-            Log.e(TAG, "清理数据失败: " + e.getMessage());
+            LogBridge.e(TAG, "清理数据失败: " + e.getMessage());
         }
     }
 
@@ -379,32 +379,32 @@ public final class SecurityGuard {
                     
                     // 1. 检查 Frida（明确的逆向工具，发现即上报）
                     if (checkFrida()) {
-                        Log.w(TAG, "检测到 Frida 工具");
+                        LogBridge.w(TAG, "检测到 Frida 工具");
                         onThreatDetected(THREAT_FRIDA, "检测到 Frida");
                     }
                     
                     // 2. 检查 Xposed（明确的Hook框架，发现即上报）
                     if (checkXposed()) {
-                        Log.w(TAG, "检测到 Xposed 框架");
+                        LogBridge.w(TAG, "检测到 Xposed 框架");
                         onThreatDetected(THREAT_XPOSED, "检测到 Xposed");
                     }
                     
                     // 3. 检查调试器（仅记录日志，不上报）
                     // 因为很多情况下是误报（如系统调试开关、USB连接等）
                     if (android.os.Debug.isDebuggerConnected()) {
-                        Log.w(TAG, "检测到调试器连接（仅记录，不上报）");
+                        LogBridge.w(TAG, "检测到调试器连接（仅记录，不上报）");
                         // 不调用onThreatDetected，避免误报到Bugly
                     }
                     
                     // 4. 检查 Root（仅记录）
                     if (checkRoot()) {
-                        Log.w(TAG, "检测到 Root 环境（仅记录）");
+                        LogBridge.w(TAG, "检测到 Root 环境（仅记录）");
                     }
                     
                 } catch (InterruptedException e) {
                     break;
                 } catch (Throwable e) {
-                    Log.e(TAG, "安全监控异常: " + e.getMessage());
+                    LogBridge.e(TAG, "安全监控异常: " + e.getMessage());
                 }
             }
         }, "SecurityMonitor").start();

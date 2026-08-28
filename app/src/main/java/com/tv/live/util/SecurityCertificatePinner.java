@@ -2,7 +2,7 @@ package com.tv.live.util;
 
 import android.content.Context;
 import android.content.SharedPreferences;
-import android.util.Log;
+import com.tv.live.util.LogBridge;
 
 import java.security.MessageDigest;
 import java.security.cert.Certificate;
@@ -96,15 +96,15 @@ public class SecurityCertificatePinner {
         mContext = context.getApplicationContext();
         mCertStore = mContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
         loadCertPinsFromStorage();
-        Log.i(TAG, "SSL证书管理器初始化完成，已存储 " + mCertPins.size() + " 个域名证书");
+        LogBridge.i(TAG, "SSL证书管理器初始化完成，已存储 " + mCertPins.size() + " 个域名证书");
         
         // 默认使用学习模式（首次安装时）
         if (mCertPins.isEmpty()) {
             mMode = VerificationMode.LEARN;
-            Log.i(TAG, "首次启动，启用学习模式");
+            LogBridge.i(TAG, "首次启动，启用学习模式");
         } else {
             mMode = VerificationMode.WARN_ONLY;
-            Log.i(TAG, "已有证书数据，启用警告模式");
+            LogBridge.i(TAG, "已有证书数据，启用警告模式");
         }
     }
 
@@ -142,7 +142,7 @@ public class SecurityCertificatePinner {
         mCertStore.edit().putString(key, value).apply();
         mCertPins.put(domain, pins);
         
-        Log.i(TAG, "保存证书指纹: " + domain + " -> " + pins.size() + " 个pin");
+        LogBridge.i(TAG, "保存证书指纹: " + domain + " -> " + pins.size() + " 个pin");
     }
 
     /**
@@ -194,7 +194,7 @@ public class SecurityCertificatePinner {
      */
     public void setMode(VerificationMode mode) {
         mMode = mode;
-        Log.i(TAG, "证书验证模式: " + mode.name());
+        LogBridge.i(TAG, "证书验证模式: " + mode.name());
     }
 
     /**
@@ -227,7 +227,7 @@ public class SecurityCertificatePinner {
             mCertStore.edit().remove("pin:" + domain).apply();
         }
         mCertPins.remove(domain);
-        Log.i(TAG, "移除证书指纹: " + domain);
+        LogBridge.i(TAG, "移除证书指纹: " + domain);
     }
 
     /**
@@ -238,7 +238,7 @@ public class SecurityCertificatePinner {
             mCertStore.edit().clear().apply();
         }
         mCertPins.clear();
-        Log.i(TAG, "清除所有证书指纹");
+        LogBridge.i(TAG, "清除所有证书指纹");
     }
 
     /**
@@ -256,7 +256,7 @@ public class SecurityCertificatePinner {
         mLastVerificationTime = System.currentTimeMillis();
         
         if (certs == null || certs.length == 0) {
-            Log.w(TAG, "证书链为空: " + hostname);
+            LogBridge.w(TAG, "证书链为空: " + hostname);
             return CertVerificationResult.FAIL;
         }
 
@@ -272,11 +272,11 @@ public class SecurityCertificatePinner {
             // 首次连接：学习模式
             if (mMode == VerificationMode.LEARN || mMode == VerificationMode.WARN_ONLY) {
                 saveCertPin(hostname, certPins);
-                Log.i(TAG, "首次学习证书: " + hostname);
+                LogBridge.i(TAG, "首次学习证书: " + hostname);
                 notifyCertChanged(hostname, null, certPins, true);
                 return CertVerificationResult.SUCCESS;
             } else if (mMode == VerificationMode.VERIFY) {
-                Log.e(TAG, "证书未存储，拒绝连接: " + hostname);
+                LogBridge.e(TAG, "证书未存储，拒绝连接: " + hostname);
                 mFailedVerifications++;
                 return CertVerificationResult.FAIL;
             }
@@ -292,22 +292,22 @@ public class SecurityCertificatePinner {
                 
                 if (mMode == VerificationMode.LEARN) {
                     // 学习模式：自动更新证书（可能是服务器更新了证书）
-                    Log.w(TAG, "证书变更，自动更新: " + hostname);
+                    LogBridge.w(TAG, "证书变更，自动更新: " + hostname);
                     saveCertPin(hostname, certPins);
                     notifyCertChanged(hostname, storedPins, certPins, true);
                     return CertVerificationResult.SUCCESS;
                 } else if (mMode == VerificationMode.WARN_ONLY) {
                     // 警告模式：记录日志但允许连接
-                    Log.w(TAG, "证书不匹配，但允许连接: " + hostname);
-                    Log.w(TAG, "  存储的证书: " + storedPins);
-                    Log.w(TAG, "  当前证书: " + certPins);
+                    LogBridge.w(TAG, "证书不匹配，但允许连接: " + hostname);
+                    LogBridge.w(TAG, "  存储的证书: " + storedPins);
+                    LogBridge.w(TAG, "  当前证书: " + certPins);
                     notifyCertChanged(hostname, storedPins, certPins, false);
                     return CertVerificationResult.WARNING;
                 } else if (mMode == VerificationMode.VERIFY) {
                     // 严格验证模式：拒绝连接
-                    Log.e(TAG, "证书不匹配，拒绝连接: " + hostname);
-                    Log.e(TAG, "  存储的证书: " + storedPins);
-                    Log.e(TAG, "  当前证书: " + certPins);
+                    LogBridge.e(TAG, "证书不匹配，拒绝连接: " + hostname);
+                    LogBridge.e(TAG, "  存储的证书: " + storedPins);
+                    LogBridge.e(TAG, "  当前证书: " + certPins);
                     notifyCertChanged(hostname, storedPins, certPins, false);
                     return CertVerificationResult.FAIL;
                 }
@@ -333,7 +333,7 @@ public class SecurityCertificatePinner {
                 pins.add(pin);
             }
         } catch (Exception e) {
-            Log.e(TAG, "计算证书指纹失败: " + e.getMessage());
+            LogBridge.e(TAG, "计算证书指纹失败: " + e.getMessage());
         }
         
         return pins;
@@ -347,7 +347,7 @@ public class SecurityCertificatePinner {
             try {
                 listener.onCertChanged(hostname, oldPins, newPins, trusted);
             } catch (Exception e) {
-                Log.e(TAG, "通知证书变更失败: " + e.getMessage());
+                LogBridge.e(TAG, "通知证书变更失败: " + e.getMessage());
             }
         }
     }
@@ -414,11 +414,11 @@ public class SecurityCertificatePinner {
             try {
                 HostnameVerifier hv = javax.net.ssl.HttpsURLConnection.getDefaultHostnameVerifier();
                 if (!hv.verify(hostname, session)) {
-                    Log.w(TAG, "主机名验证失败: " + hostname);
+                    LogBridge.w(TAG, "主机名验证失败: " + hostname);
                     return false;
                 }
             } catch (Exception e) {
-                Log.e(TAG, "主机名验证异常: " + hostname + " -> " + e.getMessage());
+                LogBridge.e(TAG, "主机名验证异常: " + hostname + " -> " + e.getMessage());
                 return false;
             }
             
@@ -439,7 +439,7 @@ public class SecurityCertificatePinner {
                     }
                 }
             } catch (Exception e) {
-                Log.e(TAG, "证书处理异常: " + hostname + " -> " + e.getMessage());
+                LogBridge.e(TAG, "证书处理异常: " + hostname + " -> " + e.getMessage());
                 if (mMode == VerificationMode.VERIFY) {
                     return false;
                 }

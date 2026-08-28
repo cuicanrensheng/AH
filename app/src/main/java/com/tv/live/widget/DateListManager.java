@@ -1,5 +1,7 @@
 package com.tv.live.widget;
 
+
+import com.tv.live.util.LogBridge;
 import android.content.Context;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -58,7 +60,7 @@ public class DateListManager {
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
                 selectedPosition = position;
-                android.util.Log.d("DateList", "onItemSelected pos:" + position);
+                LogBridge.d("DateList", "onItemSelected pos:" + position);
                 if (adapter != null) adapter.notifyDataSetChanged();
             }
             @Override
@@ -68,7 +70,7 @@ public class DateListManager {
 
         lvDate.setOnItemClickListener((parent, view, position, id) -> {
             selectedPosition = position;
-            android.util.Log.d("DateList", "onItemClick pos:" + position);
+            LogBridge.d("DateList", "onItemClick pos:" + position);
             if (adapter != null) adapter.notifyDataSetChanged();
         });
     }
@@ -110,7 +112,7 @@ public class DateListManager {
                 tv.setGravity(android.view.Gravity.CENTER);
 
                 boolean isSelected = (position == selectedPosition);
-                android.util.Log.d("DateList", "getView pos:" + position + ", selectedPos:" + selectedPosition + ", isSelected:" + isSelected);
+                LogBridge.d("DateList", "getView pos:" + position + ", selectedPos:" + selectedPosition + ", isSelected:" + isSelected);
 
                 if (isSelected) {
                     tv.setTextColor(COLOR_BLUE);
@@ -131,7 +133,7 @@ public class DateListManager {
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
                 selectedPosition = position;
-                android.util.Log.d("DateList", "onItemSelected pos:" + position);
+                LogBridge.d("DateList", "onItemSelected pos:" + position);
                 if (adapter != null) adapter.notifyDataSetChanged();
                 if (listener != null) {
                     listener.onDateSelected(position);

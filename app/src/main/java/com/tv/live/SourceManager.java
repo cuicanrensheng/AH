@@ -1,5 +1,7 @@
 package com.tv.live;
 
+
+import com.tv.live.util.LogBridge;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.text.TextUtils;
@@ -706,7 +708,7 @@ public class SourceManager {
                     String beforeUrl = best.url;
                     String fixedUrl = ("live_history".equals(spKey)) ? UrlConfig.sanitizeLiveUrl(best.url) : beforeUrl;
                     if (fixedUrl != null && !fixedUrl.equals(beforeUrl)) {
-                        android.util.Log.w("SourceManager", "内置源" + best.name + " URL 已从失效地址迁移: "
+                        LogBridge.w("SourceManager", "内置源" + best.name + " URL 已从失效地址迁移: "
                             + (beforeUrl != null ? beforeUrl : "null") + " -> " + fixedUrl);
                         best.url = fixedUrl;
                     }

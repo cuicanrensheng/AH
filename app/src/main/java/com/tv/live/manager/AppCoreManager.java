@@ -2,7 +2,7 @@ package com.tv.live.manager;
 
 import com.tv.live.TVPlayerManager;
 import android.content.BroadcastReceiver;
-import android.util.Log;
+import com.tv.live.util.LogBridge;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
@@ -639,7 +639,7 @@ public class AppCoreManager {
     public void setOnRefreshListener(OnRefreshListener listener) { this.refreshListener = listener; }
 
     private void log(String msg) {
-        Log.d("AppCoreManager", msg);
+        LogBridge.d("AppCoreManager", msg);
     }
 
     public void release() {

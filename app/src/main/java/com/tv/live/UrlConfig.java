@@ -1,7 +1,7 @@
 package com.tv.live;
 
 import android.text.TextUtils;
-import android.util.Log;
+import com.tv.live.util.LogBridge;
 
 import com.tv.live.security.SecurityCore;
 
@@ -72,8 +72,8 @@ public final class UrlConfig {
 
     /** 启动后由 SecurityCore.init 完成后调用一次，把解出的明文回填到静态字段 */
     public static void fillPublicFields() {
-        String l1 = getLiveUrl();  if (l1 != null) { LIVE_URL   = l1; if (TextUtils.isEmpty(LIVE_URL_1_RAW)) LIVE_URL_1_RAW = l1; Log.i(TAG, "LIVE_URL 解密成功: " + l1.substring(0, Math.min(60, l1.length())) + "..."); }
-        else { Log.e(TAG, "LIVE_URL 解密失败，将使用空字符串"); }
+        String l1 = getLiveUrl();  if (l1 != null) { LIVE_URL   = l1; if (TextUtils.isEmpty(LIVE_URL_1_RAW)) LIVE_URL_1_RAW = l1; LogBridge.i(TAG, "LIVE_URL 解密成功: " + l1.substring(0, Math.min(60, l1.length())) + "..."); }
+        else { LogBridge.e(TAG, "LIVE_URL 解密失败，将使用空字符串"); }
 
         String l2 = getLiveUrl2();
         // 🔧 内置源2地址迁移：
@@ -87,17 +87,17 @@ public final class UrlConfig {
             LIVE_URL_2 = l2fixed;
             if (TextUtils.isEmpty(LIVE_URL_2_RAW)) LIVE_URL_2_RAW = l2fixed;
             if (!l2.equals(l2fixed)) {
-                Log.w(TAG, "LIVE_URL_2 原始地址已失效(404)，已自动迁移到新地址: " + NEW_WORKING);
+                LogBridge.w(TAG, "LIVE_URL_2 原始地址已失效(404)，已自动迁移到新地址: " + NEW_WORKING);
             } else {
-                Log.i(TAG, "LIVE_URL_2 解密成功: " + l2.substring(0, Math.min(60, l2.length())) + "...");
+                LogBridge.i(TAG, "LIVE_URL_2 解密成功: " + l2.substring(0, Math.min(60, l2.length())) + "...");
             }
         }
-        else { Log.w(TAG, "LIVE_URL_2 解密失败"); }
+        else { LogBridge.w(TAG, "LIVE_URL_2 解密失败"); }
 
         String e1 = getEpgUrl();   if (e1 != null) { EPG_URL    = e1; if (TextUtils.isEmpty(EPG_URL_1_RAW))  EPG_URL_1_RAW  = e1; }
         String e2 = getEpgUrl2();  if (e2 != null) { EPG_URL_2  = e2; if (TextUtils.isEmpty(EPG_URL_2_RAW))  EPG_URL_2_RAW  = e2; }
 
-        Log.i(TAG, "URL 配置解密完成，SecurityCore.isLoaded=" + SecurityCore.isLoaded() +
+        LogBridge.i(TAG, "URL 配置解密完成，SecurityCore.isLoaded=" + SecurityCore.isLoaded() +
                    " | RAW[L1=" + (TextUtils.isEmpty(LIVE_URL_1_RAW) ? "null" : "ok") +
                    ", L2=" + (TextUtils.isEmpty(LIVE_URL_2_RAW) ? "null" : "ok") +
                    ", E1=" + (TextUtils.isEmpty(EPG_URL_1_RAW)  ? "null" : "ok") +

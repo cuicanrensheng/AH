@@ -159,6 +159,22 @@ public class LogCollector {
     }
 
     public void addLog(String tag, String msg, String type) {
+        addLogInternal(tag, msg, type, true);
+    }
+
+    /**
+     * 仅写入缓冲 + logcat，不触发 Bugly 自动上报。
+     * 供 LogBridge 批量桥接使用，避免把普通日志误报成异常。
+     */
+    public void addLogNoReport(String tag, String msg, String type) {
+        addLogInternal(tag, msg, type, false);
+    }
+
+    private void addLogInternal(String tag, String msg, String type, boolean autoReport) {
+        // 超长日志截断：防止单条超长日志（如频道名拼接）占用大量缓冲空间
+        if (msg != null && msg.length() > 500) {
+            msg = msg.substring(0, 500) + "...[已截断]";
+        }
         LogEntry entry = createLogEntry(tag, msg, type);
         String line;
         if (!TextUtils.isEmpty(tag)) {
@@ -168,13 +184,13 @@ public class LogCollector {
         }
         synchronized (logs) {
             logs.add(0, line);
-            if (logs.size() > 500) {
+            if (logs.size() > 2000) {
                 logs.remove(logs.size() - 1);
             }
         }
         synchronized (logEntries) {
             logEntries.add(0, entry);
-            if (logEntries.size() > 500) {
+            if (logEntries.size() > 2000) {
                 logEntries.remove(logEntries.size() - 1);
             }
         }
@@ -182,7 +198,7 @@ public class LogCollector {
 
         // 自动上报 ERROR 和 CRASH 类型日志到 Bugly（用于监控）
         // 过滤掉不应该上报的日志（如SDK成功日志、网络状态等）
-        if (TYPE_ERROR.equals(type) || TYPE_CRASH.equals(type)) {
+        if (autoReport && (TYPE_ERROR.equals(type) || TYPE_CRASH.equals(type))) {
             if (shouldReportToBugly(msg)) {
                 try {
                     ExceptionReporter.reportError(
@@ -348,7 +364,7 @@ public class LogCollector {
         String time = sdf.format(new Date());
         synchronized (logs) {
             logs.add(0, time + " " + DIVIDER_TOKEN);
-            if (logs.size() > 500) {
+            if (logs.size() > 2000) {
                 logs.remove(logs.size() - 1);
             }
         }

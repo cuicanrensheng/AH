@@ -10,11 +10,13 @@ import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Process;
 import android.util.DisplayMetrics;
-import android.util.Log;
+import com.tv.live.util.LogBridge;
 import android.view.WindowManager;
 
 import com.tv.live.util.LogCollector;
 import com.tv.live.util.LogServer;
+
+import io.reactivex.exceptions.UndeliverableException;
 
 import java.io.File;
 import java.io.FileWriter;
@@ -154,10 +156,10 @@ public class CrashHandler implements Thread.UncaughtExceptionHandler {
         // 设置为默认异常处理器
         Thread.setDefaultUncaughtExceptionHandler(this);
 
-        Log.d(TAG, "全局崩溃捕获器已初始化");
-        Log.d(TAG, "崩溃日志保存目录：" + getCrashDir().getAbsolutePath());
-        Log.d(TAG, "崩溃页面显示时长：" + CRASH_PAGE_DISPLAY_DURATION / 1000 + " 秒");
-        Log.d(TAG, "自动重启：" + (autoRestartEnabled ? "已开启" : "已关闭"));
+        LogBridge.d(TAG, "全局崩溃捕获器已初始化");
+        LogBridge.d(TAG, "崩溃日志保存目录：" + getCrashDir().getAbsolutePath());
+        LogBridge.d(TAG, "崩溃页面显示时长：" + CRASH_PAGE_DISPLAY_DURATION / 1000 + " 秒");
+        LogBridge.d(TAG, "自动重启：" + (autoRestartEnabled ? "已开启" : "已关闭"));
     }
 
     // ====================================================================
@@ -171,7 +173,7 @@ public class CrashHandler implements Thread.UncaughtExceptionHandler {
      */
     public void setAutoRestartEnabled(boolean enabled) {
         this.autoRestartEnabled = enabled;
-        Log.d(TAG, "自动重启已" + (enabled ? "开启" : "关闭"));
+        LogBridge.d(TAG, "自动重启已" + (enabled ? "开启" : "关闭"));
     }
 
     // ====================================================================
@@ -187,20 +189,43 @@ public class CrashHandler implements Thread.UncaughtExceptionHandler {
      * 3. 启动崩溃页面
      * 4. 子线程中延迟1分钟后重启或杀进程
      *
-     * 【Bugly 上报机制】
-     * Bugly SDK 通过 initCrashReport(ctx, appId, true) 注册了 NATIVE 层的
-     * signal handler（SIGABRT/SIGSEGV）和文件持久化机制。即使我们替换了
-     * Bugly 的 Java UncaughtExceptionHandler，Bugly 的原生机制仍能：
-     *   1. 捕获 native 层崩溃信号
-     *   2. 将崩溃信息写入本地文件
-     *   3. 下次启动时自动读取并上传到 Bugly 控制台
-     *
-     * 因此：不需要在 Java 层转发给 Bugly handler，也不需要 postCatchedException。
-     * 转发反而会导致 Bugly handler 抢先杀进程，崩溃页面无法显示。
+     * 【崩溃上报说明】
+     * Bugly（普通版 + 专业版）已全部移除（实验 2026-08-28），不存在 native
+     * signal handler / 文件持久化 / 自动上传机制。崩溃信息由 ExceptionReporter /
+     * LogCollector 在本地记录，此处不转发给任何第三方上报 SDK，崩溃页面可正常显示。
      */
     @Override
     public void uncaughtException(Thread thread, Throwable ex) {
         try {
+            // ================================================================
+            // 第零步：黑名单免疫 —— 已知无法修复的 SO 兼容异常（Mars STN 在
+            //         Android 5.1.1 等老设备上 UnsatisfiedLinkError），不能让
+            //         它弹出崩溃页面把用户赶到 CrashActivity。
+            //         业务层 HuyaSDKParser 已对 API <= 22 做了 SDK 短路，但
+            //         虎牙 SDK init 之后会异步启动 mars 网络栈上报 SDK 自身
+            //         内部指标（统计/心跳/链路），完全绕过 sInitOk 守门。
+            //         这些异常通常发生在 SDK 内部工作线程，被 Thread 顶层
+            //         UncaughtExceptionHandler 捕获后到达此处。
+            //         处理策略：仅记录日志 + 上报到日志服务/异常上报，**不**
+            //         启动崩溃页、不杀进程（保留应用主功能可用）。
+            // ================================================================
+            if (isIgnoredMarsLinkError(ex)) {
+                LogBridge.e(TAG, "🛡️【mars 黑名单】忽略已知 SO 不兼容异常: " + ex.getClass().getSimpleName()
+                        + ": " + ex.getMessage());
+                try {
+                    StringWriter sw = new StringWriter();
+                    PrintWriter pw = new PrintWriter(sw);
+                    ex.printStackTrace(pw);
+                    pw.close();
+                    LogCollector.getInstance().error("CrashHandler", "mars_ignored:" + sw.toString());
+                    if (context != null) {
+                        LogServer.getInstance(context).sendCrashLog(
+                                "【mars 黑名单免疫】\n" + sw.toString());
+                    }
+                } catch (Throwable ignored) {
+                }
+                return;
+            }
             // ================================================================
             // 第一步：收集完整的崩溃信息
             // ================================================================
@@ -210,7 +235,7 @@ public class CrashHandler implements Thread.UncaughtExceptionHandler {
             // 第二步：保存到静态变量（供 CrashActivity 读取显示）
             // ================================================================
             CRASH_LOG = crashLog;
-            Log.e(TAG, crashLog);
+            LogBridge.e(TAG, crashLog);
 
             // ================================================================
             // 第三步：保存到本地文件（持久化，重启后还能看到）
@@ -221,9 +246,9 @@ public class CrashHandler implements Thread.UncaughtExceptionHandler {
             // 第四步：同步到日志系统 + 推送到远程监控
             // ================================================================
             try {
-                Log.e(TAG, "【崩溃】" + ex.getClass().getName() + ": " + ex.getMessage());
-                Log.e(TAG, "【崩溃】详细日志已保存到文件");
-                Log.e(TAG, "【崩溃】崩溃页面将显示 " + (CRASH_PAGE_DISPLAY_DURATION / 1000) + " 秒");
+                LogBridge.e(TAG, "【崩溃】" + ex.getClass().getName() + ": " + ex.getMessage());
+                LogBridge.e(TAG, "【崩溃】详细日志已保存到文件");
+                LogBridge.e(TAG, "【崩溃】崩溃页面将显示 " + (CRASH_PAGE_DISPLAY_DURATION / 1000) + " 秒");
 
                 LogCollector.getInstance().crash("CrashHandler",
                         ex.getClass().getSimpleName() + ": " + ex.getMessage());
@@ -240,7 +265,7 @@ public class CrashHandler implements Thread.UncaughtExceptionHandler {
 
             // ================================================================
             // 第六步：子线程中延迟处理，不阻塞主线程
-            // Bugly 的 native handler 会同时工作，确保崩溃被上报
+            // 崩溃信息已由本地日志记录（Bugly 已移除，无第三方上报）
             // ================================================================
             new Thread(() -> {
                 try {
@@ -258,7 +283,7 @@ public class CrashHandler implements Thread.UncaughtExceptionHandler {
             }, "crash-handler").start();
 
         } catch (Exception e) {
-            Log.e(TAG, "崩溃处理失败", e);
+            LogBridge.e(TAG, "崩溃处理失败", e);
             if (defaultHandler != null) {
                 defaultHandler.uncaughtException(thread, ex);
             }
@@ -317,7 +342,7 @@ public class CrashHandler implements Thread.UncaughtExceptionHandler {
             PackageInfo pi = pm.getPackageInfo(context.getPackageName(), 0);
             sb.append("包名：").append(pi.packageName).append("\n");
             sb.append("版本名：").append(pi.versionName).append("\n");
-            sb.append("版本号：").append(pi.versionCode).append("\n");
+            sb.append("版本号：").append(androidx.core.content.pm.PackageInfoCompat.getLongVersionCode(pi)).append("\n");
         } catch (PackageManager.NameNotFoundException e) {
             sb.append("包名：").append(context.getPackageName()).append("\n");
             sb.append("版本信息：获取失败\n");
@@ -403,13 +428,13 @@ public class CrashHandler implements Thread.UncaughtExceptionHandler {
             writer.flush();
             writer.close();
 
-            Log.d(TAG, "崩溃日志已保存：" + crashFile.getAbsolutePath());
+            LogBridge.d(TAG, "崩溃日志已保存：" + crashFile.getAbsolutePath());
 
             // 4. 自动清理旧的日志文件
             cleanOldCrashLogs();
 
         } catch (Exception e) {
-            Log.e(TAG, "保存崩溃日志到文件失败", e);
+            LogBridge.e(TAG, "保存崩溃日志到文件失败", e);
         }
     }
 
@@ -442,12 +467,12 @@ public class CrashHandler implements Thread.UncaughtExceptionHandler {
             for (int i = MAX_CRASH_LOG_COUNT; i < fileList.size(); i++) {
                 File oldFile = fileList.get(i);
                 if (oldFile.delete()) {
-                    Log.d(TAG, "已删除旧的崩溃日志：" + oldFile.getName());
+                    LogBridge.d(TAG, "已删除旧的崩溃日志：" + oldFile.getName());
                 }
             }
 
         } catch (Exception e) {
-            Log.e(TAG, "清理旧崩溃日志失败", e);
+            LogBridge.e(TAG, "清理旧崩溃日志失败", e);
         }
     }
 
@@ -491,11 +516,11 @@ public class CrashHandler implements Thread.UncaughtExceptionHandler {
                         System.currentTimeMillis() + RESTART_DELAY,
                         pendingIntent
                 );
-                Log.d(TAG, "已设置自动重启，" + RESTART_DELAY + "ms 后启动");
+                LogBridge.d(TAG, "已设置自动重启，" + RESTART_DELAY + "ms 后启动");
             }
 
         } catch (Exception e) {
-            Log.e(TAG, "设置自动重启失败", e);
+            LogBridge.e(TAG, "设置自动重启失败", e);
         }
     }
 
@@ -515,9 +540,9 @@ public class CrashHandler implements Thread.UncaughtExceptionHandler {
             Intent intent = new Intent(context, CrashActivity.class);
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
             context.startActivity(intent);
-            Log.d(TAG, "已启动崩溃页面");
+            LogBridge.d(TAG, "已启动崩溃页面");
         } catch (Exception e) {
-            Log.e(TAG, "启动崩溃页面失败", e);
+            LogBridge.e(TAG, "启动崩溃页面失败", e);
         }
     }
 
@@ -580,7 +605,7 @@ public class CrashHandler implements Thread.UncaughtExceptionHandler {
             return fileList;
 
         } catch (Exception e) {
-            Log.e(TAG, "获取崩溃日志列表失败", e);
+            LogBridge.e(TAG, "获取崩溃日志列表失败", e);
             return new ArrayList<>();
         }
     }
@@ -607,7 +632,7 @@ public class CrashHandler implements Thread.UncaughtExceptionHandler {
             File latestFile = list.get(0);
             return readFileToString(latestFile);
         } catch (Exception e) {
-            Log.e(TAG, "读取最新崩溃日志失败", e);
+            LogBridge.e(TAG, "读取最新崩溃日志失败", e);
             return null;
         }
     }
@@ -640,11 +665,11 @@ public class CrashHandler implements Thread.UncaughtExceptionHandler {
                 }
             }
 
-            Log.d(TAG, "已清空 " + count + " 个崩溃日志");
+            LogBridge.d(TAG, "已清空 " + count + " 个崩溃日志");
             return count;
 
         } catch (Exception e) {
-            Log.e(TAG, "清空崩溃日志失败", e);
+            LogBridge.e(TAG, "清空崩溃日志失败", e);
             return 0;
         }
     }
@@ -652,6 +677,61 @@ public class CrashHandler implements Thread.UncaughtExceptionHandler {
     // ====================================================================
     // 工具方法：读取文件到字符串
     // ====================================================================
+
+    /**
+     * 判定一个异常是否属于"已知 SO 不兼容（mars 在老设备上）"黑名单。
+     * 黑名单内的异常将被静默忽略，不弹崩溃页、不杀进程。
+     *
+     * 判定规则（任一命中即视为黑名单）：
+     * 1. 异常本身是 UnsatisfiedLinkError，且其完整堆栈包含以下任一关键字：
+     *    "mars"、"StnLogic"、"libmarsstn"、"MtpMarsTransporter"
+     * 2. 异常是 UndeliverableException（RxJava 已 dispose），且 cause（任意深度）
+     *    是 UnsatisfiedLinkError 且 stack 含上述关键字。
+     * 3. 异常是 NoSuchMethodError 且 stack 含 "StnLogic"（少见：JNI 找不到 Java
+     *    端注册方法，与 5.1.1 mars SO 不兼容表现相同）。
+     *
+     * @param ex 待检测异常
+     * @return true 表示应忽略；false 表示按普通崩溃处理
+     */
+    private boolean isIgnoredMarsLinkError(Throwable ex) {
+        if (ex == null) return false;
+        Throwable cur = ex;
+        int depth = 0;
+        while (cur != null && depth < 10) {
+            if (cur instanceof UnsatisfiedLinkError || cur instanceof NoSuchMethodError) {
+                String msg = (cur.getMessage() == null ? "" : cur.getMessage())
+                        + " " + stackToString(cur);
+                if (msg.contains("mars") || msg.contains("StnLogic")
+                        || msg.contains("libmarsstn") || msg.contains("MtpMarsTransporter")) {
+                    return true;
+                }
+            }
+            // UndeliverableException 类本身是 RxJava 包装：拆 cause
+            if (cur instanceof UndeliverableException) {
+                cur = cur.getCause();
+                depth++;
+                continue;
+            }
+            cur = cur.getCause();
+            depth++;
+        }
+        return false;
+    }
+
+    /**
+     * 将异常堆栈拼为字符串（用于关键字检索，避免 printStackTrace 副作用）。
+     */
+    private String stackToString(Throwable t) {
+        try {
+            StringWriter sw = new StringWriter();
+            PrintWriter pw = new PrintWriter(sw);
+            t.printStackTrace(pw);
+            pw.close();
+            return sw.toString();
+        } catch (Throwable ignored) {
+            return "";
+        }
+    }
 
     /**
      * 读取文件内容为字符串
@@ -667,7 +747,7 @@ public class CrashHandler implements Thread.UncaughtExceptionHandler {
             fis.close();
             return new String(buffer);
         } catch (Exception e) {
-            Log.e(TAG, "读取文件失败：" + file.getAbsolutePath(), e);
+            LogBridge.e(TAG, "读取文件失败：" + file.getAbsolutePath(), e);
             return null;
         }
     }

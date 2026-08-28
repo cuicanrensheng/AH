@@ -1,7 +1,7 @@
 package com.tv.live.security;
 
 import android.util.Base64;
-import android.util.Log;
+import com.tv.live.util.LogBridge;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -46,12 +46,12 @@ public final class SecurityCore {
             sToken = FIXED_TOKEN.clone();
             nativeSetToken(sToken);
             sLoaded = true;
-            Log.i(TAG, "libtvlive_security.so 加载成功");
-            Log.e(TAG, "SECURITY_INIT: Native SO loaded OK");
+            LogBridge.i(TAG, "libtvlive_security.so 加载成功");
+            LogBridge.e(TAG, "SECURITY_INIT: Native SO loaded OK");
         } catch (Throwable t) {
             sLoaded = false;
-            Log.w(TAG, "libtvlive_security.so 加载失败: " + t.getMessage() + "，将使用 Java fallback 解密");
-            Log.e(TAG, "SECURITY_INIT: Native SO FAILED, using Java fallback: " + t.getMessage());
+            LogBridge.w(TAG, "libtvlive_security.so 加载失败: " + t.getMessage() + "，将使用 Java fallback 解密");
+            LogBridge.e(TAG, "SECURITY_INIT: Native SO FAILED, using Java fallback: " + t.getMessage());
         }
     }
 
@@ -116,19 +116,19 @@ public final class SecurityCore {
      */
     public static String decryptToString(String cipherB64) {
         if (cipherB64 == null) {
-            Log.e(TAG, "DECRYPT: cipherB64 is null");
+            LogBridge.e(TAG, "DECRYPT: cipherB64 is null");
             return null;
         }
         byte[] cipher;
         try {
             cipher = Base64.decode(cipherB64, Base64.NO_WRAP);
         } catch (Throwable t) {
-            Log.e(TAG, "DECRYPT: Base64 decode failed: " + t.getMessage());
+            LogBridge.e(TAG, "DECRYPT: Base64 decode failed: " + t.getMessage());
             return null;
         }
 
         if (cipher == null || cipher.length < 32) {
-            Log.e(TAG, "DECRYPT: cipher invalid, len=" + (cipher != null ? cipher.length : "null"));
+            LogBridge.e(TAG, "DECRYPT: cipher invalid, len=" + (cipher != null ? cipher.length : "null"));
             return null;
         }
 
@@ -139,31 +139,31 @@ public final class SecurityCore {
                 if (plain != null) {
                     String s = new String(plain, StandardCharsets.UTF_8);
                     Arrays.fill(plain, (byte) 0);
-                    Log.e(TAG, "DECRYPT: Native decrypted OK, len=" + s.length());
+                    LogBridge.e(TAG, "DECRYPT: Native decrypted OK, len=" + s.length());
                     return s;
                 }
-                Log.e(TAG, "DECRYPT: Native decrypt returned null, trying Java fallback");
+                LogBridge.e(TAG, "DECRYPT: Native decrypt returned null, trying Java fallback");
             } catch (Throwable t) {
-                Log.w(TAG, "Native 解密失败: " + t.getMessage() + "，尝试 Java fallback");
-                Log.e(TAG, "DECRYPT: Native decrypt exception: " + t.getMessage());
+                LogBridge.w(TAG, "Native 解密失败: " + t.getMessage() + "，尝试 Java fallback");
+                LogBridge.e(TAG, "DECRYPT: Native decrypt exception: " + t.getMessage());
             }
         } else {
-            Log.e(TAG, "DECRYPT: Native not loaded, using Java fallback directly");
+            LogBridge.e(TAG, "DECRYPT: Native not loaded, using Java fallback directly");
         }
 
         // 2) Java fallback 解密
         try {
             String s = javaAesDecrypt(cipher);
             if (s != null && !s.isEmpty()) {
-                Log.e(TAG, "DECRYPT: Java fallback decrypted OK, len=" + s.length());
+                LogBridge.e(TAG, "DECRYPT: Java fallback decrypted OK, len=" + s.length());
                 return s;
             }
-            Log.e(TAG, "Java fallback 解密也失败");
-            Log.e(TAG, "DECRYPT: Java fallback returned empty/null");
+            LogBridge.e(TAG, "Java fallback 解密也失败");
+            LogBridge.e(TAG, "DECRYPT: Java fallback returned empty/null");
             return null;
         } catch (Throwable t) {
-            Log.e(TAG, "Java fallback 解密异常: " + t.getMessage());
-            Log.e(TAG, "DECRYPT: Java fallback exception: " + t.getMessage());
+            LogBridge.e(TAG, "Java fallback 解密异常: " + t.getMessage());
+            LogBridge.e(TAG, "DECRYPT: Java fallback exception: " + t.getMessage());
             return null;
         }
     }

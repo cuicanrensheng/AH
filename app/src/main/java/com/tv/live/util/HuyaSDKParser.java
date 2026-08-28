@@ -2,9 +2,10 @@ package com.tv.live.util;
 
 import android.app.Application;
 import android.text.TextUtils;
-import android.util.Log;
+import com.tv.live.util.LogBridge;
 
 import android.os.Handler;
+import android.os.HandlerThread;
 import android.os.Looper;
 
 import com.huya.berry.client.HuyaBerry;
@@ -13,7 +14,10 @@ import com.huya.berry.client.customui.CustomUICallback;
 import com.huya.berry.client.customui.model.BitRateInfo;
 import com.huya.berry.client.customui.model.LiveInfo;
 import com.huya.berry.gamesdk.base.BaseCallback;
+import com.huya.berry.gamesdk.crash.ICrashService;
+import com.huya.live.service.ServiceHelper;
 
+import java.util.HashMap;
 import java.util.Map;
 
 import java.util.ArrayList;
@@ -47,6 +51,13 @@ public class HuyaSDKParser {
     private static volatile boolean sInitOk = false;
     private static int sAutoTestRound = 0;   // 自动化测试房间轮换计数
 
+    // SDK 就绪等待机制：解决「首次点击频道时 SDK 尚未 init 完成」竞态问题
+    // 当 parseFull / playHuyaStream 在 sInitOk=false 时被调用，可通过
+    // waitForInit(timeoutMs) 阻塞等待 SDK 就绪，超时后返回 false 走原有降级路径。
+    private static final Object sInitWaitLock = new Object();
+    private static final List<Runnable> sInitReadyListeners = new ArrayList<>();
+    private static boolean sInitNotified = false;
+
     // 单例 + 配置由 SDK 直接持有，无需反射缓存字段
     private static HuyaBerry sHuyaBerry;
 
@@ -62,7 +73,16 @@ public class HuyaSDKParser {
     //       最多只预解析前 PRELOAD_MAX_ROOMS 个虎牙房间（常用的前几个，省CPU+流量）。
     private static final int PRELOAD_MAX_ROOMS = 30;
     private static final long PRELOAD_INTERVAL_MS = 1500L;  // 1.5s 一个请求，温和不炸SDK
-    private static final Handler sPreloadHandler = new Handler(Looper.getMainLooper());
+    // 🔧 预解析调度 Handler 必须跑在后台线程：每 1.5s 触发一次频道预解析，
+    // 若绑定主线程会持续占用 UI 线程导致卡顿（日志实测 onResultCallback 也在 main）。
+    private static final HandlerThread sPreloadThread;
+    private static final Handler sPreloadHandler;
+    static {
+        sPreloadThread = new HandlerThread("HuyaSDKParser-Preload");
+        sPreloadThread.setDaemon(true);
+        sPreloadThread.start();
+        sPreloadHandler = new Handler(sPreloadThread.getLooper());
+    }
     private static final List<Integer> sPreloadPendingQueue = new ArrayList<>();
     private static boolean sPreloadScheduled = false;
     private static int sPreloadIndex = 0;
@@ -81,29 +101,31 @@ public class HuyaSDKParser {
             }
             if (roomId > 0) {
                 final int finalRoomId = roomId;
-                Log.d(TAG, "🔁【预解析】(" + sPreloadIndex + "/" + sPreloadPendingQueue.size()
+                LogBridge.d(TAG, "🔁【预解析】(" + sPreloadIndex + "/" + sPreloadPendingQueue.size()
                         + ") roomId=" + finalRoomId);
                 // 静默解析：listener 只写日志，不弹Toast、不阻塞UI
                 parseFull(finalRoomId, new OnSDKFullResultListener() {
                     @Override public void onSuccess(HuyaStreamInfo defaultStream,
                                                     List<HuyaStreamInfo> allStreams,
                                                     List<String> lines) {
-                        Log.d(TAG, "✅【预解析】roomId=" + finalRoomId + " 成功, streams="
+                        LogBridge.d(TAG, "✅【预解析】roomId=" + finalRoomId + " 成功, streams="
                                 + (allStreams != null ? allStreams.size() : 0));
                     }
                     @Override public void onError(String error) {
-                        Log.w(TAG, "⚠️【预解析】roomId=" + finalRoomId + " 失败: " + error
+                        LogBridge.w(TAG, "⚠️【预解析】roomId=" + finalRoomId + " 失败: " + error
                                 + "（不影响用户体验，点频道时会重新解析）");
                     }
                 });
                 // 下一个房间 PRELOAD_INTERVAL_MS 后再发
                 sPreloadHandler.postDelayed(this, PRELOAD_INTERVAL_MS);
             } else {
-                // 队列跑完
+                // 队列跑完：清空队列并重置游标，为后续增量追加做好准备
                 synchronized (sPreloadPendingQueue) {
                     sPreloadScheduled = false;
-                    Log.d(TAG, "🏁【预解析】队列处理完毕, 已提交=" + sPreloadIndex
+                    LogBridge.d(TAG, "🏁【预解析】队列处理完毕, 已提交=" + sPreloadIndex
                             + "/" + sPreloadPendingQueue.size());
+                    sPreloadPendingQueue.clear();
+                    sPreloadIndex = 0;
                 }
             }
         }
@@ -124,23 +146,38 @@ public class HuyaSDKParser {
         LinkedHashSet<Integer> deduped = new LinkedHashSet<>(roomIds);
         List<Integer> trimmed = new ArrayList<>(deduped);
         if (trimmed.size() > PRELOAD_MAX_ROOMS) {
-            trimmed = trimmed.subList(0, PRELOAD_MAX_ROOMS);
+            trimmed = new ArrayList<>(trimmed.subList(0, PRELOAD_MAX_ROOMS));
         }
         synchronized (sPreloadPendingQueue) {
-            sPreloadPendingQueue.clear();
-            sPreloadPendingQueue.addAll(trimmed);
-            sPreloadIndex = 0;
+            // 🔧【增量合并】不再 clear + 重置游标——那会打断正在跑的队列并从头重跑，
+            // 导致同一批房间被重复解析（SDK 被重复调用）。改为只把
+            // 「不在队列中 且 无有效缓存」的房间追加到队尾，正在跑的进度不受影响。
+            int added = 0;
+            for (Integer id : trimmed) {
+                if (sPreloadPendingQueue.contains(id)) continue;
+                CachedStreams cs = sStreamsCache.get(id);
+                if (cs != null && cs.isValid()) continue;
+                sPreloadPendingQueue.add(id);
+                added++;
+            }
+            if (added == 0) {
+                LogBridge.d(TAG, "🔁【预解析】无新增房间（均已在队列或已有有效缓存），跳过");
+                return;
+            }
             if (sInitOk && !sPreloadScheduled) {
                 sPreloadScheduled = true;
-                Log.d(TAG, "🚀【预解析】开始, 共 " + trimmed.size() + " 个虎牙房间，每 "
-                        + (PRELOAD_INTERVAL_MS / 1000) + "s 解析一个");
+                sPreloadIndex = 0;
+                LogBridge.d(TAG, "🚀【预解析】开始, 共 " + sPreloadPendingQueue.size()
+                        + " 个虎牙房间，每 " + (PRELOAD_INTERVAL_MS / 1000) + "s 解析一个");
                 sPreloadHandler.post(PRELOAD_RUNNABLE);
             } else if (!sInitOk) {
                 // 存入队列即可，init 成功后会自动补发
-                Log.d(TAG, "⏳【预解析】SDK 尚未 init，已缓存 " + trimmed.size()
+                LogBridge.d(TAG, "⏳【预解析】SDK 尚未 init，已缓存 " + sPreloadPendingQueue.size()
                         + " 个房间号，等 init 完成后自动开始");
             } else {
-                Log.d(TAG, "🔄【预解析】已有队列在跑，替换为新的 " + trimmed.size() + " 个房间");
+                // 已在跑：新房间追加到队尾，游标不动，当前队列消费完自然轮到新房间
+                LogBridge.d(TAG, "🔀【预解析】队列正在跑，追加 " + added + " 个新房间到队尾（总计 "
+                        + sPreloadPendingQueue.size() + " 个）");
             }
         }
     }
@@ -176,7 +213,7 @@ public class HuyaSDKParser {
         public String hlsUrl;
         public String flvUrl;
         public boolean isDefaultLine;     // 是否默认线路（第一条）
-        public boolean isDefaultBitrate;  // 是否该线路的默认码率（最高码率的第一条）
+        public boolean isDefaultBitrate;  // 是否该线路的默认码率（降序第2档；仅1档时取第1档）
 
         public String getPlayUrl() {
             return !TextUtils.isEmpty(hlsUrl) ? hlsUrl : flvUrl;
@@ -199,7 +236,7 @@ public class HuyaSDKParser {
     public interface OnSDKFullResultListener {
         /**
          * 解析成功
-         * @param defaultStream  默认选择的流（主线路默认码率，最高码率）
+         * @param defaultStream  默认选择的流（主线路默认码率，码率降序第2档）
          * @param allStreams     全部线路×码率流列表（按 lineIndex 升序、同线路按 bitRate 降序排列）
          * @param lines          按线路分组的标签（用于线路选择 UI）
          */
@@ -246,12 +283,10 @@ public class HuyaSDKParser {
             return streams.get(0);
         }
 
-        // 📱 设备检测：电视固定 720p，手机自动选最高码率
-        // 设备检测已在 MyApplication.onCreate 中执行（电视固定 720p，手机自动选码率）
-        boolean isTv = com.tv.live.util.DeviceCapabilities.isTv();
-        int targetHeight = isTv ? 720 : Integer.MAX_VALUE;
-        Log.d(TAG, "【适配选择】设备类型=" + (isTv ? "电视(固定720p)" : "手机(自动选码率)")
-                + ", 候选码流数=" + streams.size() + ", targetHeight=" + targetHeight + ")");
+        // 始终选择最高画质（去除设备类型自动降级逻辑）
+        // 之前：电视固定 720p，手机自动选最高码率
+        // 现在：所有设备统一选最高可用码率，由用户在播放界面手动切换清晰度
+        int targetHeight = Integer.MAX_VALUE;
         java.util.List<HuyaStreamInfo> valid = new java.util.ArrayList<>();
         for (HuyaStreamInfo s : streams) {
             if (s != null && !TextUtils.isEmpty(s.getPlayUrl())) {
@@ -275,14 +310,14 @@ public class HuyaSDKParser {
 
         // 3) 兜底：如果所有流都 > targetHeight（极端情况），选码率最高的（最接近）
         if (best == null) {
-            Log.w(TAG, "【适配选择】没有 <= " + targetHeight + "p 的流，退回选择最高码率");
+            LogBridge.w(TAG, "【适配选择】没有 <= " + targetHeight + "p 的流，退回选择最高码率");
             best = valid.get(0);
             for (HuyaStreamInfo s : valid) {
                 if (s.bitRate > best.bitRate) best = s;
             }
         }
 
-        Log.i(TAG, "【适配选择】选中流: " + best
+        LogBridge.i(TAG, "【适配选择】选中流: " + best
                 + " (resolutionLabel=" + best.resolutionLabel
                 + ", bitRate=" + best.bitRate + "bps)");
         return best;
@@ -336,12 +371,30 @@ public class HuyaSDKParser {
             HuyaSDKLogger.init();
             HuyaSDKLogger.info(TAG, "开始初始化虎牙 SDK...");
 
+            // 🔴【关键修复】在正式 init 前先预检 Mars STN 等核心 so 是否可加载。
+            // Android 5.1.1 等老设备上 libmarsstn.so 可能缺少 startTask 等 native
+            // 符号，导致 init 后首次网络请求触发 UnsatisfiedLinkError，并被 RxJava
+            // 包装成 UndeliverableException 崩溃。预检失败时直接标记 SDK 不可用，
+            // 上层会走纯解析兜底，而不是带着坏状态继续运行。
+            String marsCheckError = checkMarsNativeLibraries();
+            if (marsCheckError != null) {
+                LogBridge.e(TAG, "❌ 虎牙 Mars 原生库预检失败，跳过 SDK 初始化: " + marsCheckError);
+                HuyaSDKLogger.error(TAG, "Mars 原生库预检失败: " + marsCheckError);
+                ExceptionReporter.reportHuyaBusinessFailure(
+                        "HuyaSDKParser.checkMarsNativeLibraries", -99001, marsCheckError,
+                        "api=" + android.os.Build.VERSION.SDK_INT);
+                sInitOk = false;
+                synchronized (sInitWaitLock) { sInitWaitLock.notifyAll(); }
+                return;
+            }
+            LogBridge.i(TAG, "✅ 虎牙 Mars 原生库预检通过");
+
             // 🆕 SDK 兼容修复：中和 BaseApi.crashIfDebug，防止 SDK 内部
             //    非致命模块失败（反射实例化失败/服务注册失败）被升级为
             //    RuntimeException 导致整个 init 失败、解析回调永不触发
             SdkCompatHook.neutralizeCrashIfDebug();
 
-            Log.d(TAG, "[1/4] 准备构建 HuyaBerryConfig.Builder");
+            LogBridge.d(TAG, "[1/4] 准备构建 HuyaBerryConfig.Builder");
 
             // ============ 🆕 从加密存储读取凭证 =============
             int gameId;
@@ -352,15 +405,15 @@ public class HuyaSDKParser {
                 gameId = credentials.getGameId();
                 appId = credentials.getAppId();
                 appKey = credentials.getAppKey();
-                Log.i(TAG, "  🔐 从加密存储加载凭证: " + credentials.getCredentialsSummary());
+                LogBridge.i(TAG, "  🔐 从加密存储加载凭证: " + credentials.getCredentialsSummary());
             } catch (Throwable credError) {
-                Log.e(TAG, "  ❌ 加载凭证失败: " + credError.getMessage());
+                LogBridge.e(TAG, "  ❌ 加载凭证失败: " + credError.getMessage());
                 ExceptionReporter.report("HuyaCredentials", credError);
                 // 从混淆后的编码值解码
                 gameId = decodeGameIdFallback();
                 appId = decodeAppIdFallback();
                 appKey = decodeAppKeyFallback();
-                Log.i(TAG, "  🔐 使用编码后的默认凭证");
+                LogBridge.i(TAG, "  🔐 使用编码后的默认凭证");
             }
 
             // ============ 🆕 官方精简开关 =============
@@ -380,7 +433,32 @@ public class HuyaSDKParser {
                     .cameraMode(false)
                     .oneKeyGangUp(false)
                     .hidePauseBtn(false);
-            Log.i(TAG, "  ✅ HuyaBerryConfig.Builder 链路构建完成（含官方精简开关）");
+            LogBridge.i(TAG, "  ✅ HuyaBerryConfig.Builder 链路构建完成（含官方精简开关）");
+
+            // ============ 🚫 UDB 设备指纹上报拦截（方案1：改写 host 指向无效地址）============
+            // 反编译确认：com.huya.security.DeviceFingerprintSDK 是单例，
+            // getInstance() 强制 init()→workThread.start()，后台自动向
+            //   host + /device/fingerprint/log | /check | /link
+            //   host + /dckey/check            （HyDeviceChecker.check）
+            // 上报设备指纹（udbdf.huya.com / udbdf-v2.nimo.tv / api-cloud.master.live）。
+            // 该类无外部开关，getInstance() 必然被 HuyaAuth.init() 触发。
+            // 故在 SDK init 之前，把全部 host 字段改写为无效地址，使 NetworkBridge.post()
+            // 全部失败 → 指纹线程空转、零上报。类与字段名未被混淆（com.huya.security.*），
+            // 可直接引用无需反射。
+            try {
+                final java.lang.String DEAD_HOST = "http://127.0.0.1";
+                com.huya.security.DeviceFingerprintSDK.host = DEAD_HOST;
+                com.huya.security.DeviceFingerprintSDK.kiwiHost = DEAD_HOST;
+                com.huya.security.DeviceFingerprintSDK.nimoHost = DEAD_HOST;
+                com.huya.security.DeviceFingerprintSDK.openApiHost = DEAD_HOST;
+                // HyDeviceChecker.check() 虽用 host+"/dckey/check"（已被上面的 host 改写覆盖），
+                // 但其类内另持独立静态字段 urlDeviceChecker（默认 https://udbdf.huya.com/dckey），
+                // 若被别处直接用于 NetworkBridge.post 仍会打到真实域名，故一并改写。
+                com.huya.security.hydeviceid.HyDeviceChecker.setUrlDeviceChecker(DEAD_HOST);
+                LogBridge.i(TAG, "[设备指纹] UDB host 已改写指向 127.0.0.1 → udbdf.huya.com 等上报全部失效 ✅");
+            } catch (Throwable fpE) {
+                LogBridge.w(TAG, "[设备指纹] host 改写失败: " + fpE.getMessage());
+            }
 
             // ============ 🔧 缓存治理：在 build() 之前重定向 SDK 目录 + 禁用日志/上报 ============
             // 把 SDK 写入统一收到 getCacheDir()/huya_sdk/，同时关闭日志/埋点/崩溃上报，
@@ -389,28 +467,174 @@ public class HuyaSDKParser {
             HuyaCacheGovernor.applyOnBuilder(builder, app);
 
             HuyaBerryConfig config = builder.build();
-            Log.d(TAG, "[2/4] HuyaBerryConfig build 完成");
+            LogBridge.d(TAG, "[2/4] HuyaBerryConfig build 完成");
 
             // init
             sHuyaBerry = HuyaBerry.instance();
             if (sHuyaBerry == null) {
-                Log.e(TAG, "[3/4] HuyaBerry.instance() 返回 null，SDK 未初始化");
+                LogBridge.e(TAG, "[3/4] HuyaBerry.instance() 返回 null，SDK 未初始化");
                 sInitOk = false;
+                synchronized (sInitWaitLock) { sInitWaitLock.notifyAll(); }
                 return;
             }
+            // ====== SDK 内嵌 Bugly 崩溃上报拦截（防崩溃保护） ======
+            // SDK 内嵌的 Bugly 专业版 aar 已物理移除（备份于 _backup/），但 SDK 的
+            // CrashService 仍硬引用 com.tencent.bugly.* 类，且 init 后 L79 会无条件
+            // 注册 CrashService。因此在 init 前注册 NoOpCrashService 占位
+            // （ServiceCenter 不覆盖已注册 key → SDK 的 createService 被静默忽略），
+            // 防止真实 CrashService 被实例化/调用而触发 NoClassDefFoundError。
+            try {
+                ServiceHelper.createService(ICrashService.class, NoOpCrashService.class);
+            } catch (Throwable regE) {
+                LogBridge.w(TAG, "NoOpCrashService 注册失败: " + regE.getMessage());
+            }
+
+            // ====== hiido 统计上报关闭（含 PV/init 残留）======
+            // HuyaBerryImpl.init() 末尾无条件执行 Report.event("PV/init")，
+            // 走 Report → HuyaReportModule → HuyaStatisAgent.getHuyaStatisApi().reportEvent()
+            // 该链不经过 BaseApi.getReportApi()（NoOpReportApi 拦不住），
+            // 且 getHuyaStatisApi() 返回的 mApi 实例是私有字段、无 setter。
+            // 故在 init() 之前反射把 HuyaStatisAgent 单例的 mApi 换成 NoOp 子类：
+            //   - init() 空转 → LiveStaticsicsSdk.init() 不被调用 → PV/init 永不发生
+            //   - 后续 setGameId / reportEvent 等全部空操作，无网络上报
+            boolean statApiOk = false;  // hiido 统计 mApi 替换是否成功（方法级变量，供汇总使用）
+            try {
+                // 类查找/方法查找改为直接调用（proguard 已 keep com.duowan.**，类名不混淆）
+                com.duowan.live.one.module.report.HuyaStatisAgent agent =
+                        com.duowan.live.one.module.report.HuyaStatisAgent.getInstance();
+                if (agent != null) {
+                    // mApi 为私有字段且无 setter，必须反射赋值（Java 语言限制，无直接 API）
+                    java.lang.reflect.Field mApiF =
+                            com.duowan.live.one.module.report.HuyaStatisAgent.class.getDeclaredField("mApi");
+                    mApiF.setAccessible(true);
+                    mApiF.set(agent, new NoOpHuyaStatisApi());
+                    Object replaced = mApiF.get(agent);
+                    statApiOk = replaced instanceof NoOpHuyaStatisApi;
+                    LogBridge.i(TAG, "[hiido统计] HuyaStatisAgent.mApi 替换为 NoOp: "
+                            + (statApiOk ? "✅ 成功(PV/init 已拦截)" : "❌ 替换后类型不符!"));
+                } else {
+                    LogBridge.w(TAG, "[hiido统计] HuyaStatisAgent.getInstance() 返回 null，跳过替换");
+                }
+            } catch (Throwable statE) {
+                LogBridge.w(TAG, "[hiido统计] mApi 反射替换失败: " + statE.getMessage());
+            }
+
             try {
                 sHuyaBerry.init(app, config);
-                Log.i(TAG, "✅ HuyaBerry SDK 初始化成功 (init 无异常)");
+                LogBridge.i(TAG, "✅ HuyaBerry SDK 初始化成功 (init 无异常)");
+                sInitOk = true;
+                // 通知所有等待者：SDK 已就绪
+                synchronized (sInitWaitLock) {
+                    sInitWaitLock.notifyAll();
+                    sInitNotified = true;
+                    // 执行所有注册的就绪回调
+                    List<Runnable> listeners = new ArrayList<>(sInitReadyListeners);
+                    sInitReadyListeners.clear();
+                    for (Runnable r : listeners) {
+                        try { r.run(); } catch (Exception e) { LogBridge.w(TAG, "init listener error: " + e.getMessage()); }
+                    }
+                }
+                LogBridge.i(TAG, "✅ HuyaBerry SDK 初始化 & 绑定完成");
+
+                // ====== 🆕 崩溃上报兜底：夺回全局崩溃处理器 ======
+                // HuyaBerryImpl.init() 内部会调用虎牙自研 CrashHandler.getInstance().init()
+                // （com.huya.component.crash.CrashHandler），它实现 UncaughtExceptionHandler
+                // 并后注册覆盖了 MyApplication 里 app 的 CrashHandler，导致崩溃时经
+                // ExceptionModule → FeedBackHelper 上传到虎牙 ffilelog 服务器。
+                // 故在 SDK init 之后重新注册 app 的 CrashHandler，把全局 handler 抢回，
+                // 虎牙的 handler 不再被系统调用 → 崩溃日志不再上传。
+                try {
+                    com.tv.live.CrashHandler.getInstance().init(app);
+                    LogBridge.i(TAG, "✅ 全局崩溃处理器已夺回（虎牙 CrashHandler 已被覆盖）");
+                } catch (Throwable chE) {
+                    LogBridge.w(TAG, "⚠️ 夺回全局崩溃处理器失败: " + chE.getMessage());
+                }
+
+                // ====== 品类校验：初始化即默认加载虎牙一起看(2135) ======
+                // 凭证默认 gameId 已改为 2135(虎牙一起看)，SDK init 时 SdkProperties.gameId=2135，
+                // 不再是旧默认的王者荣耀(2336)。此处再做两件事兜底：
+                // 1) injectMultiGameIds() 注入多品类权限（一起看/二次元/星秀等）
+                // 2) changeGame(2135) 幂等切换：老设备存储若残留旧默认 2336 且迁移失败，
+                //    仍能把 SDK 内部品类拉回一起看。同 id 切换无副作用。
+                try {
+                    injectMultiGameIds();
+                    changeGame(2135, new OnChangeGameListener() {
+                        @Override public void onSuccess() {
+                            LogBridge.i(TAG, "✅ 品类校验成功: 虎牙一起看(2135)");
+                        }
+                        @Override public void onError(String errMsg) {
+                            LogBridge.w(TAG, "⚠️ 品类校验失败(一起看2135): " + errMsg
+                                    + "（初始化即 2135，主列表走HTTP gameId=2135，不影响一起看内容获取）");
+                        }
+                    });
+                } catch (Throwable changeE) {
+                    LogBridge.w(TAG, "⚠️ 品类校验异常: " + changeE.getMessage());
+                }
+
+                // ====== APM + 运营统计关闭 ======
+                boolean apmOk = false, statOk = false;
+                try {
+                    com.huya.ciku.apm.MonitorCenter.getInstance().stopReport();
+                    apmOk = true;
+                } catch (Throwable e) {
+                    LogBridge.w(TAG, "[SDK上报验证] Step3 APM stopReport 失败: " + e.getMessage());
+                }
+                try {
+                    com.huya.live.common.api.BaseApi.setReportApi(new NoOpReportApi());
+                    // 验证：取回当前 ReportApi，确认是 NoOpReportApi
+                    Object curReportApi = com.huya.live.common.api.BaseApi.getReportApi();
+                    String reportCls = (curReportApi != null)
+                            ? curReportApi.getClass().getName() : "null";
+                    statOk = curReportApi instanceof NoOpReportApi;
+                    LogBridge.i(TAG, "[SDK上报验证] Step4 统计通道: ReportApi=" + reportCls
+                            + (statOk ? " ✅ 已替换为NoOp" : " ❌ 替换失败!"));
+                } catch (Throwable e) {
+                    LogBridge.w(TAG, "[SDK上报验证] Step4 setReportApi 失败: " + e.getMessage());
+                }
+
+                // ====== 播放数据上报 + 游戏账号绑定：双重保险 ======
+                boolean reportGuardOk = false;
+                try {
+                    // 清空残留游戏账号绑定 + 声明 sendPlayerData 禁用（均 no-op，不触发网络）
+                    HuyaBerryReportGuard.applyAfterInit(sHuyaBerry);
+                    reportGuardOk = true;
+                } catch (Throwable e) {
+                    LogBridge.w(TAG, "[SDK上报验证] 播放数据/账号双重保险失败: " + e.getMessage());
+                }
+
+                // ====== 全量关闭汇总 ======
+                boolean allOk = apmOk && statOk && statApiOk && reportGuardOk;
+                LogBridge.i(TAG, "[SDK上报验证] ====== SDK上报关闭汇总 ======");
+                LogBridge.i(TAG, "[SDK上报验证] [ciku APM]");
+                LogBridge.i(TAG, "[SDK上报验证]   └─ stopReport             "
+                        + (apmOk ? "✅" : "❌"));
+                LogBridge.i(TAG, "[SDK上报验证] [Hiido运营统计]");
+                LogBridge.i(TAG, "[SDK上报验证]   ├─ ReportApi→NoOpReportApi "
+                        + (statOk ? "✅" : "❌"));
+                LogBridge.i(TAG, "[SDK上报验证]   └─ HuyaStatisAgent.mApi→NoOp "
+                        + (statApiOk ? "✅ 成功(PV/init已拦截)" : "❌ 残留1次PV/init"));
+                LogBridge.i(TAG, "[SDK上报验证] [Builder精简开关]");
+                LogBridge.i(TAG, "[SDK上报验证]   └─ debugMode/cameraMode/"
+                        + "oneKeyGangUp/isNeedPlay/hidePauseBtn/landscapeMode=false ✅");
+                LogBridge.i(TAG, "[SDK上报验证] [播放数据/游戏账号双重保险]");
+                LogBridge.i(TAG, "[SDK上报验证]   ├─ sendPlayerData(播放心跳上报) "
+                        + (reportGuardOk ? "✅ no-op 禁用" : "❌"));
+                LogBridge.i(TAG, "[SDK上报验证]   └─ setGameAccountID(游戏账号绑定) "
+                        + (reportGuardOk ? "✅ 已清空且禁用" : "❌"));
+                LogBridge.i(TAG, "[SDK上报验证] ====== 全部关闭"
+                        + (allOk ? "成功 ✅✅✅" : "有失败项 ❌（见上方详情）") + " ======");
+                if (allOk) {
+                    LogBridge.i(TAG, "✅ 已直接关闭 SDK 上报: APM+统计通道全部关闭");
+                }
             } catch (Throwable initE) {
                 // 打印完整异常链（含 cause 链）+ 提取真正缺失的类名列表，
                 // 便于逐个移出黑名单或加 Stub
-                Log.w(TAG, "❌ HuyaBerry init 失败（需要修复才能触发SDK回调）: " + logThrowableChain(initE));
+                LogBridge.w(TAG, "❌ HuyaBerry init 失败（需要修复才能触发SDK回调）: " + logThrowableChain(initE));
                 ExceptionReporter.report("HuyaBerry.init", initE);
-                // init 失败时不抛：仍标记 done，但 sInitOk=false 让上层走纯解析兜底
+                // init 失败时标记不可用，让上层走纯解析兜底
+                sInitOk = false;
+                return;
             }
-
-            sInitOk = true;
-            Log.i(TAG, "✅ HuyaBerry SDK 初始化 & 绑定完成");
 
             // 🆕 接入 SDK BerryEvent 事件总线：捕获所有 SDK 生命周期事件
             try {
@@ -436,7 +660,7 @@ public class HuyaSDKParser {
                 if (!sPreloadPendingQueue.isEmpty() && !sPreloadScheduled) {
                     sPreloadScheduled = true;
                     sPreloadIndex = 0;
-                    Log.d(TAG, "🔄【预解析】SDK init 完成，补发 " + sPreloadPendingQueue.size() + " 个房间的预解析");
+                    LogBridge.d(TAG, "🔄【预解析】SDK init 完成，补发 " + sPreloadPendingQueue.size() + " 个房间的预解析");
                     sPreloadHandler.post(PRELOAD_RUNNABLE);
                 }
             }
@@ -457,7 +681,7 @@ public class HuyaSDKParser {
                     }
                 }, 1500);
             } catch (Throwable t) {
-                Log.w(TAG, "  ⚠️ BerryDebugChecker 启动失败（跳过，不影响主流程）", t);
+                LogBridge.w(TAG, "  ⚠️ BerryDebugChecker 启动失败（跳过，不影响主流程）", t);
                 ExceptionReporter.report("BerryDebugChecker.start", t);
             }
             // ============= 🆕 豆包第四段：调试检测代码（结束）=============
@@ -476,7 +700,7 @@ public class HuyaSDKParser {
                             final int[] TEST_ROOMS = {11342412, 11342421, 11602058};
                             final int TEST_ROOM = TEST_ROOMS[sAutoTestRound % TEST_ROOMS.length];
                             sAutoTestRound++;
-                            Log.i(TAG, "🧪【自动化 SDK 解析测试】开始 parseFull, roomId=" + TEST_ROOM);
+                            LogBridge.i(TAG, "🧪【自动化 SDK 解析测试】开始 parseFull, roomId=" + TEST_ROOM);
                             parseFull(TEST_ROOM, new OnSDKFullResultListener() {
                                 @Override
                                 public void onSuccess(HuyaStreamInfo defaultStream,
@@ -505,12 +729,12 @@ public class HuyaSDKParser {
                                               .append(s.hlsUrl == null ? 0 : s.hlsUrl.length()).append("\n");
                                         }
                                     }
-                                    Log.i(TAG, sb.toString());
+                                    LogBridge.i(TAG, sb.toString());
                                 }
 
                                 @Override
                                 public void onError(String error) {
-                                    Log.e(TAG, "❌【自动化 SDK 解析测试】失败! roomId=" + TEST_ROOM + " -> " + error);
+                                    LogBridge.e(TAG, "❌【自动化 SDK 解析测试】失败! roomId=" + TEST_ROOM + " -> " + error);
                                 }
                             });
                         }
@@ -524,15 +748,91 @@ public class HuyaSDKParser {
         } catch (Throwable e) {
             Throwable cause = e.getCause();
             if (cause != null) {
-                Log.e(TAG, "SDK 绑定异常: " + cause.getClass().getSimpleName() + ": " + cause.getMessage(), e);
+                LogBridge.e(TAG, "SDK 绑定异常: " + cause.getClass().getSimpleName() + ": " + cause.getMessage(), e);
                 HuyaSDKLogger.error(TAG, "SDK绑定异常: " + cause.getClass().getSimpleName() + ": " + cause.getMessage());
                 ExceptionReporter.report("HuyaSDK.bind", cause);
             } else {
-                Log.e(TAG, "SDK 绑定异常: " + e.getClass().getSimpleName() + ": " + e.getMessage(), e);
+                LogBridge.e(TAG, "SDK 绑定异常: " + e.getClass().getSimpleName() + ": " + e.getMessage(), e);
                 HuyaSDKLogger.error(TAG, "SDK绑定异常: " + e.getClass().getSimpleName() + ": " + e.getMessage());
                 ExceptionReporter.report("HuyaSDK.bind", e);
             }
             sInitOk = false;
+            synchronized (sInitWaitLock) { sInitWaitLock.notifyAll(); }
+        }
+    }
+
+    /**
+     * 预检虎牙 Mars 网络栈依赖的原生库是否可在当前设备上加载/使用。
+     *
+     * 问题背景：Android 5.1.1 (API 22) 等老设备上，libmarsstn.so 中的 JNI 符号
+     * （如 StnLogic.startTask）可能缺失，SDK init 本身不抛异常，但首次网络请求
+     * 会触发 UnsatisfiedLinkError，再被 RxJava 包装为 UndeliverableException。
+     *
+     * 预检策略：
+     * 1. 先尝试按依赖顺序加载 so（c++_shared / stlport_shared / marsstn）。
+     * 2. 再通过反射检查 com.tencent.mars.stn.StnLogic 的 startTask 方法是否已注册 native。
+     *    如果 Java 方法存在但 getModifiers 不含 native（即 so 未正确注册），说明 so
+     *    与当前系统不兼容。
+     * 3. 任一步骤失败都返回错误信息字符串；全部通过返回 null。
+     */
+    private static String checkMarsNativeLibraries() {
+        try {
+            // 🔴 v7a 兼容验证（2026-08-26）：libmarsstn.so 在 Android 5.0/5.1 (API 21-22)
+            // 上曾因 so 未解压（extractNativeLibs=false）触发 UnsatisfiedLinkError。
+            // 现 useLegacyPackaging=true 已保证 so 落盘，API<=22 不再直接禁用 SDK，
+            // 改为继续尝试加载；若确实不兼容，下方 loadLibrary 会抛
+            // UnsatisfiedLinkError 并被捕获返回，业务层自动降级纯 HTTP 兜底。
+            if (android.os.Build.VERSION.SDK_INT <= 22) {
+                LogBridge.w(TAG, "⚠️ Android " + android.os.Build.VERSION.RELEASE + "(API "
+                        + android.os.Build.VERSION.SDK_INT
+                        + ") 官方不在 Mars STN 支持范围，仍尝试加载验证 v7a 兼容性");
+            }
+
+            // 依赖 so 需要按顺序先加载。部分 ROM 上 System.loadLibrary 会抛
+            // UnsatisfiedLinkError；另一些情况加载成功但符号缺失。
+            String[] libs = {"c++_shared", "stlport_shared", "marsstn"};
+            for (String lib : libs) {
+                try {
+                    System.loadLibrary(lib);
+                    LogBridge.d(TAG, "  ✅ loadLibrary(\"" + lib + "\") 成功");
+                } catch (UnsatisfiedLinkError ule) {
+                    LogBridge.w(TAG, "  ⚠️ loadLibrary(\"" + lib + "\") 失败: " + ule.getMessage());
+                    // c++_shared / stlport_shared 可能由其它模块提前加载过，忽略单条失败；
+                    // 但 marsstn 必须能加载。
+                    if ("marsstn".equals(lib)) {
+                        return "无法加载 libmarsstn.so: " + ule.getMessage();
+                    }
+                }
+            }
+
+            // 进一步检查 StnLogic.startTask 是否为 native 方法。
+            // 如果 so 加载了但 JNI_OnLoad 注册失败，Java 层会保留 abstract/native 声明，
+            // 此时 Modifier.isNative 为 false，可提前发现不兼容。
+            try {
+                Class<?> stnLogicClass = Class.forName("com.tencent.mars.stn.StnLogic");
+                java.lang.reflect.Method startTaskMethod = null;
+                for (java.lang.reflect.Method m : stnLogicClass.getDeclaredMethods()) {
+                    if ("startTask".equals(m.getName())) {
+                        startTaskMethod = m;
+                        break;
+                    }
+                }
+                if (startTaskMethod == null) {
+                    return "StnLogic.startTask 方法不存在（SDK 版本不匹配）";
+                }
+                if (!java.lang.reflect.Modifier.isNative(startTaskMethod.getModifiers())) {
+                    return "StnLogic.startTask 未注册为 native 方法，libmarsstn.so 与当前系统不兼容";
+                }
+                LogBridge.d(TAG, "  ✅ StnLogic.startTask native 注册检查通过");
+            } catch (ClassNotFoundException cnfe) {
+                // StnLogic 类尚未被加载，说明当前可能还没走到 so 注册逻辑，
+                // 不视为失败，交给运行时 loadLibrary 兜底。
+                LogBridge.w(TAG, "  ⚠️ StnLogic 类未找到，跳过 native 注册检查: " + cnfe.getMessage());
+            }
+            return null;
+        } catch (Throwable t) {
+            LogBridge.e(TAG, "checkMarsNativeLibraries 异常: " + t.getMessage(), t);
+            return "Mars 原生库预检异常: " + t.getMessage();
         }
     }
 
@@ -565,19 +865,248 @@ public class HuyaSDKParser {
     }
 
     /**
-     * 新版完整解析：返回全部线路×码率信息（用于 UI 线路/清晰度选择）
+     * 等待 SDK 初始化完成。用于解决「首次点击虎牙频道时 SDK 尚未 init 完成」竞态问题。
+     *
+     * @param timeoutMs 最大等待毫秒数
+     * @return true = SDK 已就绪，false = 超时或 init 失败
      */
-    public static void parseFull(int roomId, OnSDKFullResultListener listener) {
+    public static boolean waitForInit(long timeoutMs) {
+        if (sInitOk) return true;
+        if (sInitDone && !sInitOk) return false;  // init 完成但失败了
+
+        long deadline = System.currentTimeMillis() + timeoutMs;
+        synchronized (sInitWaitLock) {
+            while (!sInitOk && !sInitDone) {
+                long remaining = deadline - System.currentTimeMillis();
+                if (remaining <= 0) {
+                    LogBridge.w(TAG, "waitForInit 超时(" + timeoutMs + "ms), sInitOk=" + sInitOk + " sInitDone=" + sInitDone);
+                    return false;
+                }
+                try {
+                    sInitWaitLock.wait(remaining);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return false;
+                }
+            }
+            return sInitOk;
+        }
+    }
+
+    /**
+     * 注册 SDK 就绪回调。如果 SDK 已就绪则立即执行。
+     */
+    public static void addInitReadyListener(Runnable listener) {
+        synchronized (sInitWaitLock) {
+            if (sInitOk) {
+                listener.run();
+            } else {
+                sInitReadyListeners.add(listener);
+            }
+        }
+    }
+
+    // ========== 🔧 in-flight 去重：同一房间并发请求只调一次 SDK ==========
+    // 预解析（PRELOAD_RUNNABLE）与用户点击播放可能同时解析同一房间，
+    // 若都通过缓存检查，会重复调用 getLiveDataByRoomId（日志里"发起SDK解析"
+    // 成对出现）。这里记录进行中的请求，后续并发请求挂接等待，共享同一次
+    // SDK 调用的结果。
+    private static final Map<Integer, List<OnSDKFullResultListener>> sInflight = new HashMap<>();
+
+    /**
+     * 新版完整解析：返回全部线路×码率信息（用于 UI 线路/清晰度选择）
+     *
+     * ⚠️ 若 SDK 尚未初始化，会自动注册就绪回调，SDK ready 后立即重试解析，
+     *     避免用户首次点击时因 SDK 未就绪看到"虎牙 SDK 不可用"错误。
+     */
+    public static void parseFull(final int roomId, final OnSDKFullResultListener listener) {
         if (!sInitOk || sHuyaBerry == null) {
-            HuyaSDKLogger.error(TAG, "parseFull: SDK未初始化, roomId=" + roomId);
+            // SDK 尚未就绪 → 注册等待，就绪后自动重试
+            LogBridge.i(TAG, "parseFull: SDK未初始化, roomId=" + roomId + " → 等待SDK就绪后重试");
+            addInitReadyListener(new Runnable() {
+                @Override public void run() {
+                    if (sInitOk && sHuyaBerry != null) {
+                        LogBridge.i(TAG, "parseFull: SDK就绪, 重试 roomId=" + roomId);
+                        parseFullInternal(roomId, listener);
+                    } else {
+                        HuyaSDKLogger.error(TAG, "parseFull: SDK初始化失败, roomId=" + roomId);
+                        listener.onError("SDK 初始化失败");
+                    }
+                }
+            });
+            return;
+        }
+        parseFullInternal(roomId, listener);
+    }
+
+    /**
+     * 通过主播UID获取直播流完整信息（SDK getLiveData(uid)通道，推荐/分类列表返回的channelId不是可播房号时使用）
+     * SDK内部对推荐列表开播用presenterUid作为key，此方法对应watchLiveByUid/getLiveData(uid)通道
+     */
+    public static void parseFullByUid(long uid, final OnSDKFullResultListener listener) {
+        if (!sInitOk || sHuyaBerry == null) {
+            HuyaSDKLogger.error(TAG, "parseFullByUid: SDK未初始化, uid=" + uid);
             listener.onError("SDK 未初始化");
             return;
         }
 
+        // uid缓存key使用负数，避免和正数roomId冲突
+        final int cacheKey = (int) -uid;
+        // 命中缓存则直接用
+        CachedStreams cached = getCachedStreams(cacheKey);
+        if (cached != null && cached.streams != null && !cached.streams.isEmpty()) {
+            LogBridge.d(TAG, "命中uid=" + uid + "流信息缓存（" + (System.currentTimeMillis() - cached.timestamp) / 1000 + "s前）");
+            HuyaSDKLogger.info(TAG, "命中缓存(uid): uid=" + uid + " streams=" + cached.streams.size());
+            HuyaStreamInfo def = pickDefaultStream(cached.streams);
+            List<String> lines = buildLineLabels(cached.streams);
+            listener.onSuccess(def, cached.streams, lines);
+            return;
+        }
+
+        AtomicBoolean done = new AtomicBoolean(false);
+        final long targetUid = uid;
+
+        // 包装listener，在onSuccess时写入缓存
+        final OnSDKFullResultListener wrappedListener = new OnSDKFullResultListener() {
+            @Override
+            public void onSuccess(HuyaStreamInfo defaultStream, List<HuyaStreamInfo> allStreams, List<String> lines) {
+                // 写入uid缓存（使用负数key）
+                if (allStreams != null && !allStreams.isEmpty()) {
+                    CachedStreams cs = new CachedStreams();
+                    cs.timestamp = System.currentTimeMillis();
+                    cs.streams = allStreams;
+                    sStreamsCache.put(cacheKey, cs);
+                    LogBridge.d(TAG, "uid=" + targetUid + " 流信息写入缓存: " + allStreams.size() + " 条流");
+                }
+                listener.onSuccess(defaultStream, allStreams, lines);
+            }
+            @Override
+            public void onError(String error) {
+                listener.onError(error);
+            }
+        };
+
+        new Thread(() -> {
+            try {
+                CustomUICallback<BaseCallback> sdkCallback = new CustomUICallback<BaseCallback>() {
+                    @Override
+                    public void onResultCallback(int code, BaseCallback data) {
+                        String dataType = data == null ? "null" : data.getClass().getSimpleName();
+                        LogBridge.d(TAG, "📞【SDK回调进入-uid】onResultCallback(code=" + code
+                                + ", data=" + dataType + ", uid=" + targetUid + ")");
+                        HuyaSDKLogger.onCustomUICallback("onResultCallback-uid", code,
+                                "dataType=" + dataType + " uid=" + targetUid);
+
+                        boolean alreadyTimeout = done.get();
+                        try {
+                            if (data instanceof LiveInfo) {
+                                if (Looper.myLooper() == Looper.getMainLooper()) {
+                                    // 🔧 SDK 回调进入主线程：解析重活（反射+线路遍历）转发到后台线程，避免阻塞 UI
+                                    final int fCode = code;
+                                    final LiveInfo li = (LiveInfo) data;
+                                    AppExecutors.io(() -> {
+                                        try {
+                                            handleFullResultByUid(fCode, li, wrappedListener, done);
+                                        } catch (Exception e2) {
+                                            LogBridge.e(TAG, "handleFullResultByUid 后台异常: " + e2.getMessage());
+                                            if (!done.get() && done.compareAndSet(false, true)) {
+                                                wrappedListener.onError("结果处理异常: " + e2.getMessage());
+                                            }
+                                        }
+                                    });
+                                } else {
+                                    handleFullResultByUid(code, (LiveInfo) data, wrappedListener, done);
+                                }
+                            } else {
+                                if (done.compareAndSet(false, true)) {
+                                    String err = (data == null)
+                                            ? "SDK 返回空结果"
+                                            : ("SDK 返回类型 " + dataType + "，非 LiveInfo");
+                                    HuyaSDKLogger.error(TAG, err);
+                                    wrappedListener.onError(err);
+                                }
+                            }
+                        } catch (Exception e) {
+                            LogBridge.e(TAG, "handleFullResultByUid 异常: " + e.getMessage());
+                            if (!alreadyTimeout && done.compareAndSet(false, true)) {
+                                wrappedListener.onError("结果处理异常: " + e.getMessage());
+                            }
+                        }
+                    }
+
+                    @Override
+                    public void onResultListCallback(int code, java.util.List<BaseCallback> list) {
+                        int size = (list == null) ? 0 : list.size();
+                        LogBridge.d(TAG, "SDK onResultListCallback-uid: code=" + code + " size=" + size);
+                    }
+                };
+
+                LogBridge.d(TAG, "调用 SDK getLiveData(uid), uid=" + uid);
+                HuyaSDKLogger.debug(TAG, "发起SDK解析(uid): uid=" + uid);
+                sHuyaBerry.getLiveData(targetUid, sdkCallback);
+
+                Thread.sleep(30000);
+                if (done.compareAndSet(false, true)) {
+                    LogBridge.w(TAG, "SDK 调用(uid)超时 (30s), uid=" + uid);
+                    wrappedListener.onError("SDK 解析超时");
+                }
+            } catch (Throwable e) {
+                LogBridge.e(TAG, "SDK 解析(uid)异常完整链：\n" + logThrowableChain(e));
+                String userMsg = (e.getCause() != null) ? e.getCause().toString() : e.toString();
+                if (userMsg.length() > 240) userMsg = userMsg.substring(0, 240) + "...";
+                if (done.compareAndSet(false, true)) {
+                    wrappedListener.onError("SDK 异常: " + userMsg);
+                }
+            }
+        }, "HuyaSDKParser-FullByUid").start();
+    }
+
+    private static void handleFullResultByUid(int code, LiveInfo liveInfo, OnSDKFullResultListener listener,
+                                              AtomicBoolean done) {
+        if (liveInfo == null) {
+            if (done.compareAndSet(false, true)) listener.onError("SDK 返回空结果");
+            return;
+        }
+        if (code != BaseCallback.SUCCESS) {
+            if (done.compareAndSet(false, true)) {
+                String msg = "SDK code=" + code;
+                try {
+                    java.lang.reflect.Field f = liveInfo.getClass().getField("errorMsg");
+                    String err = (String) f.get(liveInfo);
+                    if (err != null && !err.isEmpty()) msg = err;
+                } catch (Throwable ignored) {}
+                listener.onError(msg);
+            }
+            return;
+        }
+        try {
+            // 直接复用已有的流列表提取方法（和roomId通道完全一致的解析逻辑）
+            List<HuyaStreamInfo> streamList = extractFullStreamList(liveInfo, -1);
+            if (streamList == null || streamList.isEmpty()) {
+                if (done.compareAndSet(false, true)) listener.onError("未获取到播放地址");
+                return;
+            }
+            // 写缓存（uid使用负数key，避免和正数roomId冲突）
+            // 注意：这里无法直接获取uid参数，缓存写入由调用方parseFullByUid负责
+            HuyaStreamInfo def = pickDefaultStream(streamList);
+            List<String> lineLabels = buildLineLabels(streamList);
+            if (done.compareAndSet(false, true)) {
+                listener.onSuccess(def, streamList, lineLabels);
+            }
+        } catch (Throwable t) {
+            LogBridge.e(TAG, "解析uid流地址异常: " + t.getMessage());
+            if (done.compareAndSet(false, true)) listener.onError("解析异常: " + t.getMessage());
+        }
+    }
+
+    /**
+     * parseFull 内部实现（SDK 已就绪时调用）
+     */
+    private static void parseFullInternal(int roomId, OnSDKFullResultListener listener) {
         // 命中缓存则直接用
         CachedStreams cached = getCachedStreams(roomId);
         if (cached != null && cached.streams != null && !cached.streams.isEmpty()) {
-            Log.d(TAG, "命中房间" + roomId + "流信息缓存（" + (System.currentTimeMillis() - cached.timestamp) / 1000 + "s前）");
+            LogBridge.d(TAG, "命中房间" + roomId + "流信息缓存（" + (System.currentTimeMillis() - cached.timestamp) / 1000 + "s前）");
             HuyaSDKLogger.info(TAG, "命中缓存: roomId=" + roomId + " streams=" + cached.streams.size());
             HuyaStreamInfo def = pickDefaultStream(cached.streams);
             List<String> lines = buildLineLabels(cached.streams);
@@ -585,6 +1114,50 @@ public class HuyaSDKParser {
             return;
         }
 
+        // 🔧 in-flight 去重：同一房间已有请求在进行，挂接等待共享结果，不重复调 SDK
+        synchronized (sInflight) {
+            List<OnSDKFullResultListener> waiters = sInflight.get(roomId);
+            if (waiters != null) {
+                HuyaSDKLogger.debug(TAG, "【去重】挂接等待 roomId=" + roomId
+                        + " 等待者数=" + (waiters.size() + 1));
+                waiters.add(listener);
+                return;
+            }
+            waiters = new ArrayList<>();
+            waiters.add(listener);
+            sInflight.put(roomId, waiters);
+        }
+        HuyaSDKLogger.debug(TAG, "【去重】新请求入队 roomId=" + roomId
+                + " inflight=" + sInflight.size() + " 线程=" + Thread.currentThread().getName());
+        // 代理回调：把结果分发给所有等待者（预解析 + 播放请求共享同一结果）
+        OnSDKFullResultListener proxy = new OnSDKFullResultListener() {
+            @Override
+            public void onSuccess(HuyaStreamInfo defaultStream,
+                                  List<HuyaStreamInfo> allStreams, List<String> lines) {
+                List<OnSDKFullResultListener> ws;
+                synchronized (sInflight) { ws = sInflight.remove(roomId); }
+                HuyaSDKLogger.debug(TAG, "【去重】完成分发 roomId=" + roomId
+                        + " 等待者=" + (ws == null ? 0 : ws.size()));
+                if (ws != null) {
+                    for (OnSDKFullResultListener w : ws) w.onSuccess(defaultStream, allStreams, lines);
+                }
+            }
+
+            @Override
+            public void onError(String error) {
+                List<OnSDKFullResultListener> ws;
+                synchronized (sInflight) { ws = sInflight.remove(roomId); }
+                HuyaSDKLogger.warn(TAG, "【去重】完成分发(onError) roomId=" + roomId
+                        + " 等待者=" + (ws == null ? 0 : ws.size()));
+                if (ws != null) {
+                    for (OnSDKFullResultListener w : ws) w.onError(error);
+                }
+            }
+        };
+        doParseFull(roomId, proxy);
+    }
+
+    private static void doParseFull(int roomId, OnSDKFullResultListener listener) {
         AtomicBoolean done = new AtomicBoolean(false);
 
         final OnSDKFullResultListener outerListener = listener;
@@ -598,7 +1171,7 @@ public class HuyaSDKParser {
                     public void onResultCallback(int code, BaseCallback data) {
                         // 100% 必打：任何 SDK 回调进入都打印
                         String dataType = data == null ? "null" : data.getClass().getSimpleName();
-                        Log.i(TAG, "📞【SDK回调进入】onResultCallback(code=" + code
+                        LogBridge.d(TAG, "📞【SDK回调进入】onResultCallback(code=" + code
                                 + ", data=" + dataType
                                 + ") from " + Thread.currentThread().getName());
                         HuyaSDKLogger.onCustomUICallback("onResultCallback", code,
@@ -606,14 +1179,30 @@ public class HuyaSDKParser {
 
                         // 🔔 重要修复：即使 SDK 回调晚于 30s 超时(done==true)，也不要静默 return null！
                         boolean alreadyTimeout = done.get();
-                        Log.d(TAG, "SDK onResultCallback: code=" + code
+                        LogBridge.d(TAG, "SDK onResultCallback: code=" + code
                                 + " data=" + dataType
                                 + " alreadyTimeout=" + alreadyTimeout
                                 + (alreadyTimeout ? "（⚠️回调晚于30s超时，但继续解析不丢弃）" : ""));
                         try {
                             // 只处理 LiveInfo（getLiveDataByRoomId 回调约定的 T）
                             if (data instanceof LiveInfo) {
-                                handleFullResult(code, (LiveInfo) data, outerListener, done, finalRoomId);
+                                if (Looper.myLooper() == Looper.getMainLooper()) {
+                                    // 🔧 SDK 回调进入主线程：解析重活（反射+线路遍历）转发到后台线程，避免阻塞 UI
+                                    final int fCode = code;
+                                    final LiveInfo li = (LiveInfo) data;
+                                    AppExecutors.io(() -> {
+                                        try {
+                                            handleFullResult(fCode, li, outerListener, done, finalRoomId);
+                                        } catch (Exception e2) {
+                                            LogBridge.e(TAG, "handleFullResult 后台异常: " + e2.getMessage());
+                                            if (!done.get() && done.compareAndSet(false, true)) {
+                                                outerListener.onError("结果处理异常: " + e2.getMessage());
+                                            }
+                                        }
+                                    });
+                                } else {
+                                    handleFullResult(code, (LiveInfo) data, outerListener, done, finalRoomId);
+                                }
                             } else {
                                 // ErrorInfo / SubscribeInfo / LiveListInfo 等都按 SDK 约定 code!=0 即失败
                                 if (done.compareAndSet(false, true)) {
@@ -628,7 +1217,7 @@ public class HuyaSDKParser {
                                 }
                             }
                         } catch (Exception e) {
-                            Log.e(TAG, "handleFullResult 异常: " + e.getMessage(), e);
+                            LogBridge.e(TAG, "handleFullResult 异常: " + e.getMessage(), e);
                             HuyaSDKLogger.error(TAG, "handleFullResult 异常: " + e.getMessage());
                             ExceptionReporter.report("HuyaSDK.handleFullResult", e);
                             if (!alreadyTimeout && done.compareAndSet(false, true)) {
@@ -640,28 +1229,42 @@ public class HuyaSDKParser {
                     @Override
                     public void onResultListCallback(int code, java.util.List<BaseCallback> list) {
                         int size = (list == null) ? 0 : list.size();
-                        Log.d(TAG, "SDK onResultListCallback: code=" + code + " size=" + size);
+                        LogBridge.d(TAG, "SDK onResultListCallback: code=" + code + " size=" + size);
                         HuyaSDKLogger.onCustomUICallback("onResultListCallback", code, "size=" + size);
                     }
                 };
-                Log.d(TAG, "✅ CustomUICallback 直接实现创建成功 (impl=" + sdkCallback.getClass().getName() + ")");
+                LogBridge.d(TAG, "✅ CustomUICallback 直接实现创建成功 (impl=" + sdkCallback.getClass().getName() + ")");
 
-                Log.d(TAG, "调用 SDK getLiveDataByRoomId, roomId=" + roomId);
-                HuyaSDKLogger.info(TAG, "发起SDK解析: roomId=" + roomId);
+                LogBridge.d(TAG, "调用 SDK getLiveDataByRoomId, roomId=" + roomId);
+                HuyaSDKLogger.debug(TAG, "发起SDK解析: roomId=" + roomId);
                 sHuyaBerry.getLiveDataByRoomId(roomId, sdkCallback);
 
                 Thread.sleep(30000); // 30s 超时兜底（给网络&信令充足时间）
                 if (done.compareAndSet(false, true)) {
-                    Log.w(TAG, "SDK 调用超时 (30s)");
+                    LogBridge.w(TAG, "SDK 调用超时 (30s)");
                     HuyaSDKLogger.error(TAG, "SDK解析超时: roomId=" + roomId);
                     ExceptionReporter.reportHuyaBusinessFailure(
                             "HuyaSDKParser.parseFull", -99998, "SDK 解析超时 (30s)",
                             "roomId=" + roomId);
                     listener.onError("SDK 解析超时");
                 }
+            } catch (UnsatisfiedLinkError ule) {
+                // 🔴【关键修复】Mars STN so 不兼容时，getLiveDataByRoomId 底层会直接抛出
+                // UnsatisfiedLinkError。这里捕获后标记 SDK 不可用，防止后续调用再次触发。
+                String msg = "Mars STN 原生库不兼容: " + ule.getMessage();
+                LogBridge.e(TAG, "SDK 解析触发 UnsatisfiedLinkError，roomId=" + roomId + " " + msg, ule);
+                HuyaSDKLogger.error(TAG, msg + ", roomId=" + roomId);
+                ExceptionReporter.reportHuyaBusinessFailure(
+                        "HuyaSDKParser.parseFull", -99002, msg,
+                        "roomId=" + roomId + ",api=" + android.os.Build.VERSION.SDK_INT);
+                sInitOk = false;
+                sHuyaBerry = null;
+                if (done.compareAndSet(false, true)) {
+                    listener.onError("虎牙 SDK 原生库与当前系统不兼容，无法解析");
+                }
             } catch (Throwable e) {
                 // 打印完整异常链：尤其 InvocationTargetException 必须看 getTargetException 才是真因
-                Log.e(TAG, "SDK 解析异常完整链：\n" + logThrowableChain(e));
+                LogBridge.e(TAG, "SDK 解析异常完整链：\n" + logThrowableChain(e));
                 HuyaSDKLogger.error(TAG, "SDK解析异常: " + e.getMessage() + ", roomId=" + roomId);
                 ExceptionReporter.report("HuyaSDKParser.parseFull", e);
                 String userMsg = (e.getCause() != null)
@@ -761,12 +1364,12 @@ public class HuyaSDKParser {
         cs.timestamp = System.currentTimeMillis();
         cs.streams = streams;
         sStreamsCache.put(roomId, cs);
-        Log.d(TAG, "房间" + roomId + " 流信息写入缓存: " + streams.size() + " 条流");
+        LogBridge.d(TAG, "房间" + roomId + " 流信息写入缓存: " + streams.size() + " 条流");
         HuyaSDKLogger.info(TAG, "房间" + roomId + " SDK解析成功: " + streams.size() + " 条流");
 
         HuyaStreamInfo def = pickDefaultStream(streams);
         List<String> lines = buildLineLabels(streams);
-        Log.d(TAG, "SDK 解析完成: " + lines.size() + " 条线路, 默认 " + def);
+        LogBridge.d(TAG, "SDK 解析完成: " + lines.size() + " 条线路, 默认 " + def);
 
         if (done.compareAndSet(false, true)) {
             listener.onSuccess(def, streams, lines);
@@ -782,10 +1385,10 @@ public class HuyaSDKParser {
             // 1. 拿 lines：直接调 LiveInfo.getLines()
             Vector<?> linesObj = liveInfo.getLines();
             if (linesObj == null || linesObj.isEmpty()) {
-                Log.w(TAG, "getLines 为空: " + (linesObj == null ? "null" : "size=0"));
+                LogBridge.w(TAG, "getLines 为空: " + (linesObj == null ? "null" : "size=0"));
                 return fallbackExtractAsSingle(liveInfo);
             }
-            Log.d(TAG, "getLines: " + linesObj.size() + " 条线路");
+            LogBridge.d(TAG, "getLines: " + linesObj.size() + " 条线路");
 
             // ===== v3.3 诊断：反射 dump PlayerHelper.singleStreamInfo 内部结构（带 roomId 定位） =====
             try {
@@ -793,12 +1396,12 @@ public class HuyaSDKParser {
                 java.lang.reflect.Field ssiF = phCls.getDeclaredField("singleStreamInfo");
                 ssiF.setAccessible(true);
                 Object ssi = ssiF.get(null);
-                Log.e(TAG, "V33DBG room=" + roomId + " singleStreamInfo=" + ssi);
+                LogBridge.d(TAG, "V33DBG room=" + roomId + " singleStreamInfo=" + ssi);
                 if (ssi != null) {
                     java.lang.reflect.Field siF = ssi.getClass().getDeclaredField("singleInfo");
                     siF.setAccessible(true);
                     java.util.Map<?, ?> singleInfo = (java.util.Map<?, ?>) siF.get(ssi);
-                    Log.e(TAG, "V33DBG room=" + roomId + " singleInfo.size=" + (singleInfo == null ? -1 : singleInfo.size()));
+                    LogBridge.d(TAG, "V33DBG room=" + roomId + " singleInfo.size=" + (singleInfo == null ? -1 : singleInfo.size()));
                     if (singleInfo != null) {
                         for (java.util.Map.Entry<?, ?> e : singleInfo.entrySet()) {
                             Object li = e.getValue();
@@ -806,12 +1409,12 @@ public class HuyaSDKParser {
                             java.lang.reflect.Field brF = li.getClass().getDeclaredField("bitRateInfoList");
                             brF.setAccessible(true);
                             Object brl = brF.get(li);
-                            Log.e(TAG, "V33DBG room=" + roomId + " line=" + e.getKey() + " bitRateInfoList=" + brl);
+                            LogBridge.d(TAG, "V33DBG room=" + roomId + " line=" + e.getKey() + " bitRateInfoList=" + brl);
                         }
                     }
                 }
             } catch (Throwable t) {
-                Log.e(TAG, "V33DBG err: " + t);
+                LogBridge.d(TAG, "V33DBG err: " + t);
             }
 
             for (int i = 0; i < linesObj.size(); i++) {
@@ -819,16 +1422,16 @@ public class HuyaSDKParser {
                 try {
                     lineValue = ((Number) linesObj.get(i)).intValue();
                 } catch (Exception e) {
-                    Log.d(TAG, "线路#" + i + " 取值失败: " + e.getMessage());
+                    LogBridge.d(TAG, "线路#" + i + " 取值失败: " + e.getMessage());
                     ExceptionReporter.report("extractFullStreamList.lineValue", e);
                     continue;
                 }
 
                 Vector<BitRateInfo> bitRates = liveInfo.getBitRateList(lineValue);
                 if (bitRates == null) continue;
-                Log.d(TAG, "线路#" + i + "(v=" + lineValue + "): " + bitRates.size() + " 个码率");
+                LogBridge.d(TAG, "线路#" + i + "(v=" + lineValue + "): " + bitRates.size() + " 个码率");
 
-                // 同线路内按码率降序排列（高码率在前 = 默认码率）
+                // 同线路内按码率降序排列（默认码率见下方 isDefaultBitrate 标记）
                 List<HuyaStreamInfo> lineStreams = new ArrayList<>();
                 for (int j = 0; j < bitRates.size(); j++) {
                     BitRateInfo oneBr = bitRates.get(j);
@@ -841,7 +1444,7 @@ public class HuyaSDKParser {
                     try {
                         hlsUrl = liveInfo.getPlayUrlByLineAndBitrate(false, lineValue, br);
                     } catch (Exception e) {
-                        Log.d(TAG, "HLS URL 获取失败: line=" + lineValue + " br=" + br + ": " + e.getMessage());
+                        LogBridge.d(TAG, "HLS URL 获取失败: line=" + lineValue + " br=" + br + ": " + e.getMessage());
                         ExceptionReporter.report("extractFullStreamList.hlsUrl", e);
                     }
                     try {
@@ -851,7 +1454,7 @@ public class HuyaSDKParser {
                         // ignore
                     }
                     if (TextUtils.isEmpty(hlsUrl) && TextUtils.isEmpty(flvUrl)) {
-                        Log.d(TAG, "线路#" + i + " 码率" + br + "无有效URL，跳过");
+                        LogBridge.d(TAG, "线路#" + i + " 码率" + br + "无有效URL，跳过");
                         continue;
                     }
                     HuyaStreamInfo s = new HuyaStreamInfo();
@@ -865,13 +1468,13 @@ public class HuyaSDKParser {
                     s.flvUrl = flvUrl;
                     s.isDefaultLine = (i == 0);
                     lineStreams.add(s);
-                    Log.d(TAG, "  → " + s + " URL(" + (hlsUrl != null ? "HLS" : "")
+                    LogBridge.d(TAG, "  → " + s + " URL(" + (hlsUrl != null ? "HLS" : "")
                             + (flvUrl != null ? "/FLV" : "") + ")");
                 }
-                // 同线路按 bitRate 降序 → 第一个 = 默认码率
+                // 同线路按 bitRate 降序 → 第2档(k==1) = 默认码率；仅1档时退回第1档
                 Collections.sort(lineStreams, (a, b) -> Integer.compare(b.bitRate, a.bitRate));
                 for (int k = 0; k < lineStreams.size(); k++) {
-                    lineStreams.get(k).isDefaultBitrate = (k == 0);
+                    lineStreams.get(k).isDefaultBitrate = (lineStreams.size() >= 2) ? (k == 1) : (k == 0);
                 }
                 out.addAll(lineStreams);
             }
@@ -880,7 +1483,7 @@ public class HuyaSDKParser {
             return out;
 
         } catch (Exception e) {
-            Log.e(TAG, "extractFullStreamList 异常: " + e.getMessage());
+            LogBridge.e(TAG, "extractFullStreamList 异常: " + e.getMessage());
             ExceptionReporter.report("extractFullStreamList.outer", e);
             if (!out.isEmpty()) return out;
             return fallbackExtractAsSingle(liveInfo);
@@ -961,7 +1564,7 @@ public class HuyaSDKParser {
     // =====================================================================
     private static void runBerryDebugChecker() {
         final String TAG2 = TAG + "-DebugChecker";
-        Log.i(TAG2, "================ 🔬【豆包推荐：播放器模块剥离自检】================");
+        LogBridge.i(TAG2, "================ 🔬【豆包推荐：播放器模块剥离自检】================");
         boolean ok = true;
         StringBuilder sb = new StringBuilder();
         int passed = 0, total = 0;
@@ -991,7 +1594,7 @@ public class HuyaSDKParser {
         }
         if (cnfCount == playerClasses.length) {
             passed++;
-            Log.i(TAG2, "  ✅ 检查项1【播放器类加载】：全部 ClassNotFound（R8 已剥离 / 未加载，共" + playerClasses.length + "/" + playerClasses.length + "）");
+            LogBridge.i(TAG2, "  ✅ 检查项1【播放器类加载】：全部 ClassNotFound（R8 已剥离 / 未加载，共" + playerClasses.length + "/" + playerClasses.length + "）");
         } else {
             sb.insert(0, "  ℹ️  检查项1【播放器类加载】：ClassNotFound " + cnfCount + "/" + playerClasses.length
                     + "（debug minifyEnabled=false 属正常，release 会全部消失）\n");
@@ -1044,18 +1647,18 @@ public class HuyaSDKParser {
             }
             if (!foundPlayerModule) {
                 passed++;
-                Log.i(TAG2, "  ✅ 检查项2【模块注册】：ModuleManager 未检测到 PlayerModule（官方开关已生效）");
+                LogBridge.i(TAG2, "  ✅ 检查项2【模块注册】：ModuleManager 未检测到 PlayerModule（官方开关已生效）");
             } else {
                 ok = false;
-                Log.w(TAG2, "  ❌ 检查项2【模块注册】：发现播放器相关模块注册，请核对官方 isNeedPlay=false 是否被 SDK 版本忽略");
+                LogBridge.w(TAG2, "  ❌ 检查项2【模块注册】：发现播放器相关模块注册，请核对官方 isNeedPlay=false 是否被 SDK 版本忽略");
             }
         } catch (ClassNotFoundException mmMiss) {
             // 某些版本 Berry 类名混淆后名字不同，属于版本差异，降级跳过不判失败
             passed++;
-            Log.i(TAG2, "  ℹ️  检查项2【模块注册】：ModuleManager 类名无法定位（版本混淆），降级为不判定，跳过");
+            LogBridge.i(TAG2, "  ℹ️  检查项2【模块注册】：ModuleManager 类名无法定位（版本混淆），降级为不判定，跳过");
         } catch (Throwable t) {
             passed++;
-            Log.i(TAG2, "  ℹ️  检查项2【模块注册】：反射遍历失败（" + t.getClass().getSimpleName()
+            LogBridge.i(TAG2, "  ℹ️  检查项2【模块注册】：反射遍历失败（" + t.getClass().getSimpleName()
                     + "），降级为不判定，跳过");
         }
 
@@ -1076,14 +1679,14 @@ public class HuyaSDKParser {
             }
             if (!soLoaded) {
                 passed++;
-                Log.i(TAG2, "  ✅ 检查项3【so 内存加载】：/proc/self/maps 中无 libberry_player/decoder/ijk 等 mmap 记录（运行内存真·省下）");
+                LogBridge.i(TAG2, "  ✅ 检查项3【so 内存加载】：/proc/self/maps 中无 libberry_player/decoder/ijk 等 mmap 记录（运行内存真·省下）");
             } else {
                 ok = false;
-                Log.w(TAG2, "  ❌ 检查项3【so 内存加载】：仍检测到播放器相关 so 被 mmap（说明 SDK 内部仍有代码触发了 loadLibrary）");
+                LogBridge.w(TAG2, "  ❌ 检查项3【so 内存加载】：仍检测到播放器相关 so 被 mmap（说明 SDK 内部仍有代码触发了 loadLibrary）");
             }
         } catch (Throwable t) {
             passed++;
-            Log.i(TAG2, "  ℹ️  检查项3【so 内存加载】：无法读取 /proc/self/maps（权限/ROM 差异），降级为不判定，跳过");
+            LogBridge.i(TAG2, "  ℹ️  检查项3【so 内存加载】：无法读取 /proc/self/maps（权限/ROM 差异），降级为不判定，跳过");
         } finally {
             if (br != null) try { br.close(); } catch (Throwable ignore) {}
         }
@@ -1101,7 +1704,7 @@ public class HuyaSDKParser {
             sb.append("     可在 javap HuyaBerryConfig\\$Builder 重新反查 setter，必要时降级仅用 dontwarn 即可）\n");
         }
         sb.append("========================================================\n");
-        if (ok) Log.i(TAG2, sb.toString()); else Log.w(TAG2, sb.toString());
+        if (ok) LogBridge.i(TAG2, sb.toString()); else LogBridge.w(TAG2, sb.toString());
     }
 
     // 注：旧的反射代码里用来"中转 builder 引用给 HuyaCacheGovernor"的 HuBerryConfigBuilder 包装类
@@ -1121,6 +1724,97 @@ public class HuyaSDKParser {
     //
     // 所有方法都做了：SDK 可用判断 + 回调转 HuyaSDKLogger + 参数校验
     // =====================================================================
+
+    // ======================== 品类切换（王者荣耀 → 虎牙一起看） ========================
+
+    /** 切换 SDK 游戏/分类上下文的回调 */
+    public interface OnChangeGameListener {
+        void onSuccess();
+        void onError(String errMsg);
+    }
+
+    /**
+     * 直接设置多 gameId 权限到 GameIdOptions.gameIdArr（public 字段，无需反射）。
+     * SDK 初始化时注册默认 gameId(2135=虎牙一起看)，changeGame 切换其他分类前
+     * 需要目标分类的权限，否则返回"没有该品类的权限"。
+     * 注入 2135_一起看 / 2633_二次元 等权限后，changeGame 才能自由切换分类。
+     */
+    public static void injectMultiGameIds() {
+        try {
+            LogBridge.i(TAG, "injectMultiGameIds: 开始注入多gameId权限...");
+            Class<?> cls = Class.forName("com.huya.berry.gamesdk.gameid.GameIdOptions");
+            java.lang.reflect.Method getInstance = cls.getMethod("getInstance");
+            Object instance = getInstance.invoke(null);
+            java.lang.reflect.Field f = cls.getField("gameIdArr");
+            Object current = f.get(instance);
+
+            // 已知虎牙分类 gameId（从 https://www.huya.com/g 确认）
+            // 2135=一起看(默认) / 2336=王者荣耀 / 2633=二次元 / 1663=星秀 / 6861=原创
+            String[] gameIds = {
+                    "2135_一起看",
+                    "2336_王者荣耀",
+                    "2633_二次元",
+                    "1663_星秀",
+                    "6861_原创",
+            };
+            String[] merged;
+            if (current instanceof String[]) {
+                String[] cur = (String[]) current;
+                java.util.Set<String> set = new java.util.LinkedHashSet<>();
+                for (String s : cur) if (s != null && !s.isEmpty()) set.add(s);
+                for (String s : gameIds) if (s != null && !s.isEmpty()) set.add(s);
+                merged = set.toArray(new String[0]);
+                LogBridge.i(TAG, "injectMultiGameIds: 原有gameIdArr长度=" + cur.length);
+            } else {
+                merged = gameIds;
+                LogBridge.i(TAG, "injectMultiGameIds: 原有gameIdArr为空/不存在");
+            }
+            f.set(instance, merged);
+            StringBuilder sb = new StringBuilder("已注入gameIdArr权限: [");
+            for (int i = 0; i < merged.length; i++) {
+                if (i > 0) sb.append(", ");
+                sb.append(merged[i]);
+            }
+            sb.append("]");
+            LogBridge.i(TAG, sb.toString());
+        } catch (Throwable t) {
+            LogBridge.e(TAG, "injectMultiGameIds失败: " + t.getMessage(), t);
+        }
+    }
+
+    /**
+     * 切换 SDK 游戏/分类上下文（按 gameId 数字切换，支持一键切换，无需重新初始化）。
+     * 需要先通过 injectMultiGameIds() 注入 gameId 权限。
+     * 初始化默认 gameId 已是 2135(虎牙一起看)，此方法用于切到其他分类，
+     * 或初始化后做一次同 id 幂等兜底校验。
+     */
+    public static void changeGame(int gameId, final OnChangeGameListener listener) {
+        if (!sInitOk || sHuyaBerry == null) {
+            if (listener != null) listener.onError("SDK未就绪");
+            return;
+        }
+        // 切换前确保多gameId权限已注入
+        injectMultiGameIds();
+        sHuyaBerry.changeGame(gameId, new CustomUICallback<BaseCallback>() {
+            @Override public void onResultCallback(int code, BaseCallback data) {
+                HuyaSDKLogger.onCustomUICallback("changeGame", code, "gameId=" + gameId);
+                if (code == BaseCallback.SUCCESS) {
+                    if (listener != null) listener.onSuccess();
+                } else {
+                    String errMsg = "code=" + code;
+                    if (data instanceof com.huya.berry.client.customui.model.ErrorInfo) {
+                        String msg = ((com.huya.berry.client.customui.model.ErrorInfo) data).errorMsg;
+                        if (msg != null && !msg.isEmpty()) errMsg = msg;
+                    }
+                    if (listener != null) listener.onError(errMsg);
+                }
+            }
+            @Override public void onResultListCallback(int code, List<BaseCallback> list) {
+                HuyaSDKLogger.onCustomUICallback("changeGame-list", code, "size=" + (list == null ? 0 : list.size()));
+                if (listener != null) listener.onError("unexpected list callback, code=" + code);
+            }
+        });
+    }
 
     // ======================== A. 房间 / 直播列表 ========================
 
@@ -1636,8 +2330,9 @@ public class HuyaSDKParser {
 
     // ============ 凭证解码辅助方法（防止静态提取）============
     // 注意：使用字符串解析而不是常量，防止 R8 常量折叠
+    // 默认 gameId 已改为 2135(虎牙一起看)：2135 ^ 0x5A = 2061
     private static final String XOR_KEY_STR = "90";  // 0x5A 的十进制字符串
-    private static final int ENCODED_GAME_ID = 2426;
+    private static final int ENCODED_GAME_ID = 2061;
     private static final String ENCODED_APP_ID = "khinol";
     private static final String ENCODED_APP_KEY = ">b<kci>>";
 

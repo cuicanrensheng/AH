@@ -6,7 +6,7 @@ import android.content.pm.PackageManager;
 import android.os.Build;
 import android.provider.Settings;
 import android.text.TextUtils;
-import android.util.Log;
+import com.tv.live.util.LogBridge;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -99,12 +99,13 @@ public class LogServer {
             try {
                 PackageManager pm = context.getPackageManager();
                 PackageInfo pi = pm.getPackageInfo(context.getPackageName(), 0);
-                appVersion = pi.versionName + " (" + pi.versionCode + ")";
+                long vc = android.content.pm.PackageInfoCompat.getLongVersionCode(pi);
+                appVersion = pi.versionName + " (" + vc + ")";
             } catch (Exception e) {
                 appVersion = "unknown";
             }
         } catch (Exception e) {
-            Log.e(TAG, "Failed to init device info", e);
+            LogBridge.e(TAG, "Failed to init device info", e);
             deviceId = "unknown";
             deviceName = "Unknown Device";
             deviceModel = "Unknown";
@@ -152,7 +153,7 @@ public class LogServer {
         if (isRunning) {
             // 即使正在运行，也要清理过多的残留连接
             if (webSockets.size() > MAX_CLIENTS) {
-                Log.w(TAG, "Clearing " + webSockets.size() + " stale connections (max " + MAX_CLIENTS + ")");
+                LogBridge.w(TAG, "Clearing " + webSockets.size() + " stale connections (max " + MAX_CLIENTS + ")");
                 for (WebSocket ws : webSockets) {
                     try {
                         ws.close(1000, "Stale cleanup");
@@ -181,13 +182,13 @@ public class LogServer {
             try {
                 startHttpServer();
             } catch (Exception e) {
-                Log.e(TAG, "Failed to start LogServer", e);
+                LogBridge.e(TAG, "Failed to start LogServer", e);
                 isRunning = false;
             }
         }, "LogServer");
         serverThread.setDaemon(true);
         serverThread.start();
-        Log.i(TAG, "LogServer starting on port " + port + " (cleared " + webSockets.size() + " old connections)");
+        LogBridge.i(TAG, "LogServer starting on port " + port + " (cleared " + webSockets.size() + " old connections)");
         
         // 启动定期清理任务
         startConnectionCleaner();
@@ -233,13 +234,13 @@ public class LogServer {
             clientExecutor.shutdownNow();
             clientExecutor = null;
         }
-        Log.i(TAG, "LogServer stopped");
+        LogBridge.i(TAG, "LogServer stopped");
     }
 
     private void startHttpServer() throws IOException {
         serverSocket = new java.net.ServerSocket(port);
         serverSocket.setReuseAddress(true);
-        Log.i(TAG, "HTTP Server listening on port " + port);
+        LogBridge.i(TAG, "HTTP Server listening on port " + port);
 
         while (isRunning) {
             try {
@@ -251,7 +252,7 @@ public class LogServer {
                 }
             } catch (IOException e) {
                 if (isRunning) {
-                    Log.e(TAG, "Error accepting client", e);
+                    LogBridge.e(TAG, "Error accepting client", e);
                 }
             }
         }
@@ -279,7 +280,7 @@ public class LogServer {
                 clientSocket.close();
             }
         } catch (Exception e) {
-            Log.e(TAG, "Error handling client", e);
+            LogBridge.e(TAG, "Error handling client", e);
             try {
                 clientSocket.close();
             } catch (Exception ignored) {}
@@ -296,6 +297,8 @@ public class LogServer {
             sendHttpResponse(out, "HTTP/1.0 200 OK", "application/json", gson.toJson(info));
         } else if ("/api/logs".equals(path)) {
             handleApiLogs(out, request);
+        } else if ("/api/bootlog".equals(path)) {
+            handleApiBootLog(out);
         } else if ("/api/token".equals(path)) {
             Map<String, Object> result = new HashMap<>();
             result.put("token", token);
@@ -332,6 +335,31 @@ public class LogServer {
         sendHttpResponse(out, "HTTP/1.0 200 OK", "application/json", gson.toJson(result));
     }
 
+    /**
+     * 返回持久化自启日志（files/boot_logs.txt）
+     * 用于诊断"开机自启失败"：广播是否到达、开关状态、启动链路各节点
+     */
+    private void handleApiBootLog(java.io.OutputStream out) throws Exception {
+        Map<String, Object> result = new HashMap<>();
+        java.io.File bootLog = new java.io.File(context.getFilesDir(), "boot_logs.txt");
+        if (bootLog.exists()) {
+            java.io.FileInputStream fis = new java.io.FileInputStream(bootLog);
+            byte[] buf = new byte[(int) Math.min(bootLog.length(), 1024 * 1024)];
+            int n = fis.read(buf);
+            fis.close();
+            String content = n > 0 ? new String(buf, 0, n, "UTF-8") : "";
+            result.put("exists", true);
+            result.put("size", bootLog.length());
+            result.put("content", content);
+        } else {
+            result.put("exists", false);
+            result.put("size", 0);
+            result.put("content", "");
+        }
+        result.put("timestamp", System.currentTimeMillis());
+        sendHttpResponse(out, "HTTP/1.0 200 OK", "application/json", gson.toJson(result));
+    }
+
     private void handleWebSocketUpgrade(java.net.Socket clientSocket, String request, java.io.OutputStream out) throws Exception {
         String key = extractHeader(request, "Sec-WebSocket-Key");
         if (TextUtils.isEmpty(key)) {
@@ -363,7 +391,7 @@ public class LogServer {
             clientSocket.close();
         } catch (Exception ignored) {}
 
-        Log.i(TAG, "WebSocket client connected, key=" + key);
+        LogBridge.i(TAG, "WebSocket client connected, key=" + key);
 
         WebSocket webSocket = httpClient.newWebSocket(
                 new Request.Builder().url("ws://localhost:" + port).build(),
@@ -373,7 +401,7 @@ public class LogServer {
                         webSockets.add(webSocket);
                         sendInitMessage(webSocket);
                         sendPendingLogs(webSocket);
-                        Log.i(TAG, "WebSocket client opened, total clients: " + webSockets.size());
+                        LogBridge.i(TAG, "WebSocket client opened, total clients: " + webSockets.size());
                     }
 
                     @Override
@@ -389,13 +417,13 @@ public class LogServer {
                     @Override
                     public void onClosed(WebSocket webSocket, int code, String reason) {
                         webSockets.remove(webSocket);
-                        Log.i(TAG, "WebSocket client closed, total clients: " + webSockets.size());
+                        LogBridge.i(TAG, "WebSocket client closed, total clients: " + webSockets.size());
                     }
 
                     @Override
                     public void onFailure(WebSocket webSocket, Throwable t, Response response) {
                         webSockets.remove(webSocket);
-                        Log.e(TAG, "WebSocket failure", t);
+                        LogBridge.e(TAG, "WebSocket failure", t);
                     }
                 });
     }
@@ -409,7 +437,7 @@ public class LogServer {
             init.put("device", getServerInfo());
             webSocket.send(gson.toJson(init));
         } catch (Exception e) {
-            Log.e(TAG, "Error sending init message", e);
+            LogBridge.e(TAG, "Error sending init message", e);
         }
     }
 
@@ -428,7 +456,7 @@ public class LogServer {
                 webSocket.send(gson.toJson(batch));
             }
         } catch (Exception e) {
-            Log.e(TAG, "Error sending pending logs", e);
+            LogBridge.e(TAG, "Error sending pending logs", e);
         }
     }
 
@@ -472,7 +500,7 @@ public class LogServer {
                 webSocket.send(gson.toJson(result));
             }
         } catch (Exception e) {
-            Log.e(TAG, "Error handling incoming message", e);
+            LogBridge.e(TAG, "Error handling incoming message", e);
         }
     }
 
@@ -512,7 +540,7 @@ public class LogServer {
                 }
             }
         } catch (Exception e) {
-            Log.e(TAG, "Error broadcasting log", e);
+            LogBridge.e(TAG, "Error broadcasting log", e);
         }
     }
 
@@ -528,7 +556,7 @@ public class LogServer {
                 } catch (Exception ignored) {}
             }
         } catch (Exception e) {
-            Log.e(TAG, "Error broadcasting log cleared", e);
+            LogBridge.e(TAG, "Error broadcasting log cleared", e);
         }
     }
 
@@ -553,7 +581,7 @@ public class LogServer {
                 } catch (Exception ignored) {}
             }
         } catch (Exception e) {
-            Log.e(TAG, "Error sending crash log", e);
+            LogBridge.e(TAG, "Error sending crash log", e);
         }
     }
 
@@ -694,7 +722,7 @@ public class LogServer {
                 }
             }
         } catch (Exception e) {
-            Log.e(TAG, "Error getting IP address", e);
+            LogBridge.e(TAG, "Error getting IP address", e);
         }
         return "127.0.0.1";
     }

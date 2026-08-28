@@ -6,7 +6,7 @@ import android.content.pm.PackageManager;
 import android.content.pm.Signature;
 import android.os.Build;
 import android.util.Base64;
-import android.util.Log;
+import com.tv.live.util.LogBridge;
 import android.widget.Toast;
 
 import com.tv.live.BuildConfig;
@@ -51,31 +51,31 @@ public final class SecurityCheck {
      */
     public static boolean verifyOnStart(Context ctx) {
         if (BuildConfig.IS_DEBUG) {
-            Log.i(TAG, "🔓 调试版：跳过签名校验");
+            LogBridge.i(TAG, "🔓 调试版：跳过签名校验");
             return true;
         }
         
-        Log.i(TAG, "🔒 正式版：启用签名校验");
+        LogBridge.i(TAG, "🔒 正式版：启用签名校验");
         
         // 初始化篡改上报
         try {
             TamperReporter.init(ctx);
         } catch (Throwable t) {
-            Log.w(TAG, "TamperReporter 初始化失败: " + t.getMessage());
+            LogBridge.w(TAG, "TamperReporter 初始化失败: " + t.getMessage());
         }
         
         boolean allPassed = true;
         
         // 1. 校验签名
         if (!verifySignature(ctx)) {
-            Log.e(TAG, "⚠️ 签名校验未通过，将上报但不阻断启动");
+            LogBridge.e(TAG, "⚠️ 签名校验未通过，将上报但不阻断启动");
             try {
                 TamperReporter.reportTamper(
                     TamperReporter.TAMPER_SIGNATURE,
                     "签名校验失败"
                 );
             } catch (Throwable t) {
-                Log.w(TAG, "篡改上报失败: " + t.getMessage());
+                LogBridge.w(TAG, "篡改上报失败: " + t.getMessage());
             }
             allPassed = false;
         }
@@ -83,36 +83,36 @@ public final class SecurityCheck {
         // 2. 校验包名
         String pkgName = ctx.getPackageName();
         if (!EXPECTED_PKG.equals(pkgName)) {
-            Log.e(TAG, "❌ 包名不匹配! expected=" + EXPECTED_PKG + " current=" + pkgName);
+            LogBridge.e(TAG, "❌ 包名不匹配! expected=" + EXPECTED_PKG + " current=" + pkgName);
             try {
                 TamperReporter.reportTamper(
                     TamperReporter.TAMPER_PACKAGE_NAME,
                     "包名校验失败, expected=" + EXPECTED_PKG + " current=" + pkgName
                 );
             } catch (Throwable t) {
-                Log.w(TAG, "篡改上报失败: " + t.getMessage());
+                LogBridge.w(TAG, "篡改上报失败: " + t.getMessage());
             }
             allPassed = false;
         } else {
-            Log.i(TAG, "✅ 包名校验通过");
+            LogBridge.i(TAG, "✅ 包名校验通过");
         }
         
         // 3. 校验 DEX 完整性（可选，占位符未设置时只打印 hash）
         if (!verifyDexIntegrity(ctx)) {
-            Log.e(TAG, "⚠️ DEX 完整性校验未通过");
+            LogBridge.e(TAG, "⚠️ DEX 完整性校验未通过");
             try {
                 TamperReporter.reportTamper(
                     TamperReporter.TAMPER_DEX_INTEGRITY,
                     "DEX完整性校验失败"
                 );
             } catch (Throwable t) {
-                Log.w(TAG, "篡改上报失败: " + t.getMessage());
+                LogBridge.w(TAG, "篡改上报失败: " + t.getMessage());
             }
             allPassed = false;
         }
         
         if (!allPassed) {
-            Log.w(TAG, "⚠️ 部分安全检查未通过，但应用将继续运行（降级模式）");
+            LogBridge.w(TAG, "⚠️ 部分安全检查未通过，但应用将继续运行（降级模式）");
         }
         return allPassed;
     }
@@ -128,7 +128,7 @@ public final class SecurityCheck {
                         ? pi.signingInfo.getApkContentsSigners()
                         : (pi.signingInfo != null ? pi.signingInfo.getSigningCertificateHistory() : null);
                 if (sigs == null || sigs.length == 0) {
-                    Log.w(TAG, "未找到签名");
+                    LogBridge.w(TAG, "未找到签名");
                     return false;
                 }
                 certBytes = sigs[0].toByteArray();
@@ -136,7 +136,7 @@ public final class SecurityCheck {
                 pi = pm.getPackageInfo(appCtx.getPackageName(), PackageManager.GET_SIGNATURES);
                 Signature[] sigs = pi.signatures;
                 if (sigs == null || sigs.length == 0) {
-                    Log.w(TAG, "未找到签名");
+                    LogBridge.w(TAG, "未找到签名");
                     return false;
                 }
                 certBytes = sigs[0].toByteArray();
@@ -144,48 +144,55 @@ public final class SecurityCheck {
 
             byte[] shaBytes = MessageDigest.getInstance("SHA-256").digest(certBytes);
             String currentB64 = Base64.encodeToString(shaBytes, Base64.NO_WRAP);
-            Log.i(TAG, "当前签名 SHA256=" + currentB64);
+            LogBridge.i(TAG, "当前签名 SHA256=" + currentB64);
 
             // 严格校验签名
             if (!EXPECTED_SIG_BASE64.equals(currentB64)) {
-                Log.e(TAG, "❌ 签名校验失败! expected=" + EXPECTED_SIG_BASE64 + " current=" + currentB64);
+                LogBridge.e(TAG, "❌ 签名校验失败! expected=" + EXPECTED_SIG_BASE64 + " current=" + currentB64);
                 toastAndExit(appCtx, "签名校验失败，APK 被修改");
                 return false;
             }
-            Log.i(TAG, "✅ 签名校验通过");
+            LogBridge.i(TAG, "✅ 签名校验通过");
             return true;
         } catch (Exception e) {
-            Log.e(TAG, "verify error", e);
+            LogBridge.e(TAG, "verify error", e);
             return false;
         }
     }
 
     private static boolean verifyDexIntegrity(Context appCtx) {
+        // ⚡ 占位符未配置时直接短路：computeDexHash 要读整个 classes.dex 算 SHA-256，
+        // 弱 TV 设备上耗时数百毫秒，且结果只用于打印人工对比、不影响任何逻辑。
+        // 发布版把 EXPECTED_DEX_B64 填成真实 SHA-256（Base64）后自动恢复严格校验。
+        // 需要获取 hash：解包 release apk，对 classes.dex 执行  sha256sum | base64
+        if ("REPLACE_WITH_DEX_SHA256_BASE64".equals(EXPECTED_DEX_B64)) {
+            return true;
+        }
         try {
             byte[] hash = IntegrityCheck.computeDexHash(appCtx);
             if (hash == null) return true; // 计算失败不阻塞
             String currentB64 = Base64.encodeToString(hash, Base64.NO_WRAP);
-            Log.i(TAG, "EXPECTED_DEX_SHA256=" + currentB64);
+            LogBridge.i(TAG, "EXPECTED_DEX_SHA256=" + currentB64);
             if (!"REPLACE_WITH_DEX_SHA256_BASE64".equals(EXPECTED_DEX_B64)) {
                 // 已配置真实值 → 严格校验（仅在不启用资源混淆的最终发布版使用）
                 if (!EXPECTED_DEX_B64.equals(currentB64)) {
-                    Log.e(TAG, "dex hash 不匹配！expected=" + EXPECTED_DEX_B64 + " current=" + currentB64);
+                    LogBridge.e(TAG, "dex hash 不匹配！expected=" + EXPECTED_DEX_B64 + " current=" + currentB64);
                     return false;
                 }
-                Log.w(TAG, "✅ dex 完整性校验通过");
+                LogBridge.w(TAG, "✅ dex 完整性校验通过");
             } else {
                 // 默认：仅打印 hash 用于人工对比，不阻塞启动
-                Log.w(TAG, "dex hash (人工对比) = " + currentB64);
+                LogBridge.w(TAG, "dex hash (人工对比) = " + currentB64);
             }
             return true;
         } catch (Exception e) {
-            Log.e(TAG, "verify dex error", e);
+            LogBridge.e(TAG, "verify dex error", e);
             return true;
         }
     }
 
     private static void toastAndExit(Context ctx, String msg) {
-        Log.e(TAG, msg);
+        LogBridge.e(TAG, msg);
         try {
             Toast.makeText(ctx, msg, Toast.LENGTH_LONG).show();
         } catch (Exception ignored) {}

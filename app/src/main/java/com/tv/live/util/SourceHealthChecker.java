@@ -4,7 +4,7 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.os.Handler;
 import android.os.Looper;
-import android.util.Log;
+import com.tv.live.util.LogBridge;
 
 import com.tv.live.Channel;
 
@@ -122,7 +122,7 @@ public class SourceHealthChecker {
             int count = (prevCount == null ? 0 : prevCount) + 1;
             failCountMap.put(url, count);
             saveFailCount(url, count);
-            Log.w(TAG, "源失败标记 [" + count + "/" + FAIL_THRESHOLD + "]: " + url);
+            LogBridge.w(TAG, "源失败标记 [" + count + "/" + FAIL_THRESHOLD + "]: " + url);
 
             if (count >= FAIL_THRESHOLD) {
                 removeUrl(url, channel);
@@ -138,7 +138,7 @@ public class SourceHealthChecker {
         Integer count = failCountMap.remove(url);
         if (count != null && count > 0) {
             clearFailCount(url);
-            Log.d(TAG, "源成功，重置失败计数: " + url);
+            LogBridge.d(TAG, "源成功，重置失败计数: " + url);
         }
     }
 
@@ -158,7 +158,7 @@ public class SourceHealthChecker {
                 if (url.equals(it.next())) {
                     it.remove();
                     removed = true;
-                    Log.w(TAG, "已剔除失效备用源: " + channel.getName() + " → " + url);
+                    LogBridge.w(TAG, "已剔除失效备用源: " + channel.getName() + " → " + url);
                     break;
                 }
             }
@@ -167,7 +167,7 @@ public class SourceHealthChecker {
                 if (!channel.getBackupUrls().isEmpty()) {
                     String newMain = channel.getBackupUrls().remove(0);
                     channel.setMainPlayUrl(newMain);
-                    Log.w(TAG, "主源失效，提升备用源为主源: " + channel.getName() +
+                    LogBridge.w(TAG, "主源失效，提升备用源为主源: " + channel.getName() +
                             "\n  旧: " + url + "\n  新: " + newMain);
                     removed = true;
                 }
@@ -203,7 +203,7 @@ public class SourceHealthChecker {
         if (channels == null || channels.isEmpty()) return;
         if (!isEnabled()) return;
         if (isFullCheckRunning) {
-            Log.d(TAG, "全量检测已在运行中，跳过");
+            LogBridge.d(TAG, "全量检测已在运行中，跳过");
             return;
         }
 
@@ -211,14 +211,14 @@ public class SourceHealthChecker {
         long now = System.currentTimeMillis();
         long lastCheck = sp.getLong(KEY_LAST_CHECK, 0);
         if (now - lastCheck < FULL_CHECK_INTERVAL_MS) {
-            Log.d(TAG, "距上次全量检测不足7天，跳过");
+            LogBridge.d(TAG, "距上次全量检测不足7天，跳过");
             isFullCheckRunning = false;
             return;
         }
         sp.edit().putLong(KEY_LAST_CHECK, now).apply();
 
         singleExecutor.execute(() -> {
-            Log.i(TAG, "开始全量源检测，频道数: " + channels.size());
+            LogBridge.i(TAG, "开始全量源检测，频道数: " + channels.size());
             final AtomicInteger totalChecked = new AtomicInteger(0);
             final AtomicInteger removedCount = new AtomicInteger(0);
 
@@ -285,7 +285,7 @@ public class SourceHealthChecker {
 
             final int checked = totalChecked.get();
             final int removed = removedCount.get();
-            Log.i(TAG, "全量源检测完成: 检测 " + checked + " 个URL, 剔除 " + removed + " 个失效源");
+            LogBridge.i(TAG, "全量源检测完成: 检测 " + checked + " 个URL, 剔除 " + removed + " 个失效源");
 
             isFullCheckRunning = false;
 
@@ -337,7 +337,7 @@ public class SourceHealthChecker {
             return code >= 200 && code < 400;
         } catch (Exception e) {
             // 网络异常（超时/DNS失败）不算源失效，返回 true 避免误删
-            Log.d(TAG, "检测异常(不计入失效): " + urlStr + " → " + e.getMessage());
+            LogBridge.d(TAG, "检测异常(不计入失效): " + urlStr + " → " + e.getMessage());
             return true;
         } finally {
             if (conn != null) conn.disconnect();
@@ -360,7 +360,7 @@ public class SourceHealthChecker {
                 } catch (Exception ignored) {}
             }
         }
-        Log.d(TAG, "加载失败记录: " + failCountMap.size() + " 条");
+        LogBridge.d(TAG, "加载失败记录: " + failCountMap.size() + " 条");
     }
 
     private void saveFailCount(String url, int count) {
@@ -384,7 +384,7 @@ public class SourceHealthChecker {
             }
         }
         editor.apply();
-        Log.i(TAG, "已重置所有源健康记录");
+        LogBridge.i(TAG, "已重置所有源健康记录");
     }
 
     /**
@@ -411,7 +411,7 @@ public class SourceHealthChecker {
             removedUrls.clear();
             listener = null;
         } catch (Exception e) {
-            Log.e(TAG, "release异常: " + e.getMessage());
+            LogBridge.e(TAG, "release异常: " + e.getMessage());
         }
     }
 }

@@ -3,25 +3,18 @@ package com.tv.live.security;
 import android.content.Context;
 import android.os.Build;
 import android.os.Process;
-import android.util.Log;
+import com.tv.live.util.LogBridge;
 
 import com.tv.live.BuildConfig;
-import com.tv.live.util.BuglyLogSender;
-import com.tv.live.util.CloudLogSender;
 import com.tv.live.util.LogCollector;
-import com.tencent.bugly.crashreport.CrashReport;
-
-import java.util.HashMap;
-import java.util.Map;
 
 /**
  * 反编译检测上报器
  * 
  * 功能：
- * 1. 检测到反编译/篡改时自动上报崩溃日志
- * 2. 通过 Bugly 上报（在电脑 Bugly 控制台可查看）
- * 3. 通过 CloudLogSender 发送到本地日志监控
- * 4. 触发应用崩溃，记录篡改行为
+ * 1. 检测到反编译/篡改时自动记录行为
+ * 2. 记录到本地日志监控（LogCollector）与本地文件（Bugly 普通版已移除，实验）
+ * 3. 触发应用崩溃，记录篡改行为
  * 
  * 仅在 Release 版本启用。
  */
@@ -53,9 +46,9 @@ public final class TamperReporter {
     public static void init(Context context) {
         sAppContext = context.getApplicationContext();
         if (!BuildConfig.IS_DEBUG) {
-            Log.i(TAG, "反编译检测器已启用");
+            LogBridge.i(TAG, "反编译检测器已启用");
         } else {
-            Log.i(TAG, "反编译检测器：调试模式，仅记录日志");
+            LogBridge.i(TAG, "反编译检测器：调试模式，仅记录日志");
         }
     }
 
@@ -69,16 +62,16 @@ public final class TamperReporter {
         sReported = true;
         
         String typeName = getTypeName(tamperType);
-        Log.e(TAG, "⚠️ 检测到篡改行为: " + typeName + " - " + detail);
+        LogBridge.e(TAG, "⚠️ 检测到篡改行为: " + typeName + " - " + detail);
         
         // 1. 记录到本地日志（始终执行）
         LogCollector.getInstance().error(TAG, 
             "⚠️ 反编译检测: " + typeName + " | " + detail);
         
-        // 2. 通过 CloudLogSender 发送到本地监控（如果已启用）
+        // 2. 记录到本地日志监控（LogCollector）
         reportToLocalMonitor(tamperType, typeName, detail);
         
-        // 3. 通过 Bugly 上报（电脑可查看）
+        // 3. 记录完整信息（原 Bugly 上报通道已移除 → 仅本地完整记录）
         if (!BuildConfig.IS_DEBUG) {
             reportToBugly(tamperType, typeName, detail);
         }
@@ -95,7 +88,7 @@ public final class TamperReporter {
      */
     public static void reportSuspicious(int tamperType, String detail) {
         String typeName = getTypeName(tamperType);
-        Log.w(TAG, "⚠️ 检测到可疑环境: " + typeName + " - " + detail);
+        LogBridge.w(TAG, "⚠️ 检测到可疑环境: " + typeName + " - " + detail);
         
         // 仅记录到本地日志，不上报Bugly
         LogCollector.getInstance().warn(TAG, 
@@ -133,10 +126,10 @@ public final class TamperReporter {
             writer.write(logBuilder.toString());
             writer.close();
             
-            Log.i(TAG, "篡改日志已写入: " + logFile.getAbsolutePath());
+            LogBridge.i(TAG, "篡改日志已写入: " + logFile.getAbsolutePath());
             
         } catch (Exception e) {
-            Log.e(TAG, "写入篡改日志失败: " + e.getMessage());
+            LogBridge.e(TAG, "写入篡改日志失败: " + e.getMessage());
         }
     }
 
@@ -145,27 +138,7 @@ public final class TamperReporter {
      */
     private static void reportToLocalMonitor(int tamperType, String typeName, String detail) {
         try {
-            // 构造篡改事件
-            Map<String, String> event = new HashMap<>();
-            event.put("type", "TAMPER_DETECTED");
-            event.put("tamper_type", String.valueOf(tamperType));
-            event.put("tamper_name", typeName);
-            event.put("detail", detail);
-            event.put("package_name", BuildConfig.APPLICATION_ID);
-            event.put("version", BuildConfig.VERSION_NAME);
-            event.put("build_type", BuildConfig.IS_DEBUG ? "debug" : "release");
-            event.put("timestamp", String.valueOf(System.currentTimeMillis()));
-            event.put("device_model", Build.MODEL);
-            event.put("device_brand", Build.BRAND);
-            event.put("sdk_version", String.valueOf(Build.VERSION.SDK_INT));
-            
-            // 发送到云端日志服务器
-            CloudLogSender sender = CloudLogSender.getInstance(sAppContext);
-            if (sender.isEnabled()) {
-                sender.sendEvent("tamper_detected", event);
-            }
-            
-            // 同时通过 LogCollector 记录完整信息
+            // 通过 LogCollector 记录完整信息（本地日志，便于电脑端日志监控查看）
             StringBuilder sb = new StringBuilder();
             sb.append("[TAMPER] ").append(typeName).append("\n");
             sb.append("Detail: ").append(detail).append("\n");
@@ -177,33 +150,16 @@ public final class TamperReporter {
             LogCollector.getInstance().error(TAG, sb.toString());
             
         } catch (Exception e) {
-            Log.e(TAG, "本地上报失败: " + e.getMessage());
+            LogBridge.e(TAG, "本地上报失败: " + e.getMessage());
         }
     }
 
     /**
-     * 上报到 Bugly（电脑端可查看）
+     * 记录篡改完整信息（Bugly 普通版已移除，实验：仅本地 LogCollector + LogBridge）
      */
     private static void reportToBugly(int tamperType, String typeName, String detail) {
         try {
-            // 设置 Bugly 用户数据
-            CrashReport.putUserData(sAppContext, "tamper_type", typeName);
-            CrashReport.putUserData(sAppContext, "tamper_detail", detail);
-            CrashReport.putUserData(sAppContext, "tamper_time", 
-                String.valueOf(System.currentTimeMillis()));
-            CrashReport.putUserData(sAppContext, "app_original", 
-                BuildConfig.APPLICATION_ID);
-            CrashReport.putUserData(sAppContext, "is_debug", 
-                String.valueOf(BuildConfig.IS_DEBUG));
-            
-            // 创建篡改异常并上报
-            TamperException tamperException = new TamperException(
-                "【反编译检测】" + typeName + ": " + detail);
-            
-            // 通过 Bugly 上报捕获异常
-            CrashReport.postCatchedException(tamperException);
-            
-            // 记录完整堆栈信息
+            // 完整信息拼装（原通过 CrashReport.putUserData / postCatchedException 上报）
             StringBuilder stackTrace = new StringBuilder();
             stackTrace.append("检测到反编译/篡改行为\n");
             stackTrace.append("类型: ").append(typeName).append("\n");
@@ -215,15 +171,13 @@ public final class TamperReporter {
             stackTrace.append("SDK: ").append(Build.VERSION.SDK_INT).append("\n");
             stackTrace.append("时间: ").append(System.currentTimeMillis()).append("\n");
             stackTrace.append("构建类型: ").append(BuildConfig.IS_DEBUG ? "debug" : "release");
-            
-            // 上报自定义日志
-            CrashReport.putUserData(sAppContext, "tamper_full_info", 
-                stackTrace.toString());
-            
-            Log.i(TAG, "篡改行为已上报到 Bugly");
-            
+
+            // 本地完整记录（LogCollector 会写日志文件）
+            LogCollector.getInstance().error(TAG,
+                "[TAMPER-LOCAL] " + typeName + " | " + detail + "\n" + stackTrace);
+            LogBridge.i(TAG, "篡改行为已记录到本地（Bugly 已移除）");
         } catch (Exception e) {
-            Log.e(TAG, "Bugly 上报失败: " + e.getMessage());
+            LogBridge.e(TAG, "本地篡改记录失败: " + e.getMessage());
         }
     }
 
@@ -239,7 +193,7 @@ public final class TamperReporter {
         
         if (BuildConfig.IS_DEBUG) {
             // 调试版：只记录，不崩溃
-            Log.w(TAG, "调试模式：跳过崩溃触发");
+            LogBridge.w(TAG, "调试模式：跳过崩溃触发");
             return;
         }
         

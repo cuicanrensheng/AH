@@ -1,7 +1,7 @@
 package com.tv.live.security;
 
 import android.util.Base64;
-import android.util.Log;
+import com.tv.live.util.LogBridge;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -69,7 +69,7 @@ public class StringObfuscator {
             stringCache.put(encoded, result);
             return result;
         } catch (Exception e) {
-            Log.e(TAG, "解码字符串失败: " + e.getMessage());
+            LogBridge.e(TAG, "解码字符串失败: " + e.getMessage());
             return null;
         }
     }
@@ -128,7 +128,7 @@ public class StringObfuscator {
             stringCache.put(encoded, result);
             return result;
         } catch (Exception e) {
-            Log.e(TAG, "解码字符串失败: " + e.getMessage());
+            LogBridge.e(TAG, "解码字符串失败: " + e.getMessage());
             return null;
         }
     }

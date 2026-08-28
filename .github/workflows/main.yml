@@ -154,12 +154,12 @@ jobs:
             git push origin main --no-verify || echo "Push skip: remote has newer commits"
           fi
 
-      - name: 执行 Release 打包 + dpt-shell 加固
+      - name: 执行 Release 打包
         if: steps.skip_check.outputs.skip == 'false'
         run: |
-          echo "🎯 开始执行 Release 打包并自动加固..."
+          echo "🎯 开始执行 Release 打包..."
           chmod +x ./gradlew
-          ./gradlew releaseJiaGu \
+          ./gradlew assembleRelease \
             --stacktrace \
             -PstorePassword="${{ secrets.STORE_PASSWORD }}" \
             -PkeyAlias="${{ secrets.KEY_ALIAS }}" \
@@ -171,8 +171,8 @@ jobs:
         with:
           name: tv-live-apk
           path: |
-            app/build/outputs/apk/release/dpt/*arm64-v8a*_signed.apk
-            app/build/outputs/apk/release/dpt/*armeabi-v7a*_signed.apk
+            app/build/outputs/apk/release/*arm64-v8a*.apk
+            app/build/outputs/apk/release/*armeabi-v7a*.apk
           retention-days: 7
 
       - name: 生成 update.json
@@ -181,11 +181,11 @@ jobs:
           set -e
           VERSION_CODE=${{ github.run_number }}
           VERSION_NAME=$(grep "versionName" app/build.gradle | head -1 | awk -F'"' '{print $2}')
-          APK_DIR="app/build/outputs/apk/release/dpt"
+          APK_DIR="app/build/outputs/apk/release"
           GH_BASE="https://github.com/${{ github.repository }}/releases/download/v$VERSION_CODE"
 
-          ARM64_APK=$(ls ${APK_DIR}/*arm64-v8a*_signed.apk 2>/dev/null | head -1)
-          ARMV7_APK=$(ls ${APK_DIR}/*armeabi-v7a*_signed.apk 2>/dev/null | head -1)
+          ARM64_APK=$(ls ${APK_DIR}/*arm64-v8a*.apk 2>/dev/null | head -1)
+          ARMV7_APK=$(ls ${APK_DIR}/*armeabi-v7a*.apk 2>/dev/null | head -1)
 
           if [ -f app/release_notes.txt ]; then
             RELEASE_NOTES=$(cat app/release_notes.txt | sed 's/"/\\"/g' | sed ':a;N;$!ba;s/\n/\\n/g')
@@ -245,12 +245,12 @@ jobs:
       - name: 列出所有生成的 APK 文件
         if: steps.skip_check.outputs.skip == 'false'
         run: |
-          echo "📁 加固 APK 目录内容："
-          ls -la app/build/outputs/apk/release/dpt/*.apk 2>/dev/null || echo "❌ 未找到加固 APK 文件"
+          echo "📁 Release APK 目录内容："
+          ls -la app/build/outputs/apk/release/*.apk 2>/dev/null || echo "❌ 未找到 APK 文件"
           echo ""
           echo "🔍 按 ABI 分类检查："
           for abi in arm64-v8a armeabi-v7a; do
-            files=$(ls app/build/outputs/apk/release/dpt/*${abi}*_signed.apk 2>/dev/null || true)
+            files=$(ls app/build/outputs/apk/release/*${abi}*.apk 2>/dev/null || true)
             if [ -n "$files" ]; then
               echo "✅ $abi: $files"
             else
@@ -267,7 +267,7 @@ jobs:
           tag_name: v${{ github.run_number }}
           name: 自动发布 v${{ github.run_number }}
           files: |
-            app/build/outputs/apk/release/dpt/*arm64-v8a*_signed.apk
-            app/build/outputs/apk/release/dpt/*armeabi-v7a*_signed.apk
+            app/build/outputs/apk/release/*arm64-v8a*.apk
+            app/build/outputs/apk/release/*armeabi-v7a*.apk
             update.json
           overwrite_files: true

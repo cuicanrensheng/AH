@@ -23,6 +23,7 @@ android {
         abi {
             enable true
             reset()
+            // ⚠️ 已剔除 x86 / x86_64：仅保留 ARM 架构（覆盖 Android 5.1.1~最新版真机/主流模拟器）
             include 'arm64-v8a', 'armeabi-v7a'
             universalApk false
         }
@@ -31,8 +32,8 @@ android {
         applicationId "com.tv.live"
         minSdk 21
         targetSdk 36
-        versionCode 100
-        versionName "2.0.100"
+        versionCode 103
+        versionName "2.0.103"
         resConfigs "zh"
         multiDexEnabled true
         // 关键：开启 vector 支持库。否则 AppCompat 在启动加载 <vector> 资源（adaptive icon/
@@ -43,8 +44,6 @@ android {
         }
         buildConfigField "int", "VERSION_CODE", "${versionCode}"
         buildConfigField "String", "VERSION_NAME", "\"${versionName}\""
-        // Bugly AppID - 在 Bugly 平台注册后获取
-        buildConfigField "String", "BUGLY_APP_ID", "\"4a23007223\""
         ndkVersion '25.2.9519653'
         ndk {
             // ⚠️ 注意：splits.abi 已按架构分包，AGP 不允许同时设置 ndk.abiFilters
@@ -71,14 +70,10 @@ android {
             signingConfig signingConfigs.release
             // 正式版移除 SourceFile 和 LineNumberTable，增加反编译难度
             buildConfigField "boolean", "IS_DEBUG", "false"
-            // 正式版隐藏 Bugly AppID（使用加密存储更好，这里先保留）
-            buildConfigField "String", "BUGLY_APP_ID", "\"4a23007223\""
         }
         debug {
             minifyEnabled false
             shrinkResources false
-            // 调试版 Bugly 也启用，便于测试
-            buildConfigField "String", "BUGLY_APP_ID", "\"4a23007223\""
             buildConfigField "boolean", "IS_DEBUG", "true"
         }
     }
@@ -103,9 +98,10 @@ android {
                          'DebugProbesKt.bin']
         }
         jniLibs {
-            // true = SO 以 deflate 压缩方式存储在 APK 内（体积优化）
-            // → APK 更小（安装时由系统解压到 /data/app/.../lib/）
-            // 注：原 false 方案 APK 大但安装后不产生解压体积；改为 true 后 APK 显著变小
+            // true = SO 以 deflate 压缩进 APK（安装时由系统解压到 /data/app/.../lib/）
+            // ⚠️ 必须用 true：extractNativeLibs=false（useLegacyPackaging=false）是 API 23+ 特性，
+            // 在 Android 5.x (API 22) 上 so 无法正确从 APK 映射加载 → libmarsstn.so JNI 符号注册失败
+            // → java.lang.UnsatisfiedLinkError: No implementation found for StnLogic.startTask_2（实测崩溃）
             useLegacyPackaging true
             pickFirsts += [
                     'lib/arm64-v8a/libhyaudioengine.so',
@@ -115,6 +111,10 @@ android {
                     'lib/x86/libc++_shared.so',
                     'lib/x86_64/libc++_shared.so'
             ]
+            // 安全网：排除 libBugly_Native.so（Bugly 普通版引用已移除，实验）。
+            // 该 so 内置崩溃诊断会在上报路径执行 logcat（Android 13+/小米 ROM 触发
+            // "允许访问所有设备日志"系统弹窗）；保留此排除以防 SDK aar 传递引入。
+            excludes += ['**/libBugly_Native.so']
             // ⚠️ 勿剔除 libmarsxlog.so / libstlport_shared.so（xlog 链路）！
             // 实测剔除后：mars.Mars.loadDefaultMarsLibrary 加载 libmarsxlog.so 失败
             // → 整个 mars 网络栈（StnLogic/HySignal/MtpMarsTransporter）不可用，取流失败。
@@ -132,84 +132,61 @@ android {
     }
 }
 
-// ============== 🛡️ 360 加固（GUI 模式）==============
-// 已停用 CLI 工具（需付费授权）。
-// 如需用 360 加固助手 GUI 加固：跑 prepare360JiaGu → GUI 选待加固 APK → 输出到 jiagu/output → 跑 sign360JiaGuOutput
-// 但当前已不接入，仅保留任务脚手架。
+// ============== 🔒 dpt-shell 加固（替换 360）==============
+// 工具位置：D:/ASDF/TV Live/dpt-shell/executable（dpt.jar + shell-files，v2.19.1 预构建）
+// 说明：assembleRelease 后对每个 release APK 执行 dpt 加固
+//       （dex 加密、so .bitcode 段加密、反射 clinit 注入、反调试/Frida/CRC 检测），
+//       并用 dpt-config.json（release.keystore）自动重签 V1+V2+V3。
+// 用法：gradlew releaseJiaGu（一键编译正式版+加固），或 gradlew dptJiaGu（仅加固现有产物）
+def dptExecutableDir = "${rootDir}/jiagu/dpt"
+def dptJarFile = file("${dptExecutableDir}/dpt.jar")
+def dptConfigFile = file("${rootDir}/dpt-config.json")
 
-task prepare360JiaGu {
+task dptJiaGu {
     group = 'security'
-    description = '准备待加固 APK 到 app/build/jiagu/input/（仅手工上传下载模式用）'
+    description = '对 release APK 进行 dpt-shell 加固并自动重签（V1+V2+V3）'
+    dependsOn 'assembleRelease'
     doLast {
-        def jiaguIn = file("${buildDir}/jiagu/input")
-        jiaguIn.mkdirs()
+        if (!dptJarFile.exists()) {
+            throw new GradleException("[dpt] 未找到 ${dptJarFile.absolutePath}，请先部署 dpt-shell executable 目录")
+        }
+        if (!dptConfigFile.exists()) {
+            throw new GradleException("[dpt] 未找到 ${dptConfigFile.absolutePath}（签名配置）")
+        }
         def apkDir = file("${buildDir}/outputs/apk/release")
-        def zipalign = "${android.sdkDirectory}/build-tools/${android.buildToolsVersion}/zipalign.exe"
+        def outDir = file("${buildDir}/outputs/apk/release/dpt")
+        outDir.mkdirs()
+        def javaBin = new File(System.getProperty('java.home'), 'bin/java.exe')
         apkDir.eachFileMatch(~/.*\.apk/) { apk ->
             if (apk.name.contains('-unsigned')) return
-            // zipalign 4 字节对齐（360 加固要求）
-            def aligned = file("${jiaguIn}/${apk.name.replace('.apk', '-unsigned.apk')}")
-            logger.lifecycle "[360JiaGu] zipalign: ${apk.name} → ${aligned.name}"
-            def proc = [zipalign, '-p', '-f', '4',
-                        apk.absolutePath, aligned.absolutePath].execute()
+            logger.lifecycle "[dpt] 加固: ${apk.name}"
+            def proc = [javaBin.absolutePath, '-jar', dptJarFile.absolutePath,
+                        '-f', apk.absolutePath,
+                        '-o', outDir.absolutePath,
+                        '-c', dptConfigFile.absolutePath].execute(null, projectDir)
+            def outLog = new StringBuilder()
+            def errLog = new StringBuilder()
+            proc.consumeProcessOutput(outLog, errLog)
             proc.waitFor()
-            if (proc.exitValue() == 0 && aligned.exists()) {
-                logger.lifecycle "[360JiaGu] 待加固包已就绪: ${aligned.absolutePath}"
-                logger.lifecycle "[360JiaGu] 下一步：上传到 https://jiagu.360.cn → 基础加固 → 下载"
+            if (proc.exitValue() == 0) {
+                def signed = file("${outDir}/${apk.name.replace('.apk', '_signed.apk')}")
+                // 清理中间 unsign 文件
+                file("${outDir}/${apk.name.replace('.apk', '_unsign.apk')}").delete()
+                logger.lifecycle "[dpt] ✅ 加固完成: ${signed.name} (${(signed.length() / 1024 / 1024).round(1)} MB)"
             } else {
-                logger.error "[360JiaGu] zipalign 失败"
+                logger.error "[dpt] ❌ 加固失败: ${apk.name}"
+                logger.error errLog.toString()
+                throw new GradleException("[dpt] 加固失败: ${apk.name}")
             }
         }
     }
 }
 
-task sign360JiaGuOutput {
+// 一键任务：编译正式版 + dpt 加固
+task releaseJiaGu {
     group = 'security'
-    description = '对 app/build/jiagu/output/ 下的加固后 APK 自动重签 V1+V2+V3'
-    doLast {
-        def jiaguOut = file("${buildDir}/jiagu/output")
-        if (!jiaguOut.exists()) {
-            jiaguOut.mkdirs()
-        }
-        def apkList = jiaguOut.listFiles({ d, n -> n.endsWith('.apk') } as java.io.FilenameFilter)
-        if (apkList == null || apkList.length == 0) {
-            logger.error "[360JiaGu] 未找到加固后 APK，请先放到 ${jiaguOut.absolutePath}"
-            return
-        }
-        def outDir = file("${buildDir}/outputs/apk/release/360")
-        outDir.mkdirs()
-        def buildTools = android.buildToolsVersion
-        def apksigner = "${android.sdkDirectory}/build-tools/${buildTools}/apksigner.bat"
-        def zipalign = "${android.sdkDirectory}/build-tools/${buildTools}/zipalign.exe"
-        def ks = android.signingConfigs.release.storeFile
-        def ksPwd = android.signingConfigs.release.storePassword
-        def keyAlias = android.signingConfigs.release.keyAlias
-        def keyPwd = android.signingConfigs.release.keyPassword
-
-        apkList.each { src ->
-            def aligned = file("${outDir}/${src.name.replace('.apk', '-aligned.apk')}")
-            def signed  = file("${outDir}/${src.name.replace('.apk', '-signed.apk')}")
-            def za = [zipalign, '-p', '-f', '4', src.absolutePath, aligned.absolutePath].execute()
-            za.waitFor()
-            if (za.exitValue() != 0) { logger.error "[360JiaGu] zipalign 失败: ${src.name}"; return }
-            def sg = [apksigner, 'sign',
-                      '--ks', ks.absolutePath,
-                      '--ks-pass', "pass:${ksPwd}",
-                      '--ks-key-alias', keyAlias,
-                      '--key-pass', "pass:${keyPwd}",
-                      '--v1-signing-enabled', 'true',
-                      '--v2-signing-enabled', 'true',
-                      '--v3-signing-enabled', 'true',
-                      aligned.absolutePath].execute()
-            sg.waitFor()
-            aligned.renameTo(signed)
-            if (sg.exitValue() == 0) {
-                logger.lifecycle "[360JiaGu] ✅ 重签完成: ${signed.absolutePath} (${signed.length()/1024} KB)"
-            } else {
-                logger.error "[360JiaGu] apksigner 失败: ${src.name}"
-            }
-        }
-    }
+    description = '编译正式版并执行 dpt-shell 加固（推荐入口）'
+    dependsOn 'dptJiaGu'
 }
 
 // ============== ⛔ 资源名混淆（aapt2 optimize）已停用 ==============
@@ -288,17 +265,37 @@ dependencies {
     implementation "androidx.media3:media3-exoplayer-hls:1.7.1"
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
     implementation 'com.google.code.gson:gson:2.10.1'
-    // 腾讯 Bugly SDK - 崩溃上报 + 运营统计（Maven 最新版）
-    implementation 'com.tencent.bugly:crashreport:latest.release'
     implementation fileTree(dir: 'libs', include: ['*.aar', '*.jar'], exclude: [
             'audioengineencode-1.1.80.aar',
             'audioenginecapture-1.1.80.aar',
             'imagefilter-1.1.80.aar',
             'rtmpupload-1.1.80.aar',
-            'crashreport-3.0.0.aar',
-            'nativecrashreport-3.7.1.aar',
-            'crashreport-4.1.9.3.aar',
-            'crashreport-4.1.9.31.aar'
+            // ⚠️ 以下 8 个 AAR 为「开播推流/云游戏」模块（com/huya/force + com/huya/mtp/hycloudgame），
+            // 本应用为纯观看场景，不调用开播功能。已验证（2026-08-28，正确 ZIP 解压 + 类级/子串级
+            // 双向引用扫描 + HuyaBerryImpl.init 字节码检查 + manifest 组件检查）：
+            //   · 保留侧 34 个模块对它们零引用；
+            //   · HuyaBerryImpl.init 字节码不引用；
+            //   · 各自 so 无外部 System.loadLibrary 点，res 无外部 R 引用。
+            // 排除后 SDK 初始化与播放不受影响。
+            'audiocapture-1.1.80.aar',
+            'audiohardencode-1.1.80.aar',
+            'cameracapture-1.1.80.aar',
+            'screencapture-1.1.80.aar',
+            'videohardencode-1.1.80.aar',
+            'client-1.1.80.aar',
+            'export-1.1.80.aar',
+            'hycloudgame-base-1.9.105-exvolley.aar',
+            // utils-1.1.80.aar（2.2MB）为推流引擎工具库（50 类全在 com/huya/force 包：
+            // gles/gpuimage/log/collect），同为开播链路，核心 34 模块零引用，一并排除。
+            'utils-1.1.80.aar',
+            // Bugly 专业版 aar（crashreport-3.0.0 / nativecrashreport-3.7.1）已删除（实验 2026-08-28），
+            // 备份于 _backup/。SDK 侧 isOpenBugly(false) 已禁用其初始化，删除不影响编译与运行。
+            // ⚠️ statistics/livestatistics/apm 必须保留打包：SDK init 链路强依赖这些类，
+            // 排除会导致 NoClassDefFoundError 使 SDK 失效。改为由 HuyaCacheGovernor
+            // 反射关闭 isOpenStat/isOpenAnalytics/isOpenApm 等开关，运行时禁用其功能。
+            // NSEasy 完整实现由 hynswrapper-1.9.105-exvolley.aar 提供，
+            // classes.jar（仅 NSEasy+BuildConfig 的 stub）会造成重复类冲突。
+            'classes.jar'
     ])
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'
 }
@@ -353,8 +350,6 @@ configurations.all {
         force "androidx.media3:media3-ui:1.7.1"
         force "androidx.media3:media3-exoplayer-hls:1.7.1"
         force "androidx.lifecycle:lifecycle-process:2.6.2"
-        // 强制使用最新版 Bugly SDK，解决版本冲突
-        force "com.tencent.bugly:crashreport:latest.release"
     }
     exclude group: 'com.huya.berry', module: 'sdkplayer'
     exclude group: 'com.huya.berry', module: 'sdklive'

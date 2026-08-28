@@ -53,6 +53,10 @@ monitor/node_modules/
 # Security tools
 security-tools/
 
+# dpt-shell 独立仓库（仅仓库内的 jiagu/dpt/ 工具需要跟踪，见下方 ! 强制）
+/dpt-shell/
+/dpt-shell/**
+
 # Packaging outputs
 dist*/
 

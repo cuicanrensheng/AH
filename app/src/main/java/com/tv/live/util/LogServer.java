@@ -99,7 +99,7 @@ public class LogServer {
             try {
                 PackageManager pm = context.getPackageManager();
                 PackageInfo pi = pm.getPackageInfo(context.getPackageName(), 0);
-                long vc = android.content.pm.PackageInfoCompat.getLongVersionCode(pi);
+                long vc = androidx.core.content.pm.PackageInfoCompat.getLongVersionCode(pi);
                 appVersion = pi.versionName + " (" + vc + ")";
             } catch (Exception e) {
                 appVersion = "unknown";

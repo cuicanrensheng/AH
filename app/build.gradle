@@ -132,63 +132,6 @@ android {
     }
 }
 
-// ============== 🔒 dpt-shell 加固（替换 360）==============
-// 工具位置：D:/ASDF/TV Live/dpt-shell/executable（dpt.jar + shell-files，v2.19.1 预构建）
-// 说明：assembleRelease 后对每个 release APK 执行 dpt 加固
-//       （dex 加密、so .bitcode 段加密、反射 clinit 注入、反调试/Frida/CRC 检测），
-//       并用 dpt-config.json（release.keystore）自动重签 V1+V2+V3。
-// 用法：gradlew releaseJiaGu（一键编译正式版+加固），或 gradlew dptJiaGu（仅加固现有产物）
-def dptExecutableDir = "${rootDir}/jiagu/dpt"
-def dptJarFile = file("${dptExecutableDir}/dpt.jar")
-def dptConfigFile = file("${rootDir}/dpt-config.json")
-
-task dptJiaGu {
-    group = 'security'
-    description = '对 release APK 进行 dpt-shell 加固并自动重签（V1+V2+V3）'
-    dependsOn 'assembleRelease'
-    doLast {
-        if (!dptJarFile.exists()) {
-            throw new GradleException("[dpt] 未找到 ${dptJarFile.absolutePath}，请先部署 dpt-shell executable 目录")
-        }
-        if (!dptConfigFile.exists()) {
-            throw new GradleException("[dpt] 未找到 ${dptConfigFile.absolutePath}（签名配置）")
-        }
-        def apkDir = file("${buildDir}/outputs/apk/release")
-        def outDir = file("${buildDir}/outputs/apk/release/dpt")
-        outDir.mkdirs()
-        def javaBin = new File(System.getProperty('java.home'), 'bin/java')
-        apkDir.eachFileMatch(~/.*\.apk/) { apk ->
-            if (apk.name.contains('-unsigned')) return
-            logger.lifecycle "[dpt] 加固: ${apk.name}"
-            def proc = [javaBin.absolutePath, '-jar', dptJarFile.absolutePath,
-                        '-f', apk.absolutePath,
-                        '-o', outDir.absolutePath,
-                        '-c', dptConfigFile.absolutePath].execute(null, projectDir)
-            def outLog = new StringBuilder()
-            def errLog = new StringBuilder()
-            proc.consumeProcessOutput(outLog, errLog)
-            proc.waitFor()
-            if (proc.exitValue() == 0) {
-                def signed = file("${outDir}/${apk.name.replace('.apk', '_signed.apk')}")
-                // 清理中间 unsign 文件
-                file("${outDir}/${apk.name.replace('.apk', '_unsign.apk')}").delete()
-                logger.lifecycle "[dpt] ✅ 加固完成: ${signed.name} (${(signed.length() / 1024 / 1024).round(1)} MB)"
-            } else {
-                logger.error "[dpt] ❌ 加固失败: ${apk.name}"
-                logger.error errLog.toString()
-                throw new GradleException("[dpt] 加固失败: ${apk.name}")
-            }
-        }
-    }
-}
-
-// 一键任务：编译正式版 + dpt 加固
-task releaseJiaGu {
-    group = 'security'
-    description = '编译正式版并执行 dpt-shell 加固（推荐入口）'
-    dependsOn 'dptJiaGu'
-}
-
 // ============== ⛔ 资源名混淆（aapt2 optimize）已停用 ==============
 // 【为什么停用】
 //   aapt2 optimize --collapse-resource-names 会重排/压缩资源 ID，

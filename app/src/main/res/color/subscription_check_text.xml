@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- ✓ 勾选文字颜色：焦点/选中/激活=蓝#40A9FF；否则全透明(=视觉 gone) -->
-<selector xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:state_focused="true"    android:color="#FF40A9FF"/>
-    <item android:state_selected="true"   android:color="#FF40A9FF"/>
-    <item android:state_activated="true"  android:color="#FF40A9FF"/>
-    <item android:color="#00FFFFFF"/>
-</selector>
